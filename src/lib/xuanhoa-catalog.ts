@@ -7380,7 +7380,7 @@ export const vanhDaiQuanItems: Food[] = [
     price: 150,
     image: -841,
     customId: 'dish_vdq_ma_dao_chay_toi',
-    customImage: 'dish_cuonmoc_met_bo_tuoi.jpg',
+    customImage: 'dish_vdq_ma_dao_chay_toi_hd.jpg',
     rarity: 4,
     quip: 'Má đào heo nạc giòn cháy xèo xèo cạnh giòn sần sật trên bản gang bốc khói ngập tỏi phi thơm nức mũi đưa bia cực bén.',
   },
@@ -7402,7 +7402,7 @@ export const vanhDaiQuanItems: Food[] = [
     price: 200,
     image: -843,
     customId: 'dish_vdq_tom_sot_trung_muoi',
-    customImage: 'dish_cuonmoc_cuon_tom.jpg',
+    customImage: 'dish_vdq_oc_huong_trung_muoi_hd.jpg',
     rarity: 3,
     quip: 'Tôm sú tươi rói chiên vàng quết đẫm sốt trứng muối vàng ươm bùi béo ngọt lịm chấm bánh mì tuyệt hảo.',
   },
@@ -7413,7 +7413,7 @@ export const vanhDaiQuanItems: Food[] = [
     price: 130,
     image: -844,
     customId: 'dish_vdq_ba_chi_chao_gieng',
-    customImage: 'dish_cuonmoc_cuon_tom_bo.jpg',
+    customImage: 'dish_tuan_hien_ba_chi_hd.jpg',
     rarity: 2,
     quip: 'Thịt ba chỉ thái mỏng chao vàng ươm giòn rụm thơm lừng hương giềng mồi nhắm lai rai cùng tháp bia hơi.',
   },
@@ -7424,7 +7424,7 @@ export const vanhDaiQuanItems: Food[] = [
     price: 200,
     image: -845,
     customId: 'dish_vdq_oc_huong_trung_muoi',
-    customImage: 'dish_cuonmoc_cuon_tom_thit.jpg',
+    customImage: 'dish_vdq_oc_huong_trung_muoi_hd.jpg',
     rarity: 3,
     quip: 'Ốc hương béo múp ngập trong sốt trứng muối sánh sệt thơm bùi, ăn một lần nhớ mãi.',
   },
@@ -7446,20 +7446,20 @@ export const vanhDaiQuanItems: Food[] = [
     price: 350,
     image: -847,
     customId: 'dish_vdq_lau_tom_bau',
-    customImage: 'dish_cuonmoc_lau_bo_nhung_khe.jpg',
+    customImage: 'dish_lau_thai_hai_san_hd.jpg',
     rarity: 4,
     quip: 'Nước dùng lẩu tôm thanh tao ngọt lịm từ tôm sông tươi và ruột bầu non giòn mát giải nhiệt hoàn hảo.',
   },
-  // 8. Nộm bò khế pháo chua cay (150k)
+  // 8. Nộm tai heo giòn sần sật (100k)
   {
-    name: 'Nộm bò khế pháo chua cay',
-    sub: 'Bắp bò hoa chần tái, cà pháo giòn tan, khế chua đậm đà • Vành Đai Quán Lê Quang Đạo',
-    price: 150,
+    name: 'Nộm tai heo giòn sần sật',
+    sub: 'Tai heo giòn sần sật trộn thính thơm, lá chanh, chua ngọt • Vành Đai Quán Lê Quang Đạo',
+    price: 100,
     image: -848,
-    customId: 'dish_vdq_nom_bo_khe_phao',
+    customId: 'dish_vdq_nom_tai_heo',
     customImage: 'dish_vdq_nom_bo_khe_phao_chuan.jpg',
-    rarity: 3,
-    quip: 'Đĩa nộm bắp bò hoa chần tái ngấm vị chua thanh của khế, cà pháo giòn rụm bắt vị cực đưa cay.',
+    rarity: 2,
+    quip: 'Đĩa nộm tai heo giòn sần sật ngấm vị chua ngọt cay dịu, rắc thính vàng ươm ăn kèm rau thơm mồi nhậu cực bén.',
   },
   // 9. Dải chao tỏi vàng ruộm (150k)
   {
@@ -7468,64 +7468,152 @@ export const vanhDaiQuanItems: Food[] = [
     price: 150,
     image: -849,
     customId: 'dish_vdq_dai_chao_toi',
-    customImage: 'dish_trau_nuong_tang.webp',
+    customImage: 'dish_vdq_dai_chao_toi_hd.jpg',
     rarity: 3,
     quip: 'Dải heo tươi thái miếng vừa ăn chao vàng thơm lừng tỏi phi, mềm ngọt mọng nước nhắm bia cực đã.',
   },
-  // 10. Sụn non chiên vừng giòn rụm (120k)
+  // 10. Tóp mỡ dưa chua xóc mắm (130k)
   {
-    name: 'Sụn non chiên vừng giòn rụm',
-    sub: 'Sụn non giòn rụm thơm bùi hạt vừng rang • Vành Đai Quán Lê Quang Đạo',
-    price: 120,
+    name: 'Tóp mỡ dưa chua xóc mắm',
+    sub: 'Tóp mỡ vàng giòn rụm xào dưa cải chua đậm đà • Vành Đai Quán Lê Quang Đạo',
+    price: 130,
     image: -850,
-    customId: 'dish_vdq_sun_non_chien_vung',
-    customImage: 'dish_trau_nhung_me.webp',
+    customId: 'dish_vdq_top_mo_dua_chua',
+    customImage: 'dish_vdq_top_mo_dua_chua_hd.jpg',
     rarity: 2,
-    quip: 'Từng miếng sụn heo bao vụn vừng thơm phức giòn sần sật chấm tương ớt cay nồng.',
+    quip: 'Tóp mỡ giòn tan quyện vị chua thanh cay mặn của dưa muối xào kỹ, mồi nhắm bia truyền thống không thể thiếu.',
   },
-  // 11. Bia tháp tươi mát lạnh (85k)
+  // 11. Ếch đồng rang muối giòn (120k)
+  {
+    name: 'Ếch đồng rang muối giòn',
+    sub: 'Đùi ếch vàng ruộm rắc muối rang sả ớt giòn thơm • Vành Đai Quán Lê Quang Đạo',
+    price: 120,
+    image: -851,
+    customId: 'dish_vdq_ech_rang_muoi',
+    customImage: 'dish_vdq_ech_rang_muoi_hd.jpg',
+    rarity: 2,
+    quip: 'Thịt ếch đồng săn chắc chiên vàng rụm áo lớp bột muối rang thảo mộc thơm lừng chấm muối tiêu chanh.',
+  },
+  // 12. Lẩu ếch măng cay ấm nồng (280k)
+  {
+    name: 'Lẩu ếch măng cay ấm nồng',
+    sub: 'Thịt ếch xào săn đượm măng chua cay nồng ấm cúng • Vành Đai Quán Lê Quang Đạo',
+    price: 280,
+    image: -852,
+    customId: 'dish_vdq_lau_ech',
+    customImage: 'dish_lau_ech_mang_cay_hd.jpg',
+    rarity: 3,
+    quip: 'Nồi lẩu ếch măng cay chua thanh ấm nồng, thịt ếch xào giòn ngọt đậm đà bên cạnh đĩa măng tươi giòn sần sật.',
+  },
+  // 13. Lẩu cá chép om dưa Vành Đai Quán (350k)
+  {
+    name: 'Lẩu cá chép om dưa',
+    sub: 'Cá chép sông tươi béo ngậy om dưa chua thì là • Vành Đai Quán Lê Quang Đạo',
+    price: 350,
+    image: -853,
+    customId: 'dish_vdq_lau_ca_chep_om_dua',
+    customImage: 'dish_vdq_lau_ca_chep_om_dua_hd.jpg',
+    rarity: 3,
+    quip: 'Nồi cá chép sông om dưa cải chua vàng ruộm, nước dùng chua thanh thơm nức thì là ớt tươi ấm nồng.',
+  },
+  // 14. Lẩu gà ta lá giang nấm tươi (300k)
+  {
+    name: 'Lẩu gà ta lá giang',
+    sub: 'Gà đồi thịt chắc ngọt nấu nước dùng thanh tao nấm tươi • Vành Đai Quán Lê Quang Đạo',
+    price: 300,
+    image: -854,
+    customId: 'dish_vdq_lau_ga',
+    customImage: 'dish_lau_ga_soup_hd.jpg',
+    rarity: 3,
+    quip: 'Gà đồi thịt thơm ngọt ngập trong nước dùng lẩu thanh tao ngọt lịm từ rau nấm tươi mát.',
+  },
+  // 15. Gà rang muối lá chanh (200k/nửa con)
+  {
+    name: 'Gà rang muối lá chanh',
+    sub: 'Gà ta nửa con rang muối vàng giòn thơm lừng lá chanh • Vành Đai Quán Lê Quang Đạo',
+    price: 200,
+    image: -855,
+    customId: 'dish_vdq_ga_rang_muoi',
+    customImage: 'dish_vdq_ga_rang_muoi_hd.jpg',
+    rarity: 3,
+    quip: 'Thịt gà ta da giòn thịt ngọt săn chắc rang muối thơm lừng lá chanh và tỏi phi giòn rụm.',
+  },
+  // 16. Gà đồi luộc nguyên con (450k)
+  {
+    name: 'Gà đồi luộc nguyên con',
+    sub: 'Gà đồi luộc da vàng óng mọng nước lá chanh (đặt trước) • Vành Đai Quán Lê Quang Đạo',
+    price: 450,
+    image: -856,
+    customId: 'dish_vdq_ga_luoc_nguyen_con',
+    customImage: 'dish_vdq_ga_luoc_hd.jpg',
+    rarity: 4,
+    quip: 'Gà thả đồi luộc nguyên con thịt chắc ngọt lịm chấm muối tiêu chanh ớt tươi.',
+  },
+  // 17. Mì xào bò cải xanh đĩa lớn (120k)
+  {
+    name: 'Mì xào bò cải xanh',
+    sub: 'Mì sợi vàng giòn dai xào thịt bò mềm ngọt rau cải • Vành Đai Quán Lê Quang Đạo',
+    price: 120,
+    image: -857,
+    customId: 'dish_vdq_mi_xao_bo',
+    customImage: 'dish_vdq_mi_xao_bo_hd.jpg',
+    rarity: 2,
+    quip: 'Đĩa mì xào bò cải xanh đầy đặn, thịt bò mềm ngọt xào lửa lớn giữ trọn vị đậm đà thơm ngát.',
+  },
+  // 18. Trứng đúc lá ngải nóng hổi (50k)
+  {
+    name: 'Trứng đúc lá ngải nóng hổi',
+    sub: 'Trứng gà ta rán lá ngải cứu thơm bùi ấm bụng • Vành Đai Quán Lê Quang Đạo',
+    price: 50,
+    image: -858,
+    customId: 'dish_vdq_trung_la_ngai',
+    customImage: 'dish_vdq_trung_la_ngai_hd.jpg',
+    rarity: 1,
+    quip: 'Trứng gà ta đúc lá ngải cứu vàng ươm thơm ngát, vị bùi bùi đăng đắng thanh nhẹ cực kỳ bổ dưỡng.',
+  },
+  // 19. Khoai tây lắc phô mai (40k)
+  {
+    name: 'Khoai tây lắc phô mai',
+    sub: 'Khoai tây chiên vàng giòn rụm lắc bột phô mai béo ngậy • Vành Đai Quán Lê Quang Đạo',
+    price: 40,
+    image: -859,
+    customId: 'dish_vdq_khoai_tay_lac',
+    customImage: 'dish_vdq_khoai_tay_lac_hd.jpg',
+    rarity: 2,
+    quip: 'Khoai tây chiên ngoài giòn trong bở xốp, lắc bột phô mai mằn mặn béo ngọt bắt miệng.',
+  },
+  // 20. Khoai lang kén bùi ngậy (40k)
+  {
+    name: 'Khoai lang kén bùi ngậy',
+    sub: 'Khoai kén vàng ruộm vỏ giòn nhân bở ngọt ngào • Vành Đai Quán Lê Quang Đạo',
+    price: 40,
+    image: -860,
+    customId: 'dish_vdq_khoai_lang_ken',
+    customImage: 'dish_vdq_khoai_lang_ken_hd.jpg',
+    rarity: 1,
+    quip: 'Từng viên khoai lang kén thơm phức nước cốt dừa, vỏ giòn ruộm bọc nhân dẻo ngọt bùi béo.',
+  },
+  // 21. Bia tháp tươi mát lạnh (85k)
   {
     name: 'Bia tháp tươi mát lạnh',
     sub: 'Tháp bia tươi mát rượi giữ lạnh bọt tuyết bồng bềnh • Vành Đai Quán Lê Quang Đạo',
     price: 85,
-    image: -851,
+    image: -861,
     customId: 'drink_vdq_bia_thap',
     customImage: 'dish_bia_saigon_hd.jpg',
     rarity: 3,
     quip: 'Tháp bia tươi ướp lạnh mát lạnh sảng khoái, tâm điểm của mọi cuộc vui tụ tập anh em tại Vành Đai Quán.',
   },
-  // 12. Bia cốc tươi giải nhiệt (9k)
+  // 22. Bia cốc tươi giải nhiệt (9k)
   {
     name: 'Bia cốc tươi giải nhiệt',
     sub: 'Cốc bia hơi tươi mát giải nhiệt chỉ 9k/cốc • Vành Đai Quán Lê Quang Đạo',
     price: 9,
-    image: -852,
+    image: -862,
     customId: 'drink_vdq_bia_coc',
     customImage: 'dish_bia_coc_tuoi_hd.jpg',
     rarity: 1,
     quip: 'Cốc bia hơi mát lạnh tràn bọt giá chỉ 9k/cốc xua tan cái nóng oi ả.',
-  },
-  // 13. Tóp mỡ dưa chua xóc mắm (130k)
-  {
-    name: 'Tóp mỡ dưa chua xóc mắm',
-    sub: 'Tóp mỡ vàng giòn rụm xào dưa cải chua đậm đà • Vành Đai Quán Lê Quang Đạo',
-    price: 130,
-    image: -853,
-    customId: 'dish_vdq_top_mo_dua_chua',
-    customImage: 'dish_cuonmoc_com_rang_dua.jpg',
-    rarity: 2,
-    quip: 'Tóp mỡ giòn tan quyện vị chua thanh cay mặn của dưa muối xào kỹ, mồi nhắm bia truyền thống không thể thiếu.',
-  },
-  // 14. Lẩu cá chép om dưa Vành Đai Quán (350k)
-  {
-    name: 'Lẩu cá chép om dưa',
-    sub: 'Cá chép sông tươi béo ngậy om dưa chua thì là • Vành Đai Quán Lê Quang Đạo',
-    price: 350,
-    image: -854,
-    customId: 'dish_vdq_lau_ca_chep_om_dua',
-    customImage: 'dish_real_thit_tho.jpg',
-    rarity: 3,
-    quip: 'Nồi cá chép sông om dưa cải chua vàng ruộm, nước dùng chua thanh thơm nức thì là ớt tươi ấm nồng.',
   },
 ];
 
@@ -7543,13 +7631,21 @@ export const nhauGiFoods: Food[] = [
   vanhDaiQuanItems[4],       // BESTSELLER VÀNH ĐAI QUÁN: Ốc hương sốt trứng muối hoàng kim (200k) đưa lên đầu
   vanhDaiQuanItems[5],       // BESTSELLER VÀNH ĐAI QUÁN: Lẩu riêu cua bắp bò (350k) đưa lên đầu
   vanhDaiQuanItems[6],       // BESTSELLER VÀNH ĐAI QUÁN: Lẩu tôm bầu thanh ngọt (350k) đưa lên đầu
-  vanhDaiQuanItems[7],       // VÀNH ĐAI QUÁN: Nộm bò khế pháo chua cay (150k) đưa lên đầu
-  vanhDaiQuanItems[8],       // VÀNH ĐAI QUÁN: Dải chao tỏi vàng ruộm (150k) đưa lên đầu
-  vanhDaiQuanItems[9],       // VÀNH ĐAI QUÁN: Sụn non chiên vừng giòn rụm (120k)
-  vanhDaiQuanItems[10],      // VÀNH ĐAI QUÁN: Bia tháp tươi mát lạnh (85k)
-  vanhDaiQuanItems[11],      // VÀNH ĐAI QUÁN: Bia cốc tươi giải nhiệt (9k)
-  vanhDaiQuanItems[12],      // VÀNH ĐAI QUÁN: Tóp mỡ dưa chua xóc mắm (130k)
-  vanhDaiQuanItems[13],      // VÀNH ĐAI QUÁN: Lẩu cá chép om dưa (350k)
+  vanhDaiQuanItems[7],       // VÀNH ĐAI QUÁN: Nộm tai heo giòn sần sật (100k)
+  vanhDaiQuanItems[8],       // VÀNH ĐAI QUÁN: Dải chao tỏi vàng ruộm (150k)
+  vanhDaiQuanItems[9],       // VÀNH ĐAI QUÁN: Tóp mỡ dưa chua xóc mắm (130k)
+  vanhDaiQuanItems[10],      // VÀNH ĐAI QUÁN: Ếch đồng rang muối giòn (120k)
+  vanhDaiQuanItems[11],      // VÀNH ĐAI QUÁN: Lẩu ếch măng cay ấm nồng (280k)
+  vanhDaiQuanItems[12],      // VÀNH ĐAI QUÁN: Lẩu cá chép om dưa (350k)
+  vanhDaiQuanItems[13],      // VÀNH ĐAI QUÁN: Lẩu gà ta lá giang (300k)
+  vanhDaiQuanItems[14],      // VÀNH ĐAI QUÁN: Gà rang muối lá chanh (200k)
+  vanhDaiQuanItems[15],      // VÀNH ĐAI QUÁN: Gà đồi luộc nguyên con (450k)
+  vanhDaiQuanItems[16],      // VÀNH ĐAI QUÁN: Mì xào bò cải xanh (120k)
+  vanhDaiQuanItems[17],      // VÀNH ĐAI QUÁN: Trứng đúc lá ngải nóng hổi (50k)
+  vanhDaiQuanItems[18],      // VÀNH ĐAI QUÁN: Khoai tây lắc phô mai (40k)
+  vanhDaiQuanItems[19],      // VÀNH ĐAI QUÁN: Khoai lang kén bùi ngậy (40k)
+  vanhDaiQuanItems[20],      // VÀNH ĐAI QUÁN: Bia tháp tươi mát lạnh (85k)
+  vanhDaiQuanItems[21],      // VÀNH ĐAI QUÁN: Bia cốc tươi giải nhiệt (9k)
   sanBia247Items[0],         // BESTSELLER SÂN BIA 247 SỐ 1: Má đào cháy tỏi bản gang (129k) đưa lên đầu
   sanBia247Items[1],         // BESTSELLER SÂN BIA 247: Tháp sườn chua cay khổng lồ (179k) đưa lên đầu
   sanBia247Items[2],         // BESTSELLER SÂN BIA 247: Nõn đuôi chiên móc mật (119k) đưa lên đầu
@@ -7903,8 +7999,8 @@ export const uongGiItems: Food[] = [
   cocokanaFruitTeaDishes[2],  // BESTSELLER COCOKANA: Trà mãng cầu dầm tươi (30k) đưa lên đầu
   cocokanaFruitTeaDishes[3],  // BESTSELLER COCOKANA: Trà măng cụt múi mập (30k) đưa lên đầu
   cocokanaFruitTeaDishes[4],  // BESTSELLER COCOKANA: Trà nhãn atiso đỏ (30k) đưa lên đầu
-  vanhDaiQuanItems[10],      // BESTSELLER VÀNH ĐAI QUÁN: Bia tháp tươi mát lạnh (85k) đưa lên đầu
-  vanhDaiQuanItems[11],      // BESTSELLER VÀNH ĐAI QUÁN: Bia cốc tươi giải nhiệt (9k) đưa lên đầu
+  vanhDaiQuanItems[20],      // BESTSELLER VÀNH ĐAI QUÁN: Bia tháp tươi mát lạnh (85k) đưa lên đầu
+  vanhDaiQuanItems[21],      // BESTSELLER VÀNH ĐAI QUÁN: Bia cốc tươi giải nhiệt (9k) đưa lên đầu
   nhungsCornerItems[5],      // BESTSELLER NHUNG'S CORNER: Cold Whisk (Matcha giòn) béo ngậy (35k) đưa lên đầu
   nhungsCornerItems[6],      // BESTSELLER NHUNG'S CORNER: Trà sữa Hokkaido trân châu (30k) đưa lên đầu
   nhungsCornerItems[7],      // NHUNG'S CORNER: Matcha sữa dừa thơm béo (25k) đưa lên đầu

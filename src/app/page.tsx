@@ -49,6 +49,8 @@ import { UserGuideView } from '@/components/UserGuideView';
 import { AboutView } from '@/components/AboutView';
 import { ComingSoonView } from '@/components/ComingSoonView';
 import { SettingsMenuModal } from '@/components/SettingsMenuModal';
+import { GlobalSpinCounter } from '@/components/GlobalSpinCounter';
+import { useGlobalSpinCounter } from '@/hooks/use-global-spin-counter';
 import { BudgetDropdown, PlaceKeoDropdown } from '@/components/LuxuryFilterDropdowns';
 import { CatalogFoodItem, getDishConceptKey, diversifyFoodList, getUniqueConceptFoods } from '@/lib/xuanhoa-catalog';
 import { getSpotsForDish } from '@/lib/dish-places';
@@ -94,6 +96,9 @@ function shuffleArray<T>(array: readonly T[]): T[] {
 export default function Home() {
   // Gourmet profile (Level & EXP without requiring login)
   const [profile, setProfile] = useState<UserGourmetProfile>(() => getLocalProfile());
+
+  // Global total spins counter (starting from 688)
+  const { count: globalSpinCount, increment: incrementGlobalSpins } = useGlobalSpinCounter();
 
   // Active App View: 'spin' | 'dishes' | 'places' | 'guide' | 'about' | 'coming-soon'
   const [currentView, setCurrentView] = useState<AppView>(() => parseHashToView());
@@ -488,6 +493,7 @@ export default function Home() {
 
   const spinCase = () => {
     if (busy.current || !eligibleItems.length || !track.current || !viewport.current) return;
+    incrementGlobalSpins();
     audio.current?.unlock();
     busy.current = true;
 
@@ -618,6 +624,7 @@ export default function Home() {
   // Master Spin function for Places (Quay Chọn Quán)
   const spinPlace = () => {
     if (placeBusy.current || !eligiblePlaces.length || !placeTrack.current || !placeViewport.current) return;
+    incrementGlobalSpins();
     audio.current?.unlock();
     placeBusy.current = true;
 
@@ -876,6 +883,9 @@ export default function Home() {
       <main className="main-wrapper">
         {currentView === 'spin' && (
           <>
+            {/* Thanh Thống Kê Tổng Lượt Mở Hòm Sang Trọng (Khởi điểm 688) */}
+            <GlobalSpinCounter count={globalSpinCount} isSpinning={spinning || placeSpinning} />
+
             {/* 2-TAB MODE SWITCHER: CHỌN MÓN vs CHỌN QUÁN */}
             <div className="main-mode-switcher">
           <button

@@ -2144,7 +2144,7 @@ export function getSpotForDish(dishName: string): SpotInfo {
   if (
     name.includes('trâu') ||
     name.includes('thắng cố') ||
-    (name.includes('nhúng mẻ') && !name.includes('ốc'))
+    (name.includes('nhúng mẻ') && !name.includes('ốc') && !name.includes('ngựa') && !name.includes('ngua'))
   ) {
     return xuanHoaSpots.trau_phi_xuyen;
   }
@@ -3104,10 +3104,10 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
     name.includes('ngựa') ||
     name.includes('ngua')
   ) {
-    return [xuanHoaSpots.lau_ngua_tay_bac, xuanHoaSpots.trau_phi_xuyen, xuanHoaSpots.trau_gio_dong];
+    return [xuanHoaSpots.lau_ngua_tay_bac];
   }
 
-  if (name.includes('trâu') || name.includes('thắng cố')) {
+  if ((name.includes('trâu') || name.includes('thắng cố')) && !name.includes('ngựa') && !name.includes('ngua')) {
     return [xuanHoaSpots.trau_phi_xuyen, xuanHoaSpots.trau_gio_dong];
   }
 

@@ -66,7 +66,7 @@ export function UserGuideView({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="catalog-header-nav-group flex items-center gap-2">
             <button className="catalog-header-places-btn" onClick={onGoToDishes} title="Khám phá thực đơn">
               <UtensilsCrossed size={14} className="text-amber-400" />
               <span>300+ Món</span>

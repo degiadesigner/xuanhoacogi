@@ -271,14 +271,16 @@ export function BudgetDropdown({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(prev => !prev)}
-        className="luxury-budget-trigger"
+        className="luxury-budget-trigger w-full"
         title="Lọc theo mức chi tiêu dự kiến"
       >
-        <Wallet size={14} className="text-amber-400 shrink-0" />
-        <span>{value === 'all' ? 'Mức giá: Tất cả' : currentOption.label}</span>
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <Wallet size={14} className="text-amber-400 shrink-0" />
+          <span className="truncate">{value === 'all' ? 'Giá: Tất cả' : currentOption.label}</span>
+        </div>
         <ChevronDown
           size={14}
-          className={`transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-400' : 'text-slate-400'}`}
+          className={`shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-400' : 'text-slate-400'}`}
         />
       </button>
 
@@ -353,24 +355,24 @@ export function SessionDropdown({
   }, [isOpen]);
 
   return (
-    <div className="relative inline-block text-left" ref={containerRef}>
+    <div className="relative inline-block text-left w-full" ref={containerRef}>
       <button
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(prev => !prev)}
-        className="luxury-filter-trigger"
+        className="luxury-filter-trigger w-full"
         title="Chọn khung giờ phục vụ"
       >
         <Clock size={14} className="text-amber-400 shrink-0" />
-        {isCurrentLive && <span className="live-gem-indicator" />}
-        <span className="luxury-trigger-label">
+        {isCurrentLive && <span className="live-gem-indicator shrink-0" />}
+        <span className="luxury-trigger-label truncate">
           {value === 'all'
-            ? 'Khung giờ: Cả ngày'
-            : `Khung giờ: ${currentSession ? currentSession.label.replace('Buổi ', '') : 'Tự động'}`}
+            ? 'Giờ: Cả ngày'
+            : `Giờ: ${currentSession ? currentSession.label.replace('Buổi ', '') : 'Tự động'}`}
         </span>
         <ChevronDown
           size={14}
-          className={`luxury-chevron transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-400' : 'text-slate-400'}`}
+          className={`luxury-chevron shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-400' : 'text-slate-400'}`}
         />
       </button>
 
@@ -481,16 +483,18 @@ export function PlaceKeoDropdown({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(prev => !prev)}
-        className="luxury-filter-trigger"
+        className="luxury-filter-trigger w-full"
         title="Chọn kèo đi ăn tại Xuân Hòa"
       >
-        {renderPlaceKeoIcon(currentKeo.id, 14)}
-        <span className="luxury-trigger-label">
-          Kèo: {currentKeo.label}
-        </span>
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          {renderPlaceKeoIcon(currentKeo.id, 14)}
+          <span className="luxury-trigger-label truncate">
+            {value === 'all' ? 'Kèo: Tất cả' : `Kèo: ${currentKeo.label}`}
+          </span>
+        </div>
         <ChevronDown
           size={14}
-          className={`luxury-chevron transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-400' : 'text-slate-400'}`}
+          className={`luxury-chevron shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-400' : 'text-slate-400'}`}
         />
       </button>
 

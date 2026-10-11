@@ -51,7 +51,7 @@ import { ComingSoonView } from '@/components/ComingSoonView';
 import { SettingsMenuModal } from '@/components/SettingsMenuModal';
 import { GlobalSpinCounter } from '@/components/GlobalSpinCounter';
 import { useGlobalSpinCounter } from '@/hooks/use-global-spin-counter';
-import { BudgetDropdown, PlaceKeoDropdown } from '@/components/LuxuryFilterDropdowns';
+import { BudgetDropdown, PlaceKeoDropdown, SessionDropdown } from '@/components/LuxuryFilterDropdowns';
 import { CatalogFoodItem, getDishConceptKey, diversifyFoodList, getUniqueConceptFoods } from '@/lib/xuanhoa-catalog';
 import { getSpotsForDish } from '@/lib/dish-places';
 import { formatTypography, getFoodCategoryLabel, cleanDishDisplayTitle } from '@/lib/utils';
@@ -1290,150 +1290,102 @@ export default function Home() {
           <GlobalSpinCounter count={globalSpinCount} isSpinning={spinning || placeSpinning} compact={true} />
         </div>
 
-        {/* Row 2: 1-Touch Horizontal Chip Filter Bar (Smooth Touch Scroll) */}
+        {/* ========================================================
+            PHƯƠNG ÁN A: 2 TẦNG CÂN ĐỐI, VỪA KHÍT 100% MÀN HÌNH MOBILE
+            ======================================================== */}
         {mainMode === 'dish' ? (
-          <div className="mobile-chip-bar-container">
-            <div className="mobile-chip-bar">
-              {/* Chip 1: Tự động Live */}
+          <div className="mobile-filter-matrix">
+            {/* Tầng 1: 3 Tab Thể Loại Chính chia đều 3 cột (Grid 33.3%, không cần cuộn) */}
+            <div className="mobile-category-grid">
               <button
                 type="button"
-                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === liveSession ? 'active' : ''}`}
+                className={`mobile-cat-pill ${activeCategory === 'an-gi' ? 'active' : ''}`}
                 onClick={() => {
                   if (!spinning) {
                     setActiveCategory('an-gi');
-                    setSession(liveSession);
                     setNhauSubFilter('all');
                     setDrinkSubFilter('all');
                   }
                 }}
                 disabled={spinning}
               >
-                <span className="live-gem-indicator mr-1" />
-                <span>{currentSessionObj.label.replace('Buổi ', '')} (Live)</span>
+                <UtensilsCrossed size={12} className="shrink-0" />
+                <span>Món Ăn</span>
               </button>
-
-              {/* Chip 2: Sáng */}
               <button
                 type="button"
-                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'morning' ? 'active' : ''}`}
-                onClick={() => {
-                  if (!spinning) {
-                    setActiveCategory('an-gi');
-                    setSession('morning');
-                  }
-                }}
-                disabled={spinning}
-              >
-                <span>Sáng</span>
-              </button>
-
-              {/* Chip 3: Trưa */}
-              <button
-                type="button"
-                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'noon' ? 'active' : ''}`}
-                onClick={() => {
-                  if (!spinning) {
-                    setActiveCategory('an-gi');
-                    setSession('noon');
-                  }
-                }}
-                disabled={spinning}
-              >
-                <span>Trưa</span>
-              </button>
-
-              {/* Chip 4: Chiều */}
-              <button
-                type="button"
-                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'afternoon' ? 'active' : ''}`}
-                onClick={() => {
-                  if (!spinning) {
-                    setActiveCategory('an-gi');
-                    setSession('afternoon');
-                  }
-                }}
-                disabled={spinning}
-              >
-                <span>Chiều</span>
-              </button>
-
-              {/* Chip 5: Tối */}
-              <button
-                type="button"
-                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'evening' ? 'active' : ''}`}
-                onClick={() => {
-                  if (!spinning) {
-                    setActiveCategory('an-gi');
-                    setSession('evening');
-                  }
-                }}
-                disabled={spinning}
-              >
-                <span>Tối</span>
-              </button>
-
-              {/* Chip 6: Cú Đêm */}
-              <button
-                type="button"
-                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'night' ? 'active' : ''}`}
-                onClick={() => {
-                  if (!spinning) {
-                    setActiveCategory('an-gi');
-                    setSession('night');
-                  }
-                }}
-                disabled={spinning}
-              >
-                <span>Cú Đêm</span>
-              </button>
-
-              {/* Chip 7: Kèo Nhậu */}
-              <button
-                type="button"
-                className={`mobile-filter-chip ${activeCategory === 'nhau-gi' ? 'active' : ''}`}
+                className={`mobile-cat-pill ${activeCategory === 'nhau-gi' ? 'active' : ''}`}
                 onClick={() => {
                   if (!spinning) {
                     setActiveCategory('nhau-gi');
+                    setNhauSubFilter('all');
                   }
                 }}
                 disabled={spinning}
               >
-                <Flame size={12} className="text-orange-400 mr-1" />
+                <Flame size={12} className="shrink-0 text-orange-400" />
                 <span>Kèo Nhậu</span>
               </button>
-
-              {/* Chip 8: Đồ Uống */}
               <button
                 type="button"
-                className={`mobile-filter-chip ${activeCategory === 'uong-gi' ? 'active' : ''}`}
+                className={`mobile-cat-pill ${activeCategory === 'uong-gi' ? 'active' : ''}`}
                 onClick={() => {
                   if (!spinning) {
                     setActiveCategory('uong-gi');
+                    setDrinkSubFilter('all');
                   }
                 }}
                 disabled={spinning}
               >
-                <Coffee size={12} className="text-sky-400 mr-1" />
+                <Coffee size={12} className="shrink-0 text-sky-400" />
                 <span>Đồ Uống</span>
               </button>
+            </div>
 
-              {/* Chip 9: Cả Ngày */}
-              <button
-                type="button"
-                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'all' ? 'active' : ''}`}
-                onClick={() => {
-                  if (!spinning) {
-                    setActiveCategory('an-gi');
-                    setSession('all');
-                  }
-                }}
-                disabled={spinning}
-              >
-                <span>Cả Ngày</span>
-              </button>
+            {/* Tầng 2: 2 Dropdown hộp bấm sang trọng song song 50/50 */}
+            <div className="mobile-dropdowns-row">
+              <div className="mobile-dropdown-half">
+                {activeCategory === 'an-gi' ? (
+                  <SessionDropdown
+                    value={session}
+                    onChange={setSession}
+                    liveSession={liveSession}
+                    disabled={spinning}
+                  />
+                ) : activeCategory === 'nhau-gi' ? (
+                  <div className="relative inline-block text-left w-full">
+                    <select
+                      value={nhauSubFilter}
+                      onChange={e => setNhauSubFilter(e.target.value as any)}
+                      disabled={spinning}
+                      className="luxury-filter-trigger w-full mobile-select-clean"
+                      title="Chọn kèo nhậu"
+                    >
+                      <option value="all">🔥 Tất cả kèo nhậu</option>
+                      <option value="lau-nuong">🍲 Lẩu &amp; Nướng</option>
+                      <option value="oc-haisan">🐚 Ốc &amp; Hải sản</option>
+                      <option value="nhau-binh-dan">🍻 Nhậu bình dân</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div className="relative inline-block text-left w-full">
+                    <select
+                      value={drinkSubFilter}
+                      onChange={e => setDrinkSubFilter(e.target.value as any)}
+                      disabled={spinning}
+                      className="luxury-filter-trigger w-full mobile-select-clean"
+                      title="Chọn loại đồ uống"
+                    >
+                      <option value="all">☕ Tất cả đồ uống</option>
+                      <option value="cafe">☕ Cà phê</option>
+                      <option value="tra-sua">🧋 Trà sữa &amp; Trà</option>
+                      <option value="nuoc-ep">🍹 Nước ép &amp; Sinh tố</option>
+                    </select>
+                  </div>
+                )}
+              </div>
 
-              {/* Budget Dropdown integrated as a compact chip */}
-              <div className="mobile-chip-budget-wrap">
+              <div className="mobile-dropdown-half">
                 <BudgetDropdown
                   value={budget}
                   onChange={val => setBudget(val)}
@@ -1443,12 +1395,13 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div className="mobile-chip-bar-container">
-            <div className="mobile-chip-bar">
-              {/* Quán - Chip 1: Tất Cả */}
+          /* Chế độ Chọn Quán */
+          <div className="mobile-filter-matrix">
+            {/* Tầng 1: 4 Tab Danh mục quán chia đều 4 cột */}
+            <div className="mobile-place-grid">
               <button
                 type="button"
-                className={`mobile-filter-chip ${placeCategory === 'all' ? 'active' : ''}`}
+                className={`mobile-cat-pill ${placeCategory === 'all' ? 'active' : ''}`}
                 onClick={() => {
                   if (!placeSpinning) {
                     setPlaceCategory('all');
@@ -1461,68 +1414,50 @@ export default function Home() {
               >
                 <span>Tất Cả ({allPlaces.length})</span>
               </button>
-
-              {/* Quán - Chip 2: Cơm & Bún Phở */}
               <button
                 type="button"
-                className={`mobile-filter-chip ${placeCategory === 'an-chinh' ? 'active' : ''}`}
+                className={`mobile-cat-pill ${placeCategory === 'an-chinh' ? 'active' : ''}`}
                 onClick={() => {
                   if (!placeSpinning) setPlaceCategory('an-chinh');
                 }}
                 disabled={placeSpinning}
               >
-                <span>Cơm &amp; Bún Phở</span>
+                <span>Cơm &amp; Phở</span>
               </button>
-
-              {/* Quán - Chip 3: Nhậu & Lẩu */}
               <button
                 type="button"
-                className={`mobile-filter-chip ${placeCategory === 'nhau-lau' ? 'active' : ''}`}
+                className={`mobile-cat-pill ${placeCategory === 'nhau-lau' ? 'active' : ''}`}
                 onClick={() => {
                   if (!placeSpinning) setPlaceCategory('nhau-lau');
                 }}
                 disabled={placeSpinning}
               >
-                <Flame size={12} className="text-orange-400 mr-1" />
-                <span>Nhậu &amp; Lẩu</span>
+                <Flame size={11} className="text-orange-400 mr-0.5 inline" />
+                <span>Nhậu</span>
               </button>
-
-              {/* Quán - Chip 4: Cafe & Uống */}
               <button
                 type="button"
-                className={`mobile-filter-chip ${placeCategory === 'uong' ? 'active' : ''}`}
+                className={`mobile-cat-pill ${placeCategory === 'uong' ? 'active' : ''}`}
                 onClick={() => {
                   if (!placeSpinning) setPlaceCategory('uong');
                 }}
                 disabled={placeSpinning}
               >
-                <Coffee size={12} className="text-sky-400 mr-1" />
-                <span>Cafe &amp; Đồ Uống</span>
+                <Coffee size={11} className="text-sky-400 mr-0.5 inline" />
+                <span>Cafe</span>
               </button>
+            </div>
 
-              {/* Quán - Chip 5: Ăn Vặt */}
-              <button
-                type="button"
-                className={`mobile-filter-chip ${placeCategory === 'an-vat' ? 'active' : ''}`}
-                onClick={() => {
-                  if (!placeSpinning) setPlaceCategory('an-vat');
-                }}
-                disabled={placeSpinning}
-              >
-                <span>Quán Ăn Vặt</span>
-              </button>
-
-              {/* Quán - Kèo Dropdown */}
-              <div className="mobile-chip-budget-wrap">
+            {/* Tầng 2: 2 Dropdown Kèo Đi Ăn + Mức Chi (Song song 50/50) */}
+            <div className="mobile-dropdowns-row">
+              <div className="mobile-dropdown-half">
                 <PlaceKeoDropdown
                   value={placeKeo}
                   onChange={setPlaceKeo}
                   disabled={placeSpinning}
                 />
               </div>
-
-              {/* Quán - Mức Chi Dropdown */}
-              <div className="mobile-chip-budget-wrap">
+              <div className="mobile-dropdown-half">
                 <BudgetDropdown
                   value={placeBudget}
                   onChange={val => setPlaceBudget(val)}
@@ -1660,58 +1595,57 @@ export default function Home() {
               </div>
 
               <div className="inventory-controls-col">
-                <div className="inventory-controls-top-row">
-                  {/* View Mode Toggle: Món độc bản vs Toàn bộ menu quán */}
-                  <div className="inventory-mode-toggle">
-                    <button
-                      type="button"
-                      onClick={() => setInventoryMode('all')}
-                      className={`inventory-mode-btn ${inventoryMode === 'all' ? 'active-all' : ''}`}
-                    >
-                      <Layers size={13} className="shrink-0" />
-                      <span>Toàn bộ menu quán</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInventoryMode('unique')}
-                      className={`inventory-mode-btn ${inventoryMode === 'unique' ? 'active-unique' : ''}`}
-                    >
-                      <Sparkles size={13} className="shrink-0" />
-                      <span>Món độc bản</span>
-                    </button>
-                  </div>
-
-                  {/* Nút Đổi món ngẫu nhiên */}
+                {/* Hàng 1: 2 Tab lớn chia đôi 50/50 chiều rộng màn hình, chữ to rõ ràng */}
+                <div className="inventory-mode-toggle inventory-mode-toggle-full">
                   <button
                     type="button"
-                    onClick={() => setDishShuffleKey(Date.now() + Math.random())}
-                    className="inventory-shuffle-btn"
-                    title="Xáo trộn ngẫu nhiên danh sách món ở dưới"
+                    onClick={() => setInventoryMode('all')}
+                    className={`inventory-mode-btn ${inventoryMode === 'all' ? 'active-all' : ''}`}
                   >
-                    <Shuffle size={13} className="shrink-0 text-amber-400" />
-                    <span>Đổi ngẫu nhiên</span>
+                    <Layers size={13} className="shrink-0 text-amber-400" />
+                    <span>Tất cả món ({eligibleItems.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInventoryMode('unique')}
+                    className={`inventory-mode-btn ${inventoryMode === 'unique' ? 'active-unique' : ''}`}
+                  >
+                    <Sparkles size={13} className="shrink-0 text-amber-400" />
+                    <span>Món độc bản ({uniqueEligibleDishes.length})</span>
                   </button>
                 </div>
 
-                {/* Smart Search Bar */}
-                <div className="inventory-search-wrap">
-                  <Search size={15} className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Tìm món, quán hoặc vị... (VD: bánh xèo, bún đậu, trà đào)"
-                    value={dishSearchQuery}
-                    onChange={e => setDishSearchQuery(e.target.value)}
-                    className="inventory-search-input"
-                  />
-                  {dishSearchQuery && (
-                    <button 
-                      onClick={() => setDishSearchQuery('')} 
-                      className="search-clear-btn inline-flex items-center justify-center"
-                      title="Xóa tìm kiếm"
-                    >
-                      <X size={13} />
-                    </button>
-                  )}
+                {/* Hàng 2: Ô tìm kiếm + Nút Đổi ngẫu nhiên song song */}
+                <div className="inventory-search-and-action-row">
+                  <div className="inventory-search-wrap">
+                    <Search size={15} className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="Tìm món, quán... (VD: bún đậu, kem)"
+                      value={dishSearchQuery}
+                      onChange={e => setDishSearchQuery(e.target.value)}
+                      className="inventory-search-input"
+                    />
+                    {dishSearchQuery && (
+                      <button 
+                        onClick={() => setDishSearchQuery('')} 
+                        className="search-clear-btn inline-flex items-center justify-center"
+                        title="Xóa tìm kiếm"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setDishShuffleKey(Date.now() + Math.random())}
+                    className="inventory-shuffle-btn inventory-shuffle-btn-compact"
+                    title="Xáo trộn ngẫu nhiên danh sách món ở dưới"
+                  >
+                    <Shuffle size={13} className="shrink-0 text-amber-400" />
+                    <span>Đổi món</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1828,37 +1762,37 @@ export default function Home() {
 
               {/* Smart Search Bar & Xáo trộn ngẫu nhiên cho bên quán */}
               <div className="inventory-controls-col">
-                <div className="inventory-controls-top-row place-controls-top-row">
+                <div className="inventory-search-and-action-row">
+                  <div className="inventory-search-wrap">
+                    <Search size={15} className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="Tìm tên quán, địa chỉ hoặc món ăn..."
+                      value={placeSearchQuery}
+                      onChange={e => setPlaceSearchQuery(e.target.value)}
+                      className="inventory-search-input"
+                    />
+                    {placeSearchQuery && (
+                      <button 
+                        onClick={() => setPlaceSearchQuery('')} 
+                        className="search-clear-btn inline-flex items-center justify-center"
+                        title="Xóa tìm kiếm"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+
                   {/* Nút Đổi quán ngẫu nhiên */}
                   <button
                     type="button"
                     onClick={() => setPlaceShuffleKey(Date.now() + Math.random())}
-                    className="inventory-shuffle-btn"
+                    className="inventory-shuffle-btn inventory-shuffle-btn-compact"
                     title="Xáo trộn ngẫu nhiên danh sách quán ở dưới"
                   >
                     <Shuffle size={13} className="shrink-0 text-amber-400" />
-                    <span>Đổi quán ngẫu nhiên</span>
+                    <span>Đổi quán</span>
                   </button>
-                </div>
-
-                <div className="inventory-search-wrap">
-                  <Search size={15} className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Tìm tên quán, địa chỉ hoặc món ăn..."
-                    value={placeSearchQuery}
-                    onChange={e => setPlaceSearchQuery(e.target.value)}
-                    className="inventory-search-input"
-                  />
-                  {placeSearchQuery && (
-                    <button 
-                      onClick={() => setPlaceSearchQuery('')} 
-                      className="search-clear-btn inline-flex items-center justify-center"
-                      title="Xóa tìm kiếm"
-                    >
-                      <X size={13} />
-                    </button>
-                  )}
                 </div>
               </div>
             </div>

@@ -5,70 +5,153 @@ export interface UserGourmetProfile {
   exp: number;
   level: number;
   title: string;
+  badge: string;
+  currentLevelMinExp: number;
   nextExp: number;
+  progressPercent: number;
   lastExpGain?: number;
   isJackpot?: boolean;
 }
 
-export const LEVEL_TITLES = [
-  'Người mới ghé Xuân Hòa',
-  'Tín đồ ẩm thực',
-  'Thực khách sành ăn',
-  'Thổ địa ẩm thực Xuân Hòa',
-  'Chuyên gia sành ăn Đại Lải',
-  'Trùm ẩm thực Phường Xuân Hòa',
-  'Huyền thoại Bếp Vương',
+export interface LevelTierConfig {
+  minLevel: number;
+  maxLevel: number;
+  title: string;
+  badge: string;
+}
+
+// Hệ thống 50 Cấp Độ Danh Giá theo 9 Bậc Thực Khách Ẩm Thực Xuân Hòa
+export const LEVEL_TIERS: LevelTierConfig[] = [
+  { minLevel: 1, maxLevel: 2, title: 'Tân Khách Xuân Hòa', badge: '🥉' },
+  { minLevel: 3, maxLevel: 5, title: 'Tín Đồ Ăn Vặt', badge: '🥈' },
+  { minLevel: 6, maxLevel: 9, title: 'Thực Khách Quen Mặt', badge: '🥇' },
+  { minLevel: 10, maxLevel: 14, title: 'Sành Ăn ĐHSP2', badge: '💎' },
+  { minLevel: 15, maxLevel: 20, title: 'Thổ Địa Quán Xá', badge: '👑' },
+  { minLevel: 21, maxLevel: 28, title: 'Chuyên Gia Ẩm Thực Phúc Yên', badge: '🌟' },
+  { minLevel: 29, maxLevel: 38, title: 'Trùm Ẩm Thực Xuân Hòa', badge: '🔥' },
+  { minLevel: 39, maxLevel: 49, title: 'Đại Cao Thủ Bếp Vương', badge: '⚡' },
+  { minLevel: 50, maxLevel: 50, title: 'Huyền Thoại Ẩm Thực Vĩnh Phúc', badge: '🏆' },
 ];
 
-export const EXP_PER_LEVEL = 150;
-const STORAGE_KEY = 'xuanhoa_gourmet_profile_v1';
+export const LEVEL_TITLES = LEVEL_TIERS.map(t => t.title);
+export const MAX_LEVEL = 50;
 
+// Hàm tính tổng EXP yêu cầu để đạt Level (Đường cong lũy tiến RPG mượt mà, chống lạm phát cấp)
+export function getMinExpForLevel(level: number): number {
+  if (level <= 1) return 0;
+  const l = Math.min(MAX_LEVEL, level) - 1;
+  return Math.floor(15 * l * l + 10 * l);
+}
+
+export function getTierForLevel(level: number): { title: string; badge: string } {
+  const tier = LEVEL_TIERS.find(t => level >= t.minLevel && level <= t.maxLevel);
+  if (tier) return { title: tier.title, badge: tier.badge };
+  return { title: LEVEL_TIERS[0].title, badge: LEVEL_TIERS[0].badge };
+}
+
+export function calculateLevelFromExp(exp: number): {
+  level: number;
+  currentLevelMinExp: number;
+  nextExp: number;
+  progressPercent: number;
+  title: string;
+  badge: string;
+} {
+  let level = 1;
+  while (level < MAX_LEVEL && exp >= getMinExpForLevel(level + 1)) {
+    level++;
+  }
+
+  const currentLevelMinExp = getMinExpForLevel(level);
+  const nextExp = level >= MAX_LEVEL ? currentLevelMinExp : getMinExpForLevel(level + 1);
+  
+  const span = Math.max(1, nextExp - currentLevelMinExp);
+  const progressPercent = level >= MAX_LEVEL 
+    ? 100 
+    : Math.min(100, Math.max(0, Math.round(((exp - currentLevelMinExp) / span) * 100)));
+
+  const { title, badge } = getTierForLevel(level);
+
+  return {
+    level,
+    currentLevelMinExp,
+    nextExp,
+    progressPercent,
+    title,
+    badge,
+  };
+}
+
+// Thưởng điểm EXP cân bằng: Mỗi lượt quay tăng vừa phải, tạo động lực đua cấp bền vững
 export function getExpForRarity(rarity: number = 0): { exp: number; label: string; color: string; isJackpot: boolean } {
   switch (rarity) {
     case 0:
-      return { exp: 25, label: '+25 EXP (Hòm Phổ Thông)', color: '#10B981', isJackpot: false };
+      return { exp: 6, label: '+6 EXP (Hòm Phổ Thông)', color: '#10B981', isJackpot: false };
     case 1:
-      return { exp: 50, label: '+50 EXP (Hòm Đặc Biệt)', color: '#F59E0B', isJackpot: false };
+      return { exp: 12, label: '+12 EXP (Hòm Đặc Biệt)', color: '#F59E0B', isJackpot: false };
     case 2:
-      return { exp: 100, label: '+100 EXP (Hòm Quý Hiếm)', color: '#A855F7', isJackpot: false };
+      return { exp: 20, label: '+20 EXP (Hòm Quý Hiếm)', color: '#A855F7', isJackpot: false };
     case 3:
-      return { exp: 200, label: '+200 EXP (Hòm Cực Hiếm)', color: '#F97316', isJackpot: false };
+      return { exp: 35, label: '+35 EXP (Hòm Cực Hiếm)', color: '#F97316', isJackpot: false };
     case 4:
-      return { exp: 500, label: '+500 EXP (HUYỀN THOẠI - NỔ HŨ)', color: '#EF4444', isJackpot: true };
+      return { exp: 80, label: '+80 EXP (HUYỀN THOẠI · NỔ HŨ)', color: '#EF4444', isJackpot: true };
     default:
-      return { exp: 35, label: '+35 EXP', color: '#10B981', isJackpot: false };
+      return { exp: 8, label: '+8 EXP', color: '#10B981', isJackpot: false };
   }
 }
 
+const STORAGE_KEY_V2 = 'xuanhoa_gourmet_profile_v2';
+const STORAGE_KEY_V1 = 'xuanhoa_gourmet_profile_v1';
+
 export function getLocalProfile(): UserGourmetProfile {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      const level = Math.min(LEVEL_TITLES.length, Math.max(1, Math.floor(data.exp / EXP_PER_LEVEL) + 1));
+    const rawV2 = localStorage.getItem(STORAGE_KEY_V2);
+    if (rawV2) {
+      const data = JSON.parse(rawV2);
+      const spinsCount = Number(data.spinsCount) || 0;
+      const exp = Number(data.exp) || 0;
+      const stats = calculateLevelFromExp(exp);
       return {
-        spinsCount: data.spinsCount || 0,
-        exp: data.exp || 0,
-        level,
-        title: LEVEL_TITLES[level - 1] || LEVEL_TITLES[0],
-        nextExp: level * EXP_PER_LEVEL,
+        spinsCount,
+        exp,
+        ...stats,
       };
+    }
+
+    // Tự động chuyển đổi dữ liệu từ v1 cũ: Cân bằng lại điểm theo số lượt quay thực tế!
+    // Tránh việc mới quay vài lần mà bị nhảy lên Cấp 7 ảo!
+    const rawV1 = localStorage.getItem(STORAGE_KEY_V1);
+    if (rawV1) {
+      const dataV1 = JSON.parse(rawV1);
+      const spinsCount = Number(dataV1.spinsCount) || 0;
+      // Điểm thực tế chuẩn = spinsCount * 8 EXP trung bình
+      const convertedExp = Math.max(0, spinsCount * 8);
+      const stats = calculateLevelFromExp(convertedExp);
+      const profile: UserGourmetProfile = {
+        spinsCount,
+        exp: convertedExp,
+        ...stats,
+      };
+      localStorage.setItem(STORAGE_KEY_V2, JSON.stringify({
+        spinsCount,
+        exp: convertedExp,
+      }));
+      return profile;
     }
   } catch {}
 
+  const stats = calculateLevelFromExp(0);
   return {
     spinsCount: 0,
-    exp: 40,
-    level: 1,
-    title: LEVEL_TITLES[0],
-    nextExp: EXP_PER_LEVEL,
+    exp: 0,
+    ...stats,
   };
 }
 
 export function addSpinExp(rarity?: number): UserGourmetProfile {
   const current = getLocalProfile();
   
-  let addedExp = Math.floor(Math.random() * 20) + 35;
+  let addedExp = 8;
   let isJackpot = false;
 
   if (rarity !== undefined) {
@@ -79,20 +162,18 @@ export function addSpinExp(rarity?: number): UserGourmetProfile {
 
   const nextExpTotal = current.exp + addedExp;
   const nextSpins = current.spinsCount + 1;
-  const nextLevel = Math.min(LEVEL_TITLES.length, Math.floor(nextExpTotal / EXP_PER_LEVEL) + 1);
+  const stats = calculateLevelFromExp(nextExpTotal);
 
   const updated: UserGourmetProfile = {
     spinsCount: nextSpins,
     exp: nextExpTotal,
-    level: nextLevel,
-    title: LEVEL_TITLES[nextLevel - 1] || LEVEL_TITLES[0],
-    nextExp: nextLevel * EXP_PER_LEVEL,
+    ...stats,
     lastExpGain: addedExp,
     isJackpot,
   };
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(STORAGE_KEY_V2, JSON.stringify({
       spinsCount: nextSpins,
       exp: nextExpTotal,
     }));

@@ -116,7 +116,7 @@ export function WinnerDialog({
             {expReward.isJackpot ? (
               <>
                 <Sparkles size={12} className="inline mr-1 text-amber-300 animate-spin" />
-                <strong>JACKPOT: +500 EXP (NỔ HŨ HUYỀN THOẠI)</strong>
+                <strong>JACKPOT: +80 EXP (NỔ HŨ HUYỀN THOẠI)</strong>
               </>
             ) : (
               <>

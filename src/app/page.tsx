@@ -42,7 +42,7 @@ import {
   stopFraction as placeStopFraction 
 } from '@/lib/places-spin';
 import { CaseAudio } from '@/lib/case-audio';
-import { Volume2, VolumeX, RotateCw, Search, UtensilsCrossed, Store, Sparkles, ChevronDown, ChevronUp, Clock, Flame, Coffee, Layers, X, ChevronRight, LayoutGrid, MapPin, Heart, Map, ExternalLink } from 'lucide-react';
+import { Volume2, VolumeX, RotateCw, Shuffle, Search, UtensilsCrossed, Store, Sparkles, ChevronDown, ChevronUp, Clock, Flame, Coffee, Layers, X, ChevronRight, LayoutGrid, MapPin, Heart, Map, ExternalLink } from 'lucide-react';
 import { DishesCatalogView } from '@/components/DishesCatalogView';
 import { PlacesCatalogView } from '@/components/PlacesCatalogView';
 import { UserGuideView } from '@/components/UserGuideView';
@@ -312,12 +312,16 @@ export default function Home() {
   // Chế độ xem kho: 'all' (Tất cả menu quán) vs 'unique' (Món độc bản - Không trùng lặp)
   const [inventoryMode, setInventoryMode] = useState<'unique' | 'all'>('all');
 
+  // Key xáo trộn ngẫu nhiên danh sách món & quán bên dưới vòng quay
+  const [dishShuffleKey, setDishShuffleKey] = useState<number>(() => Date.now());
+  const [placeShuffleKey, setPlaceShuffleKey] = useState<number>(() => Date.now());
+
   // Danh sách món độc bản (mỗi món chỉ đại diện 1 lần, triệt tiêu trùng lặp)
   const uniqueEligibleDishes = useMemo(() => {
     return getUniqueConceptFoods(eligibleItems);
   }, [eligibleItems]);
 
-  // Danh sách món hiển thị trong kho
+  // Danh sách món hiển thị trong kho (Xáo trộn ngẫu nhiên hoàn toàn mỗi lần hiển thị & mỗi lần quay)
   const displayedDishes = useMemo(() => {
     const baseList = inventoryMode === 'unique' ? uniqueEligibleDishes : eligibleItems;
     if (dishSearchQuery.trim()) {
@@ -328,13 +332,16 @@ export default function Home() {
         (food.quip && food.quip.toLowerCase().includes(q))
       );
     }
-    return inventoryMode === 'unique' ? baseList : diversifyFoodList(baseList);
-  }, [eligibleItems, uniqueEligibleDishes, inventoryMode, dishSearchQuery]);
+    // Ngẫu nhiên hóa thứ tự các món mỗi lần quay hoặc mỗi lần đổi danh mục
+    const randomized = shuffleArray(baseList);
+    return inventoryMode === 'unique' ? randomized : diversifyFoodList(randomized);
+  }, [eligibleItems, uniqueEligibleDishes, inventoryMode, dishSearchQuery, dishShuffleKey]);
 
-  // Tự động reset về 18 món khi thay đổi bất kỳ bộ lọc món nào
+  // Tự động reset về 18 món và xáo trộn ngẫu nhiên khi thay đổi bất kỳ bộ lọc món nào
   useEffect(() => {
     setVisibleDishCount(18);
-  }, [activeCategory, session, nhauSubFilter, drinkSubFilter, budget, customPrice, caseTier]);
+    setDishShuffleKey(Date.now());
+  }, [activeCategory, session, nhauSubFilter, drinkSubFilter, budget, customPrice, caseTier, inventoryMode]);
 
   // Place Mode States (Chọn Quán - Đồng bộ với Chọn Món)
   const [placeCategory, setPlaceCategory] = useState<'all' | 'an-chinh' | 'nhau-lau' | 'uong' | 'an-vat'>('all');
@@ -401,23 +408,27 @@ export default function Home() {
   // Place pagination state ("Xem tiếp" / Load more - Chuẩn 4x4 = 16 quán mỗi đợt)
   const [visiblePlaceCount, setVisiblePlaceCount] = useState<number>(16);
 
-  // Danh sách quán hiển thị trong kho quán (hỗ trợ tìm kiếm thông minh)
+  // Danh sách quán hiển thị trong kho quán (hỗ trợ tìm kiếm thông minh & ngẫu nhiên hóa)
   const displayedPlacesForInventory = useMemo(() => {
-    if (!placeSearchQuery.trim()) return eligiblePlaces;
-    const q = placeSearchQuery.toLowerCase().trim();
-    return eligiblePlaces.filter(p => {
-      const matchName = p.name.toLowerCase().includes(q);
-      const matchAddress = p.address ? p.address.toLowerCase().includes(q) : false;
-      const matchTagline = p.tagline ? p.tagline.toLowerCase().includes(q) : false;
-      const matchMenu = p.menu?.some(m => m.name.toLowerCase().includes(q)) ?? false;
-      return matchName || matchAddress || matchTagline || matchMenu;
-    });
-  }, [eligiblePlaces, placeSearchQuery]);
+    if (placeSearchQuery.trim()) {
+      const q = placeSearchQuery.toLowerCase().trim();
+      return eligiblePlaces.filter(p => {
+        const matchName = p.name.toLowerCase().includes(q);
+        const matchAddress = p.address ? p.address.toLowerCase().includes(q) : false;
+        const matchTagline = p.tagline ? p.tagline.toLowerCase().includes(q) : false;
+        const matchMenu = p.menu?.some(m => m.name.toLowerCase().includes(q)) ?? false;
+        return matchName || matchAddress || matchTagline || matchMenu;
+      });
+    }
+    // Ngẫu nhiên hóa thứ tự danh sách quán mỗi lần quay hoặc mỗi lần đổi bộ lọc
+    return shuffleArray(eligiblePlaces);
+  }, [eligiblePlaces, placeSearchQuery, placeShuffleKey]);
 
-  // Tự động reset về chuẩn 4x4 = 16 quán khi thay đổi bất kỳ bộ lọc hoặc tìm kiếm quán nào
+  // Tự động reset về chuẩn 4x4 = 16 quán và xáo trộn ngẫu nhiên khi thay đổi bất kỳ bộ lọc hoặc tìm kiếm quán nào
   useEffect(() => {
     setVisiblePlaceCount(16);
-  }, [placeCategory, placeSession, placeKeo, placeBudget, placeCustomPrice, placeSearchQuery]);
+    setPlaceShuffleKey(Date.now());
+  }, [placeCategory, placeSession, placeKeo, placeBudget, placeCustomPrice]);
 
   // Place Reel State (Bắt đầu với dải quán ngẫu nhiên đa dạng phong cách)
   const [placeReel, setPlaceReel] = useState<{ place: Place; id: number }[]>(() => {
@@ -608,6 +619,7 @@ export default function Home() {
       setSpinning(false);
       setWinnerFood(winner);
       setDialogOpen(true);
+      setDishShuffleKey(Date.now() + Math.random());
 
       const revealSounds = [
         'item_reveal3_rare', 
@@ -703,6 +715,7 @@ export default function Home() {
       setPlaceSpinning(false);
       setWinnerPlace(winner);
       setPlaceModalOpen(true);
+      setPlaceShuffleKey(Date.now() + Math.random());
 
       const revealSounds = [
         'item_reveal3_rare', 
@@ -717,7 +730,7 @@ export default function Home() {
   };
 
   const currentSessionObj = MEAL_SESSIONS.find(s => s.id === session) || MEAL_SESSIONS[1];
-  const expPercentage = Math.min(100, Math.round(((profile.exp % 150) / 150) * 100));
+  const expPercentage = profile.progressPercent ?? Math.min(100, Math.round(((profile.exp % 150) / 150) * 100));
 
   return (
     <div className="site-shell">
@@ -754,13 +767,13 @@ export default function Home() {
             {/* Compact Header EXP Gourmet Badge */}
             <div 
               className="header-exp-pill" 
-              title={`${profile.title} · ${profile.exp}/${profile.nextExp} EXP (Đã mở ${profile.spinsCount} lượt) · Bấm để xem Menu`}
+              title={`${profile.badge ? `${profile.badge} ` : ''}${profile.title} · ${profile.exp}/${profile.nextExp} EXP (Đã mở ${profile.spinsCount} lượt) · Bấm để xem Menu`}
               onClick={() => setIsSettingsMenuOpen(true)}
               style={{ cursor: 'pointer' }}
             >
               <div className="header-exp-info">
                 <span className="header-exp-level">Cấp {profile.level}</span>
-                <span className="header-exp-title">{profile.title}</span>
+                <span className="header-exp-title">{profile.badge ? `${profile.badge} ` : ''}{profile.title}</span>
               </div>
               <div className="header-exp-track">
                 <div className="header-exp-fill" style={{ width: `${expPercentage}%` }} />
@@ -1391,6 +1404,30 @@ export default function Home() {
                   </button>
                 </div>
 
+                {/* Nút Đổi món ngẫu nhiên */}
+                <button
+                  type="button"
+                  onClick={() => setDishShuffleKey(Date.now() + Math.random())}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '8px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    color: '#fde047',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  title="Xáo trộn ngẫu nhiên danh sách món ở dưới"
+                >
+                  <Shuffle size={13} className="shrink-0 text-amber-400" />
+                  <span>Đổi món ngẫu nhiên</span>
+                </button>
+
                 {/* Smart Search Bar */}
                 <div className="inventory-search-wrap">
                   <Search size={15} className="search-icon" />
@@ -1524,8 +1561,32 @@ export default function Home() {
                 </span>
               </div>
 
-              {/* Smart Search Bar cho bên quán */}
+              {/* Smart Search Bar & Xáo trộn ngẫu nhiên cho bên quán */}
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Nút Đổi quán ngẫu nhiên */}
+                <button
+                  type="button"
+                  onClick={() => setPlaceShuffleKey(Date.now() + Math.random())}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '8px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    color: '#fde047',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  title="Xáo trộn ngẫu nhiên danh sách quán ở dưới"
+                >
+                  <Shuffle size={13} className="shrink-0 text-amber-400" />
+                  <span>Đổi quán ngẫu nhiên</span>
+                </button>
+
                 <div className="inventory-search-wrap">
                   <Search size={15} className="search-icon" />
                   <input

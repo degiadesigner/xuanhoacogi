@@ -896,11 +896,15 @@ export default function Home() {
       <main className="main-wrapper">
         {currentView === 'spin' && (
           <>
-            {/* Thanh Thống Kê Tổng Lượt Mở Hòm Sang Trọng (Khởi điểm 688) */}
-            <GlobalSpinCounter count={globalSpinCount} isSpinning={spinning || placeSpinning} />
+            {/* ========================================================
+                1. DESKTOP EXPERIENCE: Bàn điều khiển đầy đủ & hoành tráng
+                ======================================================== */}
+            <div className="hidden sm:block">
+              {/* Thanh Thống Kê Tổng Lượt Mở Hòm Sang Trọng (Khởi điểm 688) */}
+              <GlobalSpinCounter count={globalSpinCount} isSpinning={spinning || placeSpinning} />
 
-            {/* 2-TAB MODE SWITCHER: CHỌN MÓN vs CHỌN QUÁN */}
-            <div className="main-mode-switcher">
+              {/* 2-TAB MODE SWITCHER: CHỌN MÓN vs CHỌN QUÁN */}
+              <div className="main-mode-switcher">
           <button
             className={`mode-switch-btn ${mainMode === 'dish' ? 'active' : ''}`}
             onClick={() => {
@@ -1250,6 +1254,285 @@ export default function Home() {
             </>
           )}
         </section>
+      </div>
+
+      {/* ========================================================
+          2. MOBILE DEDICATED APP DECK: Tinh gọn 1 màn hình, 1-chạm
+          ======================================================== */}
+      <div className="sm:hidden mobile-app-deck">
+        {/* Row 1: Mode Segmented Pill Switcher + Mini Counter Pill */}
+        <div className="mobile-deck-top-row">
+          <div className="mobile-mode-segmented">
+            <button
+              type="button"
+              className={`mobile-mode-tab ${mainMode === 'dish' ? 'active' : ''}`}
+              onClick={() => {
+                if (!spinning && !placeSpinning) setMainMode('dish');
+              }}
+              disabled={spinning || placeSpinning}
+            >
+              <UtensilsCrossed size={13} className={mainMode === 'dish' ? 'text-amber-400' : 'text-slate-400'} />
+              <span>Chọn Món</span>
+            </button>
+            <button
+              type="button"
+              className={`mobile-mode-tab ${mainMode === 'place' ? 'active' : ''}`}
+              onClick={() => {
+                if (!spinning && !placeSpinning) setMainMode('place');
+              }}
+              disabled={spinning || placeSpinning}
+            >
+              <Store size={13} className={mainMode === 'place' ? 'text-amber-400' : 'text-slate-400'} />
+              <span>Chọn Quán</span>
+            </button>
+          </div>
+
+          <GlobalSpinCounter count={globalSpinCount} isSpinning={spinning || placeSpinning} compact={true} />
+        </div>
+
+        {/* Row 2: 1-Touch Horizontal Chip Filter Bar (Smooth Touch Scroll) */}
+        {mainMode === 'dish' ? (
+          <div className="mobile-chip-bar-container">
+            <div className="mobile-chip-bar">
+              {/* Chip 1: Tự động Live */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === liveSession ? 'active' : ''}`}
+                onClick={() => {
+                  if (!spinning) {
+                    setActiveCategory('an-gi');
+                    setSession(liveSession);
+                    setNhauSubFilter('all');
+                    setDrinkSubFilter('all');
+                  }
+                }}
+                disabled={spinning}
+              >
+                <span className="live-gem-indicator mr-1" />
+                <span>{currentSessionObj.label.replace('Buổi ', '')} (Live)</span>
+              </button>
+
+              {/* Chip 2: Sáng */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'morning' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!spinning) {
+                    setActiveCategory('an-gi');
+                    setSession('morning');
+                  }
+                }}
+                disabled={spinning}
+              >
+                <span>Sáng</span>
+              </button>
+
+              {/* Chip 3: Trưa */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'noon' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!spinning) {
+                    setActiveCategory('an-gi');
+                    setSession('noon');
+                  }
+                }}
+                disabled={spinning}
+              >
+                <span>Trưa</span>
+              </button>
+
+              {/* Chip 4: Chiều */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'afternoon' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!spinning) {
+                    setActiveCategory('an-gi');
+                    setSession('afternoon');
+                  }
+                }}
+                disabled={spinning}
+              >
+                <span>Chiều</span>
+              </button>
+
+              {/* Chip 5: Tối */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'evening' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!spinning) {
+                    setActiveCategory('an-gi');
+                    setSession('evening');
+                  }
+                }}
+                disabled={spinning}
+              >
+                <span>Tối</span>
+              </button>
+
+              {/* Chip 6: Cú Đêm */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'night' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!spinning) {
+                    setActiveCategory('an-gi');
+                    setSession('night');
+                  }
+                }}
+                disabled={spinning}
+              >
+                <span>Cú Đêm</span>
+              </button>
+
+              {/* Chip 7: Kèo Nhậu */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${activeCategory === 'nhau-gi' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!spinning) {
+                    setActiveCategory('nhau-gi');
+                  }
+                }}
+                disabled={spinning}
+              >
+                <Flame size={12} className="text-orange-400 mr-1" />
+                <span>Kèo Nhậu</span>
+              </button>
+
+              {/* Chip 8: Đồ Uống */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${activeCategory === 'uong-gi' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!spinning) {
+                    setActiveCategory('uong-gi');
+                  }
+                }}
+                disabled={spinning}
+              >
+                <Coffee size={12} className="text-sky-400 mr-1" />
+                <span>Đồ Uống</span>
+              </button>
+
+              {/* Chip 9: Cả Ngày */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${activeCategory === 'an-gi' && session === 'all' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!spinning) {
+                    setActiveCategory('an-gi');
+                    setSession('all');
+                  }
+                }}
+                disabled={spinning}
+              >
+                <span>Cả Ngày</span>
+              </button>
+
+              {/* Budget Dropdown integrated as a compact chip */}
+              <div className="mobile-chip-budget-wrap">
+                <BudgetDropdown
+                  value={budget}
+                  onChange={val => setBudget(val)}
+                  disabled={spinning}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mobile-chip-bar-container">
+            <div className="mobile-chip-bar">
+              {/* Quán - Chip 1: Tất Cả */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${placeCategory === 'all' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!placeSpinning) {
+                    setPlaceCategory('all');
+                    setPlaceSession('all');
+                    setPlaceKeo('all');
+                    setPlaceBudget('all');
+                  }
+                }}
+                disabled={placeSpinning}
+              >
+                <span>Tất Cả ({allPlaces.length})</span>
+              </button>
+
+              {/* Quán - Chip 2: Cơm & Bún Phở */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${placeCategory === 'an-chinh' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!placeSpinning) setPlaceCategory('an-chinh');
+                }}
+                disabled={placeSpinning}
+              >
+                <span>Cơm &amp; Bún Phở</span>
+              </button>
+
+              {/* Quán - Chip 3: Nhậu & Lẩu */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${placeCategory === 'nhau-lau' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!placeSpinning) setPlaceCategory('nhau-lau');
+                }}
+                disabled={placeSpinning}
+              >
+                <Flame size={12} className="text-orange-400 mr-1" />
+                <span>Nhậu &amp; Lẩu</span>
+              </button>
+
+              {/* Quán - Chip 4: Cafe & Uống */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${placeCategory === 'uong' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!placeSpinning) setPlaceCategory('uong');
+                }}
+                disabled={placeSpinning}
+              >
+                <Coffee size={12} className="text-sky-400 mr-1" />
+                <span>Cafe &amp; Đồ Uống</span>
+              </button>
+
+              {/* Quán - Chip 5: Ăn Vặt */}
+              <button
+                type="button"
+                className={`mobile-filter-chip ${placeCategory === 'an-vat' ? 'active' : ''}`}
+                onClick={() => {
+                  if (!placeSpinning) setPlaceCategory('an-vat');
+                }}
+                disabled={placeSpinning}
+              >
+                <span>Quán Ăn Vặt</span>
+              </button>
+
+              {/* Quán - Kèo Dropdown */}
+              <div className="mobile-chip-budget-wrap">
+                <PlaceKeoDropdown
+                  value={placeKeo}
+                  onChange={setPlaceKeo}
+                  disabled={placeSpinning}
+                />
+              </div>
+
+              {/* Quán - Mức Chi Dropdown */}
+              <div className="mobile-chip-budget-wrap">
+                <BudgetDropdown
+                  value={placeBudget}
+                  onChange={val => setPlaceBudget(val)}
+                  disabled={placeSpinning}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
         {/* Case Roulette Reel Window */}
         <section className="case-roulette-panel" aria-label="Vòng quay lựa chọn">

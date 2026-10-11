@@ -6,9 +6,10 @@ import { Sparkles } from 'lucide-react';
 interface GlobalSpinCounterProps {
   count: number;
   isSpinning?: boolean;
+  compact?: boolean;
 }
 
-export const GlobalSpinCounter: React.FC<GlobalSpinCounterProps> = ({ count, isSpinning }) => {
+export const GlobalSpinCounter: React.FC<GlobalSpinCounterProps> = ({ count, isSpinning, compact = false }) => {
   const [displayCount, setDisplayCount] = useState(count);
   const [highlight, setHighlight] = useState(false);
 
@@ -25,6 +26,21 @@ export const GlobalSpinCounter: React.FC<GlobalSpinCounterProps> = ({ count, isS
 
   // Format count into standard thousand-separated string (e.g. 688, 1.250)
   const formattedCount = displayCount.toLocaleString('vi-VN');
+
+  if (compact) {
+    return (
+      <div 
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full 
+          bg-slate-900/90 backdrop-blur-md border border-amber-500/30 shadow-md shadow-black/40
+          transition-all duration-300 ${highlight ? 'border-amber-400 scale-[1.03] shadow-amber-500/20' : ''}`}
+        title="Tổng lượt mở hòm đã thực hiện"
+      >
+        <Sparkles size={11} className={isSpinning ? 'animate-spin text-amber-300' : 'animate-pulse text-amber-400'} />
+        <span className="font-mono text-xs font-bold text-amber-300 tracking-tight">{formattedCount}</span>
+        <span className="text-[10px] font-semibold text-slate-400 uppercase">lượt</span>
+      </div>
+    );
+  }
 
   return (
     <div className="global-counter-banner flex items-center justify-center my-2 sm:my-3 px-2">

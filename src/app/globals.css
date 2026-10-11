@@ -7926,4 +7926,184 @@ html, body {
   }
 }
 
+/* ========================================================
+   ADAPTIVE MOBILE UX: 1-TOUCH APP EXPERIENCE (max-width: 640px)
+   ======================================================== */
+.mobile-app-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0 12px;
+  padding: 0 4px;
+}
+
+.mobile-deck-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mobile-mode-segmented {
+  display: inline-flex;
+  background: rgba(21, 24, 33, 0.95);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 999px;
+  padding: 2.5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.mobile-mode-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #94A3B8;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.mobile-mode-tab.active {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.3) 0%, rgba(140, 115, 62, 0.4) 100%), #1c1f28;
+  color: #FFE699;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  box-shadow: 0 2px 6px rgba(212, 175, 55, 0.15);
+}
+
+.mobile-chip-bar-container {
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.mobile-chip-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 2px 4px;
+}
+
+.mobile-chip-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(18, 22, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #CBD5E1;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mobile-filter-chip:hover {
+  border-color: rgba(212, 175, 55, 0.3);
+  color: #F8FAFC;
+}
+
+.mobile-filter-chip.active {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.25) 0%, rgba(168, 129, 40, 0.3) 100%), #191c24;
+  border-color: #D4AF37;
+  color: #FFE699;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(212, 175, 55, 0.18);
+}
+
+.mobile-chip-budget-wrap {
+  flex-shrink: 0;
+}
+
+.mobile-chip-budget-wrap .luxury-budget-trigger,
+.mobile-chip-budget-wrap .luxury-filter-trigger {
+  padding: 4px 9px !important;
+  font-size: 11px !important;
+  height: 28px !important;
+  border-radius: 8px !important;
+  min-width: 0 !important;
+  background: rgba(18, 22, 30, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.mobile-chip-budget-wrap .luxury-budget-trigger:hover,
+.mobile-chip-budget-wrap .luxury-filter-trigger:hover {
+  border-color: rgba(212, 175, 55, 0.35) !important;
+}
+
+@media (max-width: 640px) {
+  /* Roulette Dimensions Compact on Mobile */
+  .reel-window {
+    height: 216px !important;
+    border-radius: 14px !important;
+  }
+  .reel-track {
+    height: 216px !important;
+  }
+  .reel-food-card {
+    height: 190px !important;
+    top: 13px !important;
+  }
+  .reel-place-card {
+    height: 190px !important;
+    top: 13px !important;
+    padding: 8px 10px !important;
+  }
+  .reel-place-card .signboard-center-area {
+    padding: 2px 0 !important;
+  }
+  .reel-place-card .signboard-brand-name {
+    font-size: 13px !important;
+    margin: 2px 0 !important;
+  }
+  .reel-place-card .signboard-tagline {
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
+  .reel-card-art-area {
+    height: 92px !important;
+  }
+  .reel-card-art-area .food-image {
+    width: 72px !important;
+    height: 72px !important;
+  }
+  .reel-card-footer {
+    padding: 5px 8px !important;
+  }
+
+  /* Spin Button Compact on Mobile */
+  .action-center-container {
+    margin: 8px 0 20px !important;
+  }
+  .master-action-btn {
+    padding: 12px 32px !important;
+    font-size: 14.5px !important;
+    width: 88% !important;
+    max-width: 320px !important;
+  }
+
+  /* Header Spacing on Mobile */
+  .site-header {
+    padding: 2px 0 !important;
+  }
+  .header-inner {
+    padding: 8px 12px !important;
+  }
+}
+
+
 

@@ -914,7 +914,10 @@ export default function Home() {
               <UtensilsCrossed size={18} className={mainMode === 'dish' ? 'text-amber-400' : 'text-slate-400'} />
               <span>QUAY CHỌN MÓN</span>
             </div>
-            <span className="mode-sub-tag">150+ món ngon · Lọc món theo bữa & ví tiền</span>
+            <span className="mode-sub-tag">
+              <span className="hidden sm:inline">150+ món ngon · Lọc món theo bữa &amp; ví tiền</span>
+              <span className="sm:hidden">150+ món ngon · Lọc bữa &amp; ví</span>
+            </span>
           </button>
 
           <button
@@ -930,7 +933,10 @@ export default function Home() {
               <Store size={18} className={mainMode === 'place' ? 'text-amber-400' : 'text-slate-400'} />
               <span>QUAY CHỌN QUÁN</span>
             </div>
-            <span className="mode-sub-tag">{allPlaces.length}+ quán thực tế · Lọc theo khung giờ & sở thích</span>
+            <span className="mode-sub-tag">
+              <span className="hidden sm:inline">{allPlaces.length}+ quán thực tế · Lọc theo khung giờ &amp; sở thích</span>
+              <span className="sm:hidden">{allPlaces.length}+ quán · Lọc giờ &amp; kèo</span>
+            </span>
           </button>
         </div>
 
@@ -969,32 +975,34 @@ export default function Home() {
                       <Clock size={13} className="text-amber-400 shrink-0" />
                       Khung giờ:
                     </span>
-                    {MEAL_SESSIONS.map((s) => {
-                      const isLive = s.id === liveSession;
-                      const isSelected = session === s.id;
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          className={`session-pill-btn ${isSelected ? 'active' : ''}`}
-                          onClick={() => setSession(s.id)}
-                          disabled={spinning}
-                          title={`${s.label} (${s.timeRange})`}
-                        >
-                          {isLive && <span className="live-gem-indicator mr-1.5" />}
-                          {s.label.replace('Buổi ', '')}
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      className={`session-pill-btn ${session === 'all' ? 'active' : ''}`}
-                      onClick={() => setSession('all')}
-                      disabled={spinning}
-                      title="Tất cả các món cả ngày"
-                    >
-                      Cả ngày
-                    </button>
+                    <div className="session-pills-wrap session-pills-6">
+                      {MEAL_SESSIONS.map((s) => {
+                        const isLive = s.id === liveSession;
+                        const isSelected = session === s.id;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={`session-pill-btn ${isSelected ? 'active' : ''}`}
+                            onClick={() => setSession(s.id)}
+                            disabled={spinning}
+                            title={`${s.label} (${s.timeRange})`}
+                          >
+                            {isLive && <span className="live-gem-indicator mr-1.5" />}
+                            {s.label.replace('Buổi ', '')}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        className={`session-pill-btn ${session === 'all' ? 'active' : ''}`}
+                        onClick={() => setSession('all')}
+                        disabled={spinning}
+                        title="Tất cả các món cả ngày"
+                      >
+                        Cả ngày
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1005,38 +1013,40 @@ export default function Home() {
                       <Flame size={13} className="text-orange-400 shrink-0" />
                       Kèo nhậu:
                     </span>
-                    <button
-                      type="button"
-                      className={`session-pill-btn ${nhauSubFilter === 'all' ? 'active' : ''}`}
-                      onClick={() => setNhauSubFilter('all')}
-                      disabled={spinning}
-                    >
-                      Tất cả
-                    </button>
-                    <button
-                      type="button"
-                      className={`session-pill-btn ${nhauSubFilter === 'lau-nuong' ? 'active' : ''}`}
-                      onClick={() => setNhauSubFilter('lau-nuong')}
-                      disabled={spinning}
-                    >
-                      Lẩu & Nướng
-                    </button>
-                    <button
-                      type="button"
-                      className={`session-pill-btn ${nhauSubFilter === 'oc-haisan' ? 'active' : ''}`}
-                      onClick={() => setNhauSubFilter('oc-haisan')}
-                      disabled={spinning}
-                    >
-                      Ốc & Hải Sản
-                    </button>
-                    <button
-                      type="button"
-                      className={`session-pill-btn ${nhauSubFilter === 'bia-moi' ? 'active' : ''}`}
-                      onClick={() => setNhauSubFilter('bia-moi')}
-                      disabled={spinning}
-                    >
-                      Bia & Mồi
-                    </button>
+                    <div className="session-pills-wrap session-pills-4">
+                      <button
+                        type="button"
+                        className={`session-pill-btn ${nhauSubFilter === 'all' ? 'active' : ''}`}
+                        onClick={() => setNhauSubFilter('all')}
+                        disabled={spinning}
+                      >
+                        Tất cả
+                      </button>
+                      <button
+                        type="button"
+                        className={`session-pill-btn ${nhauSubFilter === 'lau-nuong' ? 'active' : ''}`}
+                        onClick={() => setNhauSubFilter('lau-nuong')}
+                        disabled={spinning}
+                      >
+                        Lẩu & Nướng
+                      </button>
+                      <button
+                        type="button"
+                        className={`session-pill-btn ${nhauSubFilter === 'oc-haisan' ? 'active' : ''}`}
+                        onClick={() => setNhauSubFilter('oc-haisan')}
+                        disabled={spinning}
+                      >
+                        Ốc & Hải Sản
+                      </button>
+                      <button
+                        type="button"
+                        className={`session-pill-btn ${nhauSubFilter === 'bia-moi' ? 'active' : ''}`}
+                        onClick={() => setNhauSubFilter('bia-moi')}
+                        disabled={spinning}
+                      >
+                        Bia & Mồi
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1047,38 +1057,40 @@ export default function Home() {
                       <Coffee size={13} className="text-sky-400 shrink-0" />
                       Đồ uống:
                     </span>
-                    <button
-                      type="button"
-                      className={`session-pill-btn ${drinkSubFilter === 'all' ? 'active' : ''}`}
-                      onClick={() => setDrinkSubFilter('all')}
-                      disabled={spinning}
-                    >
-                      Tất cả
-                    </button>
-                    <button
-                      type="button"
-                      className={`session-pill-btn ${drinkSubFilter === 'tra-sua' ? 'active' : ''}`}
-                      onClick={() => setDrinkSubFilter('tra-sua')}
-                      disabled={spinning}
-                    >
-                      Trà sữa
-                    </button>
-                    <button
-                      type="button"
-                      className={`session-pill-btn ${drinkSubFilter === 'cafe' ? 'active' : ''}`}
-                      onClick={() => setDrinkSubFilter('cafe')}
-                      disabled={spinning}
-                    >
-                      Cà phê
-                    </button>
-                    <button
-                      type="button"
-                      className={`session-pill-btn ${drinkSubFilter === 'tra-traicay' ? 'active' : ''}`}
-                      onClick={() => setDrinkSubFilter('tra-traicay')}
-                      disabled={spinning}
-                    >
-                      Trà trái cây
-                    </button>
+                    <div className="session-pills-wrap session-pills-4">
+                      <button
+                        type="button"
+                        className={`session-pill-btn ${drinkSubFilter === 'all' ? 'active' : ''}`}
+                        onClick={() => setDrinkSubFilter('all')}
+                        disabled={spinning}
+                      >
+                        Tất cả
+                      </button>
+                      <button
+                        type="button"
+                        className={`session-pill-btn ${drinkSubFilter === 'tra-sua' ? 'active' : ''}`}
+                        onClick={() => setDrinkSubFilter('tra-sua')}
+                        disabled={spinning}
+                      >
+                        Trà sữa
+                      </button>
+                      <button
+                        type="button"
+                        className={`session-pill-btn ${drinkSubFilter === 'cafe' ? 'active' : ''}`}
+                        onClick={() => setDrinkSubFilter('cafe')}
+                        disabled={spinning}
+                      >
+                        Cà phê
+                      </button>
+                      <button
+                        type="button"
+                        className={`session-pill-btn ${drinkSubFilter === 'tra-traicay' ? 'active' : ''}`}
+                        onClick={() => setDrinkSubFilter('tra-traicay')}
+                        disabled={spinning}
+                      >
+                        Trà trái cây
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1167,67 +1179,72 @@ export default function Home() {
                     <Clock size={13} className="text-amber-400 shrink-0" />
                     Khung giờ:
                   </span>
-                  {MEAL_SESSIONS.map((s) => {
-                    const isLive = s.id === liveSession;
-                    const isSelected = placeSession === s.id;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className={`session-pill-btn ${isSelected ? 'active' : ''}`}
-                        onClick={() => setPlaceSession(s.id)}
-                        disabled={placeSpinning}
-                        title={`${s.label} (${s.timeRange})`}
-                      >
-                        {isLive && <span className="live-gem-indicator mr-1.5" />}
-                        {s.label.replace('Buổi ', '')}
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className={`session-pill-btn ${placeSession === 'all' ? 'active' : ''}`}
-                    onClick={() => setPlaceSession('all')}
-                    disabled={placeSpinning}
-                    title="Tất cả các quán cả ngày"
-                  >
-                    Cả ngày
-                  </button>
+                  <div className="session-pills-wrap session-pills-6">
+                    {MEAL_SESSIONS.map((s) => {
+                      const isLive = s.id === liveSession;
+                      const isSelected = placeSession === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className={`session-pill-btn ${isSelected ? 'active' : ''}`}
+                          onClick={() => setPlaceSession(s.id)}
+                          disabled={placeSpinning}
+                          title={`${s.label} (${s.timeRange})`}
+                        >
+                          {isLive && <span className="live-gem-indicator mr-1.5" />}
+                          {s.label.replace('Buổi ', '')}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className={`session-pill-btn ${placeSession === 'all' ? 'active' : ''}`}
+                      onClick={() => setPlaceSession('all')}
+                      disabled={placeSpinning}
+                      title="Tất cả các quán cả ngày"
+                    >
+                      Cả ngày
+                    </button>
+                  </div>
                 </div>
 
                 <div className="luxury-bar-divider" />
 
-                {/* 2. Kèo đi ăn */}
-                <PlaceKeoDropdown
-                  value={placeKeo}
-                  onChange={setPlaceKeo}
-                  disabled={placeSpinning}
-                />
-
-                {/* 3. Mức chi */}
-                <div className="luxury-budget-control-wrap">
-                  <BudgetDropdown
-                    value={placeBudget}
-                    onChange={val => setPlaceBudget(val)}
+                {/* 2 & 3. Kèo đi ăn & Mức chi trên cùng 1 hàng gọn gàng */}
+                <div className="place-filters-dropdowns-row">
+                  {/* 2. Kèo đi ăn */}
+                  <PlaceKeoDropdown
+                    value={placeKeo}
+                    onChange={setPlaceKeo}
                     disabled={placeSpinning}
                   />
 
-                  {placeBudget === 'custom' && (
-                    <div className="custom-budget-input-wrap">
-                      <input 
-                        type="number" 
-                        min="15" 
-                        max="500" 
-                        step="5"
-                        className="custom-budget-input"
-                        value={placeCustomPrice}
-                        onChange={e => setPlaceCustomPrice(e.target.value)}
-                        disabled={placeSpinning}
-                        title="Nhập số nghìn đồng (VD: 50)"
-                      />
-                      <span className="custom-budget-suffix">.000đ</span>
-                    </div>
-                  )}
+                  {/* 3. Mức chi */}
+                  <div className="luxury-budget-control-wrap">
+                    <BudgetDropdown
+                      value={placeBudget}
+                      onChange={val => setPlaceBudget(val)}
+                      disabled={placeSpinning}
+                    />
+
+                    {placeBudget === 'custom' && (
+                      <div className="custom-budget-input-wrap">
+                        <input 
+                          type="number" 
+                          min="15" 
+                          max="500" 
+                          step="5"
+                          className="custom-budget-input"
+                          value={placeCustomPrice}
+                          onChange={e => setPlaceCustomPrice(e.target.value)}
+                          disabled={placeSpinning}
+                          title="Nhập số nghìn đồng (VD: 50)"
+                        />
+                        <span className="custom-budget-suffix">.000đ</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </>
@@ -1359,74 +1376,39 @@ export default function Home() {
                 </span>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                {/* View Mode Toggle: Món độc bản vs Toàn bộ menu quán */}
-                <div style={{ display: 'inline-flex', background: 'rgba(255, 255, 255, 0.06)', borderRadius: '10px', padding: '3px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                  <button
-                    type="button"
-                    onClick={() => setInventoryMode('all')}
-                    style={{
-                      padding: '5px 12px',
-                      borderRadius: '7px',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      background: inventoryMode === 'all' ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)' : 'transparent',
-                      color: inventoryMode === 'all' ? '#fff' : '#cbd5e1',
-                      border: 'none',
-                    }}
-                  >
-                    <span className="inline-flex items-center gap-1.5">
+              <div className="inventory-controls-col">
+                <div className="inventory-controls-top-row">
+                  {/* View Mode Toggle: Món độc bản vs Toàn bộ menu quán */}
+                  <div className="inventory-mode-toggle">
+                    <button
+                      type="button"
+                      onClick={() => setInventoryMode('all')}
+                      className={`inventory-mode-btn ${inventoryMode === 'all' ? 'active-all' : ''}`}
+                    >
                       <Layers size={13} className="shrink-0" />
-                      Toàn bộ menu quán
-                    </span>
-                  </button>
+                      <span>Toàn bộ menu quán</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInventoryMode('unique')}
+                      className={`inventory-mode-btn ${inventoryMode === 'unique' ? 'active-unique' : ''}`}
+                    >
+                      <Sparkles size={13} className="shrink-0" />
+                      <span>Món độc bản</span>
+                    </button>
+                  </div>
+
+                  {/* Nút Đổi món ngẫu nhiên */}
                   <button
                     type="button"
-                    onClick={() => setInventoryMode('unique')}
-                    style={{
-                      padding: '5px 12px',
-                      borderRadius: '7px',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      background: inventoryMode === 'unique' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'transparent',
-                      color: inventoryMode === 'unique' ? '#000' : '#cbd5e1',
-                      border: 'none',
-                    }}
+                    onClick={() => setDishShuffleKey(Date.now() + Math.random())}
+                    className="inventory-shuffle-btn"
+                    title="Xáo trộn ngẫu nhiên danh sách món ở dưới"
                   >
-                    <span className="inline-flex items-center gap-1.5">
-                      <Sparkles size={13} className="shrink-0" />
-                      Món độc bản (Không trùng)
-                    </span>
+                    <Shuffle size={13} className="shrink-0 text-amber-400" />
+                    <span>Đổi ngẫu nhiên</span>
                   </button>
                 </div>
-
-                {/* Nút Đổi món ngẫu nhiên */}
-                <button
-                  type="button"
-                  onClick={() => setDishShuffleKey(Date.now() + Math.random())}
-                  style={{
-                    padding: '5px 12px',
-                    borderRadius: '8px',
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    color: '#fde047',
-                    border: '1px solid rgba(245, 158, 11, 0.35)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  title="Xáo trộn ngẫu nhiên danh sách món ở dưới"
-                >
-                  <Shuffle size={13} className="shrink-0 text-amber-400" />
-                  <span>Đổi món ngẫu nhiên</span>
-                </button>
 
                 {/* Smart Search Bar */}
                 <div className="inventory-search-wrap">
@@ -1562,30 +1544,19 @@ export default function Home() {
               </div>
 
               {/* Smart Search Bar & Xáo trộn ngẫu nhiên cho bên quán */}
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                {/* Nút Đổi quán ngẫu nhiên */}
-                <button
-                  type="button"
-                  onClick={() => setPlaceShuffleKey(Date.now() + Math.random())}
-                  style={{
-                    padding: '5px 12px',
-                    borderRadius: '8px',
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    color: '#fde047',
-                    border: '1px solid rgba(245, 158, 11, 0.35)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  title="Xáo trộn ngẫu nhiên danh sách quán ở dưới"
-                >
-                  <Shuffle size={13} className="shrink-0 text-amber-400" />
-                  <span>Đổi quán ngẫu nhiên</span>
-                </button>
+              <div className="inventory-controls-col">
+                <div className="inventory-controls-top-row place-controls-top-row">
+                  {/* Nút Đổi quán ngẫu nhiên */}
+                  <button
+                    type="button"
+                    onClick={() => setPlaceShuffleKey(Date.now() + Math.random())}
+                    className="inventory-shuffle-btn"
+                    title="Xáo trộn ngẫu nhiên danh sách quán ở dưới"
+                  >
+                    <Shuffle size={13} className="shrink-0 text-amber-400" />
+                    <span>Đổi quán ngẫu nhiên</span>
+                  </button>
+                </div>
 
                 <div className="inventory-search-wrap">
                   <Search size={15} className="search-icon" />

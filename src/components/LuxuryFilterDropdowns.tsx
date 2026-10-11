@@ -266,7 +266,7 @@ export function BudgetDropdown({
   }, [isOpen]);
 
   return (
-    <div className="relative inline-block text-left" ref={containerRef}>
+    <div className="relative inline-block text-left w-full" ref={containerRef}>
       <button
         type="button"
         disabled={disabled}
@@ -476,7 +476,7 @@ export function PlaceKeoDropdown({
   }, [isOpen]);
 
   return (
-    <div className="relative inline-block text-left" ref={containerRef}>
+    <div className="relative inline-block text-left w-full" ref={containerRef}>
       <button
         type="button"
         disabled={disabled}

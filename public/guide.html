@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#121418">
+  <title>Hướng Dẫn Sử Dụng Toàn Diện — Xuân Hòa Có Gì</title>
+  <meta name="description" content="Hướng dẫn sử dụng website Xuân Hòa Có Gì: Quay chọn món, chọn quán, tích lũy EXP sành ăn, tra cứu thực đơn và cài đặt lên màn hình chính iPhone, Android.">
+  <link rel="icon" type="image/png" sizes="32x32" href="./brand/favicon-cs-v2.png?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="./brand/apple-touch-icon-cs-v2.png?v=2">
+  <style>
+    :root {
+      --bg-page: #111317;
+      --bg-card: #181B22;
+      --border-subtle: #2C303B;
+      --gold-primary: #F59E0B;
+      --text-main: #F1F5F9;
+      --text-muted: #94A3B8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-page);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+    }
+    header {
+      background: rgba(17, 19, 23, 0.95);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 14px 20px;
+      position: sticky;
+      top: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(8px);
+      z-index: 50;
+    }
+    .brand-link {
+      color: #F8FAFC;
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 17px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-link span { color: var(--gold-primary); }
+    .back-btn {
+      background: rgba(245, 158, 11, 0.15);
+      color: #FDE68A;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      padding: 8px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 13.5px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .back-btn:hover {
+      background: var(--gold-primary);
+      color: #000;
+    }
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 36px 20px 80px;
+    }
+    .hero {
+      text-align: center;
+      margin-bottom: 40px;
+      padding-bottom: 30px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin: 0 0 12px;
+      color: #FFF;
+    }
+    .hero p {
+      color: var(--text-muted);
+      font-size: 16px;
+      max-width: 680px;
+      margin: 0 auto 20px;
+    }
+    .hero-links {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .hero-links a {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #E2E8F0;
+      padding: 8px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 13.5px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .hero-links a:hover {
+      border-color: var(--gold-primary);
+      color: var(--gold-primary);
+    }
+    .section-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 28px 24px;
+      margin-bottom: 24px;
+    }
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #FFF;
+      margin: 0 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 20px;
+      background: var(--gold-primary);
+      border-radius: 2px;
+    }
+    ol, ul { padding-left: 20px; margin: 12px 0; color: #CBD5E1; }
+    li { margin-bottom: 8px; }
+    li strong { color: #FFF; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .sub-box {
+      background: rgba(15, 18, 25, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .sub-box h3 {
+      font-size: 16px;
+      margin: 0 0 8px;
+      color: #FDE68A;
+    }
+    .sub-box p {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      margin: 0;
+    }
+    footer {
+      text-align: center;
+      padding: 30px 20px;
+      border-top: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="./#/" class="brand-link">
+      XUÂN HÒA <span>CÓ GÌ</span>
+    </a>
+    <a href="./#/" class="back-btn">← Quay Lại Web Chính</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <h1>Hướng Dẫn Sử Dụng Toàn Diện</h1>
+      <p>Cẩm nang giải cứu cơn đói, chốt kèo ăn uống thần tốc và làm chủ 100% tính năng của nền tảng ẩm thực Phường Xuân Hòa.</p>
+      <div class="hero-links">
+        <a href="./#/">🎰 Vòng Quay Chọn Món</a>
+        <a href="./#/kham-pha-mon">🍜 Khám Phá 300+ Món Ăn</a>
+        <a href="./#/quan-an">🏪 Danh Bạ 50+ Quán Ăn</a>
+        <a href="./#/gioi-thieu">ℹ️ Giới Thiệu Về Chúng Tôi</a>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h2>1. Bắt Đầu Trong 10 Giây</h2>
+      <ol>
+        <li><strong>Chọn bữa ăn theo đồng hồ:</strong> Hệ thống tự động xác định giờ thực tế của bạn (Sáng 05–10h, Trưa 10–14h, Chiều 14–18h, Tối 18–22h, Đêm 22–04h). Bạn cũng có thể bấm chọn bữa thủ công.</li>
+        <li><strong>Chọn ngân sách:</strong> Dưới 35k (Bình dân / Sinh viên), 50k (No nê), 70k (Ăn ngon) hoặc Bàn tiệc nhóm.</li>
+        <li><strong>Bấm nút QUAY CHỌN MÓN hoặc QUAY CHỌN QUÁN:</strong> Hệ thống vòng quay ngẫu nhiên CS:GO công bằng tuyệt đối sẽ cuộn và dừng tại kết quả định mệnh.</li>
+        <li><strong>Xem kết quả &amp; Chốt kèo:</strong> Màn hình hiện ảnh món ăn thật, giá cả, quán bán uy tín tại Xuân Hòa, hotline ship và nút mở Google Maps.</li>
+      </ol>
+    </div>
+
+    <div class="section-card">
+      <h2>2. Khám Phá Món Ăn &amp; Quán Ăn</h2>
+      <div class="grid-2">
+        <div class="sub-box">
+          <h3>🍜 Đường Dẫn Khám Phá Món</h3>
+          <p>Truy cập mục <strong>Khám Phá Món</strong> trên menu hoặc đường dẫn <code>/#/kham-pha-mon</code> để tra cứu toàn bộ 300+ món ngon quanh ĐH Sư Phạm Hà Nội 2. Có bộ lọc theo danh mục, giá tiền và tìm kiếm nhanh.</p>
+        </div>
+        <div class="sub-box">
+          <h3>🏪 Đường Dẫn Quán Ăn</h3>
+          <p>Truy cập mục <strong>Quán Ăn</strong> trên menu hoặc đường dẫn <code>/#/quan-an</code> để xem danh bạ hơn 50 quán ăn, lẩu nướng, quán ốc, cafe trà sữa tại Xuân Hòa kèm số điện thoại và địa chỉ cụ thể.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h2>3. Hệ Thống EXP &amp; Cấp Bậc Sành Ăn</h2>
+      <p>Mỗi lượt quay thành công sẽ mang về cho bạn điểm kinh nghiệm EXP:</p>
+      <ul>
+        <li><strong>Bình dân (&lt; 35k):</strong> +10 EXP</li>
+        <li><strong>Ăn ngon (35k - 65k):</strong> +20 EXP</li>
+        <li><strong>Đặc sản (65k - 120k):</strong> +30 EXP</li>
+        <li><strong>Bàn tiệc / Đại tiệc (&gt; 120k):</strong> +40 đến +50 EXP</li>
+      </ul>
+      <p>Cấp bậc của bạn sẽ tự động thăng hạng từ <em>Sinh Viên Tập Sự</em> lên <em>Khách Quen</em>, <em>Thổ Địa Sành Ăn</em> và <em>Vua Ẩm Thực Xuân Hòa</em>!</p>
+    </div>
+
+    <div class="section-card">
+      <h2>4. Cài Đặt Lên Màn Hình Chính (PWA)</h2>
+      <div class="grid-2">
+        <div class="sub-box">
+          <h3>📱 Dành cho iPhone / Safari</h3>
+          <p>Mở website bằng Safari → Bấm nút <strong>Chia sẻ (Share 📤)</strong> ở thanh dưới → Chọn <strong>Thêm vào Màn hình chính</strong> → Bấm <strong>Thêm</strong>.</p>
+        </div>
+        <div class="sub-box">
+          <h3>🤖 Dành cho Android / Chrome</h3>
+          <p>Mở website bằng Chrome → Bấm <strong>Menu 3 chấm (⋮)</strong> góc trên → Chọn <strong>Cài đặt ứng dụng</strong> hoặc <strong>Thêm vào màn hình chính</strong>.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>Crafted &amp; Curated with ❤️ by MinhTT © 2026 — Phường Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc</p>
+  </footer>
+</body>
+</html>

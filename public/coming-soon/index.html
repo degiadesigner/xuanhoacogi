@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="vi" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XUÂN HÒA CÓ GÌ — Khai Mở 11.10.2026</title>
+  
+  <meta name="description" content="Chấm dứt 30 phút cãi vã 'Ăn gì trưa nay?'. 37+ tọa độ thực tế quanh ĐHSP2. Khai mở chính thức: 11:11:11 Chủ Nhật 11.10.2026.">
+  <meta property="og:title" content="XUÂN HÒA CÓ GÌ — Khai Mở 11.10.2026">
+  <meta property="og:description" content="Cộng đồng Trà Đá XuHo & Cỗ máy ẩm thực ĐHSP2. Khai mở đúng 11:11:11 Chủ Nhật 11.10.2026.">
+  <meta property="og:image" content="images/dish_banh_xeo_co_hien.webp">
+  <meta name="theme-color" content="#060709">
+
+  <link rel="icon" type="image/png" href="images/brand-icon-mark.webp">
+
+  <!-- Be Vietnam Pro (Chuẩn 100% Tiếng Việt, hiển thị sắc nét) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Be Vietnam Pro"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            gold: '#D4AF37',
+            goldMuted: '#9E8532',
+            surface: '#0C0E14',
+            surfaceCard: '#11141C',
+            borderHair: 'rgba(255, 255, 255, 0.08)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * {
+      font-family: "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, sans-serif;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background-color: #050608;
+      color: #E2E8F0;
+      overflow-x: hidden;
+      min-height: 100vh;
+      position: relative;
+      /* Chiều sâu không gian 3D: Nền đen Onyx kết hợp hào quang Vàng Champagne tỏa sáng từ tâm */
+      background-image: 
+        /* 1. Hào quang trung tâm tỏa từ sau Hero & Countdown (Tâm sáng ấm áp tạo chiều sâu) */
+        radial-gradient(ellipse 75% 50% at 50% 28%, rgba(212, 175, 55, 0.16) 0%, rgba(180, 130, 35, 0.05) 45%, transparent 75%),
+        /* 2. Quầng ấm dịu ở phần câu chuyện & cộng đồng */
+        radial-gradient(ellipse 65% 40% at 50% 78%, rgba(212, 175, 55, 0.08) 0%, transparent 65%),
+        /* 3. Lớp Vignette đen sẫm bo 4 góc tạo chiều sâu điện ảnh */
+        radial-gradient(circle at 50% 50%, transparent 45%, rgba(3, 4, 6, 0.85) 100%);
+      background-attachment: fixed;
+    }
+
+    /* Hiệu ứng vi tế ánh bụi sao sang trọng (Luxury Ambience) */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image: 
+        radial-gradient(rgba(212, 175, 55, 0.16) 1px, transparent 1px);
+      background-size: 44px 44px;
+      opacity: 0.14;
+      mask-image: radial-gradient(ellipse 75% 50% at 50% 30%, black 20%, transparent 75%);
+      -webkit-mask-image: radial-gradient(ellipse 75% 50% at 50% 30%, black 20%, transparent 75%);
+    }
+
+    /* Cinematic Text Reveal on Scroll */
+    .story-line {
+      opacity: 0.15;
+      transform: translateY(24px) scale(0.99);
+      filter: blur(4px);
+      transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+                  filter 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+      will-change: opacity, transform, filter;
+    }
+
+    .story-line.active {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0px);
+    }
+
+    /* Quiet Luxury Card */
+    .luxury-card {
+      background: linear-gradient(180deg, rgba(16, 20, 29, 0.8) 0%, rgba(10, 12, 18, 0.94) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 
+        0 20px 45px -15px rgba(0, 0, 0, 0.8),
+        0 0 30px -10px rgba(212, 175, 55, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .luxury-card:hover {
+      border-color: rgba(212, 175, 55, 0.35);
+      box-shadow: 
+        0 25px 50px -15px rgba(0, 0, 0, 0.85),
+        0 0 35px -5px rgba(212, 175, 55, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+
+    /* Vòng hào quang tỏa nhẹ quanh hộp Countdown */
+    .countdown-glow-pod {
+      position: relative;
+    }
+    .countdown-glow-pod::before {
+      content: "";
+      position: absolute;
+      inset: -12px;
+      background: radial-gradient(ellipse at center, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.05) 50%, transparent 70%);
+      filter: blur(18px);
+      border-radius: 2rem;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* Secret Dish Blur */
+    .dish-secret-blur {
+      filter: blur(7px) brightness(0.8);
+      transition: filter 0.4s ease;
+    }
+  </style>
+</head>
+<body class="selection:bg-amber-400 selection:text-black">
+
+  <!-- TOP MINIMAL NAV -->
+  <header class="border-b border-white/5 bg-[#06070A]/90 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <img src="images/brand-icon-mark.webp" alt="Xuân Hòa Có Gì" class="w-9 h-9 rounded-xl border border-amber-400/30 p-0.5 bg-black/40 shadow-sm shadow-amber-400/10">
+        <div>
+          <div class="font-extrabold text-sm sm:text-base tracking-wide text-white flex items-center gap-1.5">
+            <span>XUÂN HÒA</span> <span class="text-amber-400 font-extrabold">CÓ GÌ</span>
+          </div>
+          <div class="text-[11px] text-slate-300 flex items-center gap-1.5 mt-0.5 tracking-normal">
+            <span class="text-amber-300 font-medium">Chuyên trị bệnh &ldquo;Ăn gì cũng được&rdquo;</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 text-xs">
+        <a href="#story" class="hidden sm:inline-block px-3 py-1.5 text-slate-300 hover:text-white transition-colors">
+          Câu Chuyện
+        </a>
+        <a href="#follow-creator" class="px-3.5 py-1.5 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-300 font-semibold transition-all">
+          Theo Dõi Tác Giả &rarr;
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO SECTION -->
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-20 space-y-12 text-center relative z-10">
+    
+    <!-- Headline Section (Khoảng cách thoáng đãng, chữ trắng sắc nét, không chèn chữ) -->
+    <div class="space-y-6">
+      <div>
+        <span class="inline-block px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs font-mono tracking-widest uppercase">
+          THỜI KHẮC KHAI MỞ // 2026
+        </span>
+      </div>
+
+      <h1 class="text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white leading-tight uppercase">
+        Cỗ Máy Ẩm Thực Bí Mật <br class="hidden sm:inline" />
+        Sắp Khai Mở Tại Xuân Hòa
+      </h1>
+
+      <p class="max-w-2xl mx-auto text-sm sm:text-base text-slate-300 font-normal leading-relaxed">
+        Chấm dứt 30 phút mệt mỏi với câu hỏi kinh điển <strong class="text-white font-semibold">&ldquo;Trưa nay ăn gì?&rdquo;</strong>.
+        Một giải pháp chọn món khách quan, 37+ tọa độ có thật quanh ĐHSP2, hotline gọi trực tiếp tới chủ quán mà không qua trung gian.
+      </p>
+    </div>
+
+    <!-- COUNTDOWN TIMER CHUẨN XÁC: 11.10.2026 ĐÚNG 11:11:11s (HÀO QUANG VÀNG SANG TRỌNG) -->
+    <div class="max-w-xl mx-auto space-y-4 countdown-glow-pod relative z-10">
+      <div class="luxury-card p-5 sm:p-7 rounded-2xl">
+        <div class="grid grid-cols-4 gap-2 sm:gap-4">
+          <div class="flex flex-col items-center">
+            <span id="cdD" class="text-3xl sm:text-5xl font-mono font-bold text-white">00</span>
+            <span class="text-[10px] text-slate-400 font-mono uppercase tracking-wider mt-1.5">NGÀY</span>
+          </div>
+          <div class="flex flex-col items-center border-l border-white/5">
+            <span id="cdH" class="text-3xl sm:text-5xl font-mono font-bold text-white">00</span>
+            <span class="text-[10px] text-slate-400 font-mono uppercase tracking-wider mt-1.5">GIỜ</span>
+          </div>
+          <div class="flex flex-col items-center border-l border-white/5">
+            <span id="cdM" class="text-3xl sm:text-5xl font-mono font-bold text-white">00</span>
+            <span class="text-[10px] text-slate-400 font-mono uppercase tracking-wider mt-1.5">PHÚT</span>
+          </div>
+          <div class="flex flex-col items-center border-l border-white/5">
+            <span id="cdS" class="text-3xl sm:text-5xl font-mono font-bold text-amber-400">00</span>
+            <span class="text-[10px] text-slate-400 font-mono uppercase tracking-wider mt-1.5">GIÂY</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Khẳng định chính xác thời khắc mở cổng -->
+      <div class="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 text-xs text-slate-300 font-mono">
+        ★ Khai mở chính thức: <strong class="text-amber-400 font-bold">Chủ Nhật 11.10.2026 &mdash; Đúng 11:11:11s</strong>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- CINEMATIC SCROLLYTELLING (KÉO XUỐNG CHỮ LƯỚT RA MƯỢT MÀ) -->
+  <section id="story" class="max-w-3xl mx-auto px-4 sm:px-6 py-20 space-y-24 relative z-10">
+
+    <div class="text-center space-y-2 story-line">
+      <span class="text-xs font-mono uppercase tracking-widest text-amber-400 font-semibold">CÂU CHUYỆN THỰC ĐỊA</span>
+      <h2 class="text-2xl sm:text-4xl font-extrabold text-white">
+        Tại Sao Cỗ Máy Này Ra Đời?
+      </h2>
+      <p class="text-xs text-slate-400">Cuộn xuống từ từ để đọc câu chuyện</p>
+    </div>
+
+    <!-- Hồi I -->
+    <div class="story-line space-y-3 p-6 sm:p-8 rounded-2xl luxury-card">
+      <div class="text-xs font-mono text-amber-400/90 font-semibold tracking-wider">HỒI 1 // 11:15 TRƯA TẠI CỔNG ĐHSP2</div>
+      <h3 class="text-xl sm:text-2xl font-bold text-white">
+        Tiếng chuông hết tiết và bi kịch bắt đầu.
+      </h3>
+      <p class="text-sm sm:text-base text-slate-300 leading-relaxed font-normal">
+        Chuông reo. Cả nhóm bước ra khỏi giảng đường. Một câu hỏi quen thuộc vang lên phá tan bầu không khí vui vẻ:
+        <span class="text-amber-300 italic block mt-2 text-base">&ldquo;Trưa nay ăn gì chúng mày ơi?&rdquo;</span>
+      </p>
+    </div>
+
+    <!-- Hồi II -->
+    <div class="story-line space-y-3 p-6 sm:p-8 rounded-2xl luxury-card">
+      <div class="text-xs font-mono text-amber-400/90 font-semibold tracking-wider">HỒI 2 // LỜI NÓI DỐI MANG TÊN &ldquo;GÌ CŨNG ĐƯỢC&rdquo;</div>
+      <h3 class="text-xl sm:text-2xl font-bold text-white">
+        Vòng lặp từ chối bất tận.
+      </h3>
+      <p class="text-sm sm:text-base text-slate-300 leading-relaxed font-normal space-y-2">
+        <span class="block">&bull; &ldquo;Ăn bún đậu ngõ KTX nhé?&rdquo; &mdash; <em>&ldquo;Thôi, chiều có tiết sợ ám mùi.&rdquo;</em></span>
+        <span class="block">&bull; &ldquo;Thế cơm gà xối mỡ?&rdquo; &mdash; <em>&ldquo;Hôm qua vừa ăn xong ngấy lắm.&rdquo;</em></span>
+        <span class="block">&bull; &ldquo;Hay ra quán lẩu?&rdquo; &mdash; <em>&ldquo;Cuối tháng rồi tiền đâu mà ăn lẩu.&rdquo;</em></span>
+      </p>
+      <p class="text-xs text-slate-400 pt-2 italic">
+        Nửa tiếng trôi qua. Bụng đói lả. Tình bạn 4 năm bắt đầu lung lay chỉ vì không chốt được quán cơm trưa.
+      </p>
+    </div>
+
+    <!-- Hồi III -->
+    <div class="story-line space-y-3 p-6 sm:p-8 rounded-2xl luxury-card">
+      <div class="text-xs font-mono text-amber-400/90 font-semibold tracking-wider">HỒI 3 // SỰ XUẤT HIỆN CỦA SỐ PHẬN</div>
+      <h3 class="text-xl sm:text-2xl font-bold text-white">
+        Không KOL quảng cáo dắt mũi. Trao quyền cho Vận Mệnh.
+      </h3>
+      <p class="text-sm sm:text-base text-slate-300 leading-relaxed font-normal">
+        Chúng tôi quyết định chấm dứt điều vô lý này.
+        <strong class="text-white">Xuân Hòa Có Gì</strong> không thuê reviewer nhận tiền nói khéo.
+        Đúng <strong>1 cú click</strong>, thanh quay eSports trượt xé gió và chốt hạ món ăn trong 3 giây.
+        Đúng giá sinh viên, hotline gọi thẳng tới chủ quán ship tận phòng KTX. 
+        Không ai phải cãi vã, vì đó là <em>ý trời!</em>
+      </p>
+    </div>
+
+  </section>
+
+  <!-- SNEAK PEEK (TỌA ĐỘ NỬA KÍN NỬA HỞ - TỐI GIẢN & SANG TRỌNG) -->
+  <section class="max-w-4xl mx-auto px-4 sm:px-6 py-12 story-line relative z-10">
+    <div class="luxury-card p-6 sm:p-8 rounded-3xl space-y-6">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-white/5">
+        <div>
+          <span class="text-xs font-mono text-amber-400 uppercase tracking-wider font-semibold">TỌA ĐỘ ẨM THỰC // GIẢI MÃ NỬA KÍN NỬA HỞ</span>
+          <h2 class="text-xl sm:text-2xl font-bold text-white mt-1">Đoán Thử Một Quán Ruột</h2>
+          <p class="text-xs text-slate-400">Hình ảnh và danh tính được làm mờ nhẹ. Bạn có nhận ra quán quen này?</p>
+        </div>
+        <button onclick="nextSample()" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium text-xs transition-all whitespace-nowrap">
+          Đổi Món Khác &rarr;
+        </button>
+      </div>
+
+      <div id="sampleBox" class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center transition-opacity duration-300">
+        <div class="md:col-span-5 relative rounded-2xl overflow-hidden aspect-video md:aspect-square bg-black border border-white/10">
+          <img id="sImg" src="images/dish_banh_xeo_co_hien.webp" alt="Món ăn bí mật" class="w-full h-full object-cover dish-secret-blur">
+          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex flex-col justify-between p-4">
+            <span id="sBadge" class="self-start px-2 py-0.5 rounded bg-black/80 border border-amber-400/40 font-mono text-[10px] text-amber-300">
+              TỌA ĐỘ #XH-01
+            </span>
+            <div class="text-[10px] font-mono text-slate-300 text-center bg-black/70 py-1 rounded">
+              MỞ KHÓA 100% VÀO 11:11:11s (11.10.2026)
+            </div>
+            <div class="text-[10px] font-mono text-slate-400 flex justify-between">
+              <span>ĐHSP2</span>
+              <span id="sIndex">1 / 5</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="md:col-span-7 space-y-3">
+          <span id="sRarity" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 border border-amber-400/30 text-amber-300">
+            COVERT // CỰC PHẨM
+          </span>
+          <div>
+            <h3 id="sDish" class="text-2xl font-black text-white tracking-wide">
+              B**h X*o N*ng Gi*n
+            </h3>
+            <div id="sPlace" class="text-xs text-amber-400 font-mono mt-0.5 font-semibold">
+              Quán C* H*** (KĐT Xuân Hòa)
+            </div>
+          </div>
+          <div class="p-4 rounded-xl bg-black/40 border border-white/5 text-slate-300 text-xs sm:text-sm leading-relaxed font-serif italic">
+            <span id="sHint">&ldquo;Vỏ bánh tráng mỏng vàng nghệ thơm nức, nhân tôm thịt tươi rói kèm nem lụi nướng sả và nước chấm chua ngọt gia truyền.&rdquo;</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs font-mono text-slate-400 pt-1">
+            <div class="p-2.5 rounded-lg bg-black/30 border border-white/5">
+              <span class="text-[10px] text-slate-500 block">KHOẢNG CÁCH</span>
+              <span id="sDist" class="text-slate-200">Cách ĐHSP2: ~320m</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-black/30 border border-white/5">
+              <span class="text-[10px] text-slate-500 block">HOTLINE BẾP</span>
+              <span class="text-slate-200">09xx.xxx.876</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KHU VỰC: ỦNG HỘ TÁC GIẢ & CỘNG ĐỒNG "TRÀ ĐÁ XUHO" -->
+  <section id="follow-creator" class="max-w-4xl mx-auto px-4 sm:px-6 py-16 space-y-10 story-line relative z-10">
+    
+    <div class="text-center space-y-2">
+      <span class="text-xs font-mono uppercase tracking-widest text-amber-400 font-semibold">KẾT NỐI TRUYỀN THÔNG &amp; NGƯỜI THỰC VIỆC THỰC</span>
+      <h2 class="text-2xl sm:text-4xl font-extrabold text-white">
+        Ủng Hộ Tác Giả &amp; Gia Nhập Trà Đá XuHo
+      </h2>
+      <p class="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto">
+        Dự án phi lợi nhuận được xây dựng vì tình yêu với ẩm thực sinh viên và khu phố Xuân Hòa. Hãy bấm theo dõi để cùng chúng tôi đồng hành!
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+      
+      <!-- 1. Facebook Cá Nhân Tác Giả -->
+      <div class="luxury-card p-6 rounded-2xl flex flex-col justify-between space-y-5">
+        <div class="space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-amber-400">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div class="text-[10px] font-mono text-amber-400 uppercase tracking-wider font-semibold">NGƯỜI PHÁT TRIỂN DỰ ÁN</div>
+          <h3 class="text-lg font-bold text-white">Facebook Cá Nhân MinhTT</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Kết nối trực tiếp cùng tác giả. Góp ý bổ sung quán ăn ruột của bạn hoặc cùng thảo luận về công nghệ đằng sau cỗ máy.
+          </p>
+        </div>
+        <a href="https://www.facebook.com/minhttvp" target="_blank" rel="noopener noreferrer" class="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold text-xs text-center transition-all block">
+          Theo Dõi Trang Cá Nhân &rarr;
+        </a>
+      </div>
+
+      <!-- 2. Cộng Đồng Trà Đá XuHo -->
+      <div class="luxury-card p-6 rounded-2xl flex flex-col justify-between space-y-5 border-amber-500/30">
+        <div class="space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="text-[10px] font-mono text-amber-400 uppercase tracking-wider font-semibold">CỘNG ĐỒNG CHÍNH THỨC</div>
+          <h3 class="text-lg font-bold text-white">Group &ldquo;Trà Đá XuHo&rdquo;</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Nơi tụ tập của sinh viên ĐHSP2 và cư dân Xuân Hòa: Chém gió, rủ kèo lẩu nướng đêm muộn, chia sẻ quán ngon và cảnh báo quán dở.
+          </p>
+        </div>
+        <a href="https://www.facebook.com/groups/397463820097107" target="_blank" rel="noopener noreferrer" class="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs text-center transition-all block shadow-md shadow-amber-400/20">
+          Gia Nhập Trà Đá XuHo &rarr;
+        </a>
+      </div>
+
+      <!-- 3. Fanpage Truyền Thông -->
+      <div class="luxury-card p-6 rounded-2xl flex flex-col justify-between space-y-5">
+        <div class="space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-amber-400">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+          </div>
+          <div class="text-[10px] font-mono text-amber-400 uppercase tracking-wider font-semibold">TRUYỀN THÔNG &amp; TIN TỨC</div>
+          <h3 class="text-lg font-bold text-white">Fanpage Xuân Hòa Có Gì</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Kênh cập nhật tiến độ Giờ G (11:11:11s ngày 11.10.2026), các đợt phát voucher mở hòm và tọa độ quán mới được bổ sung.
+          </p>
+        </div>
+        <a href="https://www.facebook.com/xuanhoacogi" target="_blank" rel="noopener noreferrer" class="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold text-xs text-center transition-all block">
+          Bấm Theo Dõi Fanpage &rarr;
+        </a>
+      </div>
+
+    </div>
+
+    <!-- Tinh thần ủng hộ dự án -->
+    <div class="p-6 rounded-2xl bg-white/[0.02] border border-white/5 text-center max-w-xl mx-auto space-y-2">
+      <div class="text-xs text-slate-400 font-mono uppercase tracking-wider">LỜI CẢM ƠN TỪ TÁC GIẢ</div>
+      <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+        &ldquo;Sự ủng hộ, lượt theo dõi và chia sẻ của các bạn chính là động lực lớn nhất để tôi tiếp tục hoàn thiện cỗ máy này trước giờ khai mở. Hẹn gặp mọi người vào <strong>11:11:11s Chủ Nhật này!</strong>&rdquo;
+      </p>
+      <div class="text-xs font-mono text-amber-400 pt-1">&mdash; MinhTT (Founder)</div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-white/5 py-8 text-center text-xs text-slate-500 space-y-2 relative z-10">
+    <div class="font-bold text-slate-300 tracking-wider">
+      XUÂN HÒA CÓ GÌ
+    </div>
+    <p>Chuyên trị căn bệnh: &apos;&apos;Ăn gì cũng được&apos;&apos; !</p>
+    <div class="text-[11px] text-slate-500 pt-1 font-mono">
+      MinhTT &copy; 2026 · Phát hành độc quyền tại Phường Xuân Hòa, Phúc Yên
+    </div>
+  </footer>
+
+  <!-- SCRIPT LOGIC -->
+  <script>
+    // 1. COUNTDOWN CHUẨN XÁC ĐẾN CHỦ NHẬT 11.10.2026 ĐÚNG 11:11:11s
+    const targetLaunch = new Date('2026-10-11T11:11:11+07:00').getTime();
+
+    function tickCountdown() {
+      const now = new Date().getTime();
+      const diff = targetLaunch - now;
+
+      if (diff <= 0) {
+        document.getElementById('cdD').innerText = '00';
+        document.getElementById('cdH').innerText = '00';
+        document.getElementById('cdM').innerText = '00';
+        document.getElementById('cdS').innerText = '00';
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      document.getElementById('cdD').innerText = String(days).padStart(2, '0');
+      document.getElementById('cdH').innerText = String(hours).padStart(2, '0');
+      document.getElementById('cdM').innerText = String(minutes).padStart(2, '0');
+      document.getElementById('cdS').innerText = String(seconds).padStart(2, '0');
+    }
+
+    tickCountdown();
+    setInterval(tickCountdown, 1000);
+
+    // 2. DATA SNEAK PEEK MẪU
+    const SAMPLES = [
+      {
+        code: 'TỌA ĐỘ #XH-01',
+        dish: 'B**h X*o N*ng Gi*n',
+        place: 'Quán C* H*** (KĐT Xuân Hòa)',
+        dist: 'Cách ĐHSP2: ~320m',
+        rarity: 'COVERT // CỰC PHẨM',
+        hint: '“Vỏ bánh tráng mỏng vàng nghệ thơm nức, nhân tôm thịt tươi rói kèm nem lụi nướng sả và nước chấm chua ngọt gia truyền.”',
+        img: 'images/dish_banh_xeo_co_hien.webp'
+      },
+      {
+        code: 'TỌA ĐỘ #XH-02',
+        dish: 'C*m R*ng Th*p C*m Gi*n',
+        place: 'Quán W*n (Nguyễn Văn Linh)',
+        dist: 'Cách ĐHSP2: ~200m',
+        rarity: 'SPECIAL // ĐẶC BIỆT',
+        hint: '“Cơm rang hạt giòn rụm đảo cùng lạp xưởng, ngô ngọt, cà rốt và trứng vàng ươm chuẩn giá sinh viên.”',
+        img: 'images/dish_qw_com_rang_thap_cam.webp'
+      },
+      {
+        code: 'TỌA ĐỘ #XH-03',
+        dish: 'Đ*i G* L*c Ph* M*i Gi*n R*m',
+        place: 'Mr T** (Ngõ KTX)',
+        dist: 'Cách KTX SP2: ~90m',
+        rarity: 'RARE // QUÝ HIẾM',
+        hint: '“Đùi gà chiên lớp vỏ vảy xù giòn tan rụm thịt mềm ngọt mọng nước, phủ đẫm lớp phô mai cam óng béo ngậy.”',
+        img: 'images/dish_dui_ga_lac_pho_mai_mr_tea.webp'
+      },
+      {
+        code: 'TỌA ĐỘ #XH-04',
+        dish: 'C*m R*ng D*a Th*m B*i',
+        place: 'Cu*n M*c (Nguyễn Văn Linh)',
+        dist: 'Cách Giảng đường E: ~250m',
+        rarity: 'COVERT // CỰC PHẨM',
+        hint: '“Cơm chiên trái dứa thơm lừng trong nửa quả dứa tươi, hạt cơm vàng nghệ tơi xốp, tôm thịt, lạp xưởng và hạt điều bùi béo.”',
+        img: 'images/dish_cuonmoc_com_rang_dua.webp'
+      },
+      {
+        code: 'TỌA ĐỘ #XH-05',
+        dish: 'Tr* Đ*o C*m S* Si*u To',
+        place: 'Tiệm Z**n (Cổng Trường)',
+        dist: 'Cách ĐHSP2: ~150m',
+        rarity: 'RARE // QUÝ HIẾM',
+        hint: '“Cốc khổng lồ 1 Lít thơm nồng mùi sả tươi, cam vàng mọng nước cùng những lát đào giòn sần sật mát lạnh sảng khoái.”',
+        img: 'images/dish_tra_dao_cam_sa_zian.webp'
+      }
+    ];
+
+    let sIdx = 0;
+    function nextSample() {
+      const b = document.getElementById('sampleBox');
+      b.style.opacity = '0.3';
+      setTimeout(() => {
+        sIdx = (sIdx + 1) % SAMPLES.length;
+        const cur = SAMPLES[sIdx];
+        document.getElementById('sImg').src = cur.img;
+        document.getElementById('sBadge').innerText = cur.code;
+        document.getElementById('sIndex').innerText = (sIdx + 1) + ' / ' + SAMPLES.length;
+        document.getElementById('sDish').innerText = cur.dish;
+        document.getElementById('sPlace').innerText = cur.place;
+        document.getElementById('sDist').innerText = cur.dist;
+        document.getElementById('sRarity').innerText = cur.rarity;
+        document.getElementById('sHint').innerText = cur.hint;
+        b.style.opacity = '1';
+      }, 250);
+    }
+
+    // 3. CINEMATIC SCROLLYTELLING OBSERVER (CHỮ LƯỚT RA MƯỢT MÀ KHI CUỘN)
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('active');
+        }
+      });
+    }, {
+      threshold: 0.15,
+      rootMargin: '0px 0px -40px 0px'
+    });
+
+    document.querySelectorAll('.story-line').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>

@@ -1,0 +1,1251 @@
+'use client';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { flushSync } from 'react-dom';
+import { 
+  MAIN_CATEGORIES, 
+  MainCategoryKey, 
+  getCategoryItems 
+} from '@/lib/xuanhoa-catalog';
+import { Food } from '@/lib/foods';
+import { 
+  MEAL_SESSIONS, 
+  MealSession, 
+  getLiveMealSession, 
+  isFoodSuitableForSession,
+  isDrinkSuitableForSession,
+  isNhauSuitableForSession,
+  isPlaceSuitableForSession
+} from '@/lib/time-mechanics';
+import { 
+  getLocalProfile, 
+  addSpinExp, 
+  UserGourmetProfile 
+} from '@/lib/user-exp';
+import { createSpinProfile, spinProgress, stopFraction } from '@/lib/case-mechanics';
+import { FoodImage } from '@/components/FoodImage';
+import { WinnerDialog } from '@/components/WinnerDialog';
+import { PlaceCard } from '@/components/PlaceCard';
+import { PlaceModal } from '@/components/PlaceModal';
+import { 
+  xuanHoaPlaces, 
+  Place, 
+  PLACE_SESSIONS, 
+  PlaceSessionType,
+  PlaceKeoType,
+  PLACE_KEO_LIST,
+  isPlaceMatchKeo
+} from '@/lib/places-xuanhoa';
+import { 
+  createPlaceSpinProfile, 
+  spinProgress as placeSpinProgress, 
+  stopFraction as placeStopFraction 
+} from '@/lib/places-spin';
+import { CaseAudio } from '@/lib/case-audio';
+import { Volume2, VolumeX, RotateCw, UtensilsCrossed, Store, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+const rarityColors = ['#3B82F6', '#8B5CF6', '#EC4899', '#EF4444', '#D4AF37'];
+const rarityNames = ['Bình dân', 'Ăn ngon', 'Đặc sản', 'Bàn tiệc', 'Đại tiệc'];
+
+// Hàm xáo trộn ngẫu nhiên các món / quán (Fisher-Yates Shuffle) giúp thanh quay luôn đa dạng
+function shuffleArray<T>(array: readonly T[]): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+export default function Home() {
+  // Gourmet profile (Level & EXP without requiring login)
+  const [profile, setProfile] = useState<UserGourmetProfile>(() => getLocalProfile());
+
+  // 2-TAB Mode: 'dish' (Quay Chọn Món) vs 'place' (Quay Chọn Quán)
+  const [mainMode, setMainMode] = useState<'dish' | 'place'>('dish');
+
+  // Active Category (Bữa Chính, Quán Nhậu, Đồ Uống, Ăn Vặt, Thời Trang)
+  const [activeCategory, setActiveCategory] = useState<MainCategoryKey>('an-gi');
+
+  // Meal Session (Tự động theo giờ thực tế: Sáng, Trưa, Chiều, Tối)
+  const [session, setSession] = useState<MealSession>(() => getLiveMealSession());
+  const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
+
+  // Update clock display (Realtime ticking every second)
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      setCurrentTimeStr(`${h}:${m}:${s}`);
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Sub-filters for specialized tabs
+  const [nhauSubFilter, setNhauSubFilter] = useState<'all' | 'lau-nuong' | 'oc-haisan' | 'bia-moi'>('all');
+  const [drinkSubFilter, setDrinkSubFilter] = useState<'all' | 'tra-sua' | 'cafe' | 'tra-traicay'>('all');
+
+  // Budget Filter (All, Presets, or Custom Input)
+  const [budget, setBudget] = useState<string>('all');
+  const [customPrice, setCustomPrice] = useState<string>('50');
+  const [caseTier, setCaseTier] = useState<'all' | number>('all');
+  const [sound, setSound] = useState(true);
+
+  // Items for the chosen category
+  const categoryItems = useMemo(() => {
+    return getCategoryItems(activeCategory);
+  }, [activeCategory]);
+
+  // Filtered items based on active category, session, sub-filter and budget
+  const eligibleItems = useMemo(() => {
+    let sessionFiltered = categoryItems;
+
+    // 1. Phân loại theo khung giờ phù hợp (Sáng, Trưa, Chiều nhẹ dạ dày, Tối & Đêm)
+    if (activeCategory === 'an-gi') {
+      sessionFiltered = categoryItems.filter(f => isFoodSuitableForSession(f, session));
+    } else if (activeCategory === 'nhau-gi') {
+      sessionFiltered = categoryItems.filter(f => isNhauSuitableForSession(f, session));
+    } else if (activeCategory === 'uong-gi') {
+      sessionFiltered = categoryItems.filter(f => isDrinkSuitableForSession(f, session));
+    }
+
+    if (!sessionFiltered.length) sessionFiltered = categoryItems;
+    let filtered = sessionFiltered;
+
+    // 2. Lọc theo sub-filter chuyên mục (Nhậu / Đồ uống)
+    if (activeCategory === 'nhau-gi' && nhauSubFilter !== 'all') {
+      if (nhauSubFilter === 'lau-nuong') {
+        const sub = filtered.filter(f => {
+          const n = f.name.toLowerCase();
+          return n.includes('lẩu') || n.includes('nướng') || n.includes('bbq') || n.includes('bò né') || n.includes('bò lúc lắc') || n.includes('bít tết') || n.includes('nhúng mẻ') || n.includes('thắng cố');
+        });
+        if (sub.length) filtered = sub;
+      } else if (nhauSubFilter === 'oc-haisan') {
+        const sub = filtered.filter(f => {
+          const n = f.name.toLowerCase();
+          return n.includes('ốc') || n.includes('hàu') || n.includes('hải sản') || n.includes('cá') || n.includes('sushi') || n.includes('nghêu') || n.includes('sò') || n.includes('tôm') || n.includes('mực');
+        });
+        if (sub.length) filtered = sub;
+      } else if (nhauSubFilter === 'bia-moi') {
+        const sub = filtered.filter(f => {
+          const n = f.name.toLowerCase();
+          return n.includes('bia') || n.includes('nem') || n.includes('đậu') || n.includes('chân gà') || n.includes('ngô') || n.includes('khoai') || n.includes('lạc') || n.includes('tóp mỡ') || n.includes('sụn') || n.includes('dồi') || n.includes('tai heo') || n.includes('cháy tỏi') || n.includes('dưa chuột') || n.includes('dạ dày') || n.includes('lòng') || n.includes('ba chỉ') || n.includes('ếch') || n.includes('gà') || n.includes('vịt') || n.includes('chim') || n.includes('rau') || n.includes('ngọn') || n.includes('nộm') || n.includes('gỏi') || n.includes('trâu') || n.includes('măng');
+        });
+        if (sub.length) filtered = sub;
+      }
+    } else if (activeCategory === 'uong-gi' && drinkSubFilter !== 'all') {
+      if (drinkSubFilter === 'tra-sua') {
+        const sub = filtered.filter(f => {
+          const n = f.name.toLowerCase();
+          return n.includes('trà sữa') || n.includes('matcha') || n.includes('cheese') || n.includes('latte') || n.includes('hojicha') || n.includes('cacao') || n.includes('trà sen') || n.includes('sữa tươi trân châu');
+        });
+        if (sub.length) filtered = sub;
+      } else if (drinkSubFilter === 'cafe') {
+        const sub = filtered.filter(f => {
+          const n = f.name.toLowerCase();
+          return n.includes('cà phê') || n.includes('cafe') || n.includes('espresso') || n.includes('americano') || n.includes('cappuccino') || n.includes('bạc xỉu');
+        });
+        if (sub.length) filtered = sub;
+      } else if (drinkSubFilter === 'tra-traicay') {
+        const sub = filtered.filter(f => {
+          const n = f.name.toLowerCase();
+          return n.includes('trà') || n.includes('nước') || n.includes('sinh tố') || n.includes('sữa chua') || n.includes('sâm') || n.includes('soda') || n.includes('rau má') || n.includes('sữa');
+        });
+        if (sub.length) filtered = sub;
+      }
+    }
+
+    // 3. Lọc theo ngân sách chi tiêu
+    if (budget !== 'all') {
+      if (budget === 'custom') {
+        const customVal = Number(customPrice);
+        if (customVal > 0) {
+          const customList = filtered.filter(f => Math.abs(f.price - customVal) <= 20 || f.price <= customVal);
+          if (customList.length) filtered = customList;
+        }
+      } else {
+        const target = Number(budget);
+        let budgetList = filtered;
+        if (target <= 35) budgetList = filtered.filter(f => f.price <= 40);
+        else if (target <= 50) budgetList = filtered.filter(f => f.price <= 60);
+        else if (target <= 75) budgetList = filtered.filter(f => f.price >= 35 && f.price <= 90);
+        else if (target <= 100) budgetList = filtered.filter(f => f.price >= 50 && f.price <= 120);
+        else budgetList = filtered.filter(f => f.price >= 80);
+        if (budgetList.length) filtered = budgetList;
+      }
+    }
+
+    // 4. Lọc theo cấp độ hòm (Case Tier / Rarity)
+    if (caseTier !== 'all') {
+      const tierFiltered = filtered.filter(f => f.rarity === caseTier);
+      if (tierFiltered.length > 0) {
+        filtered = tierFiltered;
+      }
+    }
+
+    return filtered.length ? filtered : sessionFiltered;
+  }, [categoryItems, activeCategory, session, nhauSubFilter, drinkSubFilter, budget, customPrice, caseTier]);
+
+  // Reel State (Bắt đầu với dải món được xáo trộn ngẫu nhiên đa dạng)
+  const [reel, setReel] = useState<{ food: Food; id: number }[]>(() => {
+    const initial = shuffleArray(getCategoryItems('an-gi'));
+    return initial.slice(0, 16).map((food, id) => ({ food, id }));
+  });
+  const [spinning, setSpinning] = useState(false);
+  const [visibleStart, setVisibleStart] = useState(0);
+
+  // Winner dialog state (Món Ăn)
+  const [winnerFood, setWinnerFood] = useState<Food | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Dish pagination state ("Xem tiếp" / Load more khi chọn Cả ngày)
+  const [visibleDishCount, setVisibleDishCount] = useState<number>(18);
+
+  // Tự động reset về 18 món khi thay đổi bất kỳ bộ lọc món nào
+  useEffect(() => {
+    setVisibleDishCount(18);
+  }, [activeCategory, session, nhauSubFilter, drinkSubFilter, budget, customPrice, caseTier]);
+
+  // Place Mode States (Chọn Quán - Đồng bộ với Chọn Món)
+  const [placeCategory, setPlaceCategory] = useState<'all' | 'an-chinh' | 'nhau-lau' | 'uong' | 'an-vat'>('all');
+  const [placeKeo, setPlaceKeo] = useState<PlaceKeoType>('all');
+  const [placeSession, setPlaceSession] = useState<MealSession>('all');
+  const [placeBudget, setPlaceBudget] = useState<string>('all');
+  const [placeCustomPrice, setPlaceCustomPrice] = useState<string>('50');
+
+  const [winnerPlace, setWinnerPlace] = useState<Place | null>(null);
+  const [placeModalOpen, setPlaceModalOpen] = useState(false);
+  const [placeSpinning, setPlaceSpinning] = useState(false);
+  const [placeVisibleStart, setPlaceVisibleStart] = useState(0);
+
+  // Toàn bộ 100% các quán ăn và cơ sở ẩm thực xác thực tại Xuân Hòa
+  const allPlaces = useMemo(() => {
+    return xuanHoaPlaces;
+  }, []);
+
+  // Eligible places filtered by Category, Kèo đi ăn, Meal Session, and Budget
+  const eligiblePlaces = useMemo(() => {
+    let list = allPlaces;
+
+    // 1. Phân loại theo nhóm quán
+    if (placeCategory === 'an-chinh') {
+      list = list.filter(p => 
+        p.category === 'fast_food' || 
+        p.category === 'restaurant' ||
+        p.name.includes('Cơm') || p.name.includes('Phở') || p.name.includes('Bún') || p.name.includes('Sủi Cảo') || p.name.includes('Bánh Xèo') || p.name.includes('Đậu')
+      );
+    } else if (placeCategory === 'nhau-lau') {
+      list = list.filter(p => 
+        p.category === 'pub' || 
+        p.name.includes('Trâu') || p.name.includes('Gà') || p.name.includes('Lợn') || p.name.includes('Lẩu') || p.name.includes('Ốc') || p.name.includes('Nhậu') || p.name.includes('Thịt')
+      );
+    } else if (placeCategory === 'uong') {
+      list = list.filter(p => 
+        p.category === 'cafe' || 
+        p.name.includes('Tea') || p.name.includes('Cafe') || p.name.includes('Trà') || p.id === 'xoi-com-185' || p.id === 'matcha-house-xuan-hoa'
+      );
+    } else if (placeCategory === 'an-vat') {
+      list = list.filter(p => 
+        p.id === 'banh-mi-bo-u' || p.id === 'tho-coii' || p.id === 'thuy-beo' || p.id === 'ruby-quan' || p.id === 'xoi-com-185' || p.id === 'gamitra-xuan-hoa' || p.id === 'tao-pho-chi-beo' || p.id === 'bep-thanh' || p.id === 'tra-chanh-zian' || p.id === 'mr-tea-xuan-hoa' || p.id === 'tiem-lan-phuong' || p.id === 'goky-xuan-hoa' || p.id === 'tram-du-de' || p.id === 'le-la-cafe' || p.id === 'dau-oi-xuan-hoa' || p.id === 'banh-xeo-co-hien' || p.id === 'vu-quynh-chi' || p.id === 'tiem-me-soc'
+      );
+    }
+
+    // 2. Lọc theo Kèo đi ăn (Hẹn hò / Ăn nhanh / Nhóm đông / Ship)
+    if (placeKeo !== 'all') {
+      const keoList = list.filter(p => isPlaceMatchKeo(p, placeKeo));
+      if (keoList.length) list = keoList;
+    }
+
+    // 3. Lọc theo khung giờ chuẩn xác (chỉ lọc khi placeSession !== 'all')
+    if (placeSession !== 'all') {
+      const sessionList = list.filter(p => isPlaceSuitableForSession(p, placeSession));
+      if (sessionList.length) list = sessionList;
+    }
+
+    // 4. Lọc theo ngân sách (Mức chi)
+    if (placeBudget !== 'all') {
+      if (placeBudget === 'custom') {
+        const val = Number(placeCustomPrice);
+        if (val > 0) {
+          const budgetList = list.filter(p => p.minPrice <= val * 1.3 && p.maxPrice >= val * 0.7);
+          if (budgetList.length) list = budgetList;
+        }
+      } else {
+        const target = Number(placeBudget);
+        let budgetList = list;
+        if (target <= 35) budgetList = list.filter(p => p.minPrice <= 40);
+        else if (target <= 50) budgetList = list.filter(p => p.minPrice <= 60);
+        else if (target <= 75) budgetList = list.filter(p => p.minPrice <= 90 && p.maxPrice >= 35);
+        else if (target <= 100) budgetList = list.filter(p => p.maxPrice >= 70);
+        else budgetList = list.filter(p => p.maxPrice >= 120);
+
+        if (budgetList.length) list = budgetList;
+      }
+    }
+
+    return list.length ? list : allPlaces;
+  }, [allPlaces, placeCategory, placeKeo, placeSession, placeBudget, placeCustomPrice]);
+
+  // Place Reel State (Bắt đầu với dải quán ngẫu nhiên đa dạng phong cách)
+  const [placeReel, setPlaceReel] = useState<{ place: Place; id: number }[]>(() => {
+    const shuffled = shuffleArray(allPlaces);
+    return shuffled.slice(0, 16).map((place, id) => ({ place, id }));
+  });
+
+  // Track animation references for Place Reel
+  const placeTrack = useRef<HTMLDivElement>(null);
+  const placeViewport = useRef<HTMLDivElement>(null);
+  const placePosition = useRef(-400);
+  const placeFrame = useRef(0);
+  const placeBusy = useRef(false);
+
+  const attachPlaceTrack = useCallback((node: HTMLDivElement | null) => {
+    placeTrack.current = node;
+    if (node) node.style.transform = `translate3d(${placePosition.current}px,0,0)`;
+  }, []);
+
+  // Sync place reel when eligible places change: Xáo trộn ngẫu nhiên toàn bộ danh sách quán
+  useEffect(() => {
+    if (placeSpinning || !eligiblePlaces.length) return;
+    const shuffled = shuffleArray(eligiblePlaces);
+    setPlaceReel(current => current.map((item, idx) => ({
+      id: item.id,
+      place: shuffled[idx % shuffled.length] || eligiblePlaces[0]
+    })));
+  }, [eligiblePlaces, placeSpinning]);
+
+  useEffect(() => () => cancelAnimationFrame(placeFrame.current), []);
+
+  // Audio Engine
+  const audio = useRef<CaseAudio | null>(null);
+  useEffect(() => {
+    const engine = new CaseAudio(basePath);
+    audio.current = engine;
+    engine.preload();
+    const hide = () => { if (document.hidden) engine.pause(); else engine.recover(); };
+    document.addEventListener('visibilitychange', hide);
+    return () => {
+      document.removeEventListener('visibilitychange', hide);
+      engine.dispose();
+      audio.current = null;
+    };
+  }, []);
+
+  // Track animation references
+  const track = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const position = useRef(-400);
+  const frame = useRef(0);
+  const busy = useRef(false);
+
+  const attachTrack = useCallback((node: HTMLDivElement | null) => {
+    track.current = node;
+    if (node) node.style.transform = `translate3d(${position.current}px,0,0)`;
+  }, []);
+
+  // Sync reel when eligible items change: Xáo trộn ngẫu nhiên toàn bộ danh sách món hợp lệ
+  useEffect(() => {
+    if (spinning || !eligibleItems.length) return;
+    const shuffled = shuffleArray(eligibleItems);
+    setReel(current => current.map((item, idx) => ({
+      id: item.id,
+      food: shuffled[idx % shuffled.length] || eligibleItems[0]
+    })));
+  }, [eligibleItems, spinning]);
+
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
+  // Master Spin function
+  const spinCase = () => {
+    if (busy.current || !eligibleItems.length || !track.current || !viewport.current) return;
+    audio.current?.unlock();
+    busy.current = true;
+
+    // Pick winner
+    const pool = eligibleItems.length ? eligibleItems : categoryItems;
+    const winner = pool[Math.floor(Math.random() * pool.length)];
+
+    const step = 254;
+    const tileWidth = 236;
+    const width = viewport.current.clientWidth;
+    const start = position.current;
+    const center = Math.floor((width / 2 - start) / step);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const profile = createSpinProfile(Math.random, reducedMotion);
+    const target = center + profile.tiles;
+    const end = width / 2 - tileWidth * stopFraction() - target * step;
+
+    const rightEdge = Math.ceil((width - start) / step) + 1;
+    const items = reel.filter(item => item.id >= center - Math.ceil(width / step) - 2 && item.id <= rightEdge);
+    const last = items.length ? Math.max(...items.map(item => item.id)) : 0;
+
+    let prevFood = items.length ? items[items.length - 1].food : null;
+    for (let id = last + 1; id <= target + 4; id++) {
+      let food: Food;
+      if (id === target) {
+        food = winner;
+      } else {
+        const poolWithoutPrev = pool.filter(f => f.name !== prevFood?.name);
+        const source = poolWithoutPrev.length ? poolWithoutPrev : pool;
+        food = source[Math.floor(Math.random() * source.length)];
+      }
+      prevFood = food;
+      items.push({ id, food });
+    }
+
+    flushSync(() => {
+      setReel(items);
+      setSpinning(true);
+    });
+
+    audio.current?.play('csgo_ui_crate_open');
+    const duration = profile.durationMs;
+    const started = performance.now();
+    let renderedStart = visibleStart;
+    let lastCell = Math.floor((start - width / 2) / step);
+
+    const animate = (now: number) => {
+      const progress = Math.max(0, Math.min(1, (now - started) / duration));
+      const next = start + (end - start) * spinProgress(progress, profile.friction);
+      position.current = next;
+
+      const firstVisible = Math.max(0, Math.floor(-next / step));
+      if (firstVisible - renderedStart >= 4 || firstVisible < renderedStart) {
+        renderedStart = Math.max(0, firstVisible - 2);
+        setVisibleStart(renderedStart);
+      }
+
+      if (track.current) track.current.style.transform = `translate3d(${next}px,0,0)`;
+
+      const cell = Math.floor((next - width / 2) / step);
+      if (cell !== lastCell) {
+        audio.current?.play('csgo_ui_crate_item_scroll');
+        lastCell = cell;
+      }
+
+      if (progress < 1) {
+        frame.current = requestAnimationFrame(animate);
+        return;
+      }
+
+      // Spin complete: Add EXP & Level theo độ hiếm món
+      const nextProf = addSpinExp(winner.rarity);
+      setProfile(nextProf);
+
+      busy.current = false;
+      setSpinning(false);
+      setWinnerFood(winner);
+      setDialogOpen(true);
+
+      const revealSounds = [
+        'item_reveal3_rare', 
+        'item_reveal4_mythical', 
+        'item_reveal5_legendary', 
+        'item_reveal6_ancient'
+      ] as const;
+      audio.current?.play(revealSounds[Math.min(winner.rarity, 3)]);
+    };
+
+    frame.current = requestAnimationFrame(animate);
+  };
+
+  // Master Spin function for Places (Quay Chọn Quán)
+  const spinPlace = () => {
+    if (placeBusy.current || !eligiblePlaces.length || !placeTrack.current || !placeViewport.current) return;
+    audio.current?.unlock();
+    placeBusy.current = true;
+
+    // Pick winner place
+    const pool = eligiblePlaces.length ? eligiblePlaces : allPlaces;
+    const winner = pool[Math.floor(Math.random() * pool.length)];
+
+    const step = 260;
+    const tileWidth = 242;
+    const width = placeViewport.current.clientWidth;
+    const start = placePosition.current;
+    const center = Math.floor((width / 2 - start) / step);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const profile = createPlaceSpinProfile(Math.random, reducedMotion);
+    const target = center + profile.tiles;
+    const end = width / 2 - tileWidth * placeStopFraction() - target * step;
+
+    const rightEdge = Math.ceil((width - start) / step) + 1;
+    const items = placeReel.filter(item => item.id >= center - Math.ceil(width / step) - 2 && item.id <= rightEdge);
+    const last = items.length ? Math.max(...items.map(item => item.id)) : 0;
+
+    let prevPlace = items.length ? items[items.length - 1].place : null;
+    for (let id = last + 1; id <= target + 4; id++) {
+      let place: Place;
+      if (id === target) {
+        place = winner;
+      } else {
+        const poolWithoutPrev = pool.filter(p => p.id !== prevPlace?.id);
+        const source = poolWithoutPrev.length ? poolWithoutPrev : pool;
+        place = source[Math.floor(Math.random() * source.length)];
+      }
+      prevPlace = place;
+      items.push({ id, place });
+    }
+
+    flushSync(() => {
+      setPlaceReel(items);
+      setPlaceSpinning(true);
+    });
+
+    audio.current?.play('csgo_ui_crate_open');
+    const duration = profile.durationMs;
+    const started = performance.now();
+    let renderedStart = placeVisibleStart;
+    let lastCell = Math.floor((start - width / 2) / step);
+
+    const animate = (now: number) => {
+      const progress = Math.max(0, Math.min(1, (now - started) / duration));
+      const next = start + (end - start) * placeSpinProgress(progress, profile.friction);
+      placePosition.current = next;
+
+      const firstVisible = Math.max(0, Math.floor(-next / step));
+      if (firstVisible - renderedStart >= 4 || firstVisible < renderedStart) {
+        renderedStart = Math.max(0, firstVisible - 2);
+        setPlaceVisibleStart(renderedStart);
+      }
+
+      if (placeTrack.current) placeTrack.current.style.transform = `translate3d(${next}px,0,0)`;
+
+      const cell = Math.floor((next - width / 2) / step);
+      if (cell !== lastCell) {
+        audio.current?.play('csgo_ui_crate_item_scroll');
+        lastCell = cell;
+      }
+
+      if (progress < 1) {
+        placeFrame.current = requestAnimationFrame(animate);
+        return;
+      }
+
+      // Spin complete: Add EXP & Level theo độ hiếm quán
+      const nextProf = addSpinExp(winner.rarity);
+      setProfile(nextProf);
+
+      placeBusy.current = false;
+      setPlaceSpinning(false);
+      setWinnerPlace(winner);
+      setPlaceModalOpen(true);
+
+      const revealSounds = [
+        'item_reveal3_rare', 
+        'item_reveal4_mythical', 
+        'item_reveal5_legendary', 
+        'item_reveal6_ancient'
+      ] as const;
+      audio.current?.play(revealSounds[Math.min(winner.rarity, 3)]);
+    };
+
+    placeFrame.current = requestAnimationFrame(animate);
+  };
+
+  const currentSessionObj = MEAL_SESSIONS.find(s => s.id === session) || MEAL_SESSIONS[1];
+  const expPercentage = Math.min(100, Math.round(((profile.exp % 150) / 150) * 100));
+
+  return (
+    <div className="site-shell">
+      {/* Header (Clean, Professional, No Emojis) */}
+      <header className="site-header">
+        <div className="header-inner">
+          <a href="#" className="brand-box">
+            <div className="brand-logo-mark">
+              XH
+            </div>
+            <div>
+              <div className="brand-name">
+                XUÂN HÒA <span>CÓ GÌ</span>
+              </div>
+              <div className="brand-tagline">
+                Cổng Ẩm Thực Phường Xuân Hòa
+              </div>
+            </div>
+          </a>
+
+          <div className="header-right">
+            <div className="live-time-pill">
+              <span className="live-dot" />
+              <span className="live-clock">{currentTimeStr || '15:30:00'}</span>
+              <span className="live-session-sep">·</span>
+              <span className="live-session-name">{currentSessionObj.label}</span>
+            </div>
+            <button 
+              className="sound-toggle-btn"
+              onClick={() => {
+                const nextSound = !sound;
+                setSound(nextSound);
+                audio.current?.setMuted(!nextSound);
+                audio.current?.unlock();
+              }}
+              title={sound ? 'Tắt âm thanh' : 'Bật âm thanh'}
+            >
+              {sound ? <Volume2 size={15} /> : <VolumeX size={15} />}
+              <span className="hidden sm:inline">{sound ? 'Âm thanh bật' : 'Tắt tiếng'}</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main className="main-wrapper">
+        {/* EXP Gourmet Status Bar (Tích điểm theo máy không cần đăng ký tài khoản) */}
+        <div className="exp-status-bar">
+          <div className="exp-level-badge">
+            <span className="level-tag">Cấp {profile.level}</span>
+            <span className="level-title">{profile.title}</span>
+          </div>
+          <div className="exp-progress-wrap">
+            <div className="exp-track">
+              <div className="exp-fill" style={{ width: `${expPercentage}%` }} />
+            </div>
+            <span className="exp-num">{profile.exp} / {profile.nextExp} EXP</span>
+          </div>
+          <div className="text-xs text-slate-400 font-semibold">
+            Đã mở: <strong className="text-amber-300">{profile.spinsCount}</strong> lượt
+          </div>
+        </div>
+
+        {/* 2-TAB MODE SWITCHER: CHỌN MÓN vs CHỌN QUÁN */}
+        <div className="main-mode-switcher">
+          <button
+            className={`mode-switch-btn ${mainMode === 'dish' ? 'active' : ''}`}
+            onClick={() => {
+              if (!spinning && !placeSpinning) {
+                setMainMode('dish');
+              }
+            }}
+            disabled={spinning || placeSpinning}
+          >
+            <div className="mode-btn-title-row">
+              <UtensilsCrossed size={18} className={mainMode === 'dish' ? 'text-amber-400' : 'text-slate-400'} />
+              <span>QUAY CHỌN MÓN</span>
+            </div>
+            <span className="mode-sub-tag">150+ món ngon · Lọc món theo bữa & ví tiền</span>
+          </button>
+
+          <button
+            className={`mode-switch-btn ${mainMode === 'place' ? 'active' : ''}`}
+            onClick={() => {
+              if (!spinning && !placeSpinning) {
+                setMainMode('place');
+              }
+            }}
+            disabled={spinning || placeSpinning}
+          >
+            <div className="mode-btn-title-row">
+              <Store size={18} className={mainMode === 'place' ? 'text-amber-400' : 'text-slate-400'} />
+              <span>QUAY CHỌN QUÁN</span>
+            </div>
+            <span className="mode-sub-tag">{allPlaces.length}+ quán thực tế · Lọc theo khung giờ & sở thích</span>
+          </button>
+        </div>
+
+        {/* Centralized Balanced Console */}
+        <section className="central-console">
+          {mainMode === 'dish' ? (
+            <>
+              {/* Row 1: Primary Category Segmented Tabs */}
+              <div className="category-nav-bar category-nav-bar-dish">
+                {MAIN_CATEGORIES.map(cat => (
+                  <button
+                    key={cat.id}
+                    className={`category-nav-tab ${activeCategory === cat.id ? 'active' : ''}`}
+                    onClick={() => {
+                      if (!spinning) {
+                        setActiveCategory(cat.id);
+                        setNhauSubFilter('all');
+                        setDrinkSubFilter('all');
+                        setBudget('all');
+                        setCaseTier('all');
+                      }
+                    }}
+                    disabled={spinning}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Row 2: Secondary Controls (Khung giờ / Phân loại & Mức giá) */}
+              <div className="sub-controls-row">
+                {activeCategory === 'an-gi' && (
+                  <div className="session-filter-group">
+                    <span className="control-label">Khung giờ:</span>
+                    {MEAL_SESSIONS.map(s => (
+                      <button
+                        key={s.id}
+                        className={`session-pill-btn ${session === s.id ? 'active' : ''}`}
+                        onClick={() => setSession(s.id)}
+                        disabled={spinning}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                    <button
+                      className={`session-pill-btn ${session === 'all' ? 'active' : ''}`}
+                      onClick={() => setSession('all')}
+                      disabled={spinning}
+                    >
+                      Cả ngày
+                    </button>
+                  </div>
+                )}
+
+                {activeCategory === 'nhau-gi' && (
+                  <div className="session-filter-group">
+                    <span className="control-label">Mồi nhậu:</span>
+                    <button
+                      className={`session-pill-btn ${nhauSubFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setNhauSubFilter('all')}
+                      disabled={spinning}
+                    >
+                      Tất cả ({categoryItems.length} món)
+                    </button>
+                    <button
+                      className={`session-pill-btn ${nhauSubFilter === 'lau-nuong' ? 'active' : ''}`}
+                      onClick={() => setNhauSubFilter('lau-nuong')}
+                      disabled={spinning}
+                    >
+                      Lẩu & Nướng
+                    </button>
+                    <button
+                      className={`session-pill-btn ${nhauSubFilter === 'oc-haisan' ? 'active' : ''}`}
+                      onClick={() => setNhauSubFilter('oc-haisan')}
+                      disabled={spinning}
+                    >
+                      Quán Ốc & Hải Sản
+                    </button>
+                    <button
+                      className={`session-pill-btn ${nhauSubFilter === 'bia-moi' ? 'active' : ''}`}
+                      onClick={() => setNhauSubFilter('bia-moi')}
+                      disabled={spinning}
+                    >
+                      Bia Hơi & Mồi Lai Rai
+                    </button>
+                  </div>
+                )}
+
+                {activeCategory === 'uong-gi' && (
+                  <div className="session-filter-group">
+                    <span className="control-label">Đồ uống:</span>
+                    <button
+                      className={`session-pill-btn ${drinkSubFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setDrinkSubFilter('all')}
+                      disabled={spinning}
+                    >
+                      Tất cả ({categoryItems.length} món)
+                    </button>
+                    <button
+                      className={`session-pill-btn ${drinkSubFilter === 'tra-sua' ? 'active' : ''}`}
+                      onClick={() => setDrinkSubFilter('tra-sua')}
+                      disabled={spinning}
+                    >
+                      Trà sữa & Cheese
+                    </button>
+                    <button
+                      className={`session-pill-btn ${drinkSubFilter === 'cafe' ? 'active' : ''}`}
+                      onClick={() => setDrinkSubFilter('cafe')}
+                      disabled={spinning}
+                    >
+                      Cà phê
+                    </button>
+                    <button
+                      className={`session-pill-btn ${drinkSubFilter === 'tra-traicay' ? 'active' : ''}`}
+                      onClick={() => setDrinkSubFilter('tra-traicay')}
+                      disabled={spinning}
+                    >
+                      Trà hoa quả & Sinh tố
+                    </button>
+                  </div>
+                )}
+
+                {/* Mức chi */}
+                <div className="budget-filter-group">
+                  <span className="control-label">Mức chi:</span>
+                  <select
+                    className="budget-select-pill"
+                    value={budget}
+                    onChange={e => setBudget(e.target.value)}
+                    disabled={spinning}
+                  >
+                    <option value="all">Tất cả mức giá</option>
+                    <option value="35">35.000đ (Bình dân)</option>
+                    <option value="50">50.000đ (Tiêu chuẩn)</option>
+                    <option value="75">75.000đ (Khá)</option>
+                    <option value="100">100.000đ (Lẩu nướng / Nhậu)</option>
+                    <option value="150">150.000đ+ (Đặc sản)</option>
+                    <option value="custom">Tự nhập giá...</option>
+                  </select>
+
+                  {budget === 'custom' && (
+                    <div className="custom-budget-input-wrap">
+                      <input 
+                        type="number" 
+                        min="15" 
+                        max="500" 
+                        step="5"
+                        className="custom-budget-input"
+                        value={customPrice}
+                        onChange={e => setCustomPrice(e.target.value)}
+                        disabled={spinning}
+                        title="Nhập số nghìn đồng (VD: 45)"
+                      />
+                      <span className="custom-budget-suffix">.000đ</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Row 3: Bộ Lọc Chọn Hòm Theo Cấp Độ (Case Tier Selector) */}
+              <div className="case-tier-selector-row">
+                <div className="case-tier-label">
+                  <Sparkles size={13} className="text-amber-400 inline mr-1" />
+                  <span>Cấp độ hòm:</span>
+                </div>
+                <div className="case-tier-pills">
+                  <button
+                    className={`case-tier-btn all ${caseTier === 'all' ? 'active' : ''}`}
+                    onClick={() => setCaseTier('all')}
+                    disabled={spinning}
+                    title="Hòm tự do gồm tất cả các cấp độ món"
+                  >
+                    <span className="tier-dot all" />
+                    🎲 Hòm Tự Do ({categoryItems.length})
+                  </button>
+                  <button
+                    className={`case-tier-btn tier-0 ${caseTier === 0 ? 'active' : ''}`}
+                    onClick={() => setCaseTier(0)}
+                    disabled={spinning}
+                    title="Món thường bình dân dưới 40k"
+                  >
+                    <span className="tier-dot tier-0" />
+                    🔵 Tiết Kiệm (≤40k)
+                  </button>
+                  <button
+                    className={`case-tier-btn tier-1 ${caseTier === 1 ? 'active' : ''}`}
+                    onClick={() => setCaseTier(1)}
+                    disabled={spinning}
+                    title="Món ngon tầm trung từ 41k đến 65k"
+                  >
+                    <span className="tier-dot tier-1" />
+                    🟣 Ăn Ngon (41k-65k)
+                  </button>
+                  <button
+                    className={`case-tier-btn tier-2 ${caseTier === 2 ? 'active' : ''}`}
+                    onClick={() => setCaseTier(2)}
+                    disabled={spinning}
+                    title="Món cực phẩm thịnh soạn từ 66k đến 100k"
+                  >
+                    <span className="tier-dot tier-2" />
+                    🌸 Cực Phẩm (66k-100k)
+                  </button>
+                  <button
+                    className={`case-tier-btn tier-3 ${caseTier === 3 ? 'active' : ''}`}
+                    onClick={() => setCaseTier(3)}
+                    disabled={spinning}
+                    title="Món tối mật mồi bén từ 101k đến 150k"
+                  >
+                    <span className="tier-dot tier-3" />
+                    🔴 Tối Mật (101k-150k)
+                  </button>
+                  <button
+                    className={`case-tier-btn tier-4 ${caseTier === 4 ? 'active' : ''}`}
+                    onClick={() => setCaseTier(4)}
+                    disabled={spinning}
+                    title="Mâm tiệc lẩu nướng đại tiệc trên 150k"
+                  >
+                    <span className="tier-dot tier-4" />
+                    🟡 Mâm Đại Tiệc (Trên 150k)
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* TAB CHỌN QUÁN: Đồng bộ phân loại, khung giờ & mức chi y như Chọn Món */
+            <>
+              {/* Row 1: Primary Place Category Segmented Tabs */}
+              <div className="category-nav-bar category-nav-bar-place">
+                <button
+                  className={`category-nav-tab ${placeCategory === 'all' ? 'active' : ''}`}
+                  onClick={() => {
+                    setPlaceCategory('all');
+                    setPlaceSession('all');
+                    setPlaceKeo('all');
+                    setPlaceBudget('all');
+                  }}
+                  disabled={placeSpinning}
+                >
+                  Tất Cả Quán ({allPlaces.length})
+                </button>
+                <button
+                  className={`category-nav-tab ${placeCategory === 'an-chinh' ? 'active' : ''}`}
+                  onClick={() => setPlaceCategory('an-chinh')}
+                  disabled={placeSpinning}
+                >
+                  Quán Cơm & Bún Phở
+                </button>
+                <button
+                  className={`category-nav-tab ${placeCategory === 'nhau-lau' ? 'active' : ''}`}
+                  onClick={() => setPlaceCategory('nhau-lau')}
+                  disabled={placeSpinning}
+                >
+                  Quán Nhậu & Lẩu Nướng
+                </button>
+                <button
+                  className={`category-nav-tab ${placeCategory === 'uong' ? 'active' : ''}`}
+                  onClick={() => setPlaceCategory('uong')}
+                  disabled={placeSpinning}
+                >
+                  Cafe & Đồ Uống
+                </button>
+                <button
+                  className={`category-nav-tab ${placeCategory === 'an-vat' ? 'active' : ''}`}
+                  onClick={() => setPlaceCategory('an-vat')}
+                  disabled={placeSpinning}
+                >
+                  Quán Ăn Vặt
+                </button>
+              </div>
+
+              {/* Row 2: Bộ Lọc Nút Bấm Kèo Đi Ăn (Hẹn hò / Ăn nhanh / Nhóm đông / Ship) */}
+              <div className="keo-filter-nav-bar">
+                <div className="keo-filter-label">
+                  <Sparkles size={13} className="text-amber-400 inline mr-1" />
+                  <span>Kèo đi ăn:</span>
+                </div>
+                <div className="keo-filter-pills">
+                  {PLACE_KEO_LIST.map(k => (
+                    <button
+                      key={k.id}
+                      className={`keo-pill-btn ${placeKeo === k.id ? 'active' : ''}`}
+                      onClick={() => setPlaceKeo(k.id)}
+                      disabled={placeSpinning}
+                      title={k.desc}
+                    >
+                      <span className="keo-icon">{k.icon}</span>
+                      <span className="keo-label">{k.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Row 3: Secondary Controls (Khung giờ & Mức chi) - Chuẩn theo Chọn Món */}
+              <div className="sub-controls-row">
+                <div className="session-filter-group">
+                  <span className="control-label">Khung giờ:</span>
+                  {MEAL_SESSIONS.map(s => (
+                    <button
+                      key={s.id}
+                      className={`session-pill-btn ${placeSession === s.id ? 'active' : ''}`}
+                      onClick={() => setPlaceSession(s.id)}
+                      disabled={placeSpinning}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                  <button
+                    className={`session-pill-btn ${placeSession === 'all' ? 'active' : ''}`}
+                    onClick={() => setPlaceSession('all')}
+                    disabled={placeSpinning}
+                  >
+                    Cả ngày
+                  </button>
+                </div>
+
+                {/* Mức chi */}
+                <div className="budget-filter-group">
+                  <span className="control-label">Mức chi:</span>
+                  <select
+                    className="budget-select-pill"
+                    value={placeBudget}
+                    onChange={e => setPlaceBudget(e.target.value)}
+                    disabled={placeSpinning}
+                  >
+                    <option value="all">Tất cả mức giá</option>
+                    <option value="35">35.000đ (Bình dân)</option>
+                    <option value="50">50.000đ (Tiêu chuẩn)</option>
+                    <option value="75">75.000đ (Khá)</option>
+                    <option value="100">100.000đ (Lẩu nướng / Nhậu)</option>
+                    <option value="150">150.000đ+ (Đặc sản)</option>
+                    <option value="custom">Tự nhập giá...</option>
+                  </select>
+
+                  {placeBudget === 'custom' && (
+                    <div className="custom-budget-input-wrap">
+                      <input 
+                        type="number" 
+                        min="15" 
+                        max="500" 
+                        step="5"
+                        className="custom-budget-input"
+                        value={placeCustomPrice}
+                        onChange={e => setPlaceCustomPrice(e.target.value)}
+                        disabled={placeSpinning}
+                        title="Nhập số nghìn đồng (VD: 50)"
+                      />
+                      <span className="custom-budget-suffix">.000đ</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* Case Roulette Reel Window */}
+        <section className="case-roulette-panel" aria-label="Vòng quay lựa chọn">
+          <div className="reel-window" ref={mainMode === 'dish' ? viewport : placeViewport}>
+            <div className="gold-needle-pointer" />
+            {mainMode === 'dish' ? (
+              <div className="reel-track" ref={attachTrack}>
+                {reel
+                  .filter(({ id }) => id >= visibleStart && id < visibleStart + 12)
+                  .map(({ food, id }) => (
+                    <div 
+                      key={id}
+                      className="reel-food-card"
+                      style={{
+                        left: id * 254,
+                        ['--rarity-color' as any]: rarityColors[food.rarity] || '#3B82F6'
+                      }}
+                      onClick={() => {
+                        if (!spinning) {
+                          setWinnerFood(food);
+                          setDialogOpen(true);
+                        }
+                      }}
+                    >
+                      <div className="reel-card-top-tag">
+                        {rarityNames[food.rarity]}
+                      </div>
+                      <div className="reel-card-art-area">
+                        <FoodImage food={food} size="md" />
+                      </div>
+                      <div className="reel-card-footer">
+                        <strong>{food.name}</strong>
+                        <span>{food.price}.000đ</span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="reel-track" ref={attachPlaceTrack}>
+                {placeReel
+                  .filter(({ id }) => id >= placeVisibleStart && id < placeVisibleStart + 12)
+                  .map(({ place, id }) => (
+                    <PlaceCard
+                      key={id}
+                      place={place}
+                      slot={id}
+                      isReel={true}
+                      onClick={() => {
+                        if (!placeSpinning) {
+                          setWinnerPlace(place);
+                          setPlaceModalOpen(true);
+                        }
+                      }}
+                    />
+                  ))}
+              </div>
+            )}
+            <div className="reel-fade-side left" />
+            <div className="reel-fade-side right" />
+          </div>
+        </section>
+
+        {/* CENTERED ACTION BUTTON (Đơn giản nhẹ nhàng theo phong cách Trưa nay ăn gì) */}
+        <div className="action-center-container">
+          {mainMode === 'dish' ? (
+            <button 
+              className="master-action-btn"
+              onClick={spinCase}
+              disabled={spinning || !eligibleItems.length}
+            >
+              {spinning ? (
+                <span className="flex items-center gap-2">
+                  <RotateCw size={18} className="animate-spin" />
+                  ĐANG CHỌN MÓN…
+                </span>
+              ) : winnerFood ? (
+                <span>QUAY TIẾP</span>
+              ) : (
+                <span>QUAY CHỌN MÓN</span>
+              )}
+            </button>
+          ) : (
+            <button 
+              className="master-action-btn"
+              onClick={spinPlace}
+              disabled={placeSpinning || !eligiblePlaces.length}
+            >
+              {placeSpinning ? (
+                <span className="flex items-center gap-2">
+                  <RotateCw size={18} className="animate-spin" />
+                  ĐANG CHỌN QUÁN…
+                </span>
+              ) : winnerPlace ? (
+                <span>QUAY TIẾP</span>
+              ) : (
+                <span>QUAY CHỌN QUÁN</span>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Grid Inventory Section */}
+        {mainMode === 'dish' ? (
+          <section className="inventory-section">
+            <div id="inventory-dish-anchor" style={{ position: 'relative', top: '-24px' }} />
+            <div className="inventory-heading-row">
+              <h2>
+                THỰC ĐƠN ĐỀ XUẤT <span>{eligibleItems.length} món</span>
+              </h2>
+              <span className="inventory-hint">
+                Bấm vào món bất kỳ để xem chi tiết & tìm quán tại Xuân Hòa
+              </span>
+            </div>
+
+            <div className="inventory-grid">
+              {eligibleItems.slice(0, visibleDishCount).map(food => (
+                <div 
+                  key={food.customId ?? food.image}
+                  className="catalog-food-card"
+                  style={{
+                    ['--rarity-color' as any]: rarityColors[food.rarity] || '#3B82F6'
+                  }}
+                  onClick={() => {
+                    setWinnerFood(food);
+                    setDialogOpen(true);
+                  }}
+                >
+                  <div className="catalog-card-art">
+                    <FoodImage food={food} size="md" />
+                  </div>
+                  <div className="catalog-card-details">
+                    <span className="catalog-category-tag">{food.sub || 'Món ngon Xuân Hòa'}</span>
+                    <strong className="catalog-item-name">{food.name}</strong>
+                    <span className="catalog-item-price">{food.price}.000đ</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {eligibleItems.length > 18 && (
+              <div className="inventory-pagination-bar">
+                <div className="pagination-info">
+                  <span>
+                    Đang hiển thị <strong>{Math.min(visibleDishCount, eligibleItems.length)}</strong> / <strong>{eligibleItems.length}</strong> món đề xuất
+                  </span>
+                  <div className="pagination-progress-track">
+                    <div 
+                      className="pagination-progress-fill" 
+                      style={{ width: `${Math.min(100, Math.round((Math.min(visibleDishCount, eligibleItems.length) / eligibleItems.length) * 100))}%` }} 
+                    />
+                  </div>
+                </div>
+                <div className="pagination-actions">
+                  {eligibleItems.length > visibleDishCount && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-load-more"
+                        onClick={() => setVisibleDishCount(prev => prev + 18)}
+                      >
+                        <ChevronDown size={18} />
+                        <span>Xem tiếp (+{Math.min(18, eligibleItems.length - visibleDishCount)} món nữa)</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-load-all"
+                        onClick={() => setVisibleDishCount(eligibleItems.length)}
+                      >
+                        Xem tất cả ({eligibleItems.length} món)
+                      </button>
+                    </>
+                  )}
+                  {visibleDishCount > 18 && (
+                    <button
+                      type="button"
+                      className="btn-collapse"
+                      onClick={() => {
+                        setVisibleDishCount(18);
+                        const el = document.getElementById('inventory-dish-anchor');
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                    >
+                      <ChevronUp size={16} />
+                      <span>Thu gọn (về 18 món)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        ) : (
+          <section className="inventory-section">
+            <div className="inventory-heading-row">
+              <h2>
+                DANH SÁCH ĐỊA ĐIỂM XÁC THỰC <span>{eligiblePlaces.length} quán</span>
+              </h2>
+              <span className="inventory-hint">
+                Bấm vào quán để xem địa chỉ, hotline, Google Maps và thực đơn đầy đủ
+              </span>
+            </div>
+
+            <div className="places-grid">
+              {eligiblePlaces.map(place => (
+                <PlaceCard 
+                  key={place.id}
+                  place={place}
+                  onClick={() => {
+                    setWinnerPlace(place);
+                    setPlaceModalOpen(true);
+                  }}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+      </main>
+
+      {/* Winner Modal (Món Ăn) */}
+      <WinnerDialog 
+        food={winnerFood}
+        isOpen={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onSpinAgain={spinCase}
+        allActiveFoods={eligibleItems}
+        onSelectFood={(f) => setWinnerFood(f)}
+      />
+
+      {/* Place Modal (Quán Ăn) */}
+      <PlaceModal 
+        place={winnerPlace}
+        isOpen={placeModalOpen}
+        onClose={() => setPlaceModalOpen(false)}
+        onSpinAgain={spinPlace}
+        allPlaces={allPlaces}
+        onSelectPlace={setWinnerPlace}
+      />
+
+      {/* Footer with Executive Management Info */}
+      <footer className="site-footer">
+        <div className="footer-inner">
+          <div className="footer-executive">
+            Quản lý nội dung & vận hành bởi MinhTT · 2026
+          </div>
+          <div>
+            Xuân Hòa Có Gì · Nền tảng chọn món & khám phá ẩm thực theo thời gian thực tại Phường Xuân Hòa.
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

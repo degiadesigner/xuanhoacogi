@@ -899,7 +899,7 @@ export default function Home() {
             {/* ========================================================
                 1. DESKTOP EXPERIENCE: Bàn điều khiển đầy đủ & hoành tráng
                 ======================================================== */}
-            <div className="hidden sm:block">
+            <div className="desktop-experience-deck">
               {/* Thanh Thống Kê Tổng Lượt Mở Hòm Sang Trọng (Khởi điểm 688) */}
               <GlobalSpinCounter count={globalSpinCount} isSpinning={spinning || placeSpinning} />
 
@@ -1259,7 +1259,7 @@ export default function Home() {
       {/* ========================================================
           2. MOBILE DEDICATED APP DECK: Tinh gọn 1 màn hình, 1-chạm
           ======================================================== */}
-      <div className="sm:hidden mobile-app-deck">
+      <div className="mobile-experience-deck">
         {/* Row 1: Mode Segmented Pill Switcher + Mini Counter Pill */}
         <div className="mobile-deck-top-row">
           <div className="mobile-mode-segmented">

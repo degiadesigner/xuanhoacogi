@@ -7936,15 +7936,40 @@ html, body {
   }
 }
 
-/* ========================================================
-   ADAPTIVE MOBILE UX: 1-TOUCH APP EXPERIENCE (max-width: 640px)
-   ======================================================== */
-.mobile-app-deck {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 6px 0 12px;
-  padding: 0 4px;
+/* ==========================================================================
+   STRICT ADAPTIVE DISPLAY: PC (>= 1024px) vs iPad/Mobile (< 1024px)
+   TUYỆT ĐỐI KHÔNG CHỒNG CHÉO GIAO DIỆN
+   ========================================================================== */
+@media (min-width: 1024px) {
+  .desktop-experience-deck {
+    display: block !important;
+  }
+  .mobile-experience-deck {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .desktop-experience-deck {
+    display: none !important;
+  }
+  .mobile-experience-deck {
+    display: flex !important;
+    flex-direction: column;
+    gap: 8px;
+    margin: 6px 0 12px;
+    padding: 0 4px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1023px) {
+  .mobile-experience-deck {
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
 }
 
 .mobile-deck-top-row {

@@ -6,10 +6,13 @@ import {
   Languages, 
   Volume2, 
   VolumeX, 
-  Heart, 
   BookOpen, 
   Check,
-  ExternalLink
+  ExternalLink,
+  MessageSquare,
+  User,
+  Compass,
+  Users
 } from 'lucide-react';
 
 interface SettingsMenuModalProps {
@@ -29,7 +32,7 @@ export function SettingsMenuModal({
   onOpenGuide,
   onOpenAbout,
 }: SettingsMenuModalProps) {
-  const [activeSubModal, setActiveSubModal] = useState<'none' | 'language'>('none');
+  const [activeSubModal, setActiveSubModal] = useState<'none' | 'language' | 'contact'>('none');
   const [currentLang, setCurrentLang] = useState<'vi' | 'en'>('vi');
 
   // Đóng bằng phím Escape
@@ -115,20 +118,17 @@ export function SettingsMenuModal({
             <span className="settings-menu-label">Hướng dẫn</span>
           </button>
 
-          {/* Ô 4: Cộng đồng -> Dẫn link trực tiếp đến GR Trà Đá XuHo */}
+          {/* Ô 4: Liên hệ với chúng tôi (Mở popup 3 kênh liên hệ) */}
           <button 
             type="button"
             className="settings-menu-card"
-            onClick={() => {
-              window.open('https://www.facebook.com/groups/397463820097107', '_blank');
-              onClose();
-            }}
-            title="Dẫn link trực tiếp đến Group Trà Đá XuHo"
+            onClick={() => setActiveSubModal('contact')}
+            title="Liên hệ với chúng tôi"
           >
             <div className="settings-menu-icon">
-              <Heart size={24} className="text-rose-400" />
+              <MessageSquare size={24} className="text-amber-400" />
             </div>
-            <span className="settings-menu-label">GR Trà Đá XuHo</span>
+            <span className="settings-menu-label">Liên hệ với chúng tôi</span>
           </button>
         </div>
 
@@ -164,6 +164,84 @@ export function SettingsMenuModal({
                     <span>🇬🇧 English (International)</span>
                     {currentLang === 'en' && <Check size={16} className="text-amber-400" />}
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= SUB-MODAL: LIÊN HỆ VỚI CHÚNG TÔI ================= */}
+        {activeSubModal === 'contact' && (
+          <div className="settings-submodal-overlay" onClick={() => setActiveSubModal('none')}>
+            <div className="settings-submodal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="settings-submodal-header">
+                <h3>Liên Hệ Với Chúng Tôi</h3>
+                <button type="button" onClick={() => setActiveSubModal('none')} aria-label="Đóng"><X size={16} /></button>
+              </div>
+              <div className="settings-submodal-body">
+                <div className="contact-options-list">
+                  {/* 1. Trang cá nhân: MinhTT */}
+                  <a 
+                    href="https://www.facebook.com/minhttvp/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="contact-option-card"
+                    title="Mở Facebook cá nhân Founder MinhTT"
+                  >
+                    <div className="contact-option-icon contact-icon-founder">
+                      <User size={20} />
+                    </div>
+                    <div className="contact-option-info">
+                      <div className="contact-option-title-row">
+                        <span className="contact-option-name">Trang cá nhân</span>
+                        <span className="contact-badge contact-badge-founder">Founder</span>
+                      </div>
+                      <span className="contact-option-desc">MinhTT (Người sáng lập)</span>
+                    </div>
+                    <ExternalLink size={16} className="contact-external-icon" />
+                  </a>
+
+                  {/* 2. Fanpage: Xuân Hòa Có Gì */}
+                  <a 
+                    href="https://www.facebook.com/xuanhoacogi"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="contact-option-card"
+                    title="Mở Fanpage Xuân Hòa Có Gì"
+                  >
+                    <div className="contact-option-icon contact-icon-page">
+                      <Compass size={20} />
+                    </div>
+                    <div className="contact-option-info">
+                      <div className="contact-option-title-row">
+                        <span className="contact-option-name">Fanpage chính thức</span>
+                        <span className="contact-badge contact-badge-page">Trang</span>
+                      </div>
+                      <span className="contact-option-desc">Xuân Hòa Có Gì</span>
+                    </div>
+                    <ExternalLink size={16} className="contact-external-icon" />
+                  </a>
+
+                  {/* 3. Group: GR Trà Đá XuHo */}
+                  <a 
+                    href="https://www.facebook.com/groups/397463820097107"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="contact-option-card"
+                    title="Tham gia Group Trà Đá XuHo"
+                  >
+                    <div className="contact-option-icon contact-icon-group">
+                      <Users size={20} />
+                    </div>
+                    <div className="contact-option-info">
+                      <div className="contact-option-title-row">
+                        <span className="contact-option-name">Group cộng đồng</span>
+                        <span className="contact-badge contact-badge-group">Nhóm</span>
+                      </div>
+                      <span className="contact-option-desc">GR Trà Đá XuHo</span>
+                    </div>
+                    <ExternalLink size={16} className="contact-external-icon" />
+                  </a>
                 </div>
               </div>
             </div>

@@ -7467,6 +7467,130 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 }
 
 /* ==========================================================================
+   CONTACT SUB-MODAL STYLING (LIÊN HỆ VỚI CHÚNG TÔI)
+   ========================================================================== */
+.contact-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contact-option-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.contact-option-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(245, 158, 11, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.contact-option-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.contact-icon-founder {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.1));
+  color: #F87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.contact-icon-page {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.1));
+  color: #60A5FA;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.contact-icon-group {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.1));
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.contact-option-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.contact-option-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contact-option-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #F1F5F9;
+}
+
+.contact-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.contact-badge-founder {
+  background: rgba(239, 68, 68, 0.2);
+  color: #FCA5A5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.contact-badge-page {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93C5FD;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.contact-badge-group {
+  background: rgba(245, 158, 11, 0.2);
+  color: #FDE68A;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.contact-option-desc {
+  font-size: 11.5px;
+  color: #94A3B8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contact-external-icon {
+  color: #64748B;
+  flex-shrink: 0;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.contact-option-card:hover .contact-external-icon {
+  color: #F59E0B;
+  transform: translate(2px, -2px);
+}
+
+/* ==========================================================================
    MASTER MOBILE & RESPONSIVE PERFECTION (XUÂN HÒA CÓ GÌ - PC TO MOBILE)
    ========================================================================== */
 

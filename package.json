@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/cookies.test.mjs tests/case-mechanics.test.mjs && node tests/personal-pool.cjs",
     "typecheck": "tsc --noEmit",
@@ -32,8 +32,7 @@
     "typescript": "7.0.2",
     "vite": "8.2.2"
   },
-  "packageManager": "pnpm@12.3.4",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=18.0.0"
   }
 }

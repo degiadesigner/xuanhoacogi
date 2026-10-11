@@ -227,6 +227,9 @@ export function getPlacePerPersonText(place: Place): string {
   if (place.id === 'bep-nha-bong') {
     return '~30k - 45k/người';
   }
+  if (place.id === 'cocokana-tra-trai-cay') {
+    return '~25k - 35k/người';
+  }
   const style = getPlaceStyleGroup(place);
   if (style === 'nhau-lau') {
     if (['trau-phi-xuyen', 'trau-gio-dong', 'trang-hai-san', 'nha-hang-468', 'lon-ga-xuyen-phi'].includes(place.id)) {
@@ -356,7 +359,8 @@ const SIGNBOARD_CUSTOM_LINES: Record<string, PlaceSignboardLines> = {
   'tra-chanh-bao-chau': { line1: 'TRÀ CHANH BẢO CHÂU', line2: 'TRÀ CHANH & ĂN VẶT' },
   'zun-food-tea': { line1: 'ZUN FOOD & TEA', line2: 'LÊ QUANG ĐẠO' },
   'my-ga-tan-linh-duong': { line1: 'MỲ GÀ TẦN', line2: 'LINH DƯƠNG' },
-  'bep-nha-bong': { line1: 'BẾP NHÀ BỐNG', line2: 'CƠM TẤM SƯỜN NƯỚNG' }
+  'bep-nha-bong': { line1: 'BẾP NHÀ BỐNG', line2: 'CƠM TẤM SƯỜN NƯỚNG' },
+  'cocokana-tra-trai-cay': { line1: 'COCOKANA', line2: 'TRÀ TRÁI CÂY TƯƠI' }
 };
 
 export function getPlaceSignboardLines(place: Place): PlaceSignboardLines {
@@ -6053,6 +6057,60 @@ export const xuanHoaPlaces: Place[] = [
     rarity: 1,
     quip: 'Bếp Nhà Bống tại Số 4A Ngõ 3 Phố Kim Đồng - "Thấy là muốn, Nghĩ là thèm"! Cơm tấm sườn nướng than hoa chỉ 30k thơm lừng từng miếng, cơm dẻo thịt mềm, má đùi gà nướng, cá mờm rim mắm tỏi, thịt chưng mắm tép đậm đà khó quên. Mở cửa 10h-13h & 18h-20h, hotline ship tận nơi 0812 516 606!',
     mealSessions: ['lunch', 'dinner']
+  },
+  {
+    id: 'cocokana-tra-trai-cay',
+    name: 'cocokana - Trà Trái Cây Tươi',
+    tagline: 'Tươi từng vị, chill từng giây • Trà trái cây tươi 100% hoa quả thực: Trà hồng lựu sương mai, Trà mận, Trà xoài chanh dây, Trà mãng cầu, Trà măng cụt, Trà nhãn atiso đỏ',
+    category: 'cafe',
+    zone: 'center',
+    distance: 'Đường Lê Quang Đạo, Đối diện trạm sạc Vin (~400m từ ĐHSP2)',
+    address: 'Đối diện trạm sạc Vin, Đường Lê Quang Đạo, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    priceRange: '25k - 35k',
+    minPrice: 25,
+    maxPrice: 35,
+    rating: 4.95,
+    reviewCount: 168,
+    imageUrl: 'cocokana_menu.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Take away & Nhận ship Trà trái cây tươi mát lạnh tận phòng quanh Xuân Hòa · Hotline 08.1900.0248 (0819 000 248)',
+    signatureDish: {
+      id: 'cocokana-tra-hong-luu-suong-mai',
+      name: 'Trà hồng lựu sương mai',
+      price: 35,
+      tag: 'Mới ra mắt & Bestseller',
+      serviceTag: 'both',
+      description: 'Trà hoa quả cao cấp: Hạt lựu đỏ tươi giòn ngọt mọng nước kết hợp nền trà thanh mát ướp lạnh, giải nhiệt ngày hè cực đỉnh.',
+      rarity: 3,
+    },
+    menu: [
+      { id: 'cocokana-tra-hong-luu-suong-mai', name: 'Trà hồng lựu sương mai', price: 35, tag: 'Mới & Bestseller', serviceTag: 'both', rarity: 3, description: 'Trà hồng lựu đỏ mọng nước giòn ngọt thanh tao, thức uống cao cấp tươi mát từng ngụm.' },
+      { id: 'cocokana-tra-cam-vang', name: 'Trà cam vàng', price: 30, tag: 'Mới ra mắt', serviceTag: 'both', rarity: 2, description: 'Cam vàng nhập khẩu tươi mọng lát dày, vị trà thanh ngọt tự nhiên dồi dào vitamin C.' },
+      { id: 'cocokana-tra-mang-cau', name: 'Trà mãng cầu', price: 30, tag: 'Bán chạy số 1', serviceTag: 'both', rarity: 2, description: 'Mãng cầu xiêm tươi dầm ngập ngụa, thịt mãng cầu dai ngọt dốt dốt chua dịu hòa quyện trà thơm ngát.' },
+      { id: 'cocokana-tra-mang-cut', name: 'Trà măng cụt', price: 30, tag: 'Hot trend', serviceTag: 'both', rarity: 2, description: 'Măng cụt tươi bóc múi múp míp trắng ngần, chua ngọt thanh mát lạ miệng cực cuốn.' },
+      { id: 'cocokana-tra-nhan-atiso-do', name: 'Trà nhãn atiso đỏ', price: 30, tag: 'Món tủ', serviceTag: 'both', rarity: 2, description: 'Hoa atiso đỏ lên màu ruby quyến rũ, chua thanh kết hợp cùi nhãn ngọt lịm giòn sần sật.' },
+      { id: 'cocokana-tra-trai-cay-nhiet-doi', name: 'Trà trái cây nhiệt đới', price: 30, tag: 'Đặc biệt', serviceTag: 'both', rarity: 2, description: 'Tổng hòa các loại quả nhiệt đới tươi: cam, chanh dây, xoài, dưa lưới ngập tràn topping trái cây.' },
+      { id: 'cocokana-tra-mit-nhan', name: 'Trà mít nhãn', price: 30, tag: 'Gây nghiện', serviceTag: 'both', rarity: 2, description: 'Múi mít vàng ươm xé sợi quyện cùi nhãn tươi giòn sần sật ngọt ngào thơm nức mũi.' },
+      { id: 'cocokana-tra-dac-rim-dua', name: 'Trà đác rim dứa', price: 30, tag: 'Topping khủng', serviceTag: 'both', rarity: 2, description: 'Hạt đác dẻo quánh rim dứa chua ngọt đậm đà, nhai sướng miệng cùng nước trà dứa thanh khiết.' },
+      { id: 'cocokana-tra-chom-chom-chanh-day', name: 'Trà chôm chôm chanh dây', price: 30, tag: 'Chua ngọt cuốn hút', serviceTag: 'both', rarity: 2, description: 'Chôm chôm giòn ngọt mọng nước kết hợp vị chua thanh kích thích vị giác của chanh dây tươi.' },
+      { id: 'cocokana-tra-nhan', name: 'Trà nhãn', price: 30, tag: 'Thanh ngọt', serviceTag: 'both', rarity: 2, description: 'Cùi nhãn lồng tươi dày cùi ngọt lịm thả ngập trong ly trà lài ướp lạnh.' },
+      { id: 'cocokana-tra-atiso-do', name: 'Trà atiso đỏ', price: 28, tag: 'Thanh lọc', serviceTag: 'both', rarity: 1, description: 'Trà hibicus hoa atiso đỏ vị chua thanh tự nhiên giải nhiệt và đẹp da.' },
+      { id: 'cocokana-tra-mit', name: 'Trà mít', price: 28, tag: 'Thơm lừng', serviceTag: 'both', rarity: 1, description: 'Mít tươi xé sợi thơm nức mũi quyện trà lài thanh tao.' },
+      { id: 'cocokana-tra-dao', name: 'Trà đào', price: 28, tag: 'Quốc dân', serviceTag: 'both', rarity: 1, description: 'Trà đào miếng giòn sần sật, hương đào thơm ngát ngọt dịu mát lạnh.' },
+      { id: 'cocokana-tra-man', name: 'Trà mận', price: 25, tag: 'Best giá 25k', serviceTag: 'both', rarity: 1, description: 'Mận tươi ngâm đỏ hồng quyến rũ, vị chua ngọt đậm đà cực đã khát.' },
+      { id: 'cocokana-tra-xoai-chanh-day', name: 'Trà xoài chanh dây', price: 25, tag: 'Chua ngọt bùng nổ', serviceTag: 'both', rarity: 1, description: 'Xoài cát chín thơm lừng kết hợp chanh dây tươi dồi dào năng lượng sảng khoái.' },
+      { id: 'cocokana-tra-oi', name: 'Trà ổi hồng', price: 25, tag: 'Thơm mát', serviceTag: 'both', rarity: 1, description: 'Ổi hồng thơm ngát ngọt thanh mát lịm, màu sắc bắt mắt.' },
+      { id: 'cocokana-tra-dua-luoi', name: 'Trà dưa lưới', price: 25, tag: 'Mát lạnh', serviceTag: 'both', rarity: 1, description: 'Dưa lưới tươi xanh mướt giòn ngọt thơm dịu hương thảo mộc.' },
+      { id: 'cocokana-tra-dua', name: 'Trà dứa', price: 25, tag: 'Giải khát đỉnh', serviceTag: 'both', rarity: 1, description: 'Dứa mật tươi chua ngọt thanh khiết, giải nhiệt tức thì trong ngày nóng bức.' },
+      { id: 'cocokana-tra-dua-chanh-day', name: 'Trà dứa chanh dây', price: 25, tag: 'Tươi mát', serviceTag: 'both', rarity: 1, description: 'Sự kết hợp hoàn hảo giữa dứa tươi và chanh dây chua ngọt sảng khoái.' }
+    ],
+    tags: ['cocokana', 'Trà trái cây', 'Trà trái cây tươi', 'Trà mận', 'Trà xoài chanh dây', 'Trà mãng cầu', 'Trà măng cụt', 'Trà ổi', 'Trà nhãn', 'Trà dưa lưới', 'Trà hồng lựu', 'Trà cam vàng', 'Đường Lê Quang Đạo', 'Đối diện trạm sạc Vin', '0819000248', '08.1900.0248', 'Take away', 'Ship trà'],
+    mapsQuery: 'Duong Le Quang Dao Xuan Hoa Phuc Yen Vinh Phuc',
+    phone: '0819 000 248',
+    openHours: '08:00 - 21:00',
+    rarity: 2,
+    quip: 'cocokana - Trà Trái Cây Tươi đối diện trạm sạc Vin, Lê Quang Đạo Xuân Hòa! "Tươi từng vị, chill từng giây" với 100% hoa quả thực cắt tươi mỗi ngày: Trà hồng lựu sương mai 35k, Mãng cầu, Măng cụt, Đác rim dứa, Nhãn atiso đỏ 30k, Trà mận, Trà ổi 25k. Phục vụ take away & ship tận nơi 8h00 - 21h00, Hotline 08.1900.0248!',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner']
   }
 ];
 
@@ -6877,6 +6935,24 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       date: 'Hôm qua',
       role: 'Dân bản địa Xuân Hòa',
       content: 'Suất cơm tấm sườn bì chả trứng 40k đầy đặn ăn no căng bụng. Chả trứng hấp mềm bùi thơm lừng, bì trộn thính sạch sẽ sần sật. Thử thêm đĩa thịt chưng mắm tép với cá mờm rim mắm tỏi ăn tốn cơm dã man. Mở cửa 2 ca trưa 10h-13h và tối 18h-20h, gọi hotline 0812516606 là có ngay!',
+    }
+  ],
+  'cocokana-tra-trai-cay': [
+    {
+      id: 'r_cocokana_1',
+      author: 'Lê Thùy Dung K49',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Trà trái cây tươi ở cocokana đối diện trạm sạc Vin đường Lê Quang Đạo uống nghiện luôn! Cốc trà mãng cầu với trà măng cụt 30k mà ngập ngụa cùi quả tươi giòn ngọt, vị trà thanh nhẹ không bị ngọt gắt sirô hóa chất. Quán đóng cốc đẹp mắt mang đi take away hoặc gọi ship qua hotline 0819000248 siêu nhanh!',
+    },
+    {
+      id: 'r_cocokana_2',
+      author: 'Trần Hoàng Long',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Dân văn phòng Phúc Yên',
+      content: 'Cực mê món Trà hồng lựu sương mai 35k mới ra mắt, hạt lựu đỏ tươi cắn nổ tanh tách ngọt lịm. Trà nhãn atiso đỏ màu đẹp lung linh, uống giải nhiệt cực tốt. Mở cửa từ 8h sáng tới 21h tối, địa chỉ ngay đối diện trạm sạc Vin Lê Quang Đạo rất dễ tìm!',
     }
   ]
 };

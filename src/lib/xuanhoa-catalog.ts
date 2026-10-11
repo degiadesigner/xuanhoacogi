@@ -7406,7 +7406,230 @@ export const cheXuanMaiItems: Food[] = [
   },
 ];
 
+
+// ============================================================================
+// COCOKANA - TRÀ TRÁI CÂY TƯƠI
+// Đối diện trạm sạc Vin, Đường Lê Quang Đạo, P. Xuân Hòa • Hotline: 08.1900.0248
+// ============================================================================
+export const cocokanaFruitTeaDishes: Food[] = [
+  // 1. Trà hồng lựu sương mai (35k) - Bestseller & Mới ra mắt
+  {
+    name: 'Trà hồng lựu sương mai',
+    sub: 'Hạt lựu đỏ mọng nước giòn ngọt thanh tao, thức uống cao cấp tươi mát • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 35,
+    image: -911,
+    customId: 'dish_cocokana_tra_hong_luu_suong_mai',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 3,
+    quip: 'Trà hồng lựu sương mai đỏ mọng hạt lựu tươi giòn ngọt cắn bung tỏa vị thanh khiết giải nhiệt đỉnh cao.',
+  },
+  // 2. Trà cam vàng (30k) - Mới ra mắt
+  {
+    name: 'Trà cam vàng',
+    sub: 'Cam vàng nhập khẩu tươi mọng lát dày dồi dào vitamin C • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 30,
+    image: -912,
+    customId: 'dish_cocokana_tra_cam_vang',
+    customImage: 'dish_tra_dao_cam_sa_bc_chuan.jpg',
+    rarity: 2,
+    quip: 'Lát cam vàng tươi dày mọng nước ngập trong trà lài thanh dịu, ngụm nào cũng bừng tỉnh sức sống.',
+  },
+  // 3. Trà mãng cầu (30k) - Bán chạy số 1
+  {
+    name: 'Trà mãng cầu',
+    sub: 'Mãng cầu xiêm dầm tươi ngập ngụa cùi ngọt dốt dốt chua dịu • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 30,
+    image: -913,
+    customId: 'dish_cocokana_tra_mang_cau',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 2,
+    quip: 'Mãng cầu tươi dầm đẫm cùi dẻo dai chua ngọt dịu dàng, món trà best-seller gây thương nhớ nhất quán.',
+  },
+  // 4. Trà măng cụt (30k) - Hot trend
+  {
+    name: 'Trà măng cụt',
+    sub: 'Măng cụt tươi bóc múi múp míp trắng ngần chua ngọt thanh mát • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 30,
+    image: -914,
+    customId: 'dish_cocokana_tra_mang_cut',
+    customImage: 'dish_tra_mang_cut.webp',
+    rarity: 2,
+    quip: 'Từng múi măng cụt tươi bóc vỏ mọng nước cắn ngập miệng hòa quyện trà thơm ngát cực bắt trend.',
+  },
+  // 5. Trà nhãn atiso đỏ (30k) - Món tủ
+  {
+    name: 'Trà nhãn atiso đỏ',
+    sub: 'Hoa atiso đỏ màu hồng ngọc ruby chua thanh quyện cùi nhãn ngọt lịm • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 30,
+    image: -915,
+    customId: 'dish_cocokana_tra_nhan_atiso_do',
+    customImage: 'dish_tra_dao_ruby.webp',
+    rarity: 2,
+    quip: 'Sắc hoa atiso đỏ ruby quyến rũ kết hợp cùi nhãn ngọt lịm giòn sần sật vừa đẹp mắt vừa thanh mát bổ dưỡng.',
+  },
+  // 6. Trà trái cây nhiệt đới (30k) - Đặc biệt
+  {
+    name: 'Trà trái cây nhiệt đới',
+    sub: 'Cam vàng, chanh dây, xoài, dưa lưới ngập tràn topping trái cây • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 30,
+    image: -916,
+    customId: 'dish_cocokana_tra_trai_cay_nhiet_doi',
+    customImage: 'dish_tra_trai_cay_tuoi.webp',
+    rarity: 2,
+    quip: 'Bản hòa ca của các loại quả nhiệt đới tươi rói: cam, chanh dây, xoài, dưa lưới ngập tràn topping.',
+  },
+  // 7. Trà mít nhãn (30k) - Gây nghiện
+  {
+    name: 'Trà mít nhãn',
+    sub: 'Múi mít vàng ươm xé sợi quyện cùi nhãn tươi giòn thơm nức mũi • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 30,
+    image: -917,
+    customId: 'dish_cocokana_tra_mit_nhan',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 2,
+    quip: 'Sự kết hợp độc đáo giữa mít chín thơm lừng và cùi nhãn ngọt giòn, hương vị đậm đà khó cưỡng.',
+  },
+  // 8. Trà đác rim dứa (30k) - Topping khủng
+  {
+    name: 'Trà đác rim dứa',
+    sub: 'Hạt đác dẻo dai rim dứa chua ngọt đậm đà nhai sướng miệng • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 30,
+    image: -918,
+    customId: 'dish_cocokana_tra_dac_rim_dua',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 2,
+    quip: 'Hạt đác rim dứa dẻo thơm nhai sần sật cực đã, cốt trà dứa chua ngọt thanh mát sảng khoái.',
+  },
+  // 9. Trà chôm chôm chanh dây (30k) - Cuốn hút
+  {
+    name: 'Trà chôm chôm chanh dây',
+    sub: 'Chôm chôm giòn ngọt mọng nước hòa vị chua thanh kích thích vị giác • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 30,
+    image: -919,
+    customId: 'dish_cocokana_tra_chom_chom_chanh_day',
+    customImage: 'dish_tra_trai_cay_tuoi.webp',
+    rarity: 2,
+    quip: 'Trái chôm chôm giòn ngọt mọng nước hòa quyện sốt chanh dây tươi chua thanh đánh thức mọi giác quan.',
+  },
+  // 10. Trà nhãn tươi (30k)
+  {
+    name: 'Trà nhãn tươi',
+    sub: 'Cùi nhãn lồng tươi dày cùi ngọt lịm ướp lạnh giải nhiệt • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 30,
+    image: -920,
+    customId: 'dish_cocokana_tra_nhan',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 2,
+    quip: 'Cùi nhãn lồng tươi ngọt đậm đà thả ngập trong ly trà lài ướp lạnh thơm ngát giải khát tức thì.',
+  },
+  // 11. Trà atiso đỏ (28k)
+  {
+    name: 'Trà atiso đỏ',
+    sub: 'Hoa hibicus atiso đỏ chua thanh mát lành thanh lọc cơ thể • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 28,
+    image: -921,
+    customId: 'dish_cocokana_tra_atiso_do',
+    customImage: 'dish_tra_dao_ruby.webp',
+    rarity: 1,
+    quip: 'Vị chua thanh mát lành tự nhiên của hoa atiso đỏ giúp giải nhiệt, thanh lọc cơ thể và đẹp da.',
+  },
+  // 12. Trà mít tươi (28k)
+  {
+    name: 'Trà mít tươi',
+    sub: 'Mít tươi xé sợi thơm nức mũi ngọt ngào quyện trà lài • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 28,
+    image: -922,
+    customId: 'dish_cocokana_tra_mit',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 1,
+    quip: 'Múi mít tươi xé sợi thơm nức mũi hòa vào vị trà thanh dịu tạo nên nét quyến rũ riêng biệt.',
+  },
+  // 13. Trà đào miếng (28k)
+  {
+    name: 'Trà đào miếng',
+    sub: 'Miếng đào giòn thơm ngọt thanh mát lạnh chuẩn vị quốc dân • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 28,
+    image: -923,
+    customId: 'dish_cocokana_tra_dao',
+    customImage: 'dish_tra_dao_cam_sa_bc_chuan.jpg',
+    rarity: 1,
+    quip: 'Trà đào chuẩn vị giải khát quốc dân, miếng đào vàng giòn thơm ngọt đượm vị thanh mát.',
+  },
+  // 14. Trà mận tươi (25k) - Best giá 25k
+  {
+    name: 'Trà mận tươi',
+    sub: 'Mận tươi ngâm vị chua ngọt đậm đà đỏ hồng bắt mắt mát lạnh • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 25,
+    image: -924,
+    customId: 'dish_cocokana_tra_man',
+    customImage: 'dish_tra_dao_ruby.webp',
+    rarity: 1,
+    quip: 'Mận tươi ngâm chua ngọt đậm đà, màu đỏ hồng quyến rũ uống giải khát ngày hè cực đã.',
+  },
+  // 15. Trà xoài chanh dây (25k)
+  {
+    name: 'Trà xoài chanh dây',
+    sub: 'Xoài cát chín thơm lừng kết hợp chanh dây chua ngọt tươi mát • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 25,
+    image: -925,
+    customId: 'dish_cocokana_tra_xoai_chanh_day',
+    customImage: 'dish_zun_tra_xoai_tuoi.jpg',
+    rarity: 1,
+    quip: 'Xoài cát ngọt lịm sánh quyện chanh dây chua thanh bùng nổ năng lượng tươi mới sảng khoái.',
+  },
+  // 16. Trà ổi hồng (25k)
+  {
+    name: 'Trà ổi hồng',
+    sub: 'Ổi hồng thơm ngát ngọt thanh mát lịm màu sắc bắt mắt • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 25,
+    image: -926,
+    customId: 'dish_cocokana_tra_oi',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 1,
+    quip: 'Hương ổi hồng thơm ngát dịu dàng cùng sắc hồng bắt mắt, vị ngọt thanh mát lạnh nhẹ nhàng.',
+  },
+  // 17. Trà dưa lưới (25k)
+  {
+    name: 'Trà dưa lưới',
+    sub: 'Dưa lưới tươi xanh ngọt lành giòn mát hương thảo mộc dịu • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 25,
+    image: -927,
+    customId: 'dish_cocokana_tra_dua_luoi',
+    customImage: 'dish_zun_tra_dua_luoi.jpg',
+    rarity: 1,
+    quip: 'Dưa lưới thơm thảo mộc dịu mát, ngọt thanh sảng khoái đánh tan cái nóng bức ngày hè.',
+  },
+  // 18. Trà dứa mật tươi (25k)
+  {
+    name: 'Trà dứa mật tươi',
+    sub: 'Dứa mật tươi chua ngọt thanh khiết dồi dào vitamin • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 25,
+    image: -928,
+    customId: 'dish_cocokana_tra_dua',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 1,
+    quip: 'Dứa mật tươi thái lát chua ngọt thơm lừng, thức uống giải nhiệt đỉnh chóp ngày nóng.',
+  },
+  // 19. Trà dứa chanh dây (25k)
+  {
+    name: 'Trà dứa chanh dây',
+    sub: 'Sự kết hợp hoàn hảo dứa tươi và chanh dây chua ngọt sảng khoái • cocokana Trà Trái Cây Tươi Lê Quang Đạo',
+    price: 25,
+    image: -929,
+    customId: 'dish_cocokana_tra_dua_chanh_day',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 1,
+    quip: 'Dứa mật ngọt thanh hòa cùng chanh dây đậm đà chua dịu, nhân đôi vị sảng khoái mát lành.',
+  },
+];
+
+export const cocokanaDishes = cocokanaFruitTeaDishes;
+
 export const uongGiItems: Food[] = [
+  cocokanaFruitTeaDishes[0],  // BESTSELLER COCOKANA: Trà hồng lựu sương mai (35k) đưa lên đầu
+  cocokanaFruitTeaDishes[2],  // BESTSELLER COCOKANA: Trà mãng cầu dầm tươi (30k) đưa lên đầu
+  cocokanaFruitTeaDishes[3],  // BESTSELLER COCOKANA: Trà măng cụt múi mập (30k) đưa lên đầu
+  cocokanaFruitTeaDishes[4],  // BESTSELLER COCOKANA: Trà nhãn atiso đỏ (30k) đưa lên đầu
   vanhDaiQuanItems[10],      // BESTSELLER VÀNH ĐAI QUÁN: Bia tháp tươi mát lạnh (85k) đưa lên đầu
   vanhDaiQuanItems[11],      // BESTSELLER VÀNH ĐAI QUÁN: Bia cốc tươi giải nhiệt (9k) đưa lên đầu
   nhungsCornerItems[5],      // BESTSELLER NHUNG'S CORNER: Cold Whisk (Matcha giòn) béo ngậy (35k) đưa lên đầu
@@ -7458,6 +7681,7 @@ export const uongGiItems: Food[] = [
   ...zunFoodTeaDrinkDishes,
   ...myGaTanLinhDuongDrinkDishes,
   ...bepNhaBongDrinkDishes,
+  ...cocokanaFruitTeaDishes,
   ...officialDrinkDishes
 ];
 
@@ -7786,6 +8010,17 @@ export function getDishConceptKey(food: Food): string {
   if (name.includes('bún bò tái')) return 'bun-bo-tai';
   if (name.includes('bún cua mọc')) return 'bun-cua-moc';
   if (name.includes('bún bò huế') && name.includes('đặc biệt')) return 'bun-bo-hue-dac-biet';
+    // Trà Trái Cây Tươi cocokana (Lê Quang Đạo)
+  if (name.includes('hồng lựu sương mai') || name.includes('hồng lựu')) return 'tra-hong-luu';
+  if (name.includes('mãng cầu')) return 'tra-mang-cau';
+  if (name.includes('măng cụt')) return 'tra-mang-cut';
+  if (name.includes('nhãn atiso') || name.includes('atiso đỏ')) return 'tra-atiso-do';
+  if (name.includes('đác rim dứa') || name.includes('đác rim')) return 'tra-dac-rim-dua';
+  if (name.includes('mít nhãn')) return 'tra-mit-nhan';
+  if (name.includes('chôm chôm chanh dây') || name.includes('chôm chôm')) return 'tra-chom-chom';
+  if (name.includes('cam vàng')) return 'tra-cam-vang';
+  if (name.includes('dưa lưới')) return 'tra-dua-luoi';
+  if (name.includes('ổi hồng')) return 'tra-oi-hong';
   if (name.includes('bún bò huế')) return 'bun-bo-hue';
   
   return name.split(' ').slice(0, 2).join(' ');

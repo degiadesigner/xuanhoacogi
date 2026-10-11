@@ -105,6 +105,29 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
     ]
   },
 
+    // cocokana - Trà Trái Cây Tươi (Lê Quang Đạo, Đối diện trạm sạc Vin - Hotline 08.1900.0248)
+  cocokana_tra_trai_cay: {
+    name: 'cocokana - Trà Trái Cây Tươi',
+    address: 'Đối diện trạm sạc Vin, Đường Lê Quang Đạo, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    phone: '0819 000 248',
+    mapsQuery: 'Duong Le Quang Dao Xuan Hoa Phuc Yen Vinh Phuc',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Take away & Nhận ship Trà trái cây tươi mát lạnh tận phòng quanh Xuân Hòa (8h00 - 21h00) · Hotline 08.1900.0248 (0819 000 248)',
+    notes: 'Quán trà trái cây tươi cocokana tại Đối diện trạm sạc Vin, Lê Quang Đạo, Xuân Hòa · Hotline 08.1900.0248 (0819 000 248) · Giờ mở cửa: 08:00 - 21:00 hàng ngày · Slogan: "Tươi từng vị, chill từng giây - Fresh Fruit • Good Mood" · 100% trái cây tươi thực: Trà hồng lựu sương mai 35k (Bestseller), Trà mãng cầu 30k, Trà măng cụt 30k, Trà nhãn atiso đỏ 30k, Trà đác rim dứa 30k, Trà trái cây nhiệt đới 30k, Trà mít nhãn 30k, Trà chôm chôm chanh dây 30k, Trà mận 25k, Trà xoài chanh dây 25k, Trà ổi hồng 25k, Trà dưa lưới 25k, Trà dứa 25k. Phục vụ take away & ship nhanh.',
+    menuHighlights: [
+      'Trà hồng lựu sương mai: 35.000đ (Bestseller)',
+      'Trà mãng cầu dầm tươi: 30.000đ | Trà măng cụt: 30.000đ',
+      'Trà nhãn atiso đỏ: 30.000đ | Trà trái cây nhiệt đới: 30.000đ',
+      'Trà đác rim dứa: 30.000đ | Trà mít nhãn: 30.000đ',
+      'Trà chôm chôm chanh dây: 30.000đ | Trà cam vàng: 30.000đ',
+      'Trà nhãn tươi: 30.000đ | Trà atiso đỏ: 28.000đ | Trà đào: 28.000đ',
+      'Trà mận tươi chua ngọt: 25.000đ (Best giá 25k)',
+      'Trà xoài chanh dây: 25.000đ | Trà ổi hồng: 25.000đ',
+      'Trà dưa lưới mát lạnh: 25.000đ | Trà dứa mật: 25.000đ'
+    ]
+  },
+
   my_ga_tan_linh_duong: {
     name: 'Mỳ Gà Tần Linh Dương (Giáp Năm CS2)',
     address: 'Cạnh nhà nghỉ Q2, Đường Lê Quang Đạo, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
@@ -2042,6 +2065,18 @@ export function getSpotForDish(dishName: string): SpotInfo {
     return xuanHoaSpots.trau_gio_dong;
   }
 
+  // cocokana - Trà Trái Cây Tươi: Lê Quang Đạo, đối diện trạm sạc Vin (Hotline 08.1900.0248)
+  if (
+    name.includes('cocokana') ||
+    name.includes('0819000248') ||
+    name.includes('08.1900.0248') ||
+    name.includes('hồng lựu sương mai') ||
+    (name.includes('trà trái cây tươi') && name.includes('lê quang đạo')) ||
+    (name.includes('đối diện trạm sạc vin') && name.includes('trà'))
+  ) {
+    return xuanHoaSpots.cocokana_tra_trai_cay;
+  }
+
   // ZUN Food & Tea: Lê Quang Đạo, KĐT Xuân Hòa (Hotline 0392 716 756)
   if (
     name.includes('zun') ||
@@ -3163,7 +3198,7 @@ export function getSimilarSpotsForDish(dishInput: Food | string, primarySpot?: S
     allText.includes('chè') || allText.includes('xuân mai') ||
     allText.includes("nhung's corner") || allText.includes('cold whisk') || allText.includes('matcha giòn') || allText.includes('hokkaido') ||
     allText.includes('bánh ngọt') || allText.includes('cheesecake') || allText.includes('gateaux') || allText.includes('bento') ||
-    allText.includes('tocotoco') || allText.includes('1975') || allText.includes('matcha house')
+    allText.includes('cocokana') || allText.includes('hồng lựu') || allText.includes('tocotoco') || allText.includes('1975') || allText.includes('matcha house')
   ) {
     const drinkGroup = [
       xuanHoaSpots.nhungs_corner,
@@ -3186,6 +3221,7 @@ export function getSimilarSpotsForDish(dishInput: Food | string, primarySpot?: S
       xuanHoaSpots.cafe_1975,
       xuanHoaSpots.xoai_corner,
       xuanHoaSpots.zun_food_tea,
+      xuanHoaSpots.cocokana_tra_trai_cay,
     ];
     return drinkGroup.filter(s => !primarySpot || s.name !== primarySpot.name).slice(0, 3);
   }

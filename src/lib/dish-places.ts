@@ -183,19 +183,21 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
     mapsQuery: '185 Nguyễn Văn Linh Xuân Hòa',
     verified: true,
     serviceMode: 'both',
-    deliveryNote: 'Nhận ship xôi cốm lá sen nóng hổi, trà sữa cốm & trà tươi tận nơi 24/7 (Grab/ShopeeFood) · Hotline 0343 475 672',
-    notes: 'Tiệm Mẹ Tít · 185 Nguyễn Văn Linh, P. Xuân Hòa · Hotline 0343 475 672 · Chủ nhân món đặc sản Xôi Cốm Sen Dừa gia truyền Xuân Hòa nức tiếng bọc lá sen 60k, kết hợp menu Trà & Trà Sữa hoa quả tươi 100% không dùng syrup hóa chất: Ôlong cốm yến mạch 40k, Cốm lá nếp 45k, Bơ già dừa non 40k, Cafe muối 30k, Việt quất lắc sữa 30k, Nước ép mix tươi 35k.',
+    deliveryNote: 'Nhận ship xôi cốm lá sen nóng hổi, trà mãng cầu & trà sữa cốm tận nơi 24/7 (Grab/ShopeeFood) · Hotline 0343 475 672',
+    notes: 'Tiệm Mẹ Tít · 185 Nguyễn Văn Linh, P. Xuân Hòa · Hotline 0343 475 672 · Best Seller số 1: Trà mãng cầu tươi dầm múi 30k & Trà sữa cốm đậm vị (Ôlong cốm yến mạch 40k, Cốm lá nếp 45k) · Đặc sản Xôi Cốm Sen Dừa gia truyền Xuân Hòa nức tiếng bọc lá sen 60k · Menu Trà & Trà Sữa hoa quả tươi 100% không dùng syrup hóa chất: Trà hoa quả nhiệt đới 35k, Thanh nhài dẻ cười 35k, Bơ già dừa non 40k, Cafe muối 30k, Việt quất lắc sữa 30k, Nước ép mix tươi 35k.',
     menuHighlights: [
+      'Trà mãng cầu tươi dầm múi: 30.000đ (⭐ Best Seller số 1)',
+      'Ôlong cốm yến mạch: 40.000đ (⭐ Best Seller - Trà sữa cốm)',
+      'Cốm lá nếp: 45.000đ (⭐ Best Seller - Trà sữa cốm)',
       'Xôi cốm sen dừa hộp 250gr lá sen: 60.000đ (Đặc sản gia truyền)',
-      'Ôlong cốm yến mạch: 40.000đ (Signature Trà sữa cốm)',
-      'Cốm lá nếp: 45.000đ | Lục long: 35.000đ',
-      'Bơ già dừa non: 40.000đ | Mây trắng lá nếp: 40.000đ',
+      'Trà hoa quả nhiệt đới tươi: 35.000đ | Trà xoài chanh leo: 30.000đ',
       'Thanh nhài dẻ cười: 35.000đ | Trà mãng cầu chanh leo: 40.000đ',
-      'Cafe muối béo ngậy: 30.000đ | Bạc xỉu: 30.000đ',
+      'Bơ già dừa non: 40.000đ | Mây trắng lá nếp: 40.000đ',
+      'Cafe muối béo ngậy: 30.000đ | Bạc xỉu ba tầng: 30.000đ',
       'Việt quất lắc sữa / Sữa tươi caramel: 30.000đ',
-      'Hồng trà sữa / Thái xanh sữa: 35.000đ',
+      'Hồng trà sữa / Thái xanh sữa / Lục long: 35.000đ',
       'Trà chanh nhài / Hồng trà kim quất: 15.000đ',
-      'Nước ép tươi mix (Cam, carot, dứa, táo): 35.000đ'
+      'Nước ép tươi mix (Cam, carot, dứa, táo): 35.000đ | Lựu ép: 40.000đ'
     ]
   },
 
@@ -2256,7 +2258,7 @@ export function getSpotForDish(dishName: string): SpotInfo {
     return xuanHoaSpots.lau_nuong_ba_muoi;
   }
 
-  // Tiệm Mẹ Tít: Xôi cốm sen dừa, ôlong cốm, cốm lá nếp, bơ già dừa non, mẹ tít, 185 Nguyễn Văn Linh
+  // Tiệm Mẹ Tít: Trà mãng cầu, Trà sữa cốm (Ôlong cốm, Cốm lá nếp), Xôi cốm sen dừa, 185 Nguyễn Văn Linh
   if (
     name.includes('tiệm mẹ tít') ||
     name.includes('mẹ tít') ||
@@ -2268,10 +2270,13 @@ export function getSpotForDish(dishName: string): SpotInfo {
     name.includes('0343 475 672') ||
     (name.includes('ôlong') && name.includes('cốm')) ||
     (name.includes('olong') && name.includes('cốm')) ||
+    (name.includes('trà sữa') && name.includes('cốm')) ||
+    (name.includes('tsua') && name.includes('cốm')) ||
     name.includes('cốm lá nếp') ||
     name.includes('bơ già dừa non') ||
     name.includes('thanh nhài dẻ cười') ||
-    name.includes('mây trắng lá nếp')
+    name.includes('mây trắng lá nếp') ||
+    (name.includes('mãng cầu') && !name.includes('cocokana'))
   ) {
     return xuanHoaSpots.xoi_com_185;
   }
@@ -2624,6 +2629,18 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
 
   if (name.includes('ép dứa') || name.includes('ép cam') || name.includes('ép dưa hấu')) {
     return [xuanHoaSpots.tram_du_de, xuanHoaSpots.le_la_cafe, xuanHoaSpots.xoi_com_185];
+  }
+
+  // Trà mãng cầu (Món best seller có tại Tiệm Mẹ Tít & cocokana)
+  if (name.includes('trà mãng cầu') || name.includes('mãng cầu')) {
+    if (customId.includes('cocokana') || sub.includes('cocokana')) return [xuanHoaSpots.cocokana_tra_trai_cay, xuanHoaSpots.xoi_com_185];
+    if (customId.includes('me_tit') || sub.includes('mẹ tít') || sub.includes('185')) return [xuanHoaSpots.xoi_com_185, xuanHoaSpots.cocokana_tra_trai_cay];
+    return [xuanHoaSpots.xoi_com_185, xuanHoaSpots.cocokana_tra_trai_cay];
+  }
+
+  // Trà sữa cốm (Ôlong cốm, Cốm lá nếp độc quyền Tiệm Mẹ Tít)
+  if (name.includes('trà sữa cốm') || name.includes('tsua cốm') || name.includes('ôlong cốm') || name.includes('cốm lá nếp')) {
+    return [xuanHoaSpots.xoi_com_185];
   }
 
     // 1. Phân giải chính xác qua customId & sub của món
@@ -3107,7 +3124,10 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
     name.includes('mẹ tít') ||
     name.includes('tiệm mẹ tít') ||
     name.includes('xôi cốm') ||
-    name.includes('ôlong cốm')
+    name.includes('ôlong cốm') ||
+    name.includes('cốm lá nếp') ||
+    name.includes('trà sữa cốm') ||
+    name.includes('tsua cốm')
   ) {
     return [xuanHoaSpots.xoi_com_185];
   }

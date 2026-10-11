@@ -4557,7 +4557,7 @@ export const xuanHoaPlaces: Place[] = [
   {
     id: 'xoi-com-185',
     name: 'Tiệm Mẹ Tít - Xôi Cốm Sen Dừa & Trà Sữa',
-    tagline: 'Đặc sản Xôi Cốm Sen Dừa gia truyền & Trà sữa, Trà tươi 100% không dùng syrup hóa chất',
+    tagline: 'Trà Mãng Cầu tươi 100% & Trà Sữa Cốm Best Seller • Đặc sản Xôi Cốm Sen Dừa gia truyền',
     category: 'fast_food',
     zone: 'center',
     distance: '185 Nguyễn Văn Linh (cách ĐHSP2 600m)',
@@ -4569,60 +4569,68 @@ export const xuanHoaPlaces: Place[] = [
     reviewCount: 310,
     imageUrl: 'tiem_me_tit_storefront.webp',
     serviceMode: 'both',
-    deliveryNote: 'Nhận ship xôi cốm lá sen nóng hổi, trà sữa cốm & trà hoa quả tươi tận nơi 24/7 (Grab/ShopeeFood) · Hotline 0343 475 672',
+    deliveryNote: 'Nhận ship trà mãng cầu tươi, trà sữa cốm béo ngậy & xôi cốm lá sen tận nơi 24/7 (Grab/ShopeeFood) · Hotline 0343 475 672',
     signatureDish: {
-      id: 'xoi-com-hop',
-      name: 'Xôi cốm sen dừa hộp 250gr lá sen',
-      price: 60,
-      tag: 'Đặc sản gia truyền',
+      id: 'mt-tra-mang-cau',
+      name: 'Trà mãng cầu tươi (100% thịt quả dầm đá)',
+      price: 30,
+      tag: 'Best Seller số 1',
       serviceTag: 'both',
-      description: 'Cốm nếp cái hoa vàng non dẻo quánh, hạt sen ninh bở bùi, dừa nạo giòn ngọt thơm nức mũi bọc trong lá sen tao nhã.',
+      description: 'Mãng cầu xiêm tươi chín tới dầm đá mát lạnh 100% không dùng syrup hóa chất, múi quả trắng ngần mọng nước, vị chua ngọt cực cuốn.',
       rarity: 4,
     },
     menu: [
-      { id: 'xoi-com-hop', name: 'Xôi cốm sen dừa hộp 250gr lá sen', price: 60, tag: 'Gia truyền 60k', serviceTag: 'both', description: 'Cốm nếp cái hoa vàng dẻo quánh, hạt sen bở tơi, dừa sợi giòn ngọt bọc lá sen' },
-      // === TRÀ HOA QUẢ TƯƠI 100% ===
+      // === BEST SELLER SỐ 1 & MÓN TỦ ===
+      { id: 'mt-tra-mang-cau', name: 'Trà mãng cầu tươi (100% thịt quả dầm đá)', price: 30, tag: 'Best Seller số 1', serviceTag: 'both', description: 'Mãng cầu xiêm tươi chín tới dầm đá mát lạnh, 100% hoa quả tươi không dùng syrup' },
+      { id: 'mt-olong-com', name: 'Ôlong cốm yến mạch', price: 40, tag: 'Best Seller (Trà sữa cốm)', serviceTag: 'both', description: 'Trà ôlong đậm vị hòa quyện cốm non dẻo thơm và yến mạch béo bùi giòn sần sật' },
+      { id: 'mt-com-la-nep', name: 'Cốm lá nếp thơm dẻo', price: 45, tag: 'Best Seller (Trà sữa cốm)', serviceTag: 'both', description: 'Trà sữa cốm thơm ngát hương lá nếp tự nhiên, béo ngậy sánh mịn khó cưỡng' },
+      { id: 'xoi-com-hop', name: 'Xôi cốm sen dừa hộp 250gr lá sen', price: 60, tag: 'Đặc sản gia truyền', serviceTag: 'both', description: 'Cốm nếp cái hoa vàng dẻo quánh, hạt sen bở tơi, dừa sợi giòn ngọt bọc lá sen' },
+
+      // === TRÀ HOA QUẢ TƯƠI 100% (KHÔNG DÙNG SYRUP) ===
       { id: 'mt-tra-chanh-nhai', name: 'Trà chanh nhài thanh khiết', price: 15, tag: 'Giải nhiệt 15k', serviceTag: 'both' },
       { id: 'mt-hong-tra-kim-quat', name: 'Hồng trà kim quất chua ngọt', price: 15, serviceTag: 'both' },
-      { id: 'mt-tra-mang-cau', name: 'Trà mãng cầu tươi', price: 30, tag: 'Bán chạy', serviceTag: 'both' },
       { id: 'mt-tra-tao-xanh', name: 'Trà táo xanh giòn mát', price: 30, serviceTag: 'both' },
       { id: 'mt-tra-dua-luoi', name: 'Trà dưa lưới thanh ngọt', price: 30, serviceTag: 'both' },
+      { id: 'mt-tra-dau-tam', name: 'Trà dâu tằm (theo mùa)', price: 30, serviceTag: 'both' },
       { id: 'mt-tra-xoai-chanh-leo', name: 'Trà xoài chanh leo', price: 30, serviceTag: 'both' },
-      { id: 'mt-tra-hoa-qua-nhiet-doi', name: 'Trà hoa quả nhiệt đới tươi', price: 35, tag: 'Món tủ', serviceTag: 'both' },
+      { id: 'mt-tra-hoa-qua-nhiet-doi', name: 'Trà hoa quả nhiệt đới tươi', price: 35, tag: 'Món tủ', serviceTag: 'both', description: 'Trái cây tươi theo mùa ngập tràn vitamin tươi mát' },
       { id: 'mt-thanh-nhai', name: 'Thanh nhài dẻ cười', price: 35, tag: 'Thanh mát', serviceTag: 'both', description: 'Trà nhài thơm ngát kết hợp hạt dẻ cười bùi bùi giòn ngọt độc đáo' },
-      { id: 'mt-bo-gia', name: 'Bơ già dừa non', price: 40, tag: 'Bestseller', serviceTag: 'both', description: 'Bơ sáp già béo ngậy xay mịn kết hợp dừa non tươi nạo sợi ngọt thanh' },
+      { id: 'mt-bo-gia', name: 'Bơ già dừa non', price: 40, tag: 'Béo ngậy', serviceTag: 'both', description: 'Bơ sáp già béo ngậy xay mịn kết hợp dừa non tươi nạo sợi ngọt thanh' },
       { id: 'mt-tra-mang-cau-chanh-leo', name: 'Trà mãng cầu chanh leo', price: 40, serviceTag: 'both' },
       { id: 'mt-may-trang-la-nep', name: 'Mây trắng lá nếp thơm béo', price: 40, serviceTag: 'both' },
-      // === TRÀ SỮA ĐẬM VỊ KHÔNG HOÁ CHẤT ===
-      { id: 'mt-viet-quat', name: 'Việt quất lắc sữa', price: 30, tag: 'Chua ngọt', serviceTag: 'both' },
+
+      // === TRÀ SỮA (THƠM BÉO ĐẬM VỊ) ===
+      { id: 'mt-viet-quat', name: 'Việt quất lắc sữa', price: 30, tag: 'Chua ngọt béo', serviceTag: 'both' },
       { id: 'mt-sua-tuoi-caramel', name: 'Sữa tươi caramel ngậy béo', price: 30, serviceTag: 'both' },
       { id: 'mt-hong-tra-sua', name: 'Hồng trà sữa truyền thống', price: 35, serviceTag: 'both' },
       { id: 'mt-thai-xanh-sua', name: 'Thái xanh sữa thơm mát', price: 35, serviceTag: 'both' },
       { id: 'mt-luc-long', name: 'Lục long đậm trà', price: 35, serviceTag: 'both' },
-      { id: 'mt-olong-com', name: 'Ôlong cốm yến mạch', price: 40, tag: 'Signature Drink', serviceTag: 'both', description: 'Trà ôlong đậm vị hòa quyện cốm non dẻo thơm và yến mạch béo bùi giòn sần sật' },
-      { id: 'mt-com-la-nep', name: 'Cốm lá nếp dẻo thơm', price: 45, tag: 'Best Seller', serviceTag: 'both', description: 'Trà sữa cốm thơm ngát hương lá nếp tự nhiên, béo ngậy sánh mịn khó cưỡng' },
       { id: 'mt-luc-tra-chuoi', name: 'Lục trà chuối ngọt dịu', price: 40, serviceTag: 'both' },
       { id: 'mt-luc-nhai-khoai', name: 'Lục nhài khoai dẻo thơm', price: 40, serviceTag: 'both' },
-      // === CAFE NGUYÊN CHẤT ===
+
+      // === CAFE ===
       { id: 'mt-cafe-nau-da', name: 'Cafe nâu đá đậm vị', price: 20, serviceTag: 'both' },
       { id: 'mt-cafe-muoi', name: 'Cafe muối kem béo ngậy', price: 30, tag: 'Đậm đà', serviceTag: 'both', description: 'Cà phê nguyên chất đậm vị phủ lớp kem muối mằn mặn béo ngậy chuẩn vị' },
       { id: 'mt-bac-xiu', name: 'Bạc xỉu ba tầng ngọt êm', price: 30, serviceTag: 'both' },
       { id: 'mt-phin-caramel', name: 'Phin cafe caramel thơm ngậy', price: 30, serviceTag: 'both' },
-      // === NƯỚC ÉP NGUYÊN CHẤT 100% ===
+
+      // === NƯỚC ÉP (TRÁI CÂY TƯƠI) ===
       { id: 'mt-nuoc-ep-dua-hau', name: 'Nước dưa hấu / dứa ép tươi', price: 30, serviceTag: 'both' },
+      { id: 'mt-nuoc-ep-dua-vang', name: 'Nước ép dưa vàng thơm mát', price: 30, serviceTag: 'both' },
       { id: 'mt-nuoc-ep-mix', name: 'Nước ép mix tươi (Cam, carot, dứa, táo)', price: 35, tag: '100% Tươi', serviceTag: 'both', description: 'Trái cây tươi ép nguyên chất không dùng syrup bổ sung vitamin' },
       { id: 'mt-nuoc-ep-luu', name: 'Lựu ép nguyên chất (theo mùa)', price: 40, serviceTag: 'both' },
-      // === TOPPING THÊM ===
+
+      // === TOPPING ===
       { id: 'mt-top-thach-dua', name: 'Topping: Thạch dừa giòn / Hạt nổ củ năng', price: 10, serviceTag: 'both' },
       { id: 'mt-top-kem-muoi', name: 'Topping: Thêm kem muối / hạt dẻ béo ngậy', price: 10, serviceTag: 'both' },
       { id: 'mt-top-tran-chau', name: 'Topping: Trân châu dẻo / Trân châu trắng', price: 5, serviceTag: 'both' }
     ],
-    tags: ['Tiệm Mẹ Tít', 'Mẹ Tít', '185 Nguyễn Văn Linh', 'Xôi cốm sen dừa', 'Ôlong cốm', 'Cốm lá nếp', 'Trà sữa', 'Ăn vặt', 'ĐHSP2'],
+    tags: ['Tiệm Mẹ Tít', 'Mẹ Tít', '185 Nguyễn Văn Linh', 'Trà mãng cầu', 'Trà sữa cốm', 'Xôi cốm sen dừa', 'Ôlong cốm', 'Cốm lá nếp', 'Trà hoa quả tươi', 'Ăn vặt', 'ĐHSP2'],
     mapsQuery: '185 Nguyễn Văn Linh Xuân Hòa',
     phone: '0343 475 672',
     openHours: '07:00 - 23:00 hàng ngày',
     rarity: 4,
-    quip: 'Tiệm Mẹ Tít tại 185 Nguyễn Văn Linh - Chủ nhân món Xôi cốm sen dừa gia truyền nức tiếng cùng menu Trà sữa cốm, Bơ già dừa non và Trà tươi 100% cực mê!',
+    quip: 'Tiệm Mẹ Tít tại 185 Nguyễn Văn Linh - Trà mãng cầu tươi dầm múi & Trà sữa cốm (Ôlong cốm yến mạch, Cốm lá nếp) chuẩn vị Best Seller số 1 cùng đặc sản Xôi cốm sen dừa gia truyền bọc lá sen 60k!',
     mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'drink']
   },
   {
@@ -6331,7 +6339,7 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       rating: 5,
       date: 'Sáng nay',
       role: 'Dân bản địa Xuân Hòa',
-      content: 'Xôi cốm sen dừa ở Tiệm Mẹ Tít 185 Nguyễn Văn Linh chuẩn vị gia truyền nức tiếng! Hạt cốm dẻo quánh xanh mướt, hạt sen ninh bở bùi ngậy và dừa tươi nạo giòn ngọt thơm lừng. Hộp bọc lá sen giữ ấm rất lâu.',
+      content: 'Trà mãng cầu ở Tiệm Mẹ Tít 185 Nguyễn Văn Linh đúng chuẩn Best Seller số 1! Mãng cầu xiêm xé múi trắng ngần mọng nước dầm đá mát lạnh, vị chua ngọt tự nhiên không hoá chất syrup, ăn cùng hộp xôi cốm sen dừa lá sen 60k dẻo quánh là đỉnh của chóp.',
     },
     {
       id: 'rxc185-2',
@@ -6339,7 +6347,7 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       rating: 5,
       date: 'Hôm qua',
       role: 'Sinh viên ĐHSP2',
-      content: 'Tiệm Mẹ Tít có món Ôlong cốm yến mạch với Cốm lá nếp 40k-45k ngon đỉnh thực sự, uống cùng hộp xôi cốm sen dừa là chuẩn bài. Gọi hotline 0343 475 672 quán ship tận cổng trường nhanh thoăn thoắt!',
+      content: 'Tiệm Mẹ Tít có món Trà sữa cốm chuẩn Best Seller: Ôlong cốm yến mạch và Cốm lá nếp 40k-45k thơm béo đậm vị ngập tràn cốm dẻo quánh. Gọi hotline 034.347.5672 quán ship tận cổng trường nhanh thoăn thoắt!',
     }
   ],
   'le-la-cafe': [

@@ -33,39 +33,54 @@ export const xoiComSpecialItem: Food = {
 };
 
 export const meTitDrinkItems: Food[] = [
+  // 1. Trà mãng cầu tươi (30k) - ⭐ BEST SELLER SỐ 1 TIỆM MẸ TÍT
+  {
+    name: 'Trà mãng cầu tươi',
+    sub: '⭐ Best Seller Số 1 • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8801,
+    customId: 'dish_tra_mang_cau_me_tit',
+    customImage: 'dish_tra_mang_cau_me_tit_hd.jpg',
+    rarity: 0,
+    quip: 'Mãng cầu xiêm tươi chín tới xé múi trắng ngần dầm mát lạnh 100% không dùng syrup hóa chất, chua ngọt thanh mát cực cuốn.',
+  },
+  // 2. Ôlong cốm yến mạch (40k) - ⭐ BEST SELLER TRÀ SỮA CỐM MẸ TÍT
   {
     name: 'Ôlong cốm yến mạch',
-    sub: 'Tiệm Mẹ Tít • 185 Nguyễn Văn Linh',
+    sub: '⭐ Best Seller Trà Sữa Cốm • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
     price: 40,
     image: -350,
     customId: 'dish_olong_com_me_tit',
     customImage: 'dish_tra_sua_com_me_tit.webp',
     rarity: 0,
-    quip: 'Trà ôlong đậm đà kết hợp cốm non dẻo quánh thơm nồng và yến mạch béo bùi giòn sần sật.',
+    quip: 'Trà ôlong đậm đà kết hợp cốm non dẻo thơm và yến mạch béo bùi giòn sần sật chuẩn vị trà sữa cốm Tiệm Mẹ Tít.',
   },
+  // 3. Cốm lá nếp (45k) - ⭐ BEST SELLER TRÀ SỮA CỐM MẸ TÍT
   {
     name: 'Cốm lá nếp',
-    sub: 'Tiệm Mẹ Tít • 185 Nguyễn Văn Linh',
+    sub: '⭐ Best Seller Trà Sữa Cốm • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
     price: 45,
     image: -351,
     customId: 'dish_com_la_nep_me_tit',
     customImage: 'dish_com_la_nep_me_tit.webp',
     rarity: 0,
-    quip: 'Trà sữa cốm tươi xanh ngát hương lá nếp tự nhiên, béo ngậy ngọt êm mê đắm lòng người.',
+    quip: 'Trà sữa cốm xanh ngọc bích thơm ngát hương lá nếp tự nhiên, béo ngậy ngọt êm mê đắm lòng người.',
   },
+  // 4. Trà hoa quả nhiệt đới tươi (35k)
   {
-    name: 'Bơ già dừa non',
-    sub: 'Tiệm Mẹ Tít • 185 Nguyễn Văn Linh',
-    price: 40,
-    image: 529,
-    customId: 'dish_bo_gia_dua_non_me_tit',
+    name: 'Trà hoa quả nhiệt đới tươi',
+    sub: '100% Trái cây tươi • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 35,
+    image: -8802,
+    customId: 'dish_tra_hoa_qua_nhiet_doi_me_tit',
+    customImage: 'dish_tra_hoa_qua_nhiet_doi_me_tit.jpg',
     rarity: 0,
-    // atlas 529
-    quip: 'Bơ sáp già béo ngậy xay mịn kết hợp dừa non tươi nạo sợi giòn ngọt thơm lừng.',
+    quip: 'Trái cây tươi theo mùa ngập tràn vitamin tươi mát hòa cùng cốt trà hoa thơm lành.',
   },
+  // 5. Thanh nhài dẻ cười (35k)
   {
     name: 'Thanh nhài dẻ cười',
-    sub: 'Tiệm Mẹ Tít • 185 Nguyễn Văn Linh',
+    sub: 'Thanh mát độc đáo • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
     price: 35,
     image: -353,
     customId: 'dish_thanh_nhai_de_cuoi_me_tit',
@@ -73,15 +88,258 @@ export const meTitDrinkItems: Food[] = [
     rarity: 0,
     quip: 'Trà hoa nhài thanh khiết thơm mát kết hợp hạt dẻ cười bùi bùi giòn ngọt cực lạ miệng.',
   },
+  // 6. Bơ già dừa non (40k)
+  {
+    name: 'Bơ già dừa non',
+    sub: 'Béo ngậy sánh mịn • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 40,
+    image: -8803,
+    customId: 'dish_bo_gia_dua_non_me_tit',
+    customImage: 'dish_tra_sua_cute_me_tit.webp',
+    rarity: 0,
+    quip: 'Bơ sáp già béo ngậy xay mịn kết hợp dừa non tươi nạo sợi giòn ngọt thơm lừng.',
+  },
+  // 7. Việt quất lắc sữa (30k)
   {
     name: 'Việt quất lắc sữa',
-    sub: 'Tiệm Mẹ Tít • 185 Nguyễn Văn Linh',
+    sub: 'Trà sữa chua ngọt • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
     price: 30,
     image: -531,
     customId: 'dish_viet_quat_lac_sua_me_tit',
     customImage: 'dish_viet_quat_lac_sua_me_tit.webp',
     rarity: 0,
     quip: 'Việt quất tươi lắc sữa béo thơm chua ngọt mát lành giải nhiệt ngày hè cực đã.',
+  },
+  // 8. Sữa tươi caramel (30k)
+  {
+    name: 'Sữa tươi caramel ngậy béo',
+    sub: 'Trà sữa thơm béo • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8804,
+    customId: 'dish_sua_tuoi_caramel_me_tit',
+    customImage: 'dish_sua_tuoi_tran_chau_zian.webp',
+    rarity: 0,
+    quip: 'Sữa tươi béo ngậy hòa quyện caramel ngọt thơm chuẩn vị.',
+  },
+  // 9. Hồng trà sữa truyền thống (35k)
+  {
+    name: 'Hồng trà sữa truyền thống',
+    sub: 'Trà sữa đậm vị • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 35,
+    image: -8805,
+    customId: 'dish_hong_tra_sua_me_tit',
+    customImage: 'dish_hong_tra_sua.webp',
+    rarity: 0,
+    quip: 'Cốt hồng trà đậm đà kết hợp sữa thơm béo ngậy chuẩn gu truyền thống.',
+  },
+  // 10. Thái xanh sữa (35k)
+  {
+    name: 'Thái xanh sữa thơm mát',
+    sub: 'Trà sữa thanh mát • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 35,
+    image: -8806,
+    customId: 'dish_thai_xanh_sua_me_tit',
+    customImage: 'dish_tra_quat_thai_xanh_chuan.jpg',
+    rarity: 0,
+    quip: 'Trà Thái xanh thơm lừng kết hợp sữa béo ngậy mát lạnh.',
+  },
+  // 11. Lục long đậm trà (35k)
+  {
+    name: 'Lục long đậm trà',
+    sub: 'Trà sữa đậm vị • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 35,
+    image: -8807,
+    customId: 'dish_luc_long_me_tit',
+    customImage: 'dish_zun_tra_olong_sua_tran_chau.jpg',
+    rarity: 0,
+    quip: 'Hương trà ôlong và lục trà đậm vị đượm hương lưu luyến.',
+  },
+  // 12. Lục trà chuối ngọt dịu (40k)
+  {
+    name: 'Lục trà chuối ngọt dịu',
+    sub: 'Hương vị mới lạ • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 40,
+    image: -8808,
+    customId: 'dish_luc_tra_chuoi_me_tit',
+    customImage: 'dish_tra_sua_soh.webp',
+    rarity: 0,
+    quip: 'Vị lục trà thanh kết hợp hương chuối ngọt ngào độc đáo khó quên.',
+  },
+  // 13. Lục nhài khoai dẻo thơm (40k)
+  {
+    name: 'Lục nhài khoai dẻo thơm',
+    sub: 'Thơm bùi đậm vị • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 40,
+    image: -8809,
+    customId: 'dish_luc_nhai_khoai_me_tit',
+    customImage: 'dish_che_khoai_deo.webp',
+    rarity: 0,
+    quip: 'Trà hoa nhài thanh mát kết hợp vị khoai dẻo bùi béo ngọt êm.',
+  },
+  // 14. Trà chanh nhài thanh khiết (15k)
+  {
+    name: 'Trà chanh nhài thanh khiết',
+    sub: 'Giải nhiệt 15k • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 15,
+    image: -8810,
+    customId: 'dish_tra_chanh_nhai_me_tit',
+    customImage: 'dish_thilan_tra_chanh_hd.jpg',
+    rarity: 0,
+    quip: 'Trà nhài thơm ngát kết hợp chanh tươi mát lạnh giải khát bình dân giá chỉ 15k.',
+  },
+  // 15. Hồng trà kim quất (15k)
+  {
+    name: 'Hồng trà kim quất chua ngọt',
+    sub: 'Giải nhiệt 15k • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 15,
+    image: -8811,
+    customId: 'dish_hong_tra_kim_quat_me_tit',
+    customImage: 'dish_zun_tra_chanh_quat.jpg',
+    rarity: 0,
+    quip: 'Hồng trà đậm vị hòa quyện quất tươi chua thanh dịu ngọt đã khát tức thì.',
+  },
+  // 16. Trà táo xanh giòn mát (30k)
+  {
+    name: 'Trà táo xanh giòn mát',
+    sub: '100% Trái cây tươi • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8812,
+    customId: 'dish_tra_tao_xanh_me_tit',
+    customImage: 'dish_tra_trai_cay_tuoi.webp',
+    rarity: 0,
+    quip: 'Táo xanh tươi giòn ngọt dịu mát hòa quyện cùng vị trà thơm thanh.',
+  },
+  // 17. Trà dưa lưới thanh ngọt (30k)
+  {
+    name: 'Trà dưa lưới thanh ngọt',
+    sub: '100% Trái cây tươi • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8813,
+    customId: 'dish_tra_dua_luoi_me_tit',
+    customImage: 'dish_zun_tra_dua_luoi.jpg',
+    rarity: 0,
+    quip: 'Dưa lưới tươi mọng ngọt thanh dầm mát lạnh sảng khoái ngày nắng.',
+  },
+  // 18. Trà dâu tằm theo mùa (30k)
+  {
+    name: 'Trà dâu tằm theo mùa',
+    sub: 'Trái cây tươi theo mùa • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8814,
+    customId: 'dish_tra_dau_tam_me_tit',
+    customImage: 'dish_tra_dau_nhung_chuan.jpg',
+    rarity: 0,
+    quip: 'Dâu tằm tươi chín mọng dầm cùng cốt trà hoa thơm mát ngọt lành.',
+  },
+  // 19. Trà xoài chanh leo (30k)
+  {
+    name: 'Trà xoài chanh leo',
+    sub: '100% Trái cây tươi • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8815,
+    customId: 'dish_tra_xoai_chanh_leo_me_tit',
+    customImage: 'dish_zun_tra_xoai_tuoi.jpg',
+    rarity: 0,
+    quip: 'Xoài cát vàng tươi thơm lừng kết hợp vị chua thanh mát của chanh leo tươi.',
+  },
+  // 20. Trà mãng cầu chanh leo (40k)
+  {
+    name: 'Trà mãng cầu chanh leo',
+    sub: 'Best Seller Mix • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 40,
+    image: -8816,
+    customId: 'dish_tra_mang_cau_chanh_leo_me_tit',
+    customImage: 'dish_tra_mang_cau_me_tit_hd.jpg',
+    rarity: 0,
+    quip: 'Mãng cầu xiêm tươi xé múi kết hợp chanh leo vàng óng chua ngọt gấp đôi sảng khoái.',
+  },
+  // 21. Mây trắng lá nếp (40k)
+  {
+    name: 'Mây trắng lá nếp thơm béo',
+    sub: 'Kem béo thơm ngậy • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 40,
+    image: -8817,
+    customId: 'dish_may_trang_la_nep_me_tit',
+    customImage: 'dish_com_la_nep_me_tit.webp',
+    rarity: 0,
+    quip: 'Lớp kem mây béo ngậy thơm nức mùi lá nếp tự nhiên sánh mịn khó quên.',
+  },
+  // 22. Cafe muối kem béo ngậy (30k)
+  {
+    name: 'Cafe muối kem béo ngậy',
+    sub: 'Cà phê đậm đà • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8818,
+    customId: 'dish_cafe_muoi_me_tit',
+    customImage: 'dish_cafe_muoi_me_tit.webp',
+    rarity: 0,
+    quip: 'Cà phê nguyên chất đậm vị phủ lớp kem muối béo ngậy mằn mặn chuẩn gu.',
+  },
+  // 23. Cafe nâu đá đậm vị (20k)
+  {
+    name: 'Cafe nâu đá đậm vị',
+    sub: 'Cà phê phin truyền thống • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 20,
+    image: -8819,
+    customId: 'dish_cafe_nau_da_me_tit',
+    customImage: 'dish_cafe_nau_da.webp',
+    rarity: 0,
+    quip: 'Cà phê phin truyền thống đậm vị hòa quyện sữa đặc thơm ngọt đậm đà.',
+  },
+  // 24. Bạc xỉu ba tầng ngọt êm (30k)
+  {
+    name: 'Bạc xỉu ba tầng ngọt êm',
+    sub: 'Cà phê thơm ngậy • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8820,
+    customId: 'dish_bac_xiu_me_tit',
+    customImage: 'dish_zun_cafe_bac_xiu.jpg',
+    rarity: 0,
+    quip: 'Bạc xỉu ba tầng sữa thơm ngọt êm ái quyện chút đắng nhẹ của cà phê.',
+  },
+  // 25. Phin cafe caramel (30k)
+  {
+    name: 'Phin cafe caramel thơm ngậy',
+    sub: 'Hương vị caramel • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8821,
+    customId: 'dish_phin_caramel_me_tit',
+    customImage: 'dish_cafe_1975_clean.webp',
+    rarity: 0,
+    quip: 'Cà phê phin hòa cùng caramel thơm ngậy đậm đà cuốn hút.',
+  },
+  // 26. Nước ép mix tươi (Cam, carot, dứa, táo) (35k)
+  {
+    name: 'Nước ép mix tươi (Cam, carot, dứa, táo)',
+    sub: '100% Trái cây tươi • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 35,
+    image: -8822,
+    customId: 'dish_nuoc_ep_mix_me_tit',
+    customImage: 'dish_tra_trai_cay.webp',
+    rarity: 0,
+    quip: 'Nước ép 4 loại quả tươi ép nguyên chất không thêm đường hay syrup, bổ sung vitamin.',
+  },
+  // 27. Lựu ép nguyên chất (40k)
+  {
+    name: 'Lựu ép nguyên chất (theo mùa)',
+    sub: '100% Trái cây tươi • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 40,
+    image: -8823,
+    customId: 'dish_nuoc_ep_luu_me_tit',
+    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    rarity: 0,
+    quip: 'Lựu đỏ tươi ép nguyên chất mọng nước ngọt thanh chống oxy hóa cực tốt.',
+  },
+  // 28. Nước dưa hấu / dứa ép tươi (30k)
+  {
+    name: 'Nước dưa hấu / dứa ép tươi',
+    sub: '100% Trái cây tươi • Tiệm Mẹ Tít 185 Nguyễn Văn Linh',
+    price: 30,
+    image: -8824,
+    customId: 'dish_nuoc_ep_dua_hau_me_tit',
+    customImage: 'dish_sua_chua_hoa_qua.webp',
+    rarity: 0,
+    quip: 'Trái dưa hấu hoặc dứa tươi ép lấy nước thanh mát giải nhiệt tức thì.',
   },
 ];
 
@@ -7995,6 +8253,10 @@ export const cocokanaFruitTeaDishes: Food[] = [
 export const cocokanaDishes = cocokanaFruitTeaDishes;
 
 export const uongGiItems: Food[] = [
+  meTitDrinkItems[0],         // BESTSELLER SỐ 1 TIỆM MẸ TÍT: Trà mãng cầu tươi (30k) đưa lên đầu
+  meTitDrinkItems[1],         // BESTSELLER TIỆM MẸ TÍT: Ôlong cốm yến mạch (40k) - Trà sữa cốm đưa lên đầu
+  meTitDrinkItems[2],         // BESTSELLER TIỆM MẸ TÍT: Cốm lá nếp (45k) - Trà sữa cốm đưa lên đầu
+  meTitDrinkItems[3],         // TIỆM MẸ TÍT: Trà hoa quả nhiệt đới tươi (35k)
   cocokanaFruitTeaDishes[0],  // BESTSELLER COCOKANA: Trà hồng lựu sương mai (35k) đưa lên đầu
   cocokanaFruitTeaDishes[2],  // BESTSELLER COCOKANA: Trà mãng cầu dầm tươi (30k) đưa lên đầu
   cocokanaFruitTeaDishes[3],  // BESTSELLER COCOKANA: Trà măng cụt múi mập (30k) đưa lên đầu
@@ -8110,6 +8372,15 @@ export function getAllCatalogFoods(): CatalogFoodItem[] {
 // Trích xuất mã nhận diện concept món ăn (chuẩn hóa định danh món độc bản, tránh trùng lặp)
 export function getDishConceptKey(food: Food): string {
   const name = food.name.toLowerCase();
+  // Tiệm Mẹ Tít (185 Nguyễn Văn Linh)
+  if (name.includes('xôi cốm sen dừa')) return 'me-tit-xoi-com-sen-dua';
+  if (name.includes('mãng cầu') && (name.includes('mẹ tít') || (food.sub && food.sub.includes('Mẹ Tít')))) return 'me-tit-tra-mang-cau';
+  if (name.includes('ôlong cốm yến mạch')) return 'me-tit-olong-com-yen-mach';
+  if (name.includes('cốm lá nếp')) return 'me-tit-com-la-nep';
+  if (name.includes('thanh nhài dẻ cười')) return 'me-tit-thanh-nhai-de-cuoi';
+  if (name.includes('bơ già dừa non') && (name.includes('mẹ tít') || (food.sub && food.sub.includes('Mẹ Tít')))) return 'me-tit-bo-gia-dua-non';
+  if (name.includes('mây trắng lá nếp')) return 'me-tit-may-trang-la-nep';
+
   // Quán Cô Loan & Bánh Tráng Nhà BOOM
   if (name.includes('set 3 ngăn')) return 'boom-set-3-ngan';
   if (name.includes('trứng lòng đào') && name.includes('bánh tráng')) return 'boom-cuon-trung-long-dao';

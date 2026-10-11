@@ -6583,7 +6583,278 @@ export const nhungsCornerItems: Food[] = [
   },
 ];
 
+// ============================================================================
+// QUÁN CÔ LOAN - ĂN VẶT & MÌ CAY (SỐ 12 NGÕ 8 NGUYỄN VĂN LINH)
+// Hotline: 0363 919 378 · 0986 617 822 • Mì cay 7 cấp độ, Cơm trộn, Phở cuốn, Mỳ Ý, Cơm gà
+// ============================================================================
+export const quanCoLoanDishes: Food[] = [
+  {
+    name: 'Mì cay bò Mỹ (Quán Cô Loan)',
+    sub: 'Mì cay 7 cấp độ thịt bò Mỹ mềm ngọt kim chi nấm kim châm • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 40,
+    image: -3101,
+    customId: 'dish_coloan_my_cay_bo',
+    customImage: 'dish_coloan_my_cay.webp',
+    rarity: 2,
+    quip: 'Niêu mì cay sôi sục nghi ngút khói, thịt bò Mỹ mềm ngọt đậm đà nước lẩu kim chi chua cay ấm lòng.',
+  },
+  {
+    name: 'Mì cay hải sản (Quán Cô Loan)',
+    sub: 'Tôm mực tươi rói giòn sần sật mỳ cay 7 cấp độ • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 45,
+    image: -3102,
+    customId: 'dish_coloan_my_cay_hai_san',
+    customImage: 'dish_canteen_my_cay_hai_san.jpg',
+    rarity: 2,
+    quip: 'Hải sản tôm mực tươi ngon dai giòn hòa cùng vị cay nồng xé lưỡi đậm chất sinh viên.',
+  },
+  {
+    name: 'Mì cay thập cẩm hải sản (Quán Cô Loan)',
+    sub: 'Đầy ắp tôm mực bò Mỹ sườn sụn xúc xích kim chi • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 50,
+    image: -3103,
+    customId: 'dish_coloan_my_cay_thap_cam',
+    customImage: 'dish_canteen_my_cay_thap_cam_chuan.jpg',
+    rarity: 3,
+    quip: 'Đại tiệc mì cay thập cẩm đỉnh chóp với topping tràn trề ăn đã miệng no căng rốn.',
+  },
+  {
+    name: 'Mì sườn sụn thập cẩm (Quán Cô Loan)',
+    sub: 'Sườn sụn chặt nhỏ ninh giòn sần sật kim chi chua cay • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 45,
+    image: -3104,
+    customId: 'dish_coloan_my_cay_suon_sun',
+    customImage: 'dish_canteen_my_cay_thap_cam_chuan.jpg',
+    rarity: 2,
+    quip: 'Sườn sụn ninh vừa tới giòn sần sật trong niêu đất sôi ùng ục, cay tê kích thích vị giác.',
+  },
+  {
+    name: 'Cơm trộn thập cẩm bò (Quán Cô Loan)',
+    sub: 'Cơm trộn thố đá bò xào trứng lòng đào sốt Gochujang • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 35,
+    image: -3105,
+    customId: 'dish_coloan_com_tron_bo',
+    customImage: 'dish_dau_oi_com_tron.webp',
+    rarity: 2,
+    quip: 'Thố cơm xèo xèo nóng hổi, trộn đều sốt ớt cay ngọt cùng thịt bò và trứng lòng đào béo ngậy.',
+  },
+  {
+    name: 'Cơm cuộn Kimbap chiên giòn (Quán Cô Loan)',
+    sub: 'Kimbap chiên xù giòn rụm sốt bơ mè mayonnaise • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 40,
+    image: -3106,
+    customId: 'dish_coloan_kimbap_chien',
+    customImage: 'dish_lh_kimbap_chien.jpg',
+    rarity: 2,
+    quip: 'Kimbap chiên vỏ ngoài vàng rụm giòn tan, nhân bên trong dẻo thơm ngậy ngậy chấm sốt bơ mê ly.',
+  },
+  {
+    name: 'Bánh gạo Tobokki đặc biệt (Quán Cô Loan)',
+    sub: 'Bánh gạo cay ngọt chả cá phô mai kéo sợi • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 50,
+    image: -3107,
+    customId: 'dish_coloan_tobokki_dac_biet',
+    customImage: 'dish_coloan_tokbokki.webp',
+    rarity: 3,
+    quip: 'Từng miếng bánh gạo dẻo dai đẫm sốt tương ớt Hàn Quốc ấm nồng cùng phô mai béo ngậy.',
+  },
+  {
+    name: 'Phở cuốn đặc biệt (Quán Cô Loan)',
+    sub: 'Bánh phở mỏng cuộn bò xào lăn rau sống nước mắm chua ngọt • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 50,
+    image: -3108,
+    customId: 'dish_coloan_pho_cuon_dac_biet',
+    customImage: 'dish_coloan_pho_cuon.jpg',
+    rarity: 3,
+    quip: 'Mẹt phở cuốn tươi mềm mướt đầy ắp thịt bò xào thơm nức mùi tỏi, chấm nước mắm chua ngọt thanh mát.',
+  },
+  {
+    name: 'Gỏi cuốn tôm thịt (Quán Cô Loan)',
+    sub: 'Tôm tươi thịt luộc bún tươi chấm sốt tương đen béo bùi • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 40,
+    image: -3109,
+    customId: 'dish_coloan_goi_cuon_tom_thit',
+    customImage: 'dish_coloan_goi_cuon.webp',
+    rarity: 2,
+    quip: 'Cuốn tôm thịt đỏ tươi bắt mắt, vị thanh mát rau sống chấm tương nếp gan béo ngậy ăn không biết chán.',
+  },
+  {
+    name: 'Mỳ Ý sốt bò băm cà chua (Quán Cô Loan)',
+    sub: 'Spaghetti sốt bò băm phô mai bào thơm béo • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 40,
+    image: -3110,
+    customId: 'dish_coloan_my_y_bo_bam',
+    customImage: 'dish_coloan_my_y.webp',
+    rarity: 2,
+    quip: 'Đĩa mỳ Ý chuẩn vị đậm đà sốt cà chua thịt bò băm nhuyễn, phủ lớp phô mai béo ngậy hấp dẫn.',
+  },
+  {
+    name: 'Cơm gà viên sốt cay (Quán Cô Loan)',
+    sub: 'Gà viên chiên giòn lắc sốt cay ngọt Hàn Quốc đưa cơm • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 35,
+    image: -3111,
+    customId: 'dish_coloan_com_ga_sot_cay',
+    customImage: 'dish_coloan_com_ga_vien.webp',
+    rarity: 2,
+    quip: 'Gà viên ngoài giòn rụm trong mọng nước, quyện sốt cay ngọt sóng sánh ăn cùng cơm nóng tuyệt hảo.',
+  },
+  {
+    name: 'Cơm rang dưa bò (Quán Cô Loan)',
+    sub: 'Cơm hạt săn giòn xào thịt bò mềm ngọt dưa chua đậm đà • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 40,
+    image: -3112,
+    customId: 'dish_coloan_com_rang_dua_bo',
+    customImage: 'dish_coloan_com_rang_dua_bo.webp',
+    rarity: 2,
+    quip: 'Hạt cơm vàng óng rang săn tơi xốp, kết hợp thịt bò mềm và dưa muối chua giòn giải ngấy hoàn hảo.',
+  },
+  {
+    name: 'Cơm rang gà đùi (Quán Cô Loan)',
+    sub: 'Cơm rang vàng óng kèm nguyên chiếc đùi gà chiên xù giòn rụm • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 40,
+    image: -3113,
+    customId: 'dish_coloan_com_rang_ga_dui',
+    customImage: 'dish_com_ga_xoi_mo.webp',
+    rarity: 2,
+    quip: 'Chiếc đùi gà khủng chiên vàng giòn da ngập thịt, ăn no nê nạp đầy năng lượng cho buổi học.',
+  },
+  {
+    name: 'Cơm nắm ruốc hành rong biển (Quán Cô Loan)',
+    sub: 'Cơm nắm viên tròn ruốc heo vừng rang rong biển giòn • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 40,
+    image: -3114,
+    customId: 'dish_coloan_com_nam',
+    customImage: 'dish_coloan_com_nam.webp',
+    rarity: 2,
+    quip: 'Món cơm nắm xinh xắn dẻo bùi đượm vị mặn mà của ruốc và thơm nức mè rang rong biển.',
+  },
+  {
+    name: 'Mỳ xào bò rau cải (Quán Cô Loan)',
+    sub: 'Mì tôm xào thịt bò mềm và rau cải xanh đậm đà • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 40,
+    image: -3115,
+    customId: 'dish_coloan_my_xao_bo',
+    customImage: 'dish_coloan_my_xao_bo.webp',
+    rarity: 2,
+    quip: 'Đĩa mỳ xào thơm lừng bốc khói, sợi mỳ dai giòn thấm đẫm gia vị cùng thịt bò thơm ngọt.',
+  },
+  {
+    name: 'Mẹt ăn vặt thập cẩm (Quán Cô Loan)',
+    sub: 'Mẹt chiên nóng hổi nem chua phô mai que khoai tây gà viên • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
+    price: 55,
+    image: -3116,
+    customId: 'dish_coloan_met_an_vat',
+    customImage: 'dish_coloan_nem_chua_ran.jpg',
+    rarity: 3,
+    quip: 'Mẹt ăn vặt tổng hợp giòn rụm thơm nức, món khoái khẩu của cả bàn sinh viên tán gẫu.',
+  },
+];
+
+// ============================================================================
+// BÁNH TRÁNG TRỨNG CHẢY NHÀ BOOM (204 NGUYỄN VĂN LINH)
+// Hotline: 0394 464 614 (FB: Phạm Thị Thúy Quỳnh) • Set 3 ngăn 90k, Bánh tráng cuộn trứng lòng đào
+// ============================================================================
+export const banhTrangNhaBoomDishes: Food[] = [
+  {
+    name: 'Set 3 ngăn bánh tráng Nhà BOOM',
+    sub: 'Khay combo 3 ngăn: Bánh tráng cuộn bơ, bánh tráng trộn tóp mỡ & lắc muối bò • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
+    price: 90,
+    image: -3201,
+    customId: 'dish_boom_set_3_ngan',
+    customImage: 'dish_boom_set_3_ngan.jpg',
+    rarity: 3,
+    quip: 'Khay 3 ngăn hoàng kim tập hợp đủ 3 hương vị bánh tráng hot nhất, ăn cùng hội bạn mê mẩn quên lối về.',
+  },
+  {
+    name: 'Bánh tráng cuộn trứng lòng đào (Nhà BOOM)',
+    sub: 'Trứng lòng đào tan chảy béo ngậy sốt bơ mè mỡ hành • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
+    price: 35,
+    image: -3202,
+    customId: 'dish_boom_cuon_trung_long_dao',
+    customImage: 'dish_boom_trung_chay.jpg',
+    rarity: 2,
+    quip: 'Lớp bánh tráng dẻo thơm ôm trọn lòng đỏ trứng dẻo quánh sóng sánh, cắn ngập miệng béo ngậy tan chảy.',
+  },
+  {
+    name: 'Bánh tráng cuộn bơ béo trứng muối (Nhà BOOM)',
+    sub: 'Sốt bơ vàng óng đẫm vị trứng muối hoàng kim mặn béo • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
+    price: 30,
+    image: -3203,
+    customId: 'dish_boom_cuon_bo_trung_muoi',
+    customImage: 'dish_boom_cuon_bo_beo.jpg',
+    rarity: 2,
+    quip: 'Sốt bơ trứng muối béo mặn thơm lừng, phủ ngập từng cuộn bánh tráng rắc hành phi giòn tan.',
+  },
+  {
+    name: 'Bánh tráng lắc muối bò tóp mỡ (Nhà BOOM)',
+    sub: 'Tóp mỡ chiên giòn rụm lắc muối ớt bò tắc chua thanh • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
+    price: 35,
+    image: -3204,
+    customId: 'dish_boom_lac_muoi_bo_top_mo',
+    customImage: 'dish_boom_lac_muoi_bo.jpg',
+    rarity: 2,
+    quip: 'Bánh tráng lắc đều thấm đẫm muối bò mằn mặn cay tê, cắn trúng miếng tóp mỡ giòn tan béo ngậy đã miệng.',
+  },
+  {
+    name: 'Bánh tráng trộn tóp mỡ chiên giòn (Nhà BOOM)',
+    sub: 'Bánh tráng dẻo trộn tóp mỡ bò khô trứng cút xoài xanh • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
+    price: 35,
+    image: -3205,
+    customId: 'dish_boom_tron_top_mo',
+    customImage: 'dish_boom_tron_top_mo.jpg',
+    rarity: 2,
+    quip: 'Tô bánh tráng trộn đầy ắp topping với tóp mỡ giòn rụm béo bùi, nước sốt me chua ngọt đậm đà khó cưỡng.',
+  },
+  {
+    name: 'Bánh tráng cuộn full chà bông (Nhà BOOM)',
+    sub: 'Ngập tràn chà bông heo sợi vàng ươm sốt bơ béo ngậy • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
+    price: 35,
+    image: -3206,
+    customId: 'dish_boom_cuon_full_cha_bong',
+    customImage: 'dish_boom_cuon_cha_bong.jpg',
+    rarity: 2,
+    quip: 'Từng cuộn bánh tráng đẫm thịt chà bông heo mặn ngọt thơm phức, quết đẫm sốt bơ vàng óng.',
+  },
+  {
+    name: 'Bánh tráng sa tế mỡ hành tóp mỡ (Nhà BOOM)',
+    sub: 'Sa tế tỏi ớt cay nồng mỡ hành xanh mướt tóp mỡ giòn • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
+    price: 35,
+    image: -3207,
+    customId: 'dish_boom_sa_te_mo_hanh_top_mo',
+    customImage: 'dish_boom_sa_te_mo_hanh_top_mo.jpg',
+    rarity: 2,
+    quip: 'Vị cay xé lưỡi của sa tế ớt quyện cùng mỡ hành thơm nức và tóp mỡ giòn rụm gây nghiện tức thì.',
+  },
+  {
+    name: 'Bánh tráng cuộn chanh sả (Nhà BOOM)',
+    sub: 'Hương sả phi thơm nồng kết hợp chanh chua thanh thanh • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
+    price: 30,
+    image: -3208,
+    customId: 'dish_boom_cuon_chanh_sa',
+    customImage: 'dish_boom_cuon_chanh_sa.jpg',
+    rarity: 1,
+    quip: 'Vị sả phi thơm ngát hòa cùng chút chua nhẹ của tắc chanh mang lại trải nghiệm thanh mát lạ miệng.',
+  },
+  {
+    name: 'Bánh tráng trộn full topping đặc biệt (Nhà BOOM)',
+    sub: 'Trứng cút bò khô mực xé xoài chua rau răm sốt me • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
+    price: 30,
+    image: -3209,
+    customId: 'dish_boom_tron_full_topping',
+    customImage: 'dish_boom_tron_dac_biet.jpg',
+    rarity: 1,
+    quip: 'Bát bánh tráng trộn chuẩn vị đường phố Sài Gòn ăn vặt vui miệng, vị chua ngọt cay cay kích thích.',
+  },
+];
+
 export const anGiFoods: Food[] = [
+  banhTrangNhaBoomDishes[0], // BESTSELLER NHÀ BOOM: Set 3 ngăn 90k
+  banhTrangNhaBoomDishes[1], // BESTSELLER NHÀ BOOM: Bánh tráng cuộn trứng lòng đào 35k
+  quanCoLoanDishes[0],       // BESTSELLER CÔ LOAN: Mì cay bò Mỹ 40k
+  quanCoLoanDishes[7],       // BESTSELLER CÔ LOAN: Phở cuốn đặc biệt 50k
+  quanCoLoanDishes[9],       // BESTSELLER CÔ LOAN: Mỳ Ý sốt bò băm 40k
+  ...quanCoLoanDishes,
+  ...banhTrangNhaBoomDishes,
   bepNhaBongFoodDishes[0],       // BESTSELLER BẾP NHÀ BỐNG: Cơm tấm sườn nướng than hoa (30k)
   bepNhaBongFoodDishes[4],       // BESTSELLER BẾP NHÀ BỐNG: Cơm tấm sườn bì chả trứng đặc biệt (40k)
   myGaTanLinhDuongFoodDishes[0],  // BESTSELLER MỲ GÀ TẦN LINH DƯƠNG: Mỳ gà tần ngải cứu thuốc bắc (35k)
@@ -7741,6 +8012,16 @@ export function getAllCatalogFoods(): CatalogFoodItem[] {
 // Trích xuất mã nhận diện concept món ăn (chuẩn hóa định danh món độc bản, tránh trùng lặp)
 export function getDishConceptKey(food: Food): string {
   const name = food.name.toLowerCase();
+  // Quán Cô Loan & Bánh Tráng Nhà BOOM
+  if (name.includes('set 3 ngăn')) return 'boom-set-3-ngan';
+  if (name.includes('trứng lòng đào') && name.includes('bánh tráng')) return 'boom-cuon-trung-long-dao';
+  if (name.includes('chà bông') && name.includes('bánh tráng')) return 'boom-cuon-cha-bong';
+  if (name.includes('bánh tráng') && name.includes('chanh sả')) return 'boom-cuon-chanh-sa';
+  if (name.includes('mỳ ý') || name.includes('spaghetti')) return 'my-y-coloan';
+  if (name.includes('phở cuốn') && name.includes('cô loan')) return 'pho-cuon-coloan';
+  if (name.includes('gỏi cuốn') && name.includes('cô loan')) return 'goi-cuon-coloan';
+  if (name.includes('cơm nắm') && name.includes('cô loan')) return 'com-nam-coloan';
+
   // Lẩu Ngựa Tây Bắc (Đặc sản ngựa & Lẩu vùng cao)
   if (name.includes('ngựa nướng bản gang')) return 'ngua-ban-gang';
   if (name.includes('ngựa nướng than hoa')) return 'ngua-nuong-than';

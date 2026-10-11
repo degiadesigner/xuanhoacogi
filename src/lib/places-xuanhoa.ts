@@ -11,7 +11,7 @@ export function getPlaceStyleGroup(place: Place): PlaceStyleGroup {
   ) {
     return 'nhau-lau';
   }
-  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea'].includes(place.id)) {
+  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea', 'quan-co-loan', 'banh-trang-nha-boom'].includes(place.id)) {
     return 'an-vat';
   }
   if (
@@ -360,7 +360,9 @@ const SIGNBOARD_CUSTOM_LINES: Record<string, PlaceSignboardLines> = {
   'zun-food-tea': { line1: 'ZUN FOOD & TEA', line2: 'LÊ QUANG ĐẠO' },
   'my-ga-tan-linh-duong': { line1: 'MỲ GÀ TẦN', line2: 'LINH DƯƠNG' },
   'bep-nha-bong': { line1: 'BẾP NHÀ BỐNG', line2: 'CƠM TẤM SƯỜN NƯỚNG' },
-  'cocokana-tra-trai-cay': { line1: 'COCOKANA', line2: 'TRÀ TRÁI CÂY TƯƠI' }
+  'cocokana-tra-trai-cay': { line1: 'COCOKANA', line2: 'TRÀ TRÁI CÂY TƯƠI' },
+  'quan-co-loan': { line1: 'QUÁN CÔ LOAN', line2: 'MỲ CAY & ĂN VẶT' },
+  'banh-trang-nha-boom': { line1: 'BÁNH TRÁNG', line2: 'NHÀ BOOM' }
 };
 
 export function getPlaceSignboardLines(place: Place): PlaceSignboardLines {
@@ -6111,6 +6113,112 @@ export const xuanHoaPlaces: Place[] = [
     rarity: 2,
     quip: 'cocokana - Trà Trái Cây Tươi đối diện trạm sạc Vin, Lê Quang Đạo Xuân Hòa! "Tươi từng vị, chill từng giây" với 100% hoa quả thực cắt tươi mỗi ngày: Trà hồng lựu sương mai 35k, Mãng cầu, Măng cụt, Đác rim dứa, Nhãn atiso đỏ 30k, Trà mận, Trà ổi 25k. Phục vụ take away & ship tận nơi 8h00 - 21h00, Hotline 08.1900.0248!',
     mealSessions: ['morning', 'lunch', 'afternoon', 'dinner']
+  },
+  {
+    id: 'quan-co-loan',
+    name: 'Quán Cô Loan - Ăn Vặt & Mì Cay',
+    tagline: 'Mì cay 7 cấp độ, Cơm trộn, Phở cuốn, Gỏi cuốn, Mì Ý bò băm & Cơm gà viên sốt cay • Số 12 Ngõ 8 Nguyễn Văn Linh',
+    category: 'fast_food',
+    zone: 'dhsp2',
+    distance: 'Số 12, Ngõ 8 Nguyễn Văn Linh (~150m từ ĐHSP2)',
+    address: 'Số 12, Ngõ 8 Đường Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    priceRange: '10k - 55k',
+    minPrice: 10,
+    maxPrice: 55,
+    rating: 4.90,
+    reviewCount: 142,
+    imageUrl: 'dish_coloan_my_cay.webp',
+    serviceMode: 'both',
+    deliveryNote: 'Ăn tại quán & Nhận ship Mì cay, Cơm trộn, Phở cuốn, Mì Ý tận phòng KTX ĐHSP2 · Hotline 0363 919 378 · 0986 617 822',
+    signatureDish: {
+      id: 'coloan-my-cay-bo-my',
+      name: 'Mì cay bò Mỹ (Cấp độ 0-7)',
+      price: 40,
+      tag: 'Bestseller',
+      serviceTag: 'both',
+      description: 'Mì cay niêu đất nóng hổi sôi sục đầy đặn thịt bò Mỹ mềm ngọt, kim chi chua cay và nấm kim châm.',
+      rarity: 2,
+    },
+    menu: [
+      { id: 'coloan-my-cay-bo-my', name: 'Mì cay bò Mỹ', price: 40, tag: 'Bestseller', serviceTag: 'both', rarity: 2, description: 'Mì cay niêu đất chuẩn vị Hàn Quốc, thịt bò Mỹ thái mỏng mềm ngọt đẫm nước lẩu chua cay.' },
+      { id: 'coloan-my-cay-hai-san', name: 'Mì cay hải sản', price: 45, tag: 'Bán chạy', serviceTag: 'both', rarity: 2, description: 'Tôm mực tươi rói giòn sần sật, chả cá và kim chi trong niêu mì cay cay ấm nóng.' },
+      { id: 'coloan-my-cay-thap-cam', name: 'Mì cay thập cẩm hải sản', price: 50, tag: 'Đặc biệt', serviceTag: 'both', rarity: 3, description: 'Đầy ắp tôm, mực, bò Mỹ, sườn sụn và xúc xích kim chi ngập tràn topping.' },
+      { id: 'coloan-my-cay-suon-sun', name: 'Mì sườn sụn thập cẩm', price: 45, tag: 'Món tủ', serviceTag: 'both', rarity: 2, description: 'Sườn sụn chặt nhỏ ninh giòn sần sật quyện nước súp kim chi chua thanh cay tê.' },
+      { id: 'coloan-my-cay-xuc-xich', name: 'Mì cay xúc xích', price: 35, tag: 'Bình dân', serviceTag: 'both', rarity: 1, description: 'Mì cay niêu đất xúc xích giòn ngọt, kim chi cay nồng giá sinh viên ấm bụng.' },
+      { id: 'coloan-com-tron-bo', name: 'Cơm trộn thập cẩm bò', price: 35, tag: 'Bestseller', serviceTag: 'both', rarity: 2, description: 'Cơm trộn thố đá nóng hổi với bò xào, trứng ốp la lòng đào, cà rốt, dưa chuột và sốt ớt Gochujang.' },
+      { id: 'coloan-com-tron-dac-biet', name: 'Cơm trộn đặc biệt', price: 50, tag: 'Full topping', serviceTag: 'both', rarity: 3, description: 'Thố cơm trộn hoàng kim ngập tràn thịt bò, xúc xích, thanh cua, trứng và kim chi giòn ngọt.' },
+      { id: 'coloan-kimbap-thap-cam', name: 'Cơm cuộn Kimbap thập cẩm', price: 30, tag: 'Món tủ', serviceTag: 'both', rarity: 1, description: 'Cuộn rong biển hạt cơm dẻo quánh, thanh cua, xúc xích, trứng rán, cà rốt và dưa leo chấm sốt bơ mè.' },
+      { id: 'coloan-kimbap-chien', name: 'Cơm cuộn Kimbap chiên', price: 40, tag: 'Giòn rụm', serviceTag: 'both', rarity: 2, description: 'Kimbap lăn bột chiên xù giòn tan bên ngoài, dẻo thơm bên trong rưới sốt bơ trứng vàng béo.' },
+      { id: 'coloan-tobokki-dac-biet', name: 'Bánh gạo Tobokki đặc biệt', price: 50, tag: 'Hot trend', serviceTag: 'both', rarity: 3, description: 'Bánh gạo dẻo dai sốt ớt cay ngọt Hàn Quốc, chả cá miếng, trứng luộc và phô mai béo ngậy.' },
+      { id: 'coloan-pho-cuon-dac-biet', name: 'Phở cuốn đặc biệt', price: 50, tag: 'Signature', serviceTag: 'both', rarity: 3, description: 'Bánh phở mỏng mềm mướt cuộn thịt bò xào lăn thơm lừng, rau sống tươi xanh chấm nước mắm chua ngọt ấm nồng.' },
+      { id: 'coloan-pho-cuon-truyen-thong', name: 'Phở cuốn truyền thống', price: 30, tag: 'Món tủ', serviceTag: 'both', rarity: 1, description: 'Đĩa phở cuốn thanh mát đầy đặn thịt bò xào hành tây và rau thơm.' },
+      { id: 'coloan-goi-cuon-tom-thit', name: 'Gỏi cuốn tôm thịt', price: 40, tag: 'Thanh mát', serviceTag: 'both', rarity: 2, description: 'Bánh tráng dẻo cuộn tôm tươi đỏ au, thịt luộc, bún tươi và hẹ xanh chấm sốt tương đen béo bùi.' },
+      { id: 'coloan-my-y-bo-bam', name: 'Mỳ Ý sốt bò băm cà chua', price: 40, tag: 'Bestseller', serviceTag: 'both', rarity: 2, description: 'Sợi mỳ Spaghetti luộc chuẩn al dente, sốt cà chua thịt bò băm đậm đà rắc phô mai bào thơm lừng.' },
+      { id: 'coloan-com-ga-sot-cay', name: 'Cơm gà viên sốt cay', price: 35, tag: 'Bán chạy', serviceTag: 'both', rarity: 2, description: 'Cơm dẻo ăn kèm gà viên chiên giòn rụm lắc sốt cay ngọt Hàn Quốc đậm đà đưa cơm.' },
+      { id: 'coloan-com-ga-chien-mam', name: 'Cơm gà chiên mắm', price: 45, tag: 'Đậm đà', serviceTag: 'both', rarity: 2, description: 'Đùi/cánh gà chiên mắm tỏi xém vàng da giòn rụm, sốt mắm ngòn ngọt mằn mặn ấm bụng.' },
+      { id: 'coloan-com-rang-dua-bo', name: 'Cơm rang dưa bò', price: 40, tag: 'Món tủ', serviceTag: 'both', rarity: 2, description: 'Cơm rang hạt săn vàng giòn xào cùng thịt bò mềm và dưa cải chua giòn đậm đà.' },
+      { id: 'coloan-com-rang-ga-dui', name: 'Cơm rang gà đùi', price: 40, tag: 'No nê', serviceTag: 'both', rarity: 2, description: 'Cơm rang thập cẩm vàng óng ăn kèm nguyên chiếc đùi gà chiên xù vàng rụm béo ngậy.' },
+      { id: 'coloan-com-nam', name: 'Cơm nắm ruốc hành rong biển', price: 40, tag: 'Món lạ miệng', serviceTag: 'both', rarity: 2, description: 'Những viên cơm nắm dẻo tròn rắc ruốc heo thơm nức, hạt vừng rang và rong biển sấy giòn tan.' },
+      { id: 'coloan-my-xao-bo', name: 'Mỳ xào bò rau cải', price: 40, tag: 'Bán chạy', serviceTag: 'both', rarity: 2, description: 'Sợi mì tôm chao giòn xào thịt bò mềm ngọt và rau cải xanh giòn đậm đà.' },
+      { id: 'coloan-met-thap-cam', name: 'Mẹt ăn vặt thập cẩm', price: 55, tag: 'Tụ tập nhóm', serviceTag: 'both', rarity: 3, description: 'Mẹt chiên nóng giòn gồm nem chua rán, xúc xích, phô mai que, khoai tây chiên và gà viên sốt.' },
+      { id: 'coloan-nem-chua-ran', name: 'Nem chua rán giòn rụm', price: 35, tag: 'Ăn vặt', serviceTag: 'both', rarity: 1, description: 'Nem chua lăn bột xù chiên vàng ruộm giòn tan chấm tương ớt cay nồng.' },
+      { id: 'coloan-tra-chanh', name: 'Trà chanh Cô Loan', price: 10, tag: 'Giải nhiệt', serviceTag: 'both', rarity: 0, description: 'Cốc trà chanh tươi thanh mát chua ngọt đã khát giải ngấy cực đã.' }
+    ],
+    tags: ['Quán Cô Loan', 'Cô Loan', 'Mì cay Cô Loan', 'Cơm trộn', 'Kimbap', 'Phở cuốn', 'Gỏi cuốn', 'Mỳ Ý', 'Cơm gà viên', 'Cơm nắm', 'Ngõ 8 Nguyễn Văn Linh', '0363919378', '0986617822'],
+    mapsQuery: 'Số 12 Ngõ 8 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    phone: '0363 919 378 · 0986 617 822',
+    openHours: '09:00 - 22:00',
+    rarity: 2,
+    quip: 'Quán Cô Loan tại Số 12 Ngõ 8 Nguyễn Văn Linh - Tụ điểm ăn vặt sinh viên cực hot: Mì cay 7 cấp độ ngập thịt bò Mỹ và hải sản, Cơm trộn thố đá Hàn Quốc, Phở cuốn đặc biệt, Mỳ Ý bò băm 40k, Cơm nắm và mẹt ăn vặt giòn rụm! Hotline 0363 919 378 - 0986 617 822.',
+    mealSessions: ['lunch', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'banh-trang-nha-boom',
+    name: 'Bánh Tráng Trứng Chảy Nhà BOOM',
+    tagline: 'Thánh địa bánh tráng số 1 Xuân Hòa • Set 3 ngăn 90k, Bánh tráng cuộn trứng lòng đào, Bánh tráng bơ béo trứng muối & Lắc muối bò tóp mỡ',
+    category: 'fast_food',
+    zone: 'dhsp2',
+    distance: '204 Nguyễn Văn Linh (~300m từ ĐHSP2)',
+    address: '204 Đường Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    priceRange: '25k - 90k',
+    minPrice: 25,
+    maxPrice: 90,
+    rating: 4.95,
+    reviewCount: 186,
+    imageUrl: 'dish_boom_set_3_ngan.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Ăn tại quán & Nhận ship bánh tráng tận phòng KTX, nhà trọ quanh Xuân Hòa · Hotline 0394 464 614 (FB: Phạm Thị Thúy Quỳnh)',
+    signatureDish: {
+      id: 'boom-set-3-ngan',
+      name: 'Set 3 ngăn bánh tráng Nhà BOOM',
+      price: 90,
+      tag: 'Hot Combo Bestseller',
+      serviceTag: 'both',
+      description: 'Khay combo 3 ngăn siêu hot gồm: bánh tráng cuộn sốt bơ chà bông, bánh tráng trộn tóp mỡ trứng cút, và bánh tráng lắc muối bò giòn rụm.',
+      rarity: 3,
+    },
+    menu: [
+      { id: 'boom-set-3-ngan', name: 'Set 3 ngăn (3 loại bánh tráng)', price: 90, tag: 'Hot Combo Bestseller', serviceTag: 'both', rarity: 3, description: 'Khay 3 ngăn cực phẩm: Bánh tráng cuộn sốt bơ, bánh tráng trộn tóp mỡ trứng cút và bánh tráng lắc muối bò giòn cay.' },
+      { id: 'boom-cuon-trung-long-dao', name: 'Bánh tráng cuộn trứng lòng đào', price: 35, tag: 'Signature', serviceTag: 'both', rarity: 2, description: 'Bánh tráng dẻo cuộn trứng gà lòng đào tan chảy béo ngậy, sốt bơ mè mỡ hành thơm nức mũi.' },
+      { id: 'boom-cuon-bo-trung-muoi', name: 'Bánh tráng cuộn bơ béo trứng muối', price: 30, tag: 'Bestseller', serviceTag: 'both', rarity: 2, description: 'Bánh tráng cuộn sốt bơ vàng óng đẫm vị trứng muối hoàng kim mặn béo ngậy cực đỉnh.' },
+      { id: 'boom-lac-muoi-bo-top-mo', name: 'Bánh tráng lắc muối bò tóp mỡ', price: 35, tag: 'Bán chạy', serviceTag: 'both', rarity: 2, description: 'Bánh tráng cắt miếng lắc đều muối ớt bò, tóp mỡ chiên giòn tan rụm và quất chua thanh.' },
+      { id: 'boom-tron-top-mo', name: 'Bánh tráng trộn tóp mỡ', price: 35, tag: 'Món tủ', serviceTag: 'both', rarity: 2, description: 'Bánh tráng sợi mềm dẻo trộn ngập tóp mỡ giòn rụm, bò khô sợi, trứng cút, xoài xanh và rau răm.' },
+      { id: 'boom-cuon-full-cha-bong', name: 'Bánh tráng cuộn full chà bông', price: 35, tag: 'Đẫm thịt', serviceTag: 'both', rarity: 2, description: 'Bánh tráng cuộn ngập tràn ruốc heo chà bông sợi vàng ươm, sốt mayonnaise bơ béo ngậy.' },
+      { id: 'boom-sa-te-mo-hanh-top-mo', name: 'Bánh tráng sa tế mỡ hành tóp mỡ', price: 35, tag: 'Cay nồng đậm vị', serviceTag: 'both', rarity: 2, description: 'Bánh tráng dẻo quyện đẫm sốt sa tế tỏi ớt cay nồng, mỡ hành xanh mướt và tóp mỡ giòn rụm.' },
+      { id: 'boom-cuon-bo-trung', name: 'Bánh tráng cuộn bơ trứng', price: 30, tag: 'Bình dân', serviceTag: 'both', rarity: 1, description: 'Bánh tráng cuộn trứng cút luộc, sốt bơ vàng óng béo ngậy thơm ngon ngọt ngào.' },
+      { id: 'boom-cuon-sot-bo-beo', name: 'Bánh tráng cuộn sốt bơ béo', price: 30, tag: 'Món tủ', serviceTag: 'both', rarity: 1, description: 'Từng cuộn bánh tráng đẫm sốt bơ béo truyền thống, hành phi thơm lừng và đậu phộng bùi bùi.' },
+      { id: 'boom-cuon-chanh-sa', name: 'Bánh tráng cuộn chanh sả', price: 30, tag: 'Thanh mát lạ miệng', serviceTag: 'both', rarity: 1, description: 'Hương vị sả phi thơm nồng kết hợp vị chua thanh của chanh tắc xua tan cảm giác ngấy.' },
+      { id: 'boom-cuon-full-bo', name: 'Bánh tráng cuộn full bơ', price: 32, tag: 'Béo ngậy', serviceTag: 'both', rarity: 1, description: 'Dành riêng cho fan mê bơ: ngập tràn sốt bơ trứng vàng ươm béo ngậy tan chảy.' },
+      { id: 'boom-tron-full-topping', name: 'Bánh tráng trộn full topping đặc biệt', price: 30, tag: 'Bán chạy', serviceTag: 'both', rarity: 1, description: 'Hộp bánh tráng trộn đầy đặn: trứng cút, bò khô, mực xé, xoài chua, rau răm, lạc rang và nước sốt me chua ngọt.' },
+      { id: 'boom-tron-truyen-thong', name: 'Bánh tráng trộn truyền thống', price: 25, tag: 'Bình dân', serviceTag: 'both', rarity: 1, description: 'Hộp bánh tráng trộn chuẩn vị đường phố Sài Gòn giá học sinh sinh viên thơm ngon vừa vặn.' }
+    ],
+    tags: ['Bánh Tráng Nhà BOOM', 'Nhà BOOM', 'Bánh tráng trứng chảy', 'Bánh tráng 204 Nguyễn Văn Linh', 'Set 3 ngăn', 'Bánh tráng cuộn trứng lòng đào', 'Bánh tráng lắc muối bò', 'Tóp mỡ', '0394464614', 'Phạm Thị Thúy Quỳnh'],
+    mapsQuery: '204 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    phone: '0394 464 614',
+    openHours: '09:00 - 22:30',
+    rarity: 2,
+    quip: 'Bánh Tráng Trứng Chảy Nhà BOOM tại 204 Nguyễn Văn Linh - Tụ điểm bánh tráng đỉnh nhất Xuân Hòa với siêu phẩm Set 3 ngăn 90k, Bánh tráng cuộn trứng lòng đào béo ngậy, Bánh tráng bơ béo trứng muối và Lắc muối bò tóp mỡ giòn rụm! Hotline 0394 464 614.',
+    mealSessions: ['lunch', 'afternoon', 'dinner', 'late']
   }
 ];
 
@@ -6935,6 +7043,42 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       date: 'Hôm qua',
       role: 'Dân bản địa Xuân Hòa',
       content: 'Suất cơm tấm sườn bì chả trứng 40k đầy đặn ăn no căng bụng. Chả trứng hấp mềm bùi thơm lừng, bì trộn thính sạch sẽ sần sật. Thử thêm đĩa thịt chưng mắm tép với cá mờm rim mắm tỏi ăn tốn cơm dã man. Mở cửa 2 ca trưa 10h-13h và tối 18h-20h, gọi hotline 0812516606 là có ngay!',
+    }
+  ],
+  'quan-co-loan': [
+    {
+      id: 'r_coloan_1',
+      author: 'Trần Thảo Ly K48',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Quán Cô Loan ở số 12 ngõ 8 Nguyễn Văn Linh đúng là chân ái ăn vặt của sinh viên! Mì cay bò Mỹ 40k niêu đất nóng hổi ngập thịt bò với kim chi cay đã miệng. Cực mê món Phở cuốn và Mỳ Ý bò băm 40k đầy đặn thơm lừng sốt cà chua phô mai. Quán ngồi điều hòa sạch sẽ, gọi hotline 0363919378 ship tận phòng KTX rất nhanh!',
+    },
+    {
+      id: 'r_coloan_2',
+      author: 'Nguyễn Tiến Đạt',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Dân bản địa Xuân Hòa',
+      content: 'Cơm trộn thập cẩm bò 35k và cơm gà chiên mắm 45k ở đây nấu rất vừa miệng, gà da giòn rụm đậm đà. Mẹt ăn vặt thập cẩm gọi chung nhóm 3-4 người ăn no nê. Giá cả sinh viên mà chất lượng rất chuẩn chỉnh!',
+    }
+  ],
+  'banh-trang-nha-boom': [
+    {
+      id: 'r_boom_1',
+      author: 'Vũ Minh Anh K49',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Bánh tráng trứng chảy Nhà BOOM ở 204 Nguyễn Văn Linh ngon xuất sắc! Set 3 ngăn 90k ăn được tận 3 loại bánh tráng, đi 2-3 người gọi set này là no căng. Mê nhất bánh tráng cuộn trứng lòng đào sốt bơ béo ngậy tan chảy, cắn miếng nào ngập chân răng miếng đó. Ship tận nơi qua 0394464614 nhanh thoăn thoắt!',
+    },
+    {
+      id: 'r_boom_2',
+      author: 'Phạm Thu Trang',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Tín đồ ăn vặt Xuân Hòa',
+      content: 'Tóp mỡ ở đây chiên giòn rụm không bị hôi dầu, bánh tráng lắc muối bò tóp mỡ cay mặn chua ngọt ăn cuốn cực kỳ. Bánh tráng cuộn bơ béo trứng muối cũng là món must-try. Chị chủ Quỳnh vui tính nhiệt tình, đóng gói sạch sẽ đẹp mắt!',
     }
   ],
   'cocokana-tra-trai-cay': [

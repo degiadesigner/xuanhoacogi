@@ -1598,11 +1598,88 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
       'Cà phê sữa máy Espresso / Latte: 35.000đ - 40.000đ',
       'Ép cam dứa tươi mát / Ép dưa hấu: 35.000đ - 40.000đ'
     ]
+  },
+
+  // 39. Quán Cô Loan - Ăn Vặt & Mì Cay (Số 12, Ngõ 8 Nguyễn Văn Linh)
+  co_loan: {
+    name: 'Quán Cô Loan - Ăn Vặt & Mì Cay',
+    address: 'Số 12, Ngõ 8 Đường Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    phone: '0363 919 378 · 0986 617 822',
+    mapsQuery: 'Số 12 Ngõ 8 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Ăn tại quán & Nhận ship Mì cay, Cơm trộn, Phở cuốn, Mì Ý tận phòng KTX ĐHSP2 · Hotline 0363 919 378 · 0986 617 822',
+    notes: 'Quán Cô Loan · Số 12, Ngõ 8 Nguyễn Văn Linh, P. Xuân Hòa · Hotline 0363 919 378 - 0986 617 822 · Tụ điểm ăn vặt sinh viên nức tiếng: Mì cay 7 cấp độ (xúc xích 30k-35k, bò 40k, sườn sụn 45k, hải sản 45k-50k), Cơm trộn Hàn Quốc thố đá 30k-50k, Cơm cuộn Kimbap 30k-45k, Bánh gạo Tobokki 30k-50k, Phở cuốn 30k-50k, Gỏi cuốn tôm thịt 40k-50k, Mỳ Ý sốt bò băm 30k-50k, Cơm gà viên sốt cay 30k-40k, Cơm gà chiên mắm 40k-50k, Cơm rang dưa bò / gà đùi 40k, Cơm nắm 40k/suất, Mì xào thập cẩm/bò 40k, mẹt ăn vặt chiên giòn.',
+    menuHighlights: [
+      'Mì cay bò Mỹ / Mì cay bò xúc xích: 40.000đ (Bestseller)',
+      'Mì cay thập cẩm hải sản / Sườn sụn: 45.000đ - 50.000đ',
+      'Cơm trộn Hàn Quốc thập cẩm bò: 35.000đ - 50.000đ',
+      'Phở cuốn Cô Loan (Truyền thống / Đặc biệt): 30.000đ - 50.000đ',
+      'Gỏi cuốn tôm thịt đầy đủ: 40.000đ - 50.000đ',
+      'Mỳ Ý sốt bò băm cà chua: 30.000đ - 50.000đ',
+      'Bánh gạo Tobokki phô mai đặc biệt: 40.000đ - 50.000đ',
+      'Cơm cuộn Kimbap chiên giòn: 35.000đ - 45.000đ',
+      'Cơm gà chiên mắm / Gà viên sốt cay: 35.000đ - 50.000đ',
+      'Cơm rang dưa bò / Cơm rang gà đùi: 40.000đ',
+      'Cơm nắm ruốc hành rong biển: 40.000đ/suất',
+      'Mỳ xào bò rau cải / Mì xào hải sản: 40.000đ - 50.000đ',
+      'Nem chua rán / Khoai tây chiên: 35.000đ - 40.000đ',
+      'Trà chanh / Coca mát lạnh: 10.000đ - 15.000đ'
+    ]
+  },
+
+  // 40. Bánh Tráng Trứng Chảy Nhà BOOM (204 Nguyễn Văn Linh)
+  banh_trang_nha_boom: {
+    name: 'Bánh Tráng Trứng Chảy Nhà BOOM',
+    address: '204 Đường Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    phone: '0394 464 614',
+    mapsQuery: '204 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Ăn tại quán & Nhận ship bánh tráng cuộn bơ, bánh tráng trứng chảy, set 3 ngăn tận phòng KTX · Hotline 0394 464 614 (FB: Phạm Thị Thúy Quỳnh)',
+    notes: 'Bánh Tráng Trứng Chảy Nhà BOOM · 204 Nguyễn Văn Linh, P. Xuân Hòa · Hotline 0394 464 614 (FB: Phạm Thị Thúy Quỳnh) · Thánh địa bánh tráng số 1 Xuân Hòa: Set 3 ngăn 90k (3 loại bánh tráng), Bánh tráng cuộn trứng lòng đào 35k béo ngậy, Bánh tráng cuộn bơ béo trứng muối 30k, Bánh tráng lắc muối bò tóp mỡ 35k giòn rụm, Bánh tráng sa tế mỡ hành tóp mỡ 35k cay nồng, Bánh tráng cuộn full chà bông 35k, Bánh tráng cuộn chanh sả 30k, Bánh tráng trộn truyền thống 25k & Bánh tráng trộn full topping đặc biệt 30k.',
+    menuHighlights: [
+      'Set 3 ngăn bánh tráng Nhà BOOM: 90.000đ (Hot Combo Bestseller)',
+      'Bánh tráng cuộn trứng lòng đào sốt bơ: 35.000đ (Signature)',
+      'Bánh tráng cuộn bơ béo trứng muối: 30.000đ (Bestseller)',
+      'Bánh tráng lắc muối bò tóp mỡ giòn rụm: 35.000đ',
+      'Bánh tráng sa tế mỡ hành tóp mỡ cay nồng: 35.000đ',
+      'Bánh tráng cuộn full chà bông: 35.000đ',
+      'Bánh tráng trộn tóp mỡ: 35.000đ',
+      'Bánh tráng cuộn sốt bơ béo: 30.000đ',
+      'Bánh tráng cuộn chanh sả: 30.000đ',
+      'Bánh tráng cuộn full bơ: 32.000đ',
+      'Bánh tráng cuộn bơ trứng: 30.000đ',
+      'Bánh tráng trộn full topping đặc biệt: 30.000đ',
+      'Bánh tráng trộn truyền thống: 25.000đ'
+    ]
   }
-};;
+};
 
 export function getSpotForDish(dishName: string): SpotInfo {
   const name = dishName.toLowerCase();
+
+  // Quán Cô Loan (Số 12, Ngõ 8 Nguyễn Văn Linh)
+  if (
+    name.includes('cô loan') ||
+    name.includes('co loan') ||
+    name.includes('0363919378') ||
+    name.includes('0986617822')
+  ) {
+    return xuanHoaSpots.co_loan;
+  }
+
+  // Bánh Tráng Trứng Chảy Nhà BOOM (204 Nguyễn Văn Linh)
+  if (
+    name.includes('nhà boom') ||
+    name.includes('nha boom') ||
+    name.includes('trứng chảy') ||
+    name.includes('0394464614') ||
+    name.includes('0394 464 614') ||
+    (name.includes('204') && name.includes('nguyễn văn linh'))
+  ) {
+    return xuanHoaSpots.banh_trang_nha_boom;
+  }
 
   // Bánh Xèo Cô Hiền: Bánh xèo, nem lụi, chè miền trung 90 Nguyễn Văn Linh
   if (
@@ -2774,6 +2851,34 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
     name.includes('linh dương')
   ) {
     return [xuanHoaSpots.my_ga_tan_linh_duong];
+  }
+
+  if (
+    customId.includes('coloan') ||
+    customId.includes('co_loan') ||
+    sub.includes('cô loan') ||
+    sub.includes('co loan') ||
+    sub.includes('0363 919 378') ||
+    sub.includes('0986 617 822') ||
+    sub.includes('0363919378') ||
+    sub.includes('0986617822') ||
+    name.includes('cô loan') ||
+    name.includes('co loan')
+  ) {
+    return [xuanHoaSpots.co_loan];
+  }
+
+  if (
+    customId.includes('boom') ||
+    sub.includes('nhà boom') ||
+    sub.includes('nha boom') ||
+    sub.includes('0394 464 614') ||
+    sub.includes('0394464614') ||
+    name.includes('nhà boom') ||
+    name.includes('nha boom') ||
+    name.includes('trứng chảy')
+  ) {
+    return [xuanHoaSpots.banh_trang_nha_boom];
   }
 
   if (

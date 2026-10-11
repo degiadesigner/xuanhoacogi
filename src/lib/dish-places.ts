@@ -2127,10 +2127,17 @@ export function getSpotForDish(dishName: string): SpotInfo {
     return xuanHoaSpots.my_ga_tan_linh_duong;
   }
 
+  // Nem ngựa Bắc Giang (Sân Bia 247)
+  if (name.includes('nem ngựa') || name.includes('nem ngua')) {
+    return xuanHoaSpots.san_bia_247;
+  }
+
   // Lẩu Ngựa Tây Bắc: Đặc sản ngựa Tây Bắc, thắng cố, ngựa nhúng mẻ, ngựa nướng, lẩu gà, lẩu ếch
   if (
     name.includes('ngựa') ||
     name.includes('ngua') ||
+    name.includes('thắng cố') ||
+    name.includes('thang co') ||
     name.includes('0963047022') ||
     name.includes('0963 047 022') ||
     name.includes('miếu gỗ') ||
@@ -2140,10 +2147,9 @@ export function getSpotForDish(dishName: string): SpotInfo {
     return xuanHoaSpots.lau_ngua_tay_bac;
   }
 
-  // Món thịt trâu chung (Nướng tảng, Nhúng mẻ, Thắng cố, Xào măng trúc)
+  // Món thịt trâu chung (Nướng tảng, Nhúng mẻ, Xào măng trúc)
   if (
     name.includes('trâu') ||
-    name.includes('thắng cố') ||
     (name.includes('nhúng mẻ') && !name.includes('ốc') && !name.includes('ngựa') && !name.includes('ngua'))
   ) {
     return xuanHoaSpots.trau_phi_xuyen;
@@ -2516,7 +2522,7 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
   if (name.includes('cà phê muối') || name.includes('cafe kem muối')) {
     if (customId.includes('le_la') || sub.includes('lê la')) return [xuanHoaSpots.le_la_cafe, xuanHoaSpots.tram_du_de];
     if (customId.includes('du_de') || sub.includes('dủ dẻ')) return [xuanHoaSpots.tram_du_de, xuanHoaSpots.le_la_cafe];
-    return [xuanHoaSpots.le_la_cafe, xuanHoaSpots.tram_du_de, xuanHoaSpots.xoi_com_185, xuanHoaSpots.tra_chanh_zian];
+    return [xuanHoaSpots.le_la_cafe, xuanHoaSpots.tram_du_de, xuanHoaSpots.tra_chanh_zian];
   }
 
   if (name.includes('trà đào cam sả') || name.includes('trà đào cam xả')) {
@@ -2910,11 +2916,23 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
   }
 
   if (customId.includes('anhtoan') || sub.includes('anh toàn')) {
-    return [xuanHoaSpots.bun_anh_toan, xuanHoaSpots.bun_rieu_ba_mai, xuanHoaSpots.pho_bo_xuan_hoa];
+    if (name.includes('bún riêu') || name.includes('bun rieu')) {
+      return [xuanHoaSpots.bun_anh_toan, xuanHoaSpots.bun_rieu_ba_mai];
+    }
+    if (name.includes('bún bò') || name.includes('bun bo')) {
+      return [xuanHoaSpots.bun_anh_toan, xuanHoaSpots.bun_bo_hue_102];
+    }
+    if (name.includes('phở') || name.includes('pho')) {
+      return [xuanHoaSpots.bun_anh_toan, xuanHoaSpots.pho_bo_xuan_hoa];
+    }
+    return [xuanHoaSpots.bun_anh_toan];
   }
 
   if (customId.includes('me_soc') || sub.includes('mẹ sóc')) {
-    return [xuanHoaSpots.tiem_me_soc, xuanHoaSpots.bun_cha_xuan_hoa];
+    if (name.includes('bún chả') || name.includes('bun cha')) {
+      return [xuanHoaSpots.tiem_me_soc, xuanHoaSpots.bun_cha_xuan_hoa];
+    }
+    return [xuanHoaSpots.tiem_me_soc];
   }
 
   if (customId.includes('bun_cha') || (name.includes('bún chả') && sub.includes('lê quang đạo'))) {
@@ -2958,7 +2976,7 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
   }
 
   if (customId.includes('gamitra') || sub.includes('gamitra')) {
-    return [xuanHoaSpots.gamitra_xuan_hoa, xuanHoaSpots.ruby_quan];
+    return [xuanHoaSpots.gamitra_xuan_hoa];
   }
 
   if (customId.includes('bc_') || sub.includes('ngọc ánh') || sub.includes('50 trường chinh')) {
@@ -2966,11 +2984,14 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
   }
 
   if (customId.includes('xc_') || sub.includes('xoài corner')) {
-    return [xuanHoaSpots.xoai_corner, xuanHoaSpots.ruby_quan, xuanHoaSpots.soh_tea];
+    if (name.includes('mì cay') || name.includes('mỳ cay')) {
+      return [xuanHoaSpots.xoai_corner, xuanHoaSpots.ruby_quan, xuanHoaSpots.my_cay_seoul];
+    }
+    return [xuanHoaSpots.xoai_corner];
   }
 
   if (customId.includes('me_beo') || sub.includes('mẹ béo') || sub.includes('252e')) {
-    return [xuanHoaSpots.tiem_nha_me_beo, xuanHoaSpots.ruby_quan];
+    return [xuanHoaSpots.tiem_nha_me_beo];
   }
 
   if (
@@ -2987,43 +3008,46 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
   }
 
   if (customId.includes('soh') || sub.includes('s.oh')) {
-    return [xuanHoaSpots.soh_tea, xuanHoaSpots.ruby_quan, xuanHoaSpots.tiem_tra_thanh_thanh];
+    return [xuanHoaSpots.soh_tea];
   }
 
   if (customId.includes('thanhthanh') || sub.includes('thanh thanh')) {
-    return [xuanHoaSpots.tiem_tra_thanh_thanh, xuanHoaSpots.soh_tea, xuanHoaSpots.ruby_quan];
+    return [xuanHoaSpots.tiem_tra_thanh_thanh];
   }
 
   if (customId.includes('tocotoco') || sub.includes('tocotoco') || sub.includes('206')) {
-    return [xuanHoaSpots.tocotoco, xuanHoaSpots.soh_tea, xuanHoaSpots.ruby_quan];
+    return [xuanHoaSpots.tocotoco];
   }
 
   if (customId.includes('cafe_1975') || sub.includes('1975')) {
-    return [xuanHoaSpots.cafe_1975, xuanHoaSpots.soh_tea];
+    return [xuanHoaSpots.cafe_1975];
   }
 
   if (customId.includes('xuho_bistro') || sub.includes('xuho bistro') || sub.includes('nhà táo')) {
-    return [xuanHoaSpots.xuho_bistro, xuanHoaSpots.quan_chim_lan_anh, xuanHoaSpots.trau_phi_xuyen];
+    return [xuanHoaSpots.xuho_bistro];
   }
 
   if (customId.includes('lan_anh') || customId.includes('chim_') || sub.includes('lan anh')) {
-    return [xuanHoaSpots.quan_chim_lan_anh, xuanHoaSpots.xuho_bistro];
+    return [xuanHoaSpots.quan_chim_lan_anh];
   }
 
-  if (customId.includes('xuyen_phi') || customId.includes('met_ga') || customId.includes('met_lon') || sub.includes('xuyên phi')) {
-    return [xuanHoaSpots.lon_ga_xuyen_phi, xuanHoaSpots.khanh_huong];
+  if (customId.includes('xuyen_phi') || sub.includes('xuyên phi')) {
+    return [xuanHoaSpots.lon_ga_xuyen_phi];
   }
 
   if (customId.includes('trau_') || sub.includes('phi xuyên') || sub.includes('gió đồng')) {
+    if (customId.includes('gio_dong') || sub.includes('gió đồng')) {
+      return [xuanHoaSpots.trau_gio_dong, xuanHoaSpots.trau_phi_xuyen];
+    }
     return [xuanHoaSpots.trau_phi_xuyen, xuanHoaSpots.trau_gio_dong];
   }
 
   if (customId.includes('beef88') || sub.includes('beef88') || sub.includes('nhà nghỉ q2')) {
-    return [xuanHoaSpots.beef88, xuanHoaSpots.lau_nuong_ba_muoi, xuanHoaSpots.xuho_bistro];
+    return [xuanHoaSpots.beef88];
   }
 
   if (customId.includes('bamuoi') || sub.includes('bà mười')) {
-    return [xuanHoaSpots.lau_nuong_ba_muoi, xuanHoaSpots.lau_cuong_duong];
+    return [xuanHoaSpots.lau_nuong_ba_muoi];
   }
 
   if (customId.startsWith('dish_oc2000_') || customId.startsWith('drink_oc2000_') || sub.includes('ốc 2000') || sub.includes('kim ngọc')) {
@@ -3035,62 +3059,34 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
   }
 
   if (customId.includes('trang_hai_san') || sub.includes('trang hải sản')) {
-    return [xuanHoaSpots.trang_hai_san, xuanHoaSpots.quan_oc_ngon];
+    return [xuanHoaSpots.trang_hai_san];
   }
 
   if (customId.includes('lau_cuong_duong') || sub.includes('cường dương')) {
-    return [xuanHoaSpots.lau_cuong_duong, xuanHoaSpots.lau_nuong_ba_muoi];
+    return [xuanHoaSpots.lau_cuong_duong];
   }
 
   if (customId.includes('khanh_huong') || sub.includes('khanh hương')) {
-    return [xuanHoaSpots.khanh_huong, xuanHoaSpots.lon_ga_xuyen_phi];
+    return [xuanHoaSpots.khanh_huong];
   }
 
   if (customId.includes('binh_nam') || sub.includes('bình năm')) {
-    return [xuanHoaSpots.binh_nam, xuanHoaSpots.xuho_bistro];
+    return [xuanHoaSpots.binh_nam];
   }
 
   if (customId.includes('bia_hoi') || name.includes('bia hơi')) {
-    return [xuanHoaSpots.nhau_1993, xuanHoaSpots.xuho_bistro];
+    return [xuanHoaSpots.nhau_1993];
   }
 
   if (customId === 'drink_4' || (name.includes('nâu đá') && sub.includes('xuân hòa'))) {
-    return [xuanHoaSpots.cafe_1975, xuanHoaSpots.soh_tea];
+    return [xuanHoaSpots.cafe_1975];
   }
 
   if (customId === 'drink_6' || name.includes('nước mía')) {
-    return [xuanHoaSpots.tiem_tra_thanh_thanh, xuanHoaSpots.thuy_beo];
+    return [xuanHoaSpots.tiem_tra_thanh_thanh];
   }
 
   // 2. Keyword fallback bảo đảm độ chính xác cao
-  if (name.includes('mì cay') || name.includes('mỳ cay')) {
-    return [xuanHoaSpots.ruby_quan, xuanHoaSpots.my_cay_seoul, xuanHoaSpots.xoai_corner];
-  }
-
-  if (name.includes('bún bò') || name.includes('bún riêu')) {
-    return [xuanHoaSpots.bun_anh_toan, xuanHoaSpots.bun_rieu_ba_mai, xuanHoaSpots.pho_bo_xuan_hoa];
-  }
-
-  if (name.includes('bún chả')) {
-    return [xuanHoaSpots.tiem_me_soc, xuanHoaSpots.bun_cha_xuan_hoa];
-  }
-
-  if (name.includes('phở')) {
-    return [xuanHoaSpots.pho_bo_xuan_hoa, xuanHoaSpots.bun_anh_toan];
-  }
-
-  if (name.includes('cơm tấm')) {
-    return [xuanHoaSpots.com_tam_xuan_hoa, xuanHoaSpots.com_68];
-  }
-
-  if (name.includes('cơm rang') || name.includes('cơm sườn')) {
-    return [xuanHoaSpots.com_68, xuanHoaSpots.com_tam_xuan_hoa];
-  }
-
-  if (name.includes('bánh mì') || name.includes('bánh mỳ')) {
-    return [xuanHoaSpots.banh_mi_bo_u, xuanHoaSpots.thuy_beo];
-  }
-
   if (
     customId.includes('ngua') ||
     customId.includes('tay_bac') ||
@@ -3102,21 +3098,62 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
     sub.includes('miếu gỗ') ||
     sub.includes('ban cơ yếu') ||
     name.includes('ngựa') ||
-    name.includes('ngua')
+    name.includes('ngua') ||
+    name.includes('thắng cố') ||
+    name.includes('thang co')
   ) {
+    if (name.includes('nem ngựa') || name.includes('nem ngua')) {
+      return [xuanHoaSpots.san_bia_247];
+    }
     return [xuanHoaSpots.lau_ngua_tay_bac];
   }
 
-  if ((name.includes('trâu') || name.includes('thắng cố')) && !name.includes('ngựa') && !name.includes('ngua')) {
+  if (name.includes('dê') || name.includes('thịt dê') || name.includes('lẩu dê')) {
+    return [xuanHoaSpots.binh_nam];
+  }
+
+  if (name.includes('chim câu') || name.includes('xôi chim') || name.includes('chim quay') || name.includes('lẩu chim')) {
+    return [xuanHoaSpots.quan_chim_lan_anh];
+  }
+
+  if ((name.includes('trâu') || name.includes('trau')) && !name.includes('ngựa') && !name.includes('ngua') && !name.includes('thắng cố')) {
     return [xuanHoaSpots.trau_phi_xuyen, xuanHoaSpots.trau_gio_dong];
   }
 
-  if (name.includes('chim câu') || name.includes('xôi chim')) {
-    return [xuanHoaSpots.quan_chim_lan_anh, xuanHoaSpots.xuho_bistro];
+  if (name.includes('mì cay') || name.includes('mỳ cay')) {
+    return [xuanHoaSpots.ruby_quan, xuanHoaSpots.my_cay_seoul, xuanHoaSpots.xoai_corner];
+  }
+
+  if (name.includes('bún riêu') || name.includes('bun rieu')) {
+    return [xuanHoaSpots.bun_rieu_ba_mai, xuanHoaSpots.bun_anh_toan];
+  }
+
+  if (name.includes('bún bò') || name.includes('bun bo')) {
+    return [xuanHoaSpots.bun_bo_hue_102, xuanHoaSpots.bun_anh_toan];
+  }
+
+  if (name.includes('bún chả') || name.includes('bun cha')) {
+    return [xuanHoaSpots.tiem_me_soc, xuanHoaSpots.bun_cha_xuan_hoa];
+  }
+
+  if (name.includes('phở') || name.includes('pho')) {
+    return [xuanHoaSpots.pho_bo_xuan_hoa, xuanHoaSpots.bun_anh_toan];
+  }
+
+  if (name.includes('cơm tấm')) {
+    return [xuanHoaSpots.com_tam_xuan_hoa, xuanHoaSpots.com_68, xuanHoaSpots.bep_nha_bong];
+  }
+
+  if (name.includes('cơm rang') || name.includes('cơm sườn')) {
+    return [xuanHoaSpots.com_68, xuanHoaSpots.com_tam_xuan_hoa];
+  }
+
+  if (name.includes('bánh mì') || name.includes('bánh mỳ')) {
+    return [xuanHoaSpots.banh_mi_bo_u, xuanHoaSpots.thuy_beo];
   }
 
   if (name.includes('ốc') || name.includes('hàu')) {
-    return [xuanHoaSpots.quan_oc_ngon];
+    return [xuanHoaSpots.quan_oc_ngon, xuanHoaSpots.oc_2000];
   }
 
   if (name.includes('trà sữa') || name.includes('kem dừa') || name.includes('kem bơ')) {

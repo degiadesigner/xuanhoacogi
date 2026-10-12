@@ -1683,6 +1683,41 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
       'Trà chanh mát lạnh: 12.000đ',
       'Trà tắc thanh nhiệt: 12.000đ'
     ]
+  },
+
+  // 42. Quán Lẩu Nướng Phong Việt (Số 1 ngõ 2 Hoàng Quốc Việt, dốc bờ hồ Phúc Yên)
+  lau_nuong_phong_viet: {
+    name: 'Quán Lẩu Nướng Phong Việt (Lẩu & Nướng Chảo Gang)',
+    address: 'Số 1 ngõ 2 đường Hoàng Quốc Việt (dốc bờ hồ Phúc Yên), P. Trưng Trắc, TP. Phúc Yên, Vĩnh Phúc',
+    phone: '0376 076 376 - 098 7722 129',
+    mapsQuery: 'Số 1 ngõ 2 Hoàng Quốc Việt Trưng Trắc Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Phục vụ tại quán & Nhận ship lẩu nướng tận nhà quanh Phúc Yên (9h-13h & 16h-Hết khách) · Hotline: 0376 076 376 - 098 7722 129',
+    notes: 'Quán Lẩu Nướng Phong Việt – Số 1 ngõ 2 Hoàng Quốc Việt (dốc bờ hồ Phúc Yên), P. Trưng Trắc, TP. Phúc Yên · Hotline: 0376 076 376 - 098 7722 129 · Giờ mở cửa: 09:00 - 13:00 và 16:00 - Hết khách · Phục vụ tại quán & Nhận ship lẩu nướng tận nơi quanh Phúc Yên. Nổi tiếng với Combo nướng chảo gang xì xèo 350k - 500k ngập tràn bò tươi, ba chỉ bò Mỹ, nầm, sụn, má đào nướng bơ thơm nức mũi; Lẩu Thái Tomyum hải sản 400k - 650k; Lẩu ếch măng cay nồi đồng 350k - 650k; Lẩu cá tầm SaPa, Lẩu gà thảo mộc; cùng các món bản gang cháy tỏi nức tiếng: Nầm bản gang 160k, Dải bản gang 160k, Má đào bản gang 180k, Sụn bản gang 120k; Món ếch sốt trứng muối 180k, Da ếch chiên giòn 120k, Trâu xào lá lốt 150k, Chân gà chiên mắm 80k, Cánh gà chiên mắm 90k.',
+    menuHighlights: [
+      'Combo nướng chảo gang xì xèo: 350.000đ - 500.000đ (Best Choice)',
+      'Lẩu ếch măng cay đặc sản: 350.000đ - 500.000đ - 650.000đ (Bestseller)',
+      'Lẩu Thái Tomyum hải sản: 400.000đ - 500.000đ - 650.000đ (Bestseller)',
+      'Lẩu cá tầm SaPa: 450.000đ (Đặt trước)',
+      'Lẩu gà thảo mộc: 380.000đ (Đặt trước)',
+      'Nầm bản gang cháy tỏi: 160.000đ',
+      'Dải bản gang chiên mắm: 160.000đ',
+      'Má đào bản gang sốt tỏi: 180.000đ',
+      'Sụn heo bản gang cháy tỏi: 120.000đ',
+      'Ếch xào măng cay đặc sản: 180.000đ',
+      'Ếch sốt trứng muối hoàng kim: 180.000đ',
+      'Da ếch chiên giòn lá lốt: 120.000đ',
+      'Ba chỉ bò Mỹ nướng sốt: 90.000đ',
+      'Dải heo nướng sốt: 90.000đ',
+      'Má đào nướng sốt: 90.000đ',
+      'Trâu xào lá lốt: 150.000đ',
+      'Mực chiên mắm: 150.000đ',
+      'Chân gà chiên mắm tê cay: 80.000đ',
+      'Cánh gà chiên mắm: 90.000đ',
+      'Gà viên Popcorn lắc phomai: 80.000đ',
+      'Khoai tây chiên lắc phomai: 60.000đ'
+    ]
   }
 };
 
@@ -1720,6 +1755,19 @@ export function getSpotForDish(dishName: string): SpotInfo {
     (name.includes('ngõ 4') && name.includes('nguyễn văn linh'))
   ) {
     return xuanHoaSpots.bep_nha_cun;
+  }
+
+  // Quán Lẩu Nướng Phong Việt: Dốc bờ hồ Phúc Yên (Số 1 ngõ 2 Hoàng Quốc Việt)
+  if (
+    name.includes('phong việt') ||
+    name.includes('phong viet') ||
+    name.includes('0376076376') ||
+    name.includes('0376 076 376') ||
+    name.includes('0987722129') ||
+    name.includes('098 7722 129') ||
+    (name.includes('hoàng quốc việt') && (name.includes('lẩu') || name.includes('nướng') || name.includes('ngõ 2') || name.includes('bờ hồ')))
+  ) {
+    return xuanHoaSpots.lau_nuong_phong_viet;
   }
 
   // Bánh Xèo Cô Hiền: Bánh xèo, nem lụi, chè miền trung 90 Nguyễn Văn Linh
@@ -2952,6 +3000,21 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
   }
 
   if (
+    customId.includes('dish_pv_') ||
+    customId.includes('pv_') ||
+    customId.includes('phong_viet') ||
+    sub.includes('phong việt') ||
+    sub.includes('phong viet') ||
+    sub.includes('0376 076 376') ||
+    sub.includes('0376076376') ||
+    sub.includes('hoàng quốc việt') ||
+    name.includes('phong việt') ||
+    name.includes('phong viet')
+  ) {
+    return [xuanHoaSpots.lau_nuong_phong_viet];
+  }
+
+  if (
     customId.includes('xien_trung_hoa') ||
     customId.includes('trung_hoa') ||
     sub.includes('trung hoa') ||
@@ -3374,9 +3437,11 @@ export function getSimilarSpotsForDish(dishInput: Food | string, primarySpot?: S
     allText.includes('tuấn hiền') || allText.includes('ba chỉ quay') || allText.includes('dồi sụn') ||
     allText.includes('lan anh') || allText.includes('xuyên phi') || allText.includes('bà mười') ||
     allText.includes('cường dương') || allText.includes('bình năm') || allText.includes('khanh hương') ||
-    allText.includes('ngựa') || allText.includes('ngua') || allText.includes('tây bắc') || allText.includes('thắng cố')
+    allText.includes('ngựa') || allText.includes('ngua') || allText.includes('tây bắc') || allText.includes('thắng cố') ||
+    allText.includes('phong việt') || allText.includes('phong viet')
   ) {
     const nhanGroup = [
+      xuanHoaSpots.lau_nuong_phong_viet,
       xuanHoaSpots.lau_ngua_tay_bac,
       xuanHoaSpots.vanh_dai_quan,
       xuanHoaSpots.san_bia_247,

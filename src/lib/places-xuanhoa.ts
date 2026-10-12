@@ -7,7 +7,7 @@ export type PlaceStyleGroup = 'nhau-lau' | 'an-chinh' | 'uong' | 'an-vat';
 export function getPlaceStyleGroup(place: Place): PlaceStyleGroup {
   if (
     place.category === 'pub' || 
-    ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'trang-hai-san', 'lau-cuong-duong', 'lau-nuong-ba-muoi', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'nha-hang-khanh-huong', 'nha-hang-binh-nam', 'nha-hang-468', 'quan-chim-lan-anh', 'xuho-bistro', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'lau-nuong-1968', 'xien-nuong-trung-hoa', 'lau-ngua-tay-bac'].includes(place.id)
+    ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'trang-hai-san', 'lau-cuong-duong', 'lau-nuong-ba-muoi', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'nha-hang-khanh-huong', 'nha-hang-binh-nam', 'nha-hang-468', 'quan-chim-lan-anh', 'xuho-bistro', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'lau-nuong-1968', 'xien-nuong-trung-hoa', 'lau-ngua-tay-bac', 'lau-nuong-phong-viet'].includes(place.id)
   ) {
     return 'nhau-lau';
   }
@@ -89,7 +89,7 @@ export function getPlaceEstimatedPerPerson(place: Place): number {
       return 180;
     }
     // Lẩu nướng, quán nhậu đêm, ốc
-    if (['lau-nuong-ba-muoi', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'xuho-bistro', 'quan-chim-lan-anh', 'lau-cuong-duong', 'nha-hang-khanh-huong', 'nha-hang-binh-nam', 'cuon-moc-xuan-hoa', 'lau-nuong-1968'].includes(place.id)) {
+    if (['lau-nuong-ba-muoi', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'xuho-bistro', 'quan-chim-lan-anh', 'lau-cuong-duong', 'nha-hang-khanh-huong', 'nha-hang-binh-nam', 'cuon-moc-xuan-hoa', 'lau-nuong-1968', 'lau-nuong-phong-viet'].includes(place.id)) {
       return 100;
     }
     return 100;
@@ -6305,6 +6305,62 @@ export const xuanHoaPlaces: Place[] = [
     rarity: 2,
     quip: 'Bếp Nhà Cún tại Số 12 ngõ 4 Nguyễn Văn Linh chuyên ship & lấy ngay từ 11h trưa tới 2h đêm (không có ăn tại chỗ). Thiên đường mì trộn từ 25k-55k, viên chiên sốt thái tê cay 45k và trà chanh giải khát 12k. Hotline: 0968 863 445.',
     mealSessions: ['lunch', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'lau-nuong-phong-viet',
+    name: 'Quán Lẩu Nướng Phong Việt (Lẩu & Nướng Chảo Gang)',
+    tagline: 'Dốc Bờ Hồ Phúc Yên! Thiên đường Lẩu Thái Tomyum, Lẩu ếch măng cay & Combo nướng chảo gang xì xèo',
+    category: 'pub',
+    zone: 'expanded',
+    distance: 'Số 1 ngõ 2 Hoàng Quốc Việt (dốc bờ hồ Phúc Yên)',
+    address: 'Số 1 ngõ 2 đường Hoàng Quốc Việt (dốc bờ hồ Phúc Yên), P. Trưng Trắc, TP. Phúc Yên, Vĩnh Phúc',
+    priceRange: '60k - 200k',
+    minPrice: 60,
+    maxPrice: 200,
+    rating: 4.96,
+    reviewCount: 185,
+    imageUrl: 'place_lau_nuong_phong_viet_hd.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Phục vụ tại quán & Nhận ship lẩu nướng tận nhà quanh Phúc Yên (9h-13h & 16h-Hết khách) · Hotline: 0376 076 376 - 098 7722 129',
+    signatureDish: {
+      id: 'pv-combo-nuong-chao-gang',
+      name: 'Combo nướng chảo gang xì xèo',
+      price: 350,
+      tag: 'Best Choice',
+      serviceTag: 'both',
+      description: 'Combo nướng chảo gang xì xèo gồm bò tươi, ba chỉ bò Mỹ, sụn, nầm, má đào, dải heo ướp sốt đậm đà nướng bơ thơm nức mũi.',
+      rarity: 3,
+    },
+    menu: [
+      { id: 'pv-combo-nuong-chao-gang', name: 'Combo nướng chảo gang xì xèo', price: 350, tag: 'Best Choice', serviceTag: 'both', rarity: 3, description: 'Combo nướng chảo gang xì xèo 350k - 500k gồm bò tươi, ba chỉ bò Mỹ, sụn, nầm, má đào, dải heo ướp sốt nướng bơ xì xèo thơm nức mũi.' },
+      { id: 'pv-lau-ech-mang-cay', name: 'Lẩu ếch măng cay đặc sản', price: 350, tag: 'Bestseller', serviceTag: 'both', rarity: 3, description: 'Nồi lẩu đồng sôi sùng sục chua thanh cay nồng, mâm ếch đồng xào măng củ giòn cay ngào ngạt hương lá lốt (350k - 500k - 650k).' },
+      { id: 'pv-lau-thai-tomyum', name: 'Lẩu Thái Tomyum hải sản', price: 400, tag: 'Bestseller', serviceTag: 'both', rarity: 3, description: 'Nước lẩu Thái Tomyum đỏ cam đậm đà chua cay cốt dừa, mâm tôm sú tươi, mực giòn sần sật và ba chỉ bò Mỹ nhúng mềm tan (400k - 500k - 650k).' },
+      { id: 'pv-lau-ca-tam-sapa', name: 'Lẩu cá tầm SaPa', price: 450, tag: 'Đặt trước', serviceTag: 'both', rarity: 3, description: 'Cá tầm SaPa tươi sống thái lát mỏng trắng ngần, sụn giòn ngọt nước lẩu măng chua thanh dịu khó cưỡng.' },
+      { id: 'pv-lau-ga-thao-moc', name: 'Lẩu gà thảo mộc', price: 380, tag: 'Đặt trước', serviceTag: 'both', rarity: 3, description: 'Gà đồi thả vườn thịt săn chắc da vàng óng ninh thảo mộc táo đỏ kỷ tử ngọt thanh bổ dưỡng.' },
+      { id: 'pv-nam-ban-gang', name: 'Nầm bản gang cháy tỏi', price: 160, tag: 'Món tủ', serviceTag: 'both', rarity: 2, description: 'Nầm heo tươi giòn sần sật xì xèo trên bản gang cháy tỏi thơm lừng nức mũi chấm sốt cay tê.' },
+      { id: 'pv-dai-ban-gang', name: 'Dải bản gang chiên mắm', price: 160, tag: 'Món tủ', serviceTag: 'both', rarity: 2, description: 'Dải heo vàng ruộm thơm mùi nước mắm tỏi xì xèo đĩa gang nóng hổi, mồi nhậu bén số một.' },
+      { id: 'pv-ma-dao-ban-gang', name: 'Má đào bản gang sốt tỏi', price: 180, tag: 'Đặc sản', serviceTag: 'both', rarity: 3, description: 'Má đào heo thơm mềm giòn gân sần sật đảo chảo gang bốc khói đậm đà tỏi phi ớt sừng.' },
+      { id: 'pv-sun-ban-gang', name: 'Sụn heo bản gang cháy tỏi', price: 120, tag: 'Lai rai', serviceTag: 'both', rarity: 2, description: 'Sụn non heo thái mỏng xào cháy tỏi giòn rụm sần sật, ngấm sốt đậm đà ăn lai rai cùng bia hơi cực đã.' },
+      { id: 'pv-ech-xao-mang-cay', name: 'Ếch xào măng cay đặc sản', price: 180, tag: 'Đặc sản', serviceTag: 'both', rarity: 2, description: 'Đĩa ếch đồng xào măng củ giòn cay vàng óng ngào ngạt hương lá lốt và tía tô tươi.' },
+      { id: 'pv-ech-sot-trung-muoi', name: 'Ếch sốt trứng muối hoàng kim', price: 180, tag: 'Đậm vị', serviceTag: 'both', rarity: 2, description: 'Đùi ếch đồng chiên giòn áo lớp sốt trứng muối vàng óng béo ngậy mằn mặn bùng nổ vị giác.' },
+      { id: 'pv-da-ech-chien-gion', name: 'Da ếch chiên giòn lá lốt', price: 120, tag: 'Giòn rụm', serviceTag: 'both', rarity: 2, description: 'Da ếch chiên phồng giòn tan rụm như bim bim rắc lá lốt chiên chấm tương ớt cay nồng cực tốn bia.' },
+      { id: 'pv-chan-ga-chien-mam', name: 'Chân gà chiên mắm tê cay', price: 80, tag: 'Ăn vặt', serviceTag: 'both', rarity: 1, description: 'Chân gà chiên giòn bì ngập tràn sốt nước mắm me tỏi ớt kẹo sệt, vị cay tê đậm đà ăn cực cuốn.' },
+      { id: 'pv-canh-ga-chien-mam', name: 'Cánh gà chiên mắm thơm lừng', price: 90, tag: 'Khoái khẩu', serviceTag: 'both', rarity: 1, description: 'Cánh gà chặt khúc chiên vàng ươm vỏ giòn mọng nước ngấm sâu nước mắm nhỉ tỏi ớt thơm lừng.' },
+      { id: 'pv-trau-xao-la-lot', name: 'Trâu xào lá lốt thơm bùi', price: 150, tag: 'Nhậu bén', serviceTag: 'both', rarity: 2, description: 'Thịt trâu tươi giật thái mỏng xào nhanh tay trên lửa lớn cùng lá lốt tỏi phi thơm nức ngọt mềm.' },
+      { id: 'pv-muc-chien-mam', name: 'Mực chiên mắm giòn cay', price: 150, tag: 'Hải sản', serviceTag: 'both', rarity: 2, description: 'Mực ống dày mình chiên giòn xốc qua sốt mắm tỏi ớt đường kẹo sền sệt đậm đà lót lá chuối tươi.' },
+      { id: 'pv-ga-popcorn', name: 'Gà viên Popcorn lắc phomai', price: 80, tag: 'Ăn vặt', serviceTag: 'both', rarity: 1, description: 'Viên thịt gà chiên phồng giòn tan rụm lắc bột phô mai béo ngậy chấm kèm tương cà chua ngọt.' },
+      { id: 'pv-khoai-tay-chien', name: 'Khoai tây chiên lắc phomai', price: 60, tag: 'Lai rai', serviceTag: 'both', rarity: 1, description: 'Khoai tây cọng chiên vàng óng giòn rụm rắc bột phô mai thơm phức, món khai vị quốc dân.' },
+      { id: 'pv-ba-chi-bo-my', name: 'Ba chỉ bò Mỹ nướng sốt', price: 90, tag: 'Đĩa nướng', serviceTag: 'both', rarity: 2, description: 'Đĩa ba chỉ bò Mỹ vân mỡ đều đặn ướp sốt nướng đậm đà cuộn rau sống chấm sốt me.' },
+      { id: 'pv-dai-heo-nuong', name: 'Dải heo nướng sốt đậm đà', price: 90, tag: 'Đĩa nướng', serviceTag: 'both', rarity: 2, description: 'Thịt dải heo tươi giòn ngọt thịt tẩm sốt nướng đậm vị xì xèo chín tới trên chảo bơ.' },
+      { id: 'pv-ma-dao-nuong', name: 'Má đào nướng sốt chảo gang', price: 90, tag: 'Đĩa nướng', serviceTag: 'both', rarity: 2, description: 'Má đào heo đan xen gân giòn sần sật mọng nước nướng sốt thơm nức mũi.' }
+    ],
+    tags: ['Lẩu Nướng Phong Việt', 'Lẩu Phong Việt', 'Nướng chảo gang Phong Việt', 'Lẩu ếch măng cay', 'Lẩu Thái Tomyum', 'Dốc bờ hồ Phúc Yên', 'Số 1 ngõ 2 Hoàng Quốc Việt', '0376076376', '0987722129', 'Lẩu nướng Phúc Yên'],
+    mapsQuery: 'Số 1 ngõ 2 Hoàng Quốc Việt Trưng Trắc Phúc Yên',
+    phone: '0376 076 376 - 098 7722 129',
+    openHours: '09:00 - 13:00 và 16:00 - 23:30',
+    rarity: 3,
+    quip: 'Quán Lẩu Nướng Phong Việt tại Số 1 ngõ 2 Hoàng Quốc Việt (dốc bờ hồ Phúc Yên) mở cửa 9h-13h & 16h-hết khách. Nổi tiếng với Combo nướng chảo gang xì xèo 350k-500k, Lẩu Thái Tomyum 400k, Lẩu ếch măng cay 350k và các món bản gang cháy tỏi đặc sản. Phục vụ tại quán & ship tận nhà. Hotline: 0376 076 376 - 098 7722 129.',
+    mealSessions: ['lunch', 'dinner', 'late']
   }
 ];
 
@@ -7201,6 +7257,24 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       date: 'Hôm qua',
       role: 'Dân cú đêm Xuân Hòa',
       content: 'Viên chiên sốt thái với lắc tê cay 45k cay tê đã miệng, ăn kèm trà tắc 12k thanh mát giải ngấy cực chuẩn. Quán chuyên ship tận nơi và khách có thể ghé lấy ngay ở ngõ 4 NVL rất tiện, đóng gói sạch sẽ cẩn thận!',
+    }
+  ],
+  'lau-nuong-phong-viet': [
+    {
+      id: 'r_pv_1',
+      author: 'Nguyễn Tiến Dũng',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Thực khách Phúc Yên',
+      content: 'Lẩu Nướng Phong Việt dốc bờ hồ Phúc Yên (Số 1 ngõ 2 Hoàng Quốc Việt) đồ ăn ngon xuất sắc! Nồi lẩu ếch măng cay 350k nước dùng chua thanh cay nồng đậm đà, mâm ếch đồng xào măng lá lốt vàng ươm đầy đặn. Combo nướng chảo gang xì xèo bò tươi, ba chỉ bò Mỹ với nầm má đào ướp sốt ngập bơ thơm nức mũi. Quán ngồi thoáng mát, nhân viên nhiệt tình, có chỗ để xe rộng rãi!',
+    },
+    {
+      id: 'r_pv_2',
+      author: 'Vũ Thùy Linh',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Cư dân bờ hồ Phúc Yên',
+      content: 'Cực mê các món bản gang cháy tỏi ở đây, nhất là nầm bản gang và má đào sốt tỏi ớt xèo xèo thơm nức. Đặt ship lẩu về nhà qua hotline 0376076376 quán đóng gói rất chỉn chu, nước lẩu và thịt ếch tươi ngon đóng hộp sạch sẽ nóng hổi!',
     }
   ]
 };

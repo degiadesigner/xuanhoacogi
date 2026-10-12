@@ -7370,7 +7370,249 @@ export const bepNhaCunDishes: Food[] = [
   ...bepNhaCunDrinkDishes,
 ];
 
+// ============================================================================
+// QUÁN LẨU NƯỚNG PHONG VIỆT (SỐ 1 NGÕ 2 HOÀNG QUỐC VIỆT - DỐC BỜ HỒ PHÚC YÊN)
+// Hotline: 0376 076 376 - 098 7722 129 • Lẩu & Nướng chảo gang xì xèo
+// Giờ mở cửa: 09:00 - 13:00 và 16:00 - Hết khách • Ăn tại quán & Ship tận nhà
+// ============================================================================
+export const phongVietDishes: Food[] = [
+  // 1. Combo nướng chảo gang xì xèo (350k) - Best Choice
+  {
+    name: 'Combo nướng chảo gang xì xèo',
+    sub: 'Bò tươi, ba chỉ bò Mỹ, dải heo, nầm, má đào xì xèo chảo gang • Lẩu Nướng Phong Việt',
+    price: 350,
+    image: -3401,
+    customId: 'dish_pv_combo_nuong_chao_gang',
+    customImage: 'dish_pv_combo_nuong_chao_gang_hd.jpg',
+    rarity: 3,
+    quip: 'Combo nướng chảo gang xì xèo đầy đặn với ba chỉ bò Mỹ cuộn nấm, bò tươi mềm ngọt, nầm giòn sần sật, má đào và dải heo ướp sốt đậm đà nướng bơ thơm nức mũi.',
+  },
+  // 2. Lẩu ếch măng cay đặc sản (350k) - Bestseller
+  {
+    name: 'Lẩu ếch măng cay đặc sản',
+    sub: 'Nồi đồng nước lẩu chua cay đậm đà, mâm ếch đồng xào măng lá lốt vàng ươm • Lẩu Nướng Phong Việt',
+    price: 350,
+    image: -3402,
+    customId: 'dish_pv_lau_ech_mang_cay',
+    customImage: 'dish_pv_lau_ech_mang_cay_hd.jpg',
+    rarity: 3,
+    quip: 'Nồi lẩu đồng sôi sùng sục chua thanh cay nồng, mâm ếch đồng xào măng củ giòn cay ngào ngạt hương lá lốt, nhúng kèm nấm tươi đậu phụ và mì cực đã.',
+  },
+  // 3. Lẩu Thái Tomyum hải sản (400k) - Bestseller
+  {
+    name: 'Lẩu Thái Tomyum hải sản',
+    sub: 'Mâm tôm sú tươi rói, mực giòn, ba chỉ bò Mỹ ngập tràn nước lẩu Tomyum cốt dừa • Lẩu Nướng Phong Việt',
+    price: 400,
+    image: -3403,
+    customId: 'dish_pv_lau_thai_tomyum',
+    customImage: 'dish_pv_lau_thai_tomyum_hd.jpg',
+    rarity: 3,
+    quip: 'Nước lẩu Thái Tomyum đỏ cam đậm đà chua cay béo ngậy vị cốt dừa sả chanh, ngập tràn tôm sú nhảy tanh tách, mực tươi giòn sần sật và ba chỉ bò Mỹ nhúng mềm tan.',
+  },
+  // 4. Lẩu cá tầm SaPa (450k) - Đặt trước
+  {
+    name: 'Lẩu cá tầm SaPa',
+    sub: 'Cá tầm SaPa tươi sống thái lát mỏng trắng ngần, sụn giòn ngọt nước lẩu thanh tao • Lẩu Nướng Phong Việt',
+    price: 450,
+    image: -3404,
+    customId: 'dish_pv_lau_ca_tam_sapa',
+    customImage: 'dish_pv_lau_ca_tam_sapa_hd.jpg',
+    rarity: 3,
+    quip: 'Đặc sản cá tầm SaPa thượng hạng thái lát mỏng tươi rói, thịt cá dai ngọt béo ngậy cùng sụn sần sật nhúng nước lẩu măng chua thanh ngọt khó cưỡng.',
+  },
+  // 5. Lẩu gà thảo mộc (380k) - Đặt trước
+  {
+    name: 'Lẩu gà thảo mộc',
+    sub: 'Gà ri đồi thả vườn chắc thịt ninh thảo mộc táo đỏ kỷ tử ngọt thanh bổ dưỡng • Lẩu Nướng Phong Việt',
+    price: 380,
+    image: -3405,
+    customId: 'dish_pv_lau_ga_thao_moc',
+    customImage: 'dish_pv_lau_ga_thao_moc_hd.jpg',
+    rarity: 3,
+    quip: 'Gà thả đồi thịt săn chắc da giòn vàng óng kết hợp các vị thảo mộc thiên nhiên thanh mát, nước lẩu ngọt lịm từ xương bồi bổ sức khỏe tuyệt hảo.',
+  },
+  // 6. Ba chỉ bò Mỹ nướng sốt (90k)
+  {
+    name: 'Ba chỉ bò Mỹ nướng sốt',
+    sub: 'Ba chỉ bò Mỹ vân mỡ đều tăm tắp ướp sốt nướng đậm đà • Lẩu Nướng Phong Việt',
+    price: 90,
+    image: -3406,
+    customId: 'dish_pv_ba_chi_bo_my',
+    customImage: 'dish_pv_ba_chi_bo_my_hd.jpg',
+    rarity: 2,
+    quip: 'Từng dải ba chỉ bò Mỹ nướng chảo gang xèo xèo thơm nức, mỡ chảy xèo xèo cuộn cùng xà lách chấm sốt me hoặc sốt chấm độc quyền của quán.',
+  },
+  // 7. Dải heo nướng sốt đậm đà (90k)
+  {
+    name: 'Dải heo nướng sốt đậm đà',
+    sub: 'Thịt dải heo tươi giòn ngọt thịt ướp sốt cay dịu đậm vị • Lẩu Nướng Phong Việt',
+    price: 90,
+    image: -3407,
+    customId: 'dish_pv_dai_heo_nuong',
+    customImage: 'dish_pv_dai_heo_nuong_hd.jpg',
+    rarity: 2,
+    quip: 'Dải heo thái miếng dày dặn tẩm ướp sốt nướng đậm đà, nướng chín tới vừa mềm vừa ngọt nước, ăn cuốn rau sống cực mê.',
+  },
+  // 8. Má đào nướng sốt chảo gang (90k)
+  {
+    name: 'Má đào nướng sốt chảo gang',
+    sub: 'Má đào heo giòn sần sật mọng nước nướng sốt thơm lừng • Lẩu Nướng Phong Việt',
+    price: 90,
+    image: -3408,
+    customId: 'dish_pv_ma_dao_nuong',
+    customImage: 'dish_pv_ma_dao_nuong_hd.jpg',
+    rarity: 2,
+    quip: 'Phần thịt má đào heo thượng hạng đan xen gân giòn sần sật, ướp sốt nướng ngấm từng thớ thịt xì xèo trên chảo bơ nóng rẫy.',
+  },
+  // 9. Nầm bản gang cháy tỏi (160k)
+  {
+    name: 'Nầm bản gang cháy tỏi',
+    sub: 'Nầm heo giòn sần sật xì xèo trên bản gang cháy tỏi thơm lừng nức mũi • Lẩu Nướng Phong Việt',
+    price: 160,
+    image: -3409,
+    customId: 'dish_pv_nam_ban_gang',
+    customImage: 'dish_pv_nam_ban_gang_hd.jpg',
+    rarity: 2,
+    quip: 'Bản gang nóng rực bốc khói nghi ngút, nầm heo tươi rói thái mỏng xào giòn sần sật cùng tép tỏi vàng ươm thơm lừng chấm sốt cay tê đã miệng.',
+  },
+  // 10. Dải bản gang chiên mắm (160k)
+  {
+    name: 'Dải bản gang chiên mắm',
+    sub: 'Dải heo vàng ruộm thơm mùi nước mắm tỏi xì xèo đĩa gang • Lẩu Nướng Phong Việt',
+    price: 160,
+    image: -3410,
+    customId: 'dish_pv_dai_ban_gang',
+    customImage: 'dish_pv_dai_ban_gang_hd.jpg',
+    rarity: 2,
+    quip: 'Thịt dải heo tươi thái con chì đảo xém cạnh trên đĩa gang nóng hổi, quyện đẫm sốt nước mắm tỏi ớt kẹo sệt đậm đà, mồi nhậu bén số một.',
+  },
+  // 11. Má đào bản gang sốt tỏi (180k)
+  {
+    name: 'Má đào bản gang sốt tỏi',
+    sub: 'Má đào thơm mềm giòn gân sần sật đảo chảo gang bốc khói • Lẩu Nướng Phong Việt',
+    price: 180,
+    image: -3411,
+    customId: 'dish_pv_ma_dao_ban_gang',
+    customImage: 'dish_pv_ma_dao_ban_gang_hd.jpg',
+    rarity: 3,
+    quip: 'Đĩa gang con bò bốc khói thơm nức, má đào tươi rói đảo cùng tỏi phi ớt sừng đậm vị, giòn ngon khó cưỡng.',
+  },
+  // 12. Sụn heo bản gang cháy tỏi (120k)
+  {
+    name: 'Sụn heo bản gang cháy tỏi',
+    sub: 'Sụn non heo giòn tan cháy tỏi thơm phức trên bản gang • Lẩu Nướng Phong Việt',
+    price: 120,
+    image: -3412,
+    customId: 'dish_pv_sun_ban_gang',
+    customImage: 'dish_pv_sun_ban_gang_hd.jpg',
+    rarity: 2,
+    quip: 'Sụn non heo thái mỏng xào cháy tỏi giòn rụm sần sật, ngấm sốt đậm đà ăn lai rai cùng bia hơi cực đã.',
+  },
+  // 13. Ếch xào măng cay đặc sản (180k)
+  {
+    name: 'Ếch xào măng cay đặc sản',
+    sub: 'Đĩa ếch đồng xào măng củ giòn ngậy thơm lừng lá lốt ớt đỏ • Lẩu Nướng Phong Việt',
+    price: 180,
+    image: -3413,
+    customId: 'dish_pv_ech_xao_mang_cay',
+    customImage: 'dish_pv_ech_xao_mang_cay_hd.jpg',
+    rarity: 2,
+    quip: 'Thịt đùi ếch đồng săn chắc ngọt thịt xào quyện cùng măng củ chua cay vàng óng, đẫm hương thơm nồng nàn của lá lốt và tía tô tươi.',
+  },
+  // 14. Ếch sốt trứng muối hoàng kim (180k)
+  {
+    name: 'Ếch sốt trứng muối hoàng kim',
+    sub: 'Đùi ếch chiên vàng rộm áo lớp sốt trứng muối béo ngậy mằn mặn • Lẩu Nướng Phong Việt',
+    price: 180,
+    image: -3414,
+    customId: 'dish_pv_ech_sot_trung_muoi',
+    customImage: 'dish_pv_ech_sot_trung_muoi_hd.jpg',
+    rarity: 2,
+    quip: 'Đùi ếch đồng chiên giòn tan bao bọc bởi lớp sốt trứng muối vàng óng béo ngậy, vị mặn ngọt hài hòa bùng nổ ngay đầu lưỡi.',
+  },
+  // 15. Da ếch chiên giòn lá lốt (120k)
+  {
+    name: 'Da ếch chiên giòn lá lốt',
+    sub: 'Da ếch giòn tan như snack rắc lá lốt chiên thơm nức • Lẩu Nướng Phong Việt',
+    price: 120,
+    image: -3415,
+    customId: 'dish_pv_da_ech_chien_gion',
+    customImage: 'dish_pv_da_ech_chien_gion_hd.jpg',
+    rarity: 2,
+    quip: 'Da ếch làm sạch tẩm bột chiên phồng giòn rụm tan trong miệng, kết hợp lá lốt chiên giòn và chấm tương ớt cay nồng nhậu tốn bia số 1.',
+  },
+  // 16. Chân gà chiên mắm tê cay (80k)
+  {
+    name: 'Chân gà chiên mắm tê cay',
+    sub: 'Chân gà vàng rụm đẫm sốt mắm tỏi cay tê đậm đà • Lẩu Nướng Phong Việt',
+    price: 80,
+    image: -3416,
+    customId: 'dish_pv_chan_ga_chien_mam',
+    customImage: 'dish_pv_chan_ga_chien_mam_hd.jpg',
+    rarity: 1,
+    quip: 'Chân gà chiên giòn bì ngập tràn sốt nước mắm me tỏi ớt kẹo sệt, vị cay tê đậm đà ăn cực cuốn.',
+  },
+  // 17. Cánh gà chiên mắm thơm lừng (90k)
+  {
+    name: 'Cánh gà chiên mắm thơm lừng',
+    sub: 'Cánh gà chiên giòn rụm ngấm đều sốt mắm tỏi ớt bóng bẩy • Lẩu Nướng Phong Việt',
+    price: 90,
+    image: -3417,
+    customId: 'dish_pv_canh_ga_chien_mam',
+    customImage: 'dish_pv_canh_ga_chien_mam_hd.jpg',
+    rarity: 1,
+    quip: 'Cánh gà chặt khúc chiên vàng ươm, vỏ ngoài giòn rụm bên trong mọng nước ngấm sâu nước mắm nhỉ pha tỏi ớt thơm lừng.',
+  },
+  // 18. Trâu xào lá lốt thơm bùi (150k)
+  {
+    name: 'Trâu xào lá lốt thơm bùi',
+    sub: 'Thịt trâu tươi thái mỏng xào lửa lớn cùng lá lốt tỏi phi thơm nức • Lẩu Nướng Phong Việt',
+    price: 150,
+    image: -3418,
+    customId: 'dish_pv_trau_xao_la_lot',
+    customImage: 'dish_pv_trau_xao_la_lot_hd.jpg',
+    rarity: 2,
+    quip: 'Thịt trâu giật tươi ngon ngọt lịm đảo nhanh tay trên chảo lửa ngập hương lá lốt thơm nồng, món nhậu chuẩn bài cho cánh mày râu.',
+  },
+  // 19. Gà viên Popcorn lắc phomai (80k)
+  {
+    name: 'Gà viên Popcorn lắc phomai',
+    sub: 'Thịt gà viên chiên giòn rụm lắc bột phô mai béo ngậy chấm tương ớt • Lẩu Nướng Phong Việt',
+    price: 80,
+    image: -3419,
+    customId: 'dish_pv_ga_popcorn',
+    customImage: 'dish_pv_ga_popcorn_hd.jpg',
+    rarity: 1,
+    quip: 'Viên gà chiên phồng giòn tan rụm vỏ ngoài mềm ngọt thịt bên trong, phủ lớp phomai béo thơm lừng chấm cùng tương cà chua cay ngọt.',
+  },
+  // 20. Khoai tây chiên lắc phomai (60k)
+  {
+    name: 'Khoai tây chiên lắc phomai',
+    sub: 'Khoai tây cọng chiên vàng giòn rụm thơm lừng bơ đường phomai • Lẩu Nướng Phong Việt',
+    price: 60,
+    image: -3420,
+    customId: 'dish_pv_khoai_tay_chien',
+    customImage: 'dish_pv_khoai_tay_chien_hd.jpg',
+    rarity: 1,
+    quip: 'Đĩa khoai tây chiên vàng óng ả giòn tan rụm, rắc phomai hoặc bơ đường ngào ngạt, món khai vị bắt miệng cho mọi bữa lẩu nướng.',
+  },
+  // 21. Mực chiên mắm giòn cay (150k)
+  {
+    name: 'Mực chiên mắm giòn cay',
+    sub: 'Mực tươi chiên vàng óng đậm đà nước mắm tỏi ớt lót lá chuối • Lẩu Nướng Phong Việt',
+    price: 150,
+    image: -3421,
+    customId: 'dish_pv_muc_chien_mam',
+    customImage: 'dish_pv_muc_chien_mam_hd.jpg',
+    rarity: 2,
+    quip: 'Mực ống tươi dày mình chiên giòn ngập dầu rồi xốc qua sốt mắm tỏi đường kẹo sền sệt, mực giòn ngọt sần sật mặn ngọt cay tê nức mũi.',
+  },
+];
+
 export const anGiFoods: Food[] = [
+  phongVietDishes[0],         // BESTSELLER LẨU NƯỚNG PHONG VIỆT: Combo nướng chảo gang xì xèo 350k
+  phongVietDishes[1],         // BESTSELLER LẨU NƯỚNG PHONG VIỆT: Lẩu ếch măng cay 350k
+  phongVietDishes[2],         // BESTSELLER LẨU NƯỚNG PHONG VIỆT: Lẩu Thái Tomyum hải sản 400k
   bepNhaCunFoodDishes[0],     // BESTSELLER BẾP NHÀ CÚN: Mì trộn full topping 45k
   bepNhaCunFoodDishes[1],     // BESTSELLER BẾP NHÀ CÚN: Mì trộn thập cẩm đặc biệt 55k
   bepNhaCunFoodDishes[9],     // BESTSELLER BẾP NHÀ CÚN: Viên chiên sốt thái 45k
@@ -8143,6 +8385,13 @@ export const vanhDaiQuanItems: Food[] = [
 ];
 
 export const nhauGiFoods: Food[] = [
+  phongVietDishes[0],        // BESTSELLER LẨU NƯỚNG PHONG VIỆT: Combo nướng chảo gang xì xèo (350k)
+  phongVietDishes[1],        // BESTSELLER LẨU NƯỚNG PHONG VIỆT: Lẩu ếch măng cay đặc sản (350k)
+  phongVietDishes[2],        // BESTSELLER LẨU NƯỚNG PHONG VIỆT: Lẩu Thái Tomyum hải sản (400k)
+  phongVietDishes[8],        // LẨU NƯỚNG PHONG VIỆT: Nầm bản gang cháy tỏi (160k)
+  phongVietDishes[9],        // LẨU NƯỚNG PHONG VIỆT: Dải bản gang chiên mắm (160k)
+  phongVietDishes[10],       // LẨU NƯỚNG PHONG VIỆT: Má đào bản gang sốt tỏi (180k)
+  ...phongVietDishes.filter((_, idx) => ![0, 1, 2, 8, 9, 10].includes(idx)),
   lauNguaTayBacDishes[0],    // BESTSELLER LẨU NGỰA TÂY BẮC SỐ 1: Ngựa nướng bản gang (235k)
   lauNguaTayBacDishes[15],   // BESTSELLER LẨU NGỰA TÂY BẮC: Lẩu ngựa thắng cố (350k - 600k)
   lauNguaTayBacDishes[16],   // BESTSELLER LẨU NGỰA TÂY BẮC: Ngựa nhúng mẻ (350k - 600k)
@@ -8666,6 +8915,31 @@ export function getDishConceptKey(food: Food): string {
     if (name.includes('sốt mắm tỏi')) return 'bnc-vien-chien-mam-toi';
     if (name.includes('trà chanh')) return 'bnc-tra-chanh';
     if (name.includes('trà tắc')) return 'bnc-tra-tac';
+  }
+
+  // Quán Lẩu Nướng Phong Việt (Số 1 ngõ 2 Hoàng Quốc Việt, Dốc bờ hồ Phúc Yên)
+  if ((food.customId && food.customId.startsWith('dish_pv_')) || (food.sub && food.sub.includes('Lẩu Nướng Phong Việt'))) {
+    if (name.includes('combo')) return 'pv-combo-nuong-chao-gang';
+    if (name.includes('lẩu ếch')) return 'pv-lau-ech-mang-cay';
+    if (name.includes('lẩu thái')) return 'pv-lau-thai-tomyum';
+    if (name.includes('cá tầm')) return 'pv-lau-ca-tam-sapa';
+    if (name.includes('gà thảo mộc')) return 'pv-lau-ga-thao-moc';
+    if (name.includes('ba chỉ bò mỹ')) return 'pv-ba-chi-bo-my';
+    if (name.includes('dải heo nướng')) return 'pv-dai-heo-nuong';
+    if (name.includes('má đào nướng')) return 'pv-ma-dao-nuong';
+    if (name.includes('nầm bản gang')) return 'pv-nam-ban-gang';
+    if (name.includes('dải bản gang')) return 'pv-dai-ban-gang';
+    if (name.includes('má đào bản gang')) return 'pv-ma-dao-ban-gang';
+    if (name.includes('sụn heo bản gang')) return 'pv-sun-ban-gang';
+    if (name.includes('ếch xào măng')) return 'pv-ech-xao-mang-cay';
+    if (name.includes('trứng muối')) return 'pv-ech-sot-trung-muoi';
+    if (name.includes('da ếch')) return 'pv-da-ech-chien-gion';
+    if (name.includes('chân gà')) return 'pv-chan-ga-chien-mam';
+    if (name.includes('cánh gà')) return 'pv-canh-ga-chien-mam';
+    if (name.includes('trâu xào')) return 'pv-trau-xao-la-lot';
+    if (name.includes('popcorn')) return 'pv-ga-popcorn';
+    if (name.includes('khoai tây')) return 'pv-khoai-tay-chien';
+    if (name.includes('mực chiên mắm')) return 'pv-muc-chien-mam';
   }
 
   // Quán Cô Loan & Bánh Tráng Nhà BOOM

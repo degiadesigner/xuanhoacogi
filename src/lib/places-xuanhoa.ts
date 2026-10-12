@@ -11,7 +11,7 @@ export function getPlaceStyleGroup(place: Place): PlaceStyleGroup {
   ) {
     return 'nhau-lau';
   }
-  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea', 'quan-co-loan', 'banh-trang-nha-boom'].includes(place.id)) {
+  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea', 'quan-co-loan', 'banh-trang-nha-boom', 'bep-nha-cun'].includes(place.id)) {
     return 'an-vat';
   }
   if (
@@ -6256,6 +6256,55 @@ export const xuanHoaPlaces: Place[] = [
     rarity: 2,
     quip: 'Bánh Tráng Trứng Chảy Nhà BOOM tại 204 Nguyễn Văn Linh - Tụ điểm bánh tráng đỉnh nhất Xuân Hòa với siêu phẩm Set 3 ngăn 90k, Bánh tráng cuộn trứng lòng đào béo ngậy, Bánh tráng bơ béo trứng muối và Lắc muối bò tóp mỡ giòn rụm! Hotline 0394 464 614.',
     mealSessions: ['lunch', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'bep-nha-cun',
+    name: 'Bếp Nhà Cún - Mì Trộn & Ăn Vặt Đêm',
+    tagline: 'Món ngon nhà làm chuẩn vị! Thiên đường mì trộn đậm vị & ăn vặt đêm ship từ 11h trưa tới 2h đêm',
+    category: 'fast_food',
+    zone: 'dhsp2',
+    distance: 'Số 12 ngõ 4 Nguyễn Văn Linh (~250m từ ĐHSP2)',
+    address: 'Số 12 ngõ 4 Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc (Khách có thể tự qua lấy ngay)',
+    priceRange: '12k - 55k',
+    minPrice: 12,
+    maxPrice: 55,
+    rating: 4.95,
+    reviewCount: 168,
+    imageUrl: 'place_bep_nha_cun_hd.jpg',
+    serviceMode: 'delivery_only',
+    deliveryNote: 'Chỉ nhận ship tận nơi từ 11h trưa tới 2h đêm hoặc khách qua lấy trực tiếp tại Số 12 ngõ 4 Nguyễn Văn Linh (Không phục vụ ăn tại chỗ) · Hotline: 0968 863 445 (FB: Phuong Thao Pham)',
+    signatureDish: {
+      id: 'bnc-mi-tron-full-topping',
+      name: 'Mì trộn full topping Bếp Nhà Cún',
+      price: 45,
+      tag: 'Bestseller Cháy Hàng',
+      serviceTag: 'ship',
+      description: 'Tô mì trộn sốt đặc biệt nhà làm đậm đà ngập tràn topping: trứng ốp la, xúc xích, nem chua, lạp xưởng, rau dưa giòn ngon miệng.',
+      rarity: 3,
+    },
+    menu: [
+      { id: 'bnc-mi-tron-full-topping', name: 'Mì trộn full topping', price: 45, tag: 'Bestseller', serviceTag: 'ship', rarity: 3, description: 'Tô mì trộn full topping đẫm sốt nhà làm: trứng ốp la, xúc xích, nem chua, lạp xưởng, rau dưa giòn rụm.' },
+      { id: 'bnc-mi-tron-thap-cam-dac-biet', name: 'Mì trộn thập cẩm đặc biệt', price: 55, tag: 'Đặc biệt siêu đẫm', serviceTag: 'ship', rarity: 3, description: 'Bát mì trộn đại tiệc ngập tràn tất cả các loại topping cao cấp: lườn ngỗng hun khói, gà xiên, nem chua, xúc xích, trứng ốp la.' },
+      { id: 'bnc-mi-tron-luon-ngong', name: 'Mì trộn lườn ngỗng hun khói', price: 40, tag: 'Món tủ', serviceTag: 'ship', rarity: 2, description: 'Mì trộn sốt đậm vị ăn kèm từng lát lườn ngỗng hun khói thơm lừng, thịt mềm mọng nước béo ngậy vừa vặn.' },
+      { id: 'bnc-mi-tron-ga-xien', name: 'Mì trộn gà xiên', price: 40, tag: 'Món ngon', serviceTag: 'ship', rarity: 2, description: 'Thịt gà xiên tẩm ướp đậm đà nướng thơm phức kết hợp sợi mì dai ngon quyện sốt độc quyền.' },
+      { id: 'bnc-mi-tron-trung-xuc-xich', name: 'Mì trộn trứng xúc xích', price: 35, tag: 'Bán chạy', serviceTag: 'ship', rarity: 2, description: 'Cặp đôi hoàn hảo: trứng ốp lòng đào béo ngậy cùng xúc xích rán thơm giòn ngập sốt mì trộn.' },
+      { id: 'bnc-mi-tron-nem-chua', name: 'Mì trộn nem chua', price: 35, tag: 'Lạ miệng', serviceTag: 'ship', rarity: 2, description: 'Nem chua rán thơm dẻo chua chua ngọt ngọt bùi ngậy ăn kèm mì trộn cực kỳ cuốn.' },
+      { id: 'bnc-mi-tron-lap-xuong', name: 'Mì trộn lạp xưởng', price: 35, tag: 'Đậm vị', serviceTag: 'ship', rarity: 2, description: 'Lạp xưởng tươi chiên vàng óng ngọt đậm đà, quyện cùng nước sốt mì trộn gia truyền cay nhẹ.' },
+      { id: 'bnc-mi-tron-xuc-xich', name: 'Mì trộn xúc xích', price: 30, tag: 'Bình dân', serviceTag: 'ship', rarity: 1, description: 'Mì trộn xúc xích giòn rụm thơm ngon, bữa ăn nhanh gọn đủ dinh dưỡng cho sinh viên.' },
+      { id: 'bnc-mi-tron-trung-op-la', name: 'Mì trộn trứng ốp la', price: 25, tag: 'Bình dân', serviceTag: 'ship', rarity: 1, description: 'Trứng gà ốp la lòng đào vàng ươm chảy ngậy trên nền sợi mì trộn dai ngon đậm đà sốt cay ngọt.' },
+      { id: 'bnc-vien-chien-sot-thai', name: 'Viên chiên sốt thái', price: 45, tag: 'Hot Trend', serviceTag: 'ship', rarity: 2, description: 'Khay viên chiên thập cẩm chiên phồng nóng giòn lắc ngập sốt Thái chua ngọt cay tê bùng nổ vị giác.' },
+      { id: 'bnc-vien-chien-te-cay', name: 'Viên chiên lắc tê cay', price: 45, tag: 'Cay đã miệng', serviceTag: 'ship', rarity: 2, description: 'Viên chiên các loại giòn tan lắc đều bột gia vị tê cay nồng nàn, món nhắm lai rai ăn đêm số 1.' },
+      { id: 'bnc-vien-chien-mam-toi', name: 'Viên chiên sốt mắm tỏi', price: 45, tag: 'Đậm đà', serviceTag: 'ship', rarity: 2, description: 'Viên chiên áo lớp sốt nước mắm tỏi ớt kẹo sệt thơm nức mũi, vị đậm đà mặn ngọt ăn cực đã.' },
+      { id: 'bnc-tra-chanh', name: 'Trà chanh mát lạnh', price: 12, tag: 'Giải khát', serviceTag: 'ship', rarity: 1, description: 'Cốc trà chanh tươi mát lạnh chua thanh ngọt dịu, đánh tan cơn khát và giải ngấy tức thì.' },
+      { id: 'bnc-tra-tac', name: 'Trà tắc thanh mát', price: 12, tag: 'Thanh nhiệt', serviceTag: 'ship', rarity: 1, description: 'Trà tắc thơm phức ngào ngạt hương tắc tươi mọng nước, mát lạnh sảng khoái từng ngụm.' }
+    ],
+    tags: ['Bếp Nhà Cún', 'Mì trộn Bếp Nhà Cún', 'Mì trộn đêm', 'Ăn vặt đêm', 'Viên chiên sốt thái', 'Viên chiên lắc tê cay', 'Viên chiên sốt mắm tỏi', 'Số 12 ngõ 4 Nguyễn Văn Linh', '0968863445', 'Phuong Thao Pham', 'Chỉ ship', 'Ship đêm 2h sáng'],
+    mapsQuery: 'Số 12 ngõ 4 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    phone: '0968 863 445',
+    openHours: '11:00 - 02:00',
+    rarity: 2,
+    quip: 'Bếp Nhà Cún tại Số 12 ngõ 4 Nguyễn Văn Linh chuyên ship & lấy ngay từ 11h trưa tới 2h đêm (không có ăn tại chỗ). Thiên đường mì trộn từ 25k-55k, viên chiên sốt thái tê cay 45k và trà chanh giải khát 12k. Hotline: 0968 863 445.',
+    mealSessions: ['lunch', 'afternoon', 'dinner', 'late']
   }
 ];
 
@@ -7134,6 +7183,24 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       date: 'Hôm qua',
       role: 'Dân văn phòng Phúc Yên',
       content: 'Cực mê món Trà hồng lựu sương mai 35k mới ra mắt, hạt lựu đỏ tươi cắn nổ tanh tách ngọt lịm. Trà nhãn atiso đỏ màu đẹp lung linh, uống giải nhiệt cực tốt. Mở cửa từ 8h sáng tới 21h tối, địa chỉ ngay đối diện trạm sạc Vin Lê Quang Đạo rất dễ tìm!',
+    }
+  ],
+  'bep-nha-cun': [
+    {
+      id: 'r_bnc_1',
+      author: 'Trần Phương Linh K48',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Mì trộn full topping 45k ở Bếp Nhà Cún số 12 ngõ 4 Nguyễn Văn Linh đỉnh chóp luôn! Sợi mì dai ngon đẫm sốt nhà làm, ngập tràn topping trứng ốp, nem chua, xúc xích, lạp xưởng. Quán ship từ trưa tới tận 2h đêm, đêm cày deadline đói bụng gọi hotline 0968863445 là có ngay bát mì nóng hổi thơm phức!',
+    },
+    {
+      id: 'r_bnc_2',
+      author: 'Hoàng Minh Đức',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Dân cú đêm Xuân Hòa',
+      content: 'Viên chiên sốt thái với lắc tê cay 45k cay tê đã miệng, ăn kèm trà tắc 12k thanh mát giải ngấy cực chuẩn. Quán chuyên ship tận nơi và khách có thể ghé lấy ngay ở ngõ 4 NVL rất tiện, đóng gói sạch sẽ cẩn thận!',
     }
   ]
 };

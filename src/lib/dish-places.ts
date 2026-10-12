@@ -1655,6 +1655,34 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
       'Bánh tráng trộn full topping đặc biệt: 30.000đ',
       'Bánh tráng trộn truyền thống: 25.000đ'
     ]
+  },
+
+  // 41. Bếp Nhà Cún - Mì Trộn & Ăn Vặt Đêm (Số 12 ngõ 4 Nguyễn Văn Linh)
+  bep_nha_cun: {
+    name: 'Bếp Nhà Cún - Mì Trộn & Ăn Vặt Đêm',
+    address: 'Số 12 ngõ 4 Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc (Chuyên ship & Khách ghé lấy ngay)',
+    phone: '0968 863 445',
+    mapsQuery: 'Số 12 ngõ 4 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'delivery_only',
+    deliveryNote: 'Chỉ nhận ship tận nơi từ 11h trưa tới 2h đêm hoặc khách qua lấy trực tiếp tại Số 12 ngõ 4 Nguyễn Văn Linh (Không phục vụ ăn tại chỗ) · Hotline 0968 863 445 (FB: Phuong Thao Pham)',
+    notes: 'Bếp Nhà Cún – Số 12 ngõ 4 Nguyễn Văn Linh, P. Xuân Hòa · Hotline 0968 863 445 (FB: Phuong Thao Pham) · Chuyên ship tận nơi từ 11h trưa đến 2h đêm, hoặc khách có thể qua lấy trực tiếp ngay tại quán (không phục vụ ăn tại chỗ). Nổi tiếng với 9 món mì trộn đậm vị sốt nhà làm độc quyền: Mì trộn full topping 45k, Mì trộn thập cẩm đặc biệt 55k, Mì trộn lườn ngỗng hun khói 40k, Mì trộn gà xiên 40k, Mì trộn nem chua 35k, Mì trộn lạp xưởng 35k, Mì trộn trứng xúc xích 35k, Mì trộn xúc xích 30k, Mì trộn trứng ốp la 25k (Thêm mì +7k, Thêm trứng/bò khô +5k). Kèm các món ăn vặt viên chiên sốt Thái chua ngọt cay tê 45k, viên chiên lắc tê cay 45k, viên chiên sốt mắm tỏi 45k, trà chanh & trà tắc 12k mát lạnh.',
+    menuHighlights: [
+      'Mì trộn full topping: 45.000đ (Bestseller đẫm topping)',
+      'Mì trộn thập cẩm đặc biệt: 55.000đ (Đặc biệt siêu no)',
+      'Mì trộn lườn ngỗng hun khói: 40.000đ',
+      'Mì trộn gà xiên thơm lừng: 40.000đ',
+      'Mì trộn trứng xúc xích: 35.000đ',
+      'Mì trộn nem chua: 35.000đ',
+      'Mì trộn lạp xưởng chiên: 35.000đ',
+      'Mì trộn xúc xích giòn rụm: 30.000đ',
+      'Mì trộn trứng ốp la lòng đào: 25.000đ',
+      'Viên chiên sốt Thái: 45.000đ (Chua cay tê đã miệng)',
+      'Viên chiên lắc tê cay: 45.000đ',
+      'Viên chiên sốt mắm tỏi: 45.000đ',
+      'Trà chanh mát lạnh: 12.000đ',
+      'Trà tắc thanh nhiệt: 12.000đ'
+    ]
   }
 };
 
@@ -1681,6 +1709,17 @@ export function getSpotForDish(dishName: string): SpotInfo {
     (name.includes('204') && name.includes('nguyễn văn linh'))
   ) {
     return xuanHoaSpots.banh_trang_nha_boom;
+  }
+
+  // Bếp Nhà Cún (Số 12 ngõ 4 Nguyễn Văn Linh)
+  if (
+    name.includes('bếp nhà cún') ||
+    name.includes('bep nha cun') ||
+    name.includes('0968863445') ||
+    name.includes('0968 863 445') ||
+    (name.includes('ngõ 4') && name.includes('nguyễn văn linh'))
+  ) {
+    return xuanHoaSpots.bep_nha_cun;
   }
 
   // Bánh Xèo Cô Hiền: Bánh xèo, nem lụi, chè miền trung 90 Nguyễn Văn Linh
@@ -2899,6 +2938,20 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
   }
 
   if (
+    customId.includes('bnc_') ||
+    customId.includes('bep_nha_cun') ||
+    sub.includes('bếp nhà cún') ||
+    sub.includes('bep nha cun') ||
+    sub.includes('0968 863 445') ||
+    sub.includes('0968863445') ||
+    sub.includes('ngõ 4 nguyễn văn linh') ||
+    name.includes('bếp nhà cún') ||
+    name.includes('bep nha cun')
+  ) {
+    return [xuanHoaSpots.bep_nha_cun];
+  }
+
+  if (
     customId.includes('xien_trung_hoa') ||
     customId.includes('trung_hoa') ||
     sub.includes('trung hoa') ||
@@ -3408,9 +3461,11 @@ export function getSimilarSpotsForDish(dishInput: Food | string, primarySpot?: S
     allText.includes('chè') || allText.includes('xuân mai') ||
     allText.includes('nhật hạ') || allText.includes('nem nướng') ||
     allText.includes('bánh ngọt') || allText.includes('cheesecake') || allText.includes('gateaux') || allText.includes('bento') ||
-    allText.includes('bơ ú') || allText.includes('thúy béo')
+    allText.includes('bơ ú') || allText.includes('thúy béo') ||
+    allText.includes('bếp nhà cún') || allText.includes('bep nha cun')
   ) {
     const snackGroup = [
+      xuanHoaSpots.bep_nha_cun,
       xuanHoaSpots.zun_food_tea,
       xuanHoaSpots.nhungs_corner,
       xuanHoaSpots.banh_trang_55_nvl,

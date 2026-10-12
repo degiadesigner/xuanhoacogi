@@ -7214,7 +7214,167 @@ export const banhTrangNhaBoomDishes: Food[] = [
   },
 ];
 
+
+// ============================================================================
+// BẾP NHÀ CÚN - MÌ TRỘN & ĂN VẶT ĐÊM (SỐ 12 NGÕ 4 NGUYỄN VĂN LINH)
+// Hotline: 0968 863 445 • Ship đêm 11h trưa - 2h sáng & Khách tự qua lấy ngay
+// ============================================================================
+export const bepNhaCunFoodDishes: Food[] = [
+  {
+    name: 'Mì trộn full topping',
+    sub: 'Trứng ốp la xúc xích nem chua lạp xưởng đẫm sốt • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 45,
+    image: -3301,
+    customId: 'dish_bnc_mi_tron_full_topping',
+    customImage: 'dish_bnc_mi_tron_full_topping_hd.jpg',
+    rarity: 3,
+    quip: 'Bát mì trộn full topping đẫm sốt nhà làm độc quyền, ngập tràn trứng ốp la, xúc xích, nem chua và lạp xưởng chiên thơm phức.',
+  },
+  {
+    name: 'Mì trộn thập cẩm đặc biệt',
+    sub: 'Đại tiệc lườn ngỗng gà xiên nem xúc xích trứng ốp • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 55,
+    image: -3302,
+    customId: 'dish_bnc_mi_tron_thap_cam_dac_biet',
+    customImage: 'dish_bnc_mi_tron_thap_cam_dac_biet_hd.jpg',
+    rarity: 3,
+    quip: 'Siêu phẩm mì trộn đặc biệt đẫm mọi loại topping đỉnh cao: lườn ngỗng hun khói, thịt gà xiên, nem chua, xúc xích béo ngậy.',
+  },
+  {
+    name: 'Mì trộn lườn ngỗng hun khói',
+    sub: 'Lườn ngỗng hun khói xắt lát đậm đà thơm ngậy • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 40,
+    image: -3303,
+    customId: 'dish_bnc_mi_tron_luon_ngong',
+    customImage: 'dish_bnc_mi_tron_luon_ngong_hd.jpg',
+    rarity: 2,
+    quip: 'Từng lát lườn ngỗng hun khói béo ngậy thơm lừng kết hợp sợi mì dai ngon quyện sốt cay ngọt siêu cuốn.',
+  },
+  {
+    name: 'Mì trộn gà xiên',
+    sub: 'Thịt gà xiên tẩm ướp đậm vị nướng thơm lừng • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 40,
+    image: -3304,
+    customId: 'dish_bnc_mi_tron_ga_xien',
+    customImage: 'dish_bnc_mi_tron_ga_xien_hd.jpg',
+    rarity: 2,
+    quip: 'Xiên thịt gà vàng ruộm đượm hương gia vị quyện cùng bát mì trộn cay mặn ngọt đậm đà chuẩn vị quán quen.',
+  },
+  {
+    name: 'Mì trộn nem chua',
+    sub: 'Nem chua rán bùi ngậy sốt mì trộn gia truyền • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 35,
+    image: -3305,
+    customId: 'dish_bnc_mi_tron_nem_chua',
+    customImage: 'dish_bnc_mi_tron_nem_chua_hd.jpg',
+    rarity: 2,
+    quip: 'Vị chua thanh giòn dẻo của nem chua chiên vàng hòa quyện sốt mì trộn cay ngọt thơm lừng.',
+  },
+  {
+    name: 'Mì trộn lạp xưởng',
+    sub: 'Lạp xưởng tươi chiên óng ả ngọt béo đậm vị • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 35,
+    image: -3306,
+    customId: 'dish_bnc_mi_tron_lap_xuong',
+    customImage: 'dish_bnc_mi_tron_lap_xuong_hd.jpg',
+    rarity: 2,
+    quip: 'Từng miếng lạp xưởng thơm ngậy đậm đà ăn cùng sợi mì trộn óng ả cay nhẹ bắt vị khó quên.',
+  },
+  {
+    name: 'Mì trộn trứng xúc xích',
+    sub: 'Trứng gà ốp la lòng đào và xúc xích rán thơm • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 35,
+    image: -3307,
+    customId: 'dish_bnc_mi_tron_trung_xuc_xich',
+    customImage: 'dish_bnc_mi_tron_trung_xuc_xich_hd.jpg',
+    rarity: 2,
+    quip: 'Combo quốc dân: trứng ốp lòng đào béo ngậy tan chảy kết hợp xúc xích chiên giòn thơm đẫm sốt.',
+  },
+  {
+    name: 'Mì trộn xúc xích',
+    sub: 'Xúc xích chiên vàng giòn rụm sốt mì trộn đậm đà • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 30,
+    image: -3308,
+    customId: 'dish_bnc_mi_tron_xuc_xich',
+    customImage: 'dish_bnc_mi_tron_xuc_xich_hd.jpg',
+    rarity: 1,
+    quip: 'Món ăn nhanh gọn, bình dân mà thơm ngon khó cưỡng cho các tín đồ mì trộn cày deadline đêm muộn.',
+  },
+  {
+    name: 'Mì trộn trứng ốp la',
+    sub: 'Trứng ốp la lòng đào vàng ươm sốt đậm đà • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 25,
+    image: -3309,
+    customId: 'dish_bnc_mi_tron_trung_op_la',
+    customImage: 'dish_bnc_mi_tron_trung_op_la_hd.jpg',
+    rarity: 1,
+    quip: 'Lòng đỏ trứng gà tan chảy quyện đều từng sợi mì nóng hổi thơm nức sốt nhà làm độc quyền.',
+  },
+  {
+    name: 'Viên chiên sốt thái',
+    sub: 'Viên chiên thập cẩm đẫm sốt Thái chua cay tê • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 45,
+    image: -3310,
+    customId: 'dish_bnc_vien_chien_sot_thai',
+    customImage: 'dish_bnc_vien_chien_sot_thai_hd.jpg',
+    rarity: 2,
+    quip: 'Khay viên chiên thập cẩm chiên phồng nóng giòn lắc ngập sốt Thái chua ngọt cay tê bùng nổ vị giác.',
+  },
+  {
+    name: 'Viên chiên lắc tê cay',
+    sub: 'Viên chiên giòn rụm phủ gia vị tê cay nồng ấm • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 45,
+    image: -3311,
+    customId: 'dish_bnc_vien_chien_te_cay',
+    customImage: 'dish_bnc_vien_chien_te_cay_hd.jpg',
+    rarity: 2,
+    quip: 'Từng viên chiên phồng xốp giòn rụm được lắc đẫm bột gia vị tê cay nồng ấm, món nhắm lai rai ăn đêm cực đã.',
+  },
+  {
+    name: 'Viên chiên sốt mắm tỏi',
+    sub: 'Viên chiên vàng giòn đảo sốt mắm tỏi kẹo sệt • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 45,
+    image: -3312,
+    customId: 'dish_bnc_vien_chien_mam_toi',
+    customImage: 'dish_bnc_vien_chien_mam_toi_hd.jpg',
+    rarity: 2,
+    quip: 'Viên chiên giòn tan ngập sốt mắm tỏi ớt kẹo sệt thơm nức mũi, vị mặn ngọt đậm đà ăn đưa miệng vô cùng.',
+  },
+];
+
+export const bepNhaCunDrinkDishes: Food[] = [
+  {
+    name: 'Trà chanh Bếp Nhà Cún',
+    sub: 'Trà chanh tươi mát lạnh chua thanh ngọt dịu • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 12,
+    image: -3313,
+    customId: 'dish_bnc_tra_chanh',
+    customImage: 'dish_bnc_tra_chanh_hd.jpg',
+    rarity: 1,
+    quip: 'Cốc trà chanh tươi mát lạnh chua thanh sảng khoái, giải ngấy tức thì khi ăn cùng mì trộn và viên chiên.',
+  },
+  {
+    name: 'Trà tắc Bếp Nhà Cún',
+    sub: 'Trà tắc thơm phức thanh mát ngọt lành • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
+    price: 12,
+    image: -3314,
+    customId: 'dish_bnc_tra_tac',
+    customImage: 'dish_bnc_tra_tac_hd.jpg',
+    rarity: 1,
+    quip: 'Hương thơm nồng nàn của tắc tươi mọng nước kết hợp vị trà thanh nhẹ xua tan mệt mỏi.',
+  },
+];
+
+export const bepNhaCunDishes: Food[] = [
+  ...bepNhaCunFoodDishes,
+  ...bepNhaCunDrinkDishes,
+];
+
 export const anGiFoods: Food[] = [
+  bepNhaCunFoodDishes[0],     // BESTSELLER BẾP NHÀ CÚN: Mì trộn full topping 45k
+  bepNhaCunFoodDishes[1],     // BESTSELLER BẾP NHÀ CÚN: Mì trộn thập cẩm đặc biệt 55k
+  bepNhaCunFoodDishes[9],     // BESTSELLER BẾP NHÀ CÚN: Viên chiên sốt thái 45k
+  ...bepNhaCunFoodDishes.filter((_, idx) => idx !== 0 && idx !== 1 && idx !== 9),
   banhTrangNhaBoomDishes[0], // BESTSELLER NHÀ BOOM: Set 3 ngăn 90k
   banhTrangNhaBoomDishes[1], // BESTSELLER NHÀ BOOM: Bánh tráng cuộn trứng lòng đào 35k
   quanCoLoanDishes[0],       // BESTSELLER CÔ LOAN: Mì cay bò Mỹ 40k
@@ -8360,6 +8520,8 @@ export const cocokanaFruitTeaDishes: Food[] = [
 export const cocokanaDishes = cocokanaFruitTeaDishes;
 
 export const uongGiItems: Food[] = [
+  bepNhaCunDrinkDishes[0],    // BESTSELLER BẾP NHÀ CÚN: Trà chanh 12k
+  bepNhaCunDrinkDishes[1],    // BESTSELLER BẾP NHÀ CÚN: Trà tắc 12k,
   meTitDrinkItems[0],         // BESTSELLER SỐ 1 TIỆM MẸ TÍT: Trà mãng cầu tươi (30k) đưa lên đầu
   meTitDrinkItems[1],         // BESTSELLER TIỆM MẸ TÍT: Ôlong cốm yến mạch (40k) - Trà sữa cốm đưa lên đầu
   meTitDrinkItems[2],         // BESTSELLER TIỆM MẸ TÍT: Cốm lá nếp (45k) - Trà sữa cốm đưa lên đầu
@@ -8487,6 +8649,24 @@ export function getDishConceptKey(food: Food): string {
   if (name.includes('thanh nhài dẻ cười')) return 'me-tit-thanh-nhai-de-cuoi';
   if (name.includes('bơ già dừa non') && (name.includes('mẹ tít') || (food.sub && food.sub.includes('Mẹ Tít')))) return 'me-tit-bo-gia-dua-non';
   if (name.includes('mây trắng lá nếp')) return 'me-tit-may-trang-la-nep';
+
+  // Bếp Nhà Cún (Số 12 ngõ 4 Nguyễn Văn Linh)
+  if ((food.customId && food.customId.startsWith('dish_bnc_')) || (food.sub && food.sub.includes('Bếp Nhà Cún'))) {
+    if (name.includes('full topping')) return 'bnc-mi-tron-full-topping';
+    if (name.includes('thập cẩm đặc biệt')) return 'bnc-mi-tron-thap-cam-dac-biet';
+    if (name.includes('lườn ngỗng')) return 'bnc-mi-tron-luon-ngong';
+    if (name.includes('gà xiên')) return 'bnc-mi-tron-ga-xien';
+    if (name.includes('trứng xúc xích')) return 'bnc-mi-tron-trung-xuc-xich';
+    if (name.includes('nem chua')) return 'bnc-mi-tron-nem-chua';
+    if (name.includes('lạp xưởng')) return 'bnc-mi-tron-lap-xuong';
+    if (name.includes('xúc xích')) return 'bnc-mi-tron-xuc-xich';
+    if (name.includes('trứng ốp la')) return 'bnc-mi-tron-trung-op-la';
+    if (name.includes('sốt thái')) return 'bnc-vien-chien-sot-thai';
+    if (name.includes('lắc tê cay')) return 'bnc-vien-chien-te-cay';
+    if (name.includes('sốt mắm tỏi')) return 'bnc-vien-chien-mam-toi';
+    if (name.includes('trà chanh')) return 'bnc-tra-chanh';
+    if (name.includes('trà tắc')) return 'bnc-tra-tac';
+  }
 
   // Quán Cô Loan & Bánh Tráng Nhà BOOM
   if (name.includes('set 3 ngăn')) return 'boom-set-3-ngan';

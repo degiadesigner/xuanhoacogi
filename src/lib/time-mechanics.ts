@@ -370,98 +370,34 @@ export function isDrinkSuitableForSession(drink: Food, session: MealSession): bo
   const name = drink.name.toLowerCase();
   const customId = (drink.customId || '').toLowerCase();
 
-  // 1. BUỔI SÁNG (05:00 - 10:30): Cà phê tỉnh táo, trà thanh tao ấm bụng
+  // 1. BUỔI SÁNG (05:00 - 10:30): Cà phê tỉnh táo, trà thanh tao ấm bụng, nước ép trái cây khởi đầu ngày mới
   if (session === 'morning') {
-    // Tuyệt đối loại trừ trà sâm dứa mát lạnh sau lẩu, trà sữa ngấy, nước mía vỉa hè
-    if (
-      customId === 'dish_cuonmoc_sam_dua' ||
-      name.includes('sâm dứa') ||
-      name.includes('trà sữa') ||
-      name.includes('trân châu') ||
-      name.includes('nước mía') ||
-      name.includes('bia')
-    ) {
+    // Không uống bia tháp / bia hơi sáng sớm
+    if (name.includes('bia')) {
       return false;
     }
 
-    return (
-      name.includes('cà phê') ||
-      name.includes('cafe') ||
-      name.includes('bạc xỉu') ||
-      name.includes('phin kem trứng') ||
-      name.includes('trà đào') ||
-      name.includes('cam ép') ||
-      name.includes('nước ép') ||
-      name.includes('ép cam') ||
-      name.includes('ép cóc') ||
-      name.includes('sen vàng') ||
-      name.includes('gạo rang') ||
-      name.includes('quýt hoa nhài') ||
-      name.includes('tàu hũ') ||
-      name.includes('sữa hạt') ||
-      name.includes('sữa chua') ||
-      name.includes('trà hoa') ||
-      name.includes('chè đậu đỏ')
-    );
+    return true;
   }
 
-  // 2. BUỔI TRƯA (10:30 - 14:00): Giải nhiệt sau bữa trưa, trà sâm dứa Cuốn Mộc giải ngấy
+  // 2. BUỔI TRƯA (10:30 - 14:00): Giải nhiệt sau bữa trưa - Full trà trái cây tươi (mãng cầu, măng cụt, lựu, đào...), trà sữa (cốm, trân châu...), cà phê, sinh tố, nước ép, chè & bia tươi
   if (session === 'noon') {
-    return (
-      customId === 'dish_cuonmoc_sam_dua' ||
-      name.includes('sâm dứa') ||
-      name.includes('trà tắc') ||
-      name.includes('nước mía') ||
-      name.includes('trà xoài') ||
-      name.includes('trà đào') ||
-      name.includes('cà phê') ||
-      name.includes('cafe') ||
-      name.includes('bơ sữa') ||
-      name.includes('sữa chua') ||
-      name.includes('trà sữa')
-    );
+    return true;
   }
 
-  // 3. BUỔI CHIỀU (14:00 - 17:30): Giờ vàng trà sữa Đài Loan & trà trái cây
+  // 3. BUỔI CHIỀU (14:00 - 17:30): Giờ vàng trà sữa Đài Loan, trà trái cây nhiệt đới, đá xay, sinh tố & chè tráng miệng
   if (session === 'afternoon') {
-    return (
-      name.includes('trà sữa') ||
-      name.includes('matcha') ||
-      name.includes('cheese') ||
-      name.includes('bơ sữa') ||
-      name.includes('sữa chua') ||
-      name.includes('trà đào') ||
-      name.includes('trà xoài') ||
-      name.includes('trà chanh') ||
-      name.includes('cà phê') ||
-      name.includes('nước mía')
-    );
+    return true;
   }
 
-  // 4. BUỔI TỐI (17:30 - 21:30): Trà chanh vỉa hè chém gió, cafe chill, trà sữa, trà sâm dứa
+  // 4. BUỔI TỐI (17:30 - 21:30): Toàn bộ đồ uống, trà chanh vỉa hè chém gió, cafe chill, trà sữa, trà trái cây & bia tươi
   if (session === 'evening') {
-    return (
-      name.includes('trà chanh') ||
-      name.includes('trà tắc') ||
-      name.includes('sâm dứa') ||
-      name.includes('trà sữa') ||
-      name.includes('cà phê') ||
-      name.includes('cafe') ||
-      name.includes('nước mía') ||
-      name.includes('trà xoài')
-    );
+    return true;
   }
 
-  // 5. CÚ ĐÊM KTX (21:30 - 05:00): Trà chanh 1L vỉa hè chém gió đêm, trà quất, cafe đêm tỉnh ngủ, nước mía
+  // 5. CÚ ĐÊM KTX (21:30 - 05:00): Trà chanh 1L vỉa hè chém gió đêm, trà quất, cafe đêm tỉnh ngủ, trà sữa, trà trái cây
   if (session === 'night') {
-    return (
-      name.includes('trà chanh') ||
-      name.includes('trà tắc') ||
-      name.includes('cà phê') ||
-      name.includes('cafe') ||
-      name.includes('nước mía') ||
-      name.includes('trà sữa')
-    );
+    return true;
   }
 
   return true;

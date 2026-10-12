@@ -7113,8 +7113,8 @@ export const anGiFoods: Food[] = [
   quanCoLoanDishes[0],       // BESTSELLER CÔ LOAN: Mì cay bò Mỹ 40k
   quanCoLoanDishes[7],       // BESTSELLER CÔ LOAN: Phở cuốn đặc biệt 50k
   quanCoLoanDishes[9],       // BESTSELLER CÔ LOAN: Mỳ Ý sốt bò băm 40k
-  ...quanCoLoanDishes,
-  ...banhTrangNhaBoomDishes,
+  ...quanCoLoanDishes.filter((_, idx) => idx !== 0 && idx !== 7 && idx !== 9),
+  ...banhTrangNhaBoomDishes.filter((_, idx) => idx !== 0 && idx !== 1),
   bepNhaBongFoodDishes[0],       // BESTSELLER BẾP NHÀ BỐNG: Cơm tấm sườn nướng than hoa (30k)
   bepNhaBongFoodDishes[4],       // BESTSELLER BẾP NHÀ BỐNG: Cơm tấm sườn bì chả trứng đặc biệt (40k)
   myGaTanLinhDuongFoodDishes[0],  // BESTSELLER MỲ GÀ TẦN LINH DƯƠNG: Mỳ gà tần ngải cứu thuốc bắc (35k)
@@ -8273,17 +8273,6 @@ export const uongGiItems: Food[] = [
   cheXuanMaiItems[0],        // BESTSELLER CHÈ XUÂN MAI SỐ 1: Chè thập cẩm Xuân Mai (Ngon Ít Ngọt) 10k đưa lên đầu
   cheXuanMaiItems[1],        // BESTSELLER CHÈ XUÂN MAI: Chè bưởi An Giang cốt dừa (12k) đưa lên đầu
   cheXuanMaiItems[2],        // BESTSELLER CHÈ XUÂN MAI: Chè khoai dẻo cốt dừa (12k) đưa lên đầu
-  saltyNameBakeryItems[0],   // BESTSELLER A SALTY NAME: Oreo Cheesecake (65k) đưa lên đầu
-  saltyNameBakeryItems[1],   // BESTSELLER A SALTY NAME: Lime Cheesecake chanh thanh mát (65k) đưa lên đầu
-  saltyNameBakeryItems[2],   // BESTSELLER A SALTY NAME: Fudgy Brownie socola đậm đặc (60k)
-  saltyNameBakeryItems[3],   // BESTSELLER A SALTY NAME: Bánh kem Whipping quả mọng (65k)
-  saltyNameBakeryItems[4],   // BESTSELLER A SALTY NAME: Bento Cake vẽ theo yêu cầu (85k)
-  saltyNameBakeryItems[5],   // BESTSELLER A SALTY NAME: Bánh kem Chocomint the mát (65k)
-  thanhHangGateauxItems[0],  // BESTSELLER THANH HẰNG GATEAUX: Bánh kem sinh nhật Gateaux 16 Kim Ngọc (150k)
-  thanhHangGateauxItems[1],  // BESTSELLER THANH HẰNG: Sweet Dessert Cheesecake (50k)
-  thanhHangGateauxItems[2],  // BESTSELLER THANH HẰNG: Bánh Mousse chanh dây thanh mát (45k)
-  thanhHangGateauxItems[3],  // BESTSELLER THANH HẰNG: Bánh bông lan trứng muối phô mai (55k)
-  thanhHangGateauxItems[4],  // BESTSELLER THANH HẰNG: Bánh sừng bò sô cô la Croissant (35k)
   cheXuanMaiItems[3],        // BESTSELLER CHÈ XUÂN MAI: Chè đậu đỏ cốt dừa (10k)
   cheXuanMaiItems[4],        // BESTSELLER CHÈ XUÂN MAI: Chè dừa dầm Hải Phòng (15k)
   cheXuanMaiItems[5],        // CHÈ XUÂN MAI: Sữa chua thạch hoa quả dầm đá (15k)
@@ -8332,7 +8321,18 @@ export function getCategoryItems(cat: MainCategoryKey): Food[] {
     default:
       list = anGiFoods;
   }
-  return list.map(f => ({
+  // Deduplicate strictly preserving the priority order of first appearance
+  const seen = new Set<string>();
+  const uniqueList: Food[] = [];
+  for (const f of list) {
+    const key = f.customId || `${f.name}-${f.price}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueList.push(f);
+    }
+  }
+
+  return uniqueList.map(f => ({
     ...f,
     rarity: priceRarity(f.price),
   }));

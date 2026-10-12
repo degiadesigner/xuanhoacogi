@@ -242,7 +242,7 @@ export default function Home() {
       if (drinkSubFilter === 'tra-sua') {
         const sub = filtered.filter(f => {
           const n = f.name.toLowerCase();
-          return n.includes('trà sữa') || n.includes('matcha') || n.includes('cheese') || n.includes('latte') || n.includes('hojicha') || n.includes('cacao') || n.includes('trà sen') || n.includes('sữa tươi trân châu');
+          return n.includes('trà sữa') || n.includes('matcha') || n.includes('cheese') || n.includes('latte') || n.includes('hojicha') || n.includes('cacao') || n.includes('trà sen') || n.includes('sữa tươi trân châu') || n.includes('cốm') || n.includes('ôlong') || n.includes('olong') || n.includes('milo') || n.includes('trân châu') || n.includes('mochi');
         });
         if (sub.length) filtered = sub;
       } else if (drinkSubFilter === 'cafe') {
@@ -254,7 +254,7 @@ export default function Home() {
       } else if (drinkSubFilter === 'tra-traicay') {
         const sub = filtered.filter(f => {
           const n = f.name.toLowerCase();
-          return n.includes('trà') || n.includes('nước') || n.includes('sinh tố') || n.includes('sữa chua') || n.includes('sâm') || n.includes('soda') || n.includes('rau má') || n.includes('sữa');
+          return n.includes('trà') || n.includes('nước') || n.includes('sinh tố') || n.includes('sữa chua') || n.includes('sâm') || n.includes('soda') || n.includes('rau má') || n.includes('sữa') || n.includes('mãng cầu') || n.includes('măng cụt') || n.includes('lựu') || n.includes('dứa') || n.includes('mít') || n.includes('nhãn') || n.includes('ổi') || n.includes('chè') || n.includes('tào phớ');
         });
         if (sub.length) filtered = sub;
       }
@@ -342,6 +342,11 @@ export default function Home() {
     setVisibleDishCount(18);
     setDishShuffleKey(Date.now());
   }, [activeCategory, session, nhauSubFilter, drinkSubFilter, budget, customPrice, caseTier, inventoryMode]);
+
+  // Tự động xóa từ khóa tìm kiếm khi đổi chuyên mục chính (Ăn gì / Nhậu gì / Uống gì)
+  useEffect(() => {
+    setDishSearchQuery('');
+  }, [activeCategory]);
 
   // Place Mode States (Chọn Quán - Đồng bộ với Chọn Món)
   const [placeCategory, setPlaceCategory] = useState<'all' | 'an-chinh' | 'nhau-lau' | 'uong' | 'an-vat'>('all');
@@ -869,10 +874,12 @@ export default function Home() {
                     onClick={() => {
                       if (!spinning) {
                         setActiveCategory(cat.id);
+                        setDishSearchQuery('');
                         setNhauSubFilter('all');
                         setDrinkSubFilter('all');
                         setBudget('all');
                         setCaseTier('all');
+                        setVisibleDishCount(18);
                       }
                     }}
                     disabled={spinning}
@@ -1215,8 +1222,10 @@ export default function Home() {
                 onClick={() => {
                   if (!spinning) {
                     setActiveCategory('an-gi');
+                    setDishSearchQuery('');
                     setNhauSubFilter('all');
                     setDrinkSubFilter('all');
+                    setVisibleDishCount(18);
                   }
                 }}
                 disabled={spinning}
@@ -1230,7 +1239,9 @@ export default function Home() {
                 onClick={() => {
                   if (!spinning) {
                     setActiveCategory('nhau-gi');
+                    setDishSearchQuery('');
                     setNhauSubFilter('all');
+                    setVisibleDishCount(18);
                   }
                 }}
                 disabled={spinning}
@@ -1244,7 +1255,9 @@ export default function Home() {
                 onClick={() => {
                   if (!spinning) {
                     setActiveCategory('uong-gi');
+                    setDishSearchQuery('');
                     setDrinkSubFilter('all');
+                    setVisibleDishCount(18);
                   }
                 }}
                 disabled={spinning}
@@ -1563,66 +1576,87 @@ export default function Home() {
             </div>
 
             <div className="inventory-grid">
-              {displayedDishes
-                .slice(0, visibleDishCount)
-                .map(food => {
-                  const rarity = food.rarity ?? 0;
-                  const rarityColor = rarityColors[rarity] || '#06B6D4';
-                  const rarityName = rarityNames[rarity] || 'Phổ thông';
-                  const categoryLabel = getFoodCategoryLabel(food);
-                  const displayTitle = cleanDishDisplayTitle(food.name);
+              {displayedDishes.length === 0 ? (
+                <div className="col-span-full py-12 px-4 text-center flex flex-col items-center justify-center bg-white/[0.02] border border-dashed border-white/10 rounded-2xl my-2">
+                  <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400 mb-3">
+                    <Search size={22} />
+                  </div>
+                  <p className="text-neutral-200 font-semibold text-base mb-1">
+                    Không tìm thấy {activeCategory === 'uong-gi' ? 'đồ uống' : activeCategory === 'nhau-gi' ? 'món nhậu' : 'món ăn'} nào khớp với "{dishSearchQuery}"
+                  </p>
+                  <p className="text-neutral-400 text-xs mb-4 max-w-md">
+                    Hãy thử từ khóa khác (VD: {activeCategory === 'uong-gi' ? 'trà sữa, cà phê, trà mãng cầu, nước mía' : activeCategory === 'nhau-gi' ? 'lẩu, nướng, ốc' : 'cơm, bún, phở, bánh mì'}) hoặc bấm nút dưới để xem toàn bộ kho.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setDishSearchQuery('')}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-neutral-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95"
+                  >
+                    Xem tất cả {eligibleItems.length} món trong kho
+                  </button>
+                </div>
+              ) : (
+                displayedDishes
+                  .slice(0, visibleDishCount)
+                  .map((food, idx) => {
+                    const rarity = food.rarity ?? 0;
+                    const rarityColor = rarityColors[rarity] || '#06B6D4';
+                    const rarityName = rarityNames[rarity] || 'Phổ thông';
+                    const categoryLabel = getFoodCategoryLabel(food);
+                    const displayTitle = cleanDishDisplayTitle(food.name);
 
-                  return (
-                    <div 
-                      key={food.customId ?? food.image}
-                      className="catalog-food-card"
-                      style={{
-                        ['--rarity-color' as any]: rarityColor
-                      }}
-                      onClick={() => {
-                        setWinnerFood(food);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <div className="catalog-card-art">
-                        <div className="food-plate-halo">
-                          <FoodImage food={food} size="md" />
+                    return (
+                      <div 
+                        key={`${food.customId || food.name}-${food.price}-${idx}`}
+                        className="catalog-food-card"
+                        style={{
+                          ['--rarity-color' as any]: rarityColor
+                        }}
+                        onClick={() => {
+                          setWinnerFood(food);
+                          setDialogOpen(true);
+                        }}
+                      >
+                        <div className="catalog-card-art">
+                          <div className="food-plate-halo">
+                            <FoodImage food={food} size="md" />
+                          </div>
                         </div>
-                      </div>
-                      <div className="catalog-card-details">
-                        <span className="catalog-category-tag" title={categoryLabel}>
-                          {categoryLabel}
-                        </span>
-                        <strong className="catalog-item-name" title={displayTitle}>
-                          {formatTypography(displayTitle)}
-                        </strong>
-                        <div className="catalog-card-bottom-row">
-                          <span className="catalog-item-price">{food.price}.000đ</span>
-                          <span className="catalog-card-rarity-label">
-                            {rarityName.toUpperCase()}
+                        <div className="catalog-card-details">
+                          <span className="catalog-category-tag" title={categoryLabel}>
+                            {categoryLabel}
                           </span>
+                          <strong className="catalog-item-name" title={displayTitle}>
+                            {formatTypography(displayTitle)}
+                          </strong>
+                          <div className="catalog-card-bottom-row">
+                            <span className="catalog-item-price">{food.price}.000đ</span>
+                            <span className="catalog-card-rarity-label">
+                              {rarityName.toUpperCase()}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+              )}
             </div>
 
-            {eligibleItems.length > 18 && (
+            {displayedDishes.length > 18 && (
               <div className="inventory-pagination-bar">
                 <div className="pagination-info">
                   <span>
-                    Đang hiển thị <strong>{Math.min(visibleDishCount, eligibleItems.length)}</strong> / <strong>{eligibleItems.length}</strong> món đề xuất
+                    Đang hiển thị <strong>{Math.min(visibleDishCount, displayedDishes.length)}</strong> / <strong>{displayedDishes.length}</strong> món {dishSearchQuery.trim() ? 'phù hợp' : 'đề xuất'}
                   </span>
                   <div className="pagination-progress-track">
                     <div 
                       className="pagination-progress-fill" 
-                      style={{ width: `${Math.min(100, Math.round((Math.min(visibleDishCount, eligibleItems.length) / eligibleItems.length) * 100))}%` }} 
+                      style={{ width: `${Math.min(100, Math.round((Math.min(visibleDishCount, displayedDishes.length) / displayedDishes.length) * 100))}%` }} 
                     />
                   </div>
                 </div>
                 <div className="pagination-actions">
-                  {eligibleItems.length > visibleDishCount && (
+                  {displayedDishes.length > visibleDishCount && (
                     <>
                       <button
                         type="button"
@@ -1630,14 +1664,14 @@ export default function Home() {
                         onClick={() => setVisibleDishCount(prev => prev + 18)}
                       >
                         <ChevronDown size={18} />
-                        <span>Xem tiếp (+{Math.min(18, eligibleItems.length - visibleDishCount)} món nữa)</span>
+                        <span>Xem tiếp (+{Math.min(18, displayedDishes.length - visibleDishCount)} món nữa)</span>
                       </button>
                       <button
                         type="button"
                         className="btn-load-all"
-                        onClick={() => setVisibleDishCount(eligibleItems.length)}
+                        onClick={() => setVisibleDishCount(displayedDishes.length)}
                       >
-                        Xem tất cả ({eligibleItems.length} món)
+                        Xem tất cả ({displayedDishes.length} món)
                       </button>
                     </>
                   )}

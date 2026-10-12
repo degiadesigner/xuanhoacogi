@@ -1129,11 +1129,11 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   xoai_corner: {
     name: 'Xoài Corner - Trà Trái Cây & Mỳ Cay',
     address: 'P. Xuân Hòa, Phúc Yên (Chuyên ship XUHO & sinh viên ĐHSP2)',
-    phone: '0965 650 231',
+    phone: '0982 341 631',
     mapsQuery: 'Xoài Corner Xuân Hòa Phúc Yên',
     verified: true,
     serviceMode: 'both',
-    deliveryNote: 'Nhận ship mỳ cay thố đất & đồ uống tận KTX, trường học toàn Xuân Hòa - Hotline: 0965 650 231 - 0982 631 834',
+    deliveryNote: 'Nhận ship mỳ cay thố đất & đồ uống tận KTX, trường học toàn Xuân Hòa - Hotline: 0982 341 631',
     notes: 'Tươi từng ngụm - Mát cả ngày! Quán chuyên các loại trà trái cây nguyên chất, mỳ cay thố đất thơm ngon đậm đà, nước ép hoa quả tươi và bơ sữa dừa non.',
     menuHighlights: [
       'Mỳ cay Thập cẩm thố đất: 55.000đ',

@@ -4872,7 +4872,7 @@ export const xuanHoaPlaces: Place[] = [
     reviewCount: 205,
     imageUrl: 'dish_xoai_corner.webp',
     serviceMode: 'both',
-    deliveryNote: 'Nhận ship mỳ cay thố đất & đồ uống tận KTX, trường học toàn Xuân Hòa · Hotline 0965 650 231 · 0982 631 834',
+    deliveryNote: 'Nhận ship mỳ cay thố đất & đồ uống tận KTX, trường học toàn Xuân Hòa · Hotline 0982 341 631',
     signatureDish: {
       id: 'xc-my-cay-thap-cam',
       name: 'Mỳ cay Thập cẩm thố đất Xoài Corner',
@@ -4914,7 +4914,7 @@ export const xuanHoaPlaces: Place[] = [
     ],
     tags: ['Mỳ cay', 'Trà trái cây', 'Nước ép', 'Trà sữa', 'Bơ dừa non', 'Xuân Hòa', 'ĐHSP2'],
     mapsQuery: 'Xoài Corner Xuân Hòa Phúc Yên',
-    phone: '0965 650 231',
+    phone: '0982 341 631',
     openHours: '08:00 - 22:30',
     rarity: 3,
     quip: 'Tươi từng ngụm - Mát cả ngày! Thố mỳ cay xé lưỡi sôi ùng ục cùng ly bơ sữa dừa non béo ngậy ngọt ngào.',

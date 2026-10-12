@@ -52,6 +52,13 @@ export function DishesCatalogView({
     setVisibleCount(PAGE_SIZE);
   }, [searchQuery, categoryFilter, priceFilter, sortOption]);
 
+  // Sync category filter when initialCategory prop changes
+  React.useEffect(() => {
+    if (initialCategory) {
+      setCategoryFilter(initialCategory);
+    }
+  }, [initialCategory]);
+
   const filteredDishes = useMemo(() => {
     const res = allDishes
       .filter((dish) => {

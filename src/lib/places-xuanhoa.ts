@@ -6227,7 +6227,7 @@ export const xuanHoaPlaces: Place[] = [
     deliveryNote: 'Ăn tại quán & Nhận ship bánh tráng tận phòng KTX, nhà trọ quanh Xuân Hòa · Hotline 0394 464 614 (FB: Phạm Thị Thúy Quỳnh)',
     signatureDish: {
       id: 'boom-set-3-ngan',
-      name: 'Set 3 ngăn bánh tráng Nhà BOOM',
+      name: 'Set 3 ngăn bánh tráng cuốn trộn',
       price: 90,
       tag: 'Hot Combo Bestseller',
       serviceTag: 'both',

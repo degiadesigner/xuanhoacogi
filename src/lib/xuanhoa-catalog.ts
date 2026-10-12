@@ -172,7 +172,7 @@ export const meTitDrinkItems: Food[] = [
     price: 40,
     image: -8809,
     customId: 'dish_luc_nhai_khoai_me_tit',
-    customImage: 'dish_che_khoai_deo.webp',
+    customImage: 'dish_tra_sua_cute_me_tit.webp',
     rarity: 0,
     quip: 'Trà hoa nhài thanh mát kết hợp vị khoai dẻo bùi béo ngọt êm.',
   },
@@ -3847,7 +3847,7 @@ export const truaNayAnGiNhauDishes: Food[] = [
     price: 150,
     image: -423,
     customId: 'nhau_gan_bo_chay_toi',
-    customImage: 'dish_ngua_chao_toi_hd.jpg',
+    customImage: 'dish_gan_bo_chay_toi.webp',
     rarity: 3,
     quip: 'Gân bò hầm mềm giòn sần sật áp chảo tiêu xanh thơm cay nồng ấm bụng.',
   },
@@ -4692,7 +4692,7 @@ export const leHuyenDrinkDishes: Food[] = [
     price: 20,
     image: -1007,
     customId: 'drink_lh_mix_cam_ca_rot',
-    customImage: 'dish_cafe_1975_clean.webp',
+    customImage: 'dish_lh_nuoc_ep_cam_ca_rot_hd.jpg',
     rarity: 0,
     quip: 'Nước ép mix Cam và Cà rốt giàu vitamin bổ dưỡng thanh lọc cơ thể (M 20k, L 25k).',
   },
@@ -6849,7 +6849,7 @@ export const nhungsCornerItems: Food[] = [
 // ============================================================================
 export const quanCoLoanDishes: Food[] = [
   {
-    name: 'Mì cay bò Mỹ (Quán Cô Loan)',
+    name: 'Mì cay bò Mỹ',
     sub: 'Mì cay 7 cấp độ thịt bò Mỹ mềm ngọt kim chi nấm kim châm • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 40,
     image: -3101,
@@ -6859,7 +6859,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Niêu mì cay sôi sục nghi ngút khói, thịt bò Mỹ mềm ngọt đậm đà nước lẩu kim chi chua cay ấm lòng.',
   },
   {
-    name: 'Mì cay hải sản (Quán Cô Loan)',
+    name: 'Mì cay hải sản',
     sub: 'Tôm mực tươi rói giòn sần sật mỳ cay 7 cấp độ • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 45,
     image: -3102,
@@ -6869,7 +6869,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Hải sản tôm mực tươi ngon dai giòn hòa cùng vị cay nồng xé lưỡi đậm chất sinh viên.',
   },
   {
-    name: 'Mì cay thập cẩm hải sản (Quán Cô Loan)',
+    name: 'Mì cay thập cẩm hải sản',
     sub: 'Đầy ắp tôm mực bò Mỹ sườn sụn xúc xích kim chi • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 50,
     image: -3103,
@@ -6879,27 +6879,27 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Đại tiệc mì cay thập cẩm đỉnh chóp với topping tràn trề ăn đã miệng no căng rốn.',
   },
   {
-    name: 'Mì sườn sụn thập cẩm (Quán Cô Loan)',
+    name: 'Mì sườn sụn thập cẩm',
     sub: 'Sườn sụn chặt nhỏ ninh giòn sần sật kim chi chua cay • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 45,
     image: -3104,
     customId: 'dish_coloan_my_cay_suon_sun',
-    customImage: 'dish_canteen_my_cay_thap_cam_chuan.jpg',
+    customImage: 'dish_coloan_my_cay_suon_sun_hd.jpg',
     rarity: 2,
     quip: 'Sườn sụn ninh vừa tới giòn sần sật trong niêu đất sôi ùng ục, cay tê kích thích vị giác.',
   },
   {
-    name: 'Cơm trộn thập cẩm bò (Quán Cô Loan)',
+    name: 'Cơm trộn thập cẩm bò',
     sub: 'Cơm trộn thố đá bò xào trứng lòng đào sốt Gochujang • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 35,
     image: -3105,
     customId: 'dish_coloan_com_tron_bo',
-    customImage: 'dish_dau_oi_com_tron.webp',
+    customImage: 'dish_coloan_com_tron_bo_hd.jpg',
     rarity: 2,
     quip: 'Thố cơm xèo xèo nóng hổi, trộn đều sốt ớt cay ngọt cùng thịt bò và trứng lòng đào béo ngậy.',
   },
   {
-    name: 'Cơm cuộn Kimbap chiên giòn (Quán Cô Loan)',
+    name: 'Cơm cuộn Kimbap chiên giòn',
     sub: 'Kimbap chiên xù giòn rụm sốt bơ mè mayonnaise • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 40,
     image: -3106,
@@ -6909,7 +6909,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Kimbap chiên vỏ ngoài vàng rụm giòn tan, nhân bên trong dẻo thơm ngậy ngậy chấm sốt bơ mê ly.',
   },
   {
-    name: 'Bánh gạo Tobokki đặc biệt (Quán Cô Loan)',
+    name: 'Bánh gạo Tobokki đặc biệt',
     sub: 'Bánh gạo cay ngọt chả cá phô mai kéo sợi • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 50,
     image: -3107,
@@ -6919,7 +6919,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Từng miếng bánh gạo dẻo dai đẫm sốt tương ớt Hàn Quốc ấm nồng cùng phô mai béo ngậy.',
   },
   {
-    name: 'Phở cuốn đặc biệt (Quán Cô Loan)',
+    name: 'Phở cuốn đặc biệt',
     sub: 'Bánh phở mỏng cuộn bò xào lăn rau sống nước mắm chua ngọt • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 50,
     image: -3108,
@@ -6929,7 +6929,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Mẹt phở cuốn tươi mềm mướt đầy ắp thịt bò xào thơm nức mùi tỏi, chấm nước mắm chua ngọt thanh mát.',
   },
   {
-    name: 'Gỏi cuốn tôm thịt (Quán Cô Loan)',
+    name: 'Gỏi cuốn tôm thịt',
     sub: 'Tôm tươi thịt luộc bún tươi chấm sốt tương đen béo bùi • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 40,
     image: -3109,
@@ -6939,7 +6939,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Cuốn tôm thịt đỏ tươi bắt mắt, vị thanh mát rau sống chấm tương nếp gan béo ngậy ăn không biết chán.',
   },
   {
-    name: 'Mỳ Ý sốt bò băm cà chua (Quán Cô Loan)',
+    name: 'Mỳ Ý sốt bò băm cà chua',
     sub: 'Spaghetti sốt bò băm phô mai bào thơm béo • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 40,
     image: -3110,
@@ -6949,7 +6949,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Đĩa mỳ Ý chuẩn vị đậm đà sốt cà chua thịt bò băm nhuyễn, phủ lớp phô mai béo ngậy hấp dẫn.',
   },
   {
-    name: 'Cơm gà viên sốt cay (Quán Cô Loan)',
+    name: 'Cơm gà viên sốt cay',
     sub: 'Gà viên chiên giòn lắc sốt cay ngọt Hàn Quốc đưa cơm • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 35,
     image: -3111,
@@ -6959,7 +6959,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Gà viên ngoài giòn rụm trong mọng nước, quyện sốt cay ngọt sóng sánh ăn cùng cơm nóng tuyệt hảo.',
   },
   {
-    name: 'Cơm rang dưa bò (Quán Cô Loan)',
+    name: 'Cơm rang dưa bò',
     sub: 'Cơm hạt săn giòn xào thịt bò mềm ngọt dưa chua đậm đà • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 40,
     image: -3112,
@@ -6969,7 +6969,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Hạt cơm vàng óng rang săn tơi xốp, kết hợp thịt bò mềm và dưa muối chua giòn giải ngấy hoàn hảo.',
   },
   {
-    name: 'Cơm rang gà đùi (Quán Cô Loan)',
+    name: 'Cơm rang gà đùi',
     sub: 'Cơm rang vàng óng kèm nguyên chiếc đùi gà chiên xù giòn rụm • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 40,
     image: -3113,
@@ -6979,7 +6979,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Chiếc đùi gà khủng chiên vàng giòn da ngập thịt, ăn no nê nạp đầy năng lượng cho buổi học.',
   },
   {
-    name: 'Cơm nắm ruốc hành rong biển (Quán Cô Loan)',
+    name: 'Cơm nắm ruốc hành rong biển',
     sub: 'Cơm nắm viên tròn ruốc heo vừng rang rong biển giòn • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 40,
     image: -3114,
@@ -6989,7 +6989,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Món cơm nắm xinh xắn dẻo bùi đượm vị mặn mà của ruốc và thơm nức mè rang rong biển.',
   },
   {
-    name: 'Mỳ xào bò rau cải (Quán Cô Loan)',
+    name: 'Mỳ xào bò rau cải',
     sub: 'Mì tôm xào thịt bò mềm và rau cải xanh đậm đà • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 40,
     image: -3115,
@@ -6999,7 +6999,7 @@ export const quanCoLoanDishes: Food[] = [
     quip: 'Đĩa mỳ xào thơm lừng bốc khói, sợi mỳ dai giòn thấm đẫm gia vị cùng thịt bò thơm ngọt.',
   },
   {
-    name: 'Mẹt ăn vặt thập cẩm (Quán Cô Loan)',
+    name: 'Mẹt ăn vặt thập cẩm',
     sub: 'Mẹt chiên nóng hổi nem chua phô mai que khoai tây gà viên • Quán Cô Loan Số 12 Ngõ 8 Nguyễn Văn Linh',
     price: 55,
     image: -3116,
@@ -7016,7 +7016,7 @@ export const quanCoLoanDishes: Food[] = [
 // ============================================================================
 export const banhTrangNhaBoomDishes: Food[] = [
   {
-    name: 'Set 3 ngăn bánh tráng Nhà BOOM',
+    name: 'Set 3 ngăn bánh tráng cuốn trộn',
     sub: 'Khay combo 3 ngăn: Bánh tráng cuộn bơ, bánh tráng trộn tóp mỡ & lắc muối bò • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
     price: 90,
     image: -3201,
@@ -7026,7 +7026,7 @@ export const banhTrangNhaBoomDishes: Food[] = [
     quip: 'Khay 3 ngăn hoàng kim tập hợp đủ 3 hương vị bánh tráng hot nhất, ăn cùng hội bạn mê mẩn quên lối về.',
   },
   {
-    name: 'Bánh tráng cuộn trứng lòng đào (Nhà BOOM)',
+    name: 'Bánh tráng cuộn trứng lòng đào',
     sub: 'Trứng lòng đào tan chảy béo ngậy sốt bơ mè mỡ hành • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
     price: 35,
     image: -3202,
@@ -7036,7 +7036,7 @@ export const banhTrangNhaBoomDishes: Food[] = [
     quip: 'Lớp bánh tráng dẻo thơm ôm trọn lòng đỏ trứng dẻo quánh sóng sánh, cắn ngập miệng béo ngậy tan chảy.',
   },
   {
-    name: 'Bánh tráng cuộn bơ béo trứng muối (Nhà BOOM)',
+    name: 'Bánh tráng cuộn bơ béo trứng muối',
     sub: 'Sốt bơ vàng óng đẫm vị trứng muối hoàng kim mặn béo • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
     price: 30,
     image: -3203,
@@ -7046,7 +7046,7 @@ export const banhTrangNhaBoomDishes: Food[] = [
     quip: 'Sốt bơ trứng muối béo mặn thơm lừng, phủ ngập từng cuộn bánh tráng rắc hành phi giòn tan.',
   },
   {
-    name: 'Bánh tráng lắc muối bò tóp mỡ (Nhà BOOM)',
+    name: 'Bánh tráng lắc muối bò tóp mỡ',
     sub: 'Tóp mỡ chiên giòn rụm lắc muối ớt bò tắc chua thanh • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
     price: 35,
     image: -3204,
@@ -7056,7 +7056,7 @@ export const banhTrangNhaBoomDishes: Food[] = [
     quip: 'Bánh tráng lắc đều thấm đẫm muối bò mằn mặn cay tê, cắn trúng miếng tóp mỡ giòn tan béo ngậy đã miệng.',
   },
   {
-    name: 'Bánh tráng trộn tóp mỡ chiên giòn (Nhà BOOM)',
+    name: 'Bánh tráng trộn tóp mỡ chiên giòn',
     sub: 'Bánh tráng dẻo trộn tóp mỡ bò khô trứng cút xoài xanh • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
     price: 35,
     image: -3205,
@@ -7066,7 +7066,7 @@ export const banhTrangNhaBoomDishes: Food[] = [
     quip: 'Tô bánh tráng trộn đầy ắp topping với tóp mỡ giòn rụm béo bùi, nước sốt me chua ngọt đậm đà khó cưỡng.',
   },
   {
-    name: 'Bánh tráng cuộn full chà bông (Nhà BOOM)',
+    name: 'Bánh tráng cuộn full chà bông',
     sub: 'Ngập tràn chà bông heo sợi vàng ươm sốt bơ béo ngậy • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
     price: 35,
     image: -3206,
@@ -7076,7 +7076,7 @@ export const banhTrangNhaBoomDishes: Food[] = [
     quip: 'Từng cuộn bánh tráng đẫm thịt chà bông heo mặn ngọt thơm phức, quết đẫm sốt bơ vàng óng.',
   },
   {
-    name: 'Bánh tráng sa tế mỡ hành tóp mỡ (Nhà BOOM)',
+    name: 'Bánh tráng sa tế mỡ hành tóp mỡ',
     sub: 'Sa tế tỏi ớt cay nồng mỡ hành xanh mướt tóp mỡ giòn • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
     price: 35,
     image: -3207,
@@ -7086,7 +7086,7 @@ export const banhTrangNhaBoomDishes: Food[] = [
     quip: 'Vị cay xé lưỡi của sa tế ớt quyện cùng mỡ hành thơm nức và tóp mỡ giòn rụm gây nghiện tức thì.',
   },
   {
-    name: 'Bánh tráng cuộn chanh sả (Nhà BOOM)',
+    name: 'Bánh tráng cuộn chanh sả',
     sub: 'Hương sả phi thơm nồng kết hợp chanh chua thanh thanh • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
     price: 30,
     image: -3208,
@@ -7096,7 +7096,7 @@ export const banhTrangNhaBoomDishes: Food[] = [
     quip: 'Vị sả phi thơm ngát hòa cùng chút chua nhẹ của tắc chanh mang lại trải nghiệm thanh mát lạ miệng.',
   },
   {
-    name: 'Bánh tráng trộn full topping đặc biệt (Nhà BOOM)',
+    name: 'Bánh tráng trộn full topping đặc biệt',
     sub: 'Trứng cút bò khô mực xé xoài chua rau răm sốt me • Bánh Tráng Nhà BOOM 204 Nguyễn Văn Linh',
     price: 30,
     image: -3209,
@@ -7227,18 +7227,18 @@ export const anGiFoods: Food[] = [
 export const xienNuongTrungHoaItems: Food[] = [
   // 0. BESTSELLER: Xiên thịt bò củ quả (25k)
   {
-    name: 'Xiên thịt bò củ quả kiểu Trung (牛肉串)',
+    name: 'Xiên thịt bò củ quả nướng Trung Hoa',
     sub: 'Bò tơ nướng than rắc hạt thì là, ớt bột tê cay chuẩn vị • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 25,
     image: -601,
     customId: 'dish_xien_trung_hoa_bo_cu_qua',
-    customImage: 'real_met_ga_3.jpg',
+    customImage: 'dish_bo_xien_trung_hoa.jpg',
     rarity: 1,
     quip: 'Thịt bò tơ cắt khối dày dặn xen kẽ ớt chuông nướng than hoa rắc đẫm gia vị Chuanr chuẩn Trung gồm hạt thì là và bột ớt Tứ Xuyên tê cay.',
   },
   // 1. BESTSELLER: Cánh gà nướng sốt cay Trung Hoa (35k)
   {
-    name: 'Cánh gà nướng sốt cay Trung Hoa (鸡翅中)',
+    name: 'Cánh gà nướng sốt cay Trung Hoa',
     sub: 'Cánh gà giữa nướng than vàng óng giòn da đẫm sốt cay tê • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 35,
     image: -602,
@@ -7249,29 +7249,29 @@ export const xienNuongTrungHoaItems: Food[] = [
   },
   // 2. BESTSELLER: Mực nguyên con nướng sa tế (35k)
   {
-    name: 'Mực nguyên con nướng sa tế Trung Hoa (墨鱼仔)',
+    name: 'Mực nguyên con nướng sa tế Trung Hoa',
     sub: 'Mực tươi nguyên con nướng sa tế xèo xèo giòn ngọt • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 35,
     image: -603,
     customId: 'dish_xien_trung_hoa_muc_nguyen_con',
-    customImage: 'dish_lau_rieu_cua.jpg',
+    customImage: 'dish_xien_muc_sa_te_hd.jpg',
     rarity: 1,
     quip: 'Mực tươi rói nguyên con tẩm ướp sa tế cay nồng nướng trên than hồng, thớ thịt giòn sần sật ngọt đậm vị biển.',
   },
   // 3. BESTSELLER: Tuộc baby nướng cay (25k)
   {
-    name: 'Tuộc baby nướng sa tế cay Trung Hoa (小八爪鱼)',
+    name: 'Tuộc baby nướng sa tế cay',
     sub: 'Bạch tuộc baby giòn sần sật nướng cay tê xèo xèo • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 25,
     image: -604,
     customId: 'dish_xien_trung_hoa_tuoc_baby',
-    customImage: 'dish_thuy_cam.webp',
+    customImage: 'dish_xien_tuoc_baby_hd.jpg',
     rarity: 1,
     quip: 'Tuộc baby tươi rói nướng than hoa xèo xèo thơm lừng, thịt dai giòn sần sật quết đẫm sốt ớt cay tê nhắm bia cực đã.',
   },
   // 4. BESTSELLER: Hàu nướng mỡ hành phô mai cay (15k)
   {
-    name: 'Hàu nướng mỡ hành phô mai sốt cay (生蚝)',
+    name: 'Hàu nướng mỡ hành phô mai sốt cay',
     sub: 'Hàu sữa béo múp nướng mỡ hành phô mai sốt cay tê • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 15,
     image: -605,
@@ -7282,7 +7282,7 @@ export const xienNuongTrungHoaItems: Food[] = [
   },
   // 5. BESTSELLER: Thịt ba chỉ nướng tê cay (25k)
   {
-    name: 'Thịt ba chỉ nướng tê cay Trung Hoa (五花肉)',
+    name: 'Thịt ba chỉ nướng tê cay Trung Hoa',
     sub: 'Ba chỉ heo cháy cạnh xèo xèo rắc vừng rang và ớt bột • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 25,
     image: -606,
@@ -7293,7 +7293,7 @@ export const xienNuongTrungHoaItems: Food[] = [
   },
   // 6. BESTSELLER: Nộm cải thảo kiểu Trung (30k)
   {
-    name: 'Nộm cải thảo kiểu Trung thanh nhiệt (凉拌小白菜)',
+    name: 'Nộm cải thảo kiểu Trung thanh nhiệt',
     sub: 'Cải thảo giòn trộn dầu ớt, giấm đen chua cay giải ngấy • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 30,
     image: -607,
@@ -7304,40 +7304,40 @@ export const xienNuongTrungHoaItems: Food[] = [
   },
   // 7. BESTSELLER: Nộm đậu bắp kiểu Trung (30k)
   {
-    name: 'Nộm đậu bắp kiểu Trung (凉拌秋葵)',
+    name: 'Nộm đậu bắp kiểu Trung thanh mát',
     sub: 'Đậu bắp xanh giòn trộn tỏi ớt chua cay thanh nhiệt • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 30,
     image: -608,
     customId: 'dish_xien_trung_hoa_nom_dau_bap',
-    customImage: 'real_met_ga_mia.jpg',
+    customImage: 'dish_cuonmoc_nom_bo_muong_che.jpg',
     rarity: 0,
     quip: 'Đậu bắp tươi luộc tới giữ độ xanh giòn, rưới sốt tỏi ớt chua cay thanh nhiệt giải độc ngày hè.',
   },
   // 8. Chân giò nướng nguyên chiếc (100k)
   {
-    name: 'Chân giò nướng nguyên chiếc da giòn (烤猪脚)',
+    name: 'Chân giò nướng nguyên chiếc da giòn',
     sub: 'Chân giò heo hầm mềm nướng than da giòn bì dẻo • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 100,
     image: -609,
     customId: 'dish_xien_trung_hoa_chan_gio',
-    customImage: 'real_met_ga_1.jpg',
+    customImage: 'dish_lon_man_nuong.webp',
     rarity: 2,
     quip: 'Chân giò heo hầm thảo mộc mềm rục rồi nướng than hoa vàng ruộm, da giòn rụm bên ngoài, bì dẻo gân bùi bên trong (100k/chiếc).',
   },
   // 9. Sườn lợn nướng Trung Hoa (30k)
   {
-    name: 'Sườn lợn nướng Trung Hoa (烤排骨)',
+    name: 'Sườn lợn nướng Trung Hoa',
     sub: 'Dẻ sườn non ướp ngũ vị nướng thơm lừng • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 30,
     image: -610,
     customId: 'dish_xien_trung_hoa_suon_lon',
-    customImage: 'dish_san_bia_247.jpg',
+    customImage: 'dish_xien_suon_lon_hd.jpg',
     rarity: 1,
     quip: 'Dẻ sườn lợn non chặt miếng vừa ăn tẩm ướp sốt thịt nướng Trung Hoa đậm đà, nướng than hoa thơm nức mũi.',
   },
   // 10. Đậu nướng sốt cay (15k)
   {
-    name: 'Đậu nướng sốt cay Trung Hoa (烤豆腐)',
+    name: 'Đậu nướng sốt cay Trung Hoa',
     sub: 'Đậu phụ nướng than phồng xốp rưới sốt cay tê • Xiên Nướng Trung Hoa Bá Thiện 2',
     price: 15,
     image: -611,
@@ -7348,12 +7348,12 @@ export const xienNuongTrungHoaItems: Food[] = [
   },
   // 11. Trà thảo mộc Trung Vương Lão Cát (20k)
   {
-    name: 'Trà thảo mộc Trung Vương Lão Cát lon đỏ (王老吉)',
+    name: 'Trà thảo mộc Vương Lão Cát lon đỏ',
     sub: 'Trà thảo mộc thanh nhiệt giải độc cực đã khi ăn đồ nướng cay • Xiên Nướng Trung Hoa',
     price: 20,
     image: -612,
     customId: 'dish_xien_trung_hoa_tra_thao_moc',
-    customImage: 'real_lau_rieu_daotao.png',
+    customImage: 'dish_cuonmoc_nuoc_sam_dua.webp',
     rarity: 0,
     quip: 'Trà thảo mộc lon đỏ Vương Lão Cát (Wanglaoji) vị ngọt thanh mát, giải nhiệt tức thì khi thưởng thức đồ nướng tê cay.',
   },
@@ -7565,7 +7565,7 @@ export const sanBia247Items: Food[] = [
     price: 299,
     image: -789,
     customId: 'dish_sb247_ga_nuong_mac_khen',
-    customImage: 'dish_real_met_ga_7_mon.jpg',
+    customImage: 'dish_sb247_ga_nuong_mac_khen_hd.jpg',
     rarity: 3,
     quip: 'Gà đồi nướng than hoa vàng óng, đượm vị cay nồng của mắc khén hạt dổi, da giòn rụm thịt mềm ngọt chấm chẩm chéo.',
   },
@@ -7620,7 +7620,7 @@ export const sanBia247Items: Food[] = [
     price: 399,
     image: -794,
     customId: 'dish_sb247_ca_chep_om_dua',
-    customImage: 'real_met_ga_2.jpg',
+    customImage: 'dish_vdq_lau_ca_chep_om_dua_hd.jpg',
     rarity: 3,
     quip: 'Con cá chép sông béo múp ngập trong nồi dưa cải chua vàng ruộm, nước om chua thanh thơm nức thì là hành hoa.',
   },
@@ -7660,7 +7660,7 @@ export const vanhDaiQuanItems: Food[] = [
     price: 200,
     image: -843,
     customId: 'dish_vdq_tom_sot_trung_muoi',
-    customImage: 'dish_vdq_oc_huong_trung_muoi_hd.jpg',
+    customImage: 'dish_vdq_tom_sot_trung_muoi_hd.jpg',
     rarity: 3,
     quip: 'Tôm sú tươi rói chiên vàng quết đẫm sốt trứng muối vàng ươm bùi béo ngọt lịm chấm bánh mì tuyệt hảo.',
   },
@@ -8068,7 +8068,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
     price: 30,
     image: -913,
     customId: 'dish_cocokana_tra_mang_cau',
-    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    customImage: 'dish_tra_mang_cau_me_tit_hd.jpg',
     rarity: 2,
     quip: 'Mãng cầu tươi dầm đẫm cùi dẻo dai chua ngọt dịu dàng, món trà best-seller gây thương nhớ nhất quán.',
   },
@@ -8112,7 +8112,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
     price: 30,
     image: -917,
     customId: 'dish_cocokana_tra_mit_nhan',
-    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    customImage: 'dish_cocokana_tra_mit_tuoi_hd.jpg',
     rarity: 2,
     quip: 'Sự kết hợp độc đáo giữa mít chín thơm lừng và cùi nhãn ngọt giòn, hương vị đậm đà khó cưỡng.',
   },
@@ -8123,7 +8123,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
     price: 30,
     image: -918,
     customId: 'dish_cocokana_tra_dac_rim_dua',
-    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    customImage: 'dish_cocokana_tra_dua_mat_hd.jpg',
     rarity: 2,
     quip: 'Hạt đác rim dứa dẻo thơm nhai sần sật cực đã, cốt trà dứa chua ngọt thanh mát sảng khoái.',
   },
@@ -8145,7 +8145,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
     price: 30,
     image: -920,
     customId: 'dish_cocokana_tra_nhan',
-    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    customImage: 'dish_cocokana_tra_nhan_tuoi_hd.jpg',
     rarity: 2,
     quip: 'Cùi nhãn lồng tươi ngọt đậm đà thả ngập trong ly trà lài ướp lạnh thơm ngát giải khát tức thì.',
   },
@@ -8167,7 +8167,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
     price: 28,
     image: -922,
     customId: 'dish_cocokana_tra_mit',
-    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    customImage: 'dish_cocokana_tra_mit_tuoi_hd.jpg',
     rarity: 1,
     quip: 'Múi mít tươi xé sợi thơm nức mũi hòa vào vị trà thanh dịu tạo nên nét quyến rũ riêng biệt.',
   },
@@ -8211,7 +8211,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
     price: 25,
     image: -926,
     customId: 'dish_cocokana_tra_oi',
-    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    customImage: 'dish_cocokana_tra_oi_hong_hd.jpg',
     rarity: 1,
     quip: 'Hương ổi hồng thơm ngát dịu dàng cùng sắc hồng bắt mắt, vị ngọt thanh mát lạnh nhẹ nhàng.',
   },
@@ -8233,7 +8233,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
     price: 25,
     image: -928,
     customId: 'dish_cocokana_tra_dua',
-    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    customImage: 'dish_cocokana_tra_dua_mat_hd.jpg',
     rarity: 1,
     quip: 'Dứa mật tươi thái lát chua ngọt thơm lừng, thức uống giải nhiệt đỉnh chóp ngày nóng.',
   },
@@ -8244,7 +8244,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
     price: 25,
     image: -929,
     customId: 'dish_cocokana_tra_dua_chanh_day',
-    customImage: 'dish_cocokana_tra_hong_luu.jpg',
+    customImage: 'dish_cocokana_tra_dua_mat_hd.jpg',
     rarity: 1,
     quip: 'Dứa mật ngọt thanh hòa cùng chanh dây đậm đà chua dịu, nhân đôi vị sảng khoái mát lành.',
   },
@@ -8387,9 +8387,9 @@ export function getDishConceptKey(food: Food): string {
   if (name.includes('chà bông') && name.includes('bánh tráng')) return 'boom-cuon-cha-bong';
   if (name.includes('bánh tráng') && name.includes('chanh sả')) return 'boom-cuon-chanh-sa';
   if (name.includes('mỳ ý') || name.includes('spaghetti')) return 'my-y-coloan';
-  if (name.includes('phở cuốn') && name.includes('cô loan')) return 'pho-cuon-coloan';
-  if (name.includes('gỏi cuốn') && name.includes('cô loan')) return 'goi-cuon-coloan';
-  if (name.includes('cơm nắm') && name.includes('cô loan')) return 'com-nam-coloan';
+  if (name.includes('phở cuốn') && (name.includes('cô loan') || (food.sub && food.sub.includes('Cô Loan')))) return 'pho-cuon-coloan';
+  if (name.includes('gỏi cuốn') && (name.includes('cô loan') || (food.sub && food.sub.includes('Cô Loan')))) return 'goi-cuon-coloan';
+  if (name.includes('cơm nắm') && (name.includes('cô loan') || (food.sub && food.sub.includes('Cô Loan')))) return 'com-nam-coloan';
 
   // Lẩu Ngựa Tây Bắc (Đặc sản ngựa & Lẩu vùng cao)
   if (name.includes('ngựa nướng bản gang')) return 'ngua-ban-gang';

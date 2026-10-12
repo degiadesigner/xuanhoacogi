@@ -1824,6 +1824,7 @@ export default function Home() {
 
     {currentView === 'dishes' && (
       <DishesCatalogView
+        initialCategory={activeCategory}
         onSelectDish={(dish) => {
           setWinnerFood(dish);
           setDialogOpen(true);

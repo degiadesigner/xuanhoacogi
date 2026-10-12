@@ -4286,7 +4286,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 100,
     rating: 4.8,
     reviewCount: 438,
-    imageUrl: 'dish_hong_tra_sua.webp',
+    imageUrl: 'dish_hong_tra_sua_tran_chau_hd.jpg',
     serviceMode: 'both',
     deliveryNote: 'Freeship < 2km quanh XUHO, KTX, QUÂN SỰ · Hotline 0336 109 769',
     signatureDish: {

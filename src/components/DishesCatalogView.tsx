@@ -21,6 +21,7 @@ import {
 import { formatTypography, getFoodCategoryLabel, cleanDishDisplayTitle } from '@/lib/utils';
 
 interface DishesCatalogViewProps {
+  initialCategory?: 'all' | MainCategoryKey;
   onSelectDish: (dish: CatalogFoodItem) => void;
   onSpinWithDish?: (dish: CatalogFoodItem) => void;
   onGoToSpin: () => void;
@@ -32,6 +33,7 @@ const rarityColors = ['#10B981', '#F59E0B', '#A855F7', '#F97316', '#EF4444'];
 const PAGE_SIZE = 24;
 
 export function DishesCatalogView({
+  initialCategory = 'all',
   onSelectDish,
   onSpinWithDish,
   onGoToSpin,
@@ -40,7 +42,7 @@ export function DishesCatalogView({
   const allDishes = useMemo(() => getAllCatalogFoods(), []);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | MainCategoryKey>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | MainCategoryKey>(initialCategory);
   const [priceFilter, setPriceFilter] = useState<'all' | 'under35' | '35to65' | '65to120' | 'above120'>('all');
   const [sortOption, setSortOption] = useState<'default' | 'price-asc' | 'price-desc' | 'name-asc'>('default');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);

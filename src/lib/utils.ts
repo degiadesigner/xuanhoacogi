@@ -46,43 +46,88 @@ export function formatTypography(text?: string): string {
 export function getFoodCategoryLabel(food: { name: string; sub?: string; kind?: string; category?: string }): string {
   const name = (food.name || '').toLowerCase();
   
-  if (name.includes('bún') || name.includes('phở') || name.includes('mì') || name.includes('mỳ') || name.includes('miến') || name.includes('hủ tiếu') || name.includes('bánh đa')) {
+  // 1. Ưu tiên tuyệt đối Đồ uống & Trà nếu là món nước, trà, cafe, trà sữa, sinh tố...
+  if (
+    food.category === 'drink' || 
+    food.kind === 'drink' ||
+    name.includes('trà') || 
+    name.includes('cà phê') || 
+    name.includes('cafe') || 
+    name.includes('sinh tố') || 
+    name.includes('nước ép') || 
+    name.includes('nước mía') || 
+    name.includes('soda') || 
+    name.includes('sữa tươi') || 
+    name.includes('sữa chua') || 
+    name.includes('trà sữa') ||
+    name.includes('sữa') ||
+    name.includes('milo') || 
+    name.includes('latte') || 
+    name.includes('matcha') || 
+    name.includes('cacao') ||
+    name.includes('tào phớ') ||
+    name.includes('đá xay') ||
+    name.includes('chè')
+  ) {
+    if (name.includes('chè') || name.includes('tào phớ') || (name.includes('sữa chua') && !name.includes('trà') && !name.includes('cà phê') && !name.includes('cafe'))) {
+      return 'Ăn vặt & tráng miệng';
+    }
+    return 'Đồ uống & trà';
+  }
+
+  if (name.includes('bia') || name.includes('nhậu') || name.includes('rượu')) {
+    return 'Bia & mồi nhậu';
+  }
+
+  if (
+    name.includes('bún') || 
+    name.includes('phở') || 
+    name.includes('mì') || 
+    name.includes('mỳ') || 
+    (name.includes('miến') && !name.includes('miếng')) || 
+    name.includes('hủ tiếu') || 
+    name.includes('bánh đa')
+  ) {
     return 'Bún, phở & mì';
   }
+
   if (name.includes('cơm') || name.includes('xôi')) {
     return 'Cơm & xôi';
   }
+
   if (name.includes('cháo') || name.includes('lẩu') || name.includes('súp')) {
     return 'Lẩu & cháo';
   }
+
   if (name.includes('bánh mì') || name.includes('bánh mỳ') || name.includes('cuốn') || name.includes('kimbap') || name.includes('bánh xèo') || name.includes('bánh hỏi') || name.includes('bánh bao') || name.includes('burger')) {
     return 'Bánh mì & cuốn';
   }
+
   if (name.includes('nướng') || name.includes('chiên') || name.includes('bbq') || name.includes('quay') || name.includes('rán')) {
     if (name.includes('nem chua rán') || name.includes('khoai tây')) return 'Ăn vặt & tráng miệng';
     return 'Nướng & chiên';
   }
-  if (name.includes('trà') || name.includes('cà phê') || name.includes('cafe') || name.includes('sinh tố') || name.includes('nước ép') || name.includes('soda') || name.includes(' ép') || name.includes('sữa') || name.includes('milo') || name.includes('latte') || name.includes('matcha')) {
-    return 'Đồ uống & trà';
-  }
-  if (name.includes('bia') || name.includes('nhậu') || name.includes('rượu')) {
-    return 'Bia & mồi nhậu';
-  }
+
   if (name.includes('ốc') || name.includes('hải sản') || name.includes('hàu') || name.includes('tôm') || name.includes('mực') || name.includes('càng ghẹ')) {
     return 'Ốc & hải sản';
   }
-  if (name.includes('chè') || name.includes('kem') || name.includes('khoai') || name.includes('bánh gà') || name.includes('tokbokki') || name.includes('tào phớ') || name.includes('nem chua') || name.includes('sữa chua') || name.includes('caramen') || name.includes('bánh ngọt') || name.includes('gateaux') || name.includes('xúc xích') || name.includes('xiên que')) {
+
+  if (name.includes('kem') || name.includes('khoai') || name.includes('bánh gà') || name.includes('tokbokki') || name.includes('nem chua') || name.includes('caramen') || name.includes('bánh ngọt') || name.includes('gateaux') || name.includes('xúc xích') || name.includes('xiên que')) {
     return 'Ăn vặt & tráng miệng';
   }
+
   if (name.includes('chân gà') || name.includes('cánh gà') || name.includes('dồi sụn') || name.includes('tóp mỡ') || name.includes('tai heo') || name.includes('má đào')) {
     return 'Món nhậu & lai rai';
   }
+
   if (name.includes('salad') || name.includes('nộm') || name.includes('gỏi')) {
     return 'Salad & món nhẹ';
   }
+
   if (name.includes('pizza') || name.includes('pasta') || name.includes('spaghetti')) {
     return 'Pizza & pasta';
   }
+
   if (food.kind) return food.kind;
   return 'Món ngon Xuân Hòa';
 }

@@ -1694,7 +1694,7 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
     verified: true,
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship lẩu nướng tận nhà quanh Phúc Yên (9h-13h & 16h-Hết khách) · Hotline: 0376 076 376 - 098 7722 129',
-    notes: 'Quán Lẩu Nướng Phong Việt – Số 1 ngõ 2 Hoàng Quốc Việt (dốc bờ hồ Phúc Yên), P. Trưng Trắc, TP. Phúc Yên · Hotline: 0376 076 376 - 098 7722 129 · Giờ mở cửa: 09:00 - 13:00 và 16:00 - Hết khách · Phục vụ tại quán & Nhận ship lẩu nướng tận nơi quanh Phúc Yên. Nổi tiếng với Combo nướng chảo gang xì xèo 350k - 500k ngập tràn bò tươi, ba chỉ bò Mỹ, nầm, sụn, má đào nướng bơ thơm nức mũi; Lẩu Thái Tomyum hải sản 400k - 650k; Lẩu ếch măng cay nồi đồng 350k - 650k; Lẩu cá tầm SaPa, Lẩu gà thảo mộc; cùng các món bản gang cháy tỏi nức tiếng: Nầm bản gang 160k, Dải bản gang 160k, Má đào bản gang 180k, Sụn bản gang 120k; Món ếch sốt trứng muối 180k, Da ếch chiên giòn 120k, Trâu xào lá lốt 150k, Chân gà chiên mắm 80k, Cánh gà chiên mắm 90k.',
+    notes: 'Quán Lẩu Nướng Phong Việt – Số 1 ngõ 2 Hoàng Quốc Việt (dốc bờ hồ Phúc Yên), P. Trưng Trắc, TP. Phúc Yên · Hotline: 0376 076 376 - 098 7722 129 · Giờ mở cửa: 09:00 - 13:00 và 16:00 - Hết khách · Phục vụ tại quán & Nhận ship lẩu nướng tận nơi quanh Phúc Yên. Nổi tiếng với Combo nướng chảo gang xì xèo 350k - 500k ngập tràn bò tươi, ba chỉ bò Mỹ, nầm, sụn, má đào nướng bơ thơm nức mũi; Lẩu Thái Tomyum hải sản 400k - 650k; Lẩu ếch măng cay nồi đồng 350k - 650k; Lẩu cá tầm SaPa, Lẩu gà thảo mộc; cùng các món bản gang cháy tỏi nức tiếng: Nầm bản gang 160k, Dải bản gang 160k, Má đào bản gang 180k, Sụn bản gang 120k; Ếch rang muối sả ớt 150k, Bò xào măng trúc 150k, Trâu / Bò nhúng mẻ 180k, Trâu xào lá lốt 150k, Chân gà chiên mắm 80k, Gà chiên sốt mắm 120k, Phomai que kéo sợi 70k, Ngao hấp Thái 60k.',
     menuHighlights: [
       'Combo nướng chảo gang xì xèo: 350.000đ - 500.000đ (Best Choice)',
       'Lẩu ếch măng cay đặc sản: 350.000đ - 500.000đ - 650.000đ (Bestseller)',
@@ -1705,18 +1705,18 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
       'Dải bản gang chiên mắm: 160.000đ',
       'Má đào bản gang sốt tỏi: 180.000đ',
       'Sụn heo bản gang cháy tỏi: 120.000đ',
-      'Ếch xào măng cay đặc sản: 180.000đ',
-      'Ếch sốt trứng muối hoàng kim: 180.000đ',
-      'Da ếch chiên giòn lá lốt: 120.000đ',
+      'Ếch rang muối sả ớt đặc sản: 150.000đ',
+      'Bò xào măng trúc tươi giòn: 150.000đ',
+      'Trâu / Bò tươi nhúng mẻ: 180.000đ',
       'Ba chỉ bò Mỹ nướng sốt: 90.000đ',
-      'Dải heo nướng sốt: 90.000đ',
-      'Má đào nướng sốt: 90.000đ',
-      'Trâu xào lá lốt: 150.000đ',
-      'Mực chiên mắm: 150.000đ',
+      'Dải heo nướng sốt đậm đà: 90.000đ',
+      'Má đào nướng sốt chảo gang: 90.000đ',
+      'Trâu xào lá lốt thơm bùi: 150.000đ',
+      'Gà chiên sốt mắm tỏi cay ngọt: 120.000đ',
       'Chân gà chiên mắm tê cay: 80.000đ',
-      'Cánh gà chiên mắm: 90.000đ',
-      'Gà viên Popcorn lắc phomai: 80.000đ',
-      'Khoai tây chiên lắc phomai: 60.000đ'
+      'Phomai que kéo sợi giòn tan: 70.000đ',
+      'Khoai tây chiên lắc phomai: 60.000đ',
+      'Ngao hấp Thái sả ớt chua cay: 60.000đ'
     ]
   }
 };

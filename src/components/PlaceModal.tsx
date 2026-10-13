@@ -81,7 +81,7 @@ export function PlaceModal({
 
   const handleCall = () => {
     if (activePlace.phone) {
-      const cleanPhone = activePlace.phone.replace(/[^0-9]/g, '');
+      const cleanPhone = activePlace.phone.split(/[-·,/]/)[0].replace(/[^0-9]/g, '');
       window.location.href = `tel:${cleanPhone}`;
     }
   };
@@ -226,7 +226,7 @@ export function PlaceModal({
           {/* Nút 1: Gọi điện thoại */}
           {activePlace.phone ? (
             <a 
-              href={`tel:${activePlace.phone.replace(/[^0-9]/g, '')}`} 
+              href={`tel:${activePlace.phone.split(/[-·,/]/)[0].replace(/[^0-9]/g, '')}`} 
               className="golden-grid-btn call"
               title={`Bấm gọi hotline ${activePlace.phone}`}
               onClick={(e) => {

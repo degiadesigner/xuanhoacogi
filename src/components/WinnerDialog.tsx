@@ -251,7 +251,7 @@ export function WinnerDialog({
               {/* Gọi điện quán - Vector icon Phone, cân đối không bao giờ rớt dòng số điện thoại */}
               {spot.phone && (
                 <a
-                  href={`tel:${spot.phone.replace(/\s+/g, '')}`}
+                  href={`tel:${spot.phone.split(/[-·,/]/)[0].replace(/[^0-9]/g, '')}`}
                   className={`action-btn-secondary ${spot.serviceMode === 'delivery_only' ? 'delivery-btn' : 'call'} flex-1 min-w-0`}
                   title={`${spot.serviceMode === 'delivery_only' ? 'Đặt Ship' : 'Gọi Quán'}: ${spot.phone}`}
                 >

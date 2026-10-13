@@ -168,7 +168,7 @@ export function AboutView({
                     <ExternalLink size={12} />
                   </a>
                   <span className="founder-location-tag inline-flex items-center gap-1">
-                    <MapPin size={12} className="text-amber-400" /> Phúc Yên, Vĩnh Phúc
+                    <MapPin size={12} className="text-amber-400" /> Xuân Hòa, Phú Thọ
                   </span>
                 </div>
               </div>

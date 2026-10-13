@@ -30,7 +30,7 @@ export const LEVEL_TIERS: LevelTierConfig[] = [
   { minLevel: 21, maxLevel: 28, title: 'Chuyên Gia Ẩm Thực Phúc Yên', badge: '🌟' },
   { minLevel: 29, maxLevel: 38, title: 'Trùm Ẩm Thực Xuân Hòa', badge: '🔥' },
   { minLevel: 39, maxLevel: 49, title: 'Đại Cao Thủ Bếp Vương', badge: '⚡' },
-  { minLevel: 50, maxLevel: 50, title: 'Huyền Thoại Ẩm Thực Vĩnh Phúc', badge: '🏆' },
+  { minLevel: 50, maxLevel: 50, title: 'Huyền Thoại Ẩm Thực Phú Thọ', badge: '🏆' },
 ];
 
 export const LEVEL_TITLES = LEVEL_TIERS.map(t => t.title);

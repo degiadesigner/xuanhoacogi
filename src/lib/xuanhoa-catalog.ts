@@ -5303,7 +5303,7 @@ export const lauNguaTayBacDishes: Food[] = [
 
 // ============================================================================
 // ZUN FOOD & TEA - ĐỒ ĂN VẶT & TRÀ HOA QUẢ TƯƠI
-// Địa chỉ: Đường Lê Quang Đạo, Khu đô thị Xuân Hòa, P. Xuân Hòa, TP. Phúc Yên
+// Địa chỉ: Đường Lê Quang Đạo, Khu đô thị Xuân Hòa, P. Xuân Hòa, Tỉnh Phú Thọ
 // Hotline: 0392 716 756 • FB: Thuỳ Dung • Giờ mở cửa: 09:00 - 22:30 hàng ngày
 // ============================================================================
 export const zunFoodTeaFoodDishes: Food[] = [

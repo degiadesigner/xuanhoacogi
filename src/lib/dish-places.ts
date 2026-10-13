@@ -39,7 +39,7 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // Lẩu Ngựa Tây Bắc (Đối tác ẩm thực Tây Bắc 2026 - Hotline 0963 047 022)
   lau_ngua_tay_bac: {
     name: 'Lẩu Ngựa Tây Bắc',
-    address: 'Cách ban cơ yếu 951 đường Lê Duẩn miếu gỗ 200m, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    address: 'Cách ban cơ yếu 951 đường Lê Duẩn miếu gỗ 200m, P. Xuân Hòa, Tỉnh Phú Thọ',
     phone: '0963 047 022',
     mapsQuery: 'Ban cơ yếu 951 Lê Duẩn Xuân Hòa Phúc Yên',
     verified: true,
@@ -63,9 +63,9 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // ZUN Food & Tea (Đường Lê Quang Đạo, Khu đô thị Xuân Hòa - Hotline 0392 716 756)
   zun_food_tea: {
     name: 'ZUN Food & Tea',
-    address: 'Đường Lê Quang Đạo, Khu đô thị Xuân Hòa, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    address: 'Đường Lê Quang Đạo, Khu đô thị Xuân Hòa, P. Xuân Hòa, Tỉnh Phú Thọ',
     phone: '0392 716 756',
-    mapsQuery: 'Khu đô thị Xuân Hòa Phúc Yên Vĩnh Phúc',
+    mapsQuery: 'Khu đô thị Xuân Hòa Phúc Yên Phú Thọ',
     verified: true,
     serviceMode: 'both',
     deliveryNote: 'Ăn tại quán & Nhận ship đồ ăn vặt, mì cay, trà sữa quanh KĐT Xuân Hòa · Hotline 0392 716 756 (FB: Thuỳ Dung, Mì mang về +2k hộp/suất)',
@@ -87,7 +87,7 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // Bếp Nhà Bống (Số 4A Ngõ 3 Phố Kim Đồng - Hotline 0812 516 606)
   bep_nha_bong: {
     name: 'Bếp Nhà Bống (Cơm Tấm Sườn Nướng)',
-    address: 'Số 4A Ngõ 3 Phố Kim Đồng, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    address: 'Số 4A Ngõ 3 Phố Kim Đồng, P. Xuân Hòa, Tỉnh Phú Thọ',
     phone: '0812 516 606',
     mapsQuery: '4A Ngõ 3 Kim Đồng Xuân Hòa Phúc Yên',
     verified: true,
@@ -108,9 +108,9 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
     // cocokana - Trà Trái Cây Tươi (Lê Quang Đạo, Đối diện trạm sạc Vin - Hotline 08.1900.0248)
   cocokana_tra_trai_cay: {
     name: 'cocokana - Trà Trái Cây Tươi',
-    address: 'Đối diện trạm sạc Vin, Đường Lê Quang Đạo, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    address: 'Đối diện trạm sạc Vin, Đường Lê Quang Đạo, P. Xuân Hòa, Tỉnh Phú Thọ',
     phone: '0819 000 248',
-    mapsQuery: 'Duong Le Quang Dao Xuan Hoa Phuc Yen Vinh Phuc',
+    mapsQuery: 'Duong Le Quang Dao Xuan Hoa Phuc Yen Phu Tho',
     verified: true,
     serviceMode: 'both',
     deliveryNote: 'Take away & Nhận ship Trà trái cây tươi mát lạnh tận phòng quanh Xuân Hòa (8h00 - 21h00) · Hotline 08.1900.0248 (0819 000 248)',
@@ -130,9 +130,9 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
 
   my_ga_tan_linh_duong: {
     name: 'Mỳ Gà Tần Linh Dương (Giáp Năm CS2)',
-    address: 'Cạnh nhà nghỉ Q2, Đường Lê Quang Đạo, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    address: 'Cạnh nhà nghỉ Q2, Đường Lê Quang Đạo, P. Xuân Hòa, Tỉnh Phú Thọ',
     phone: '0961 564 396 · 0964 162 235',
-    mapsQuery: 'Lê Quang Đạo Xuân Hòa Phúc Yên Vĩnh Phúc',
+    mapsQuery: 'Lê Quang Đạo Xuân Hòa Phúc Yên Phú Thọ',
     verified: true,
     serviceMode: 'both',
     deliveryNote: 'Ăn tại quán & Nhận ship Mỳ gà tần, cháo chim câu, ốc đốt tận nơi quanh Xuân Hòa · Hotline 0961 564 396 · 0964 162 235',
@@ -430,14 +430,14 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // 8f. Xiên Nướng Trung Hoa (KCN Bá Thiện 2, Bình Xuyên)
   xien_nuong_trung_hoa: {
     name: 'Xiên Nướng Trung Hoa (KCN Bá Thiện 2)',
-    address: 'Khu công nghiệp Bá Thiện 2, Huyện Bình Xuyên, Tỉnh Vĩnh Phúc',
+    address: 'Khu công nghiệp Bá Thiện 2, Huyện Bình Xuyên, Tỉnh Phú Thọ',
     phone: '0386 126 065',
-    mapsQuery: 'Khu công nghiệp Bá Thiện 2 Bình Xuyên Vĩnh Phúc Xiên Nướng Trung Hoa',
+    mapsQuery: 'Khu công nghiệp Bá Thiện 2 Bình Xuyên Phú Thọ Xiên Nướng Trung Hoa',
     mapsUrl: 'https://maps.app.goo.gl/KeefsfcCKvvYCuMZA?g_st=ic',
     verified: true,
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship Xiên nướng Chuanr, hải sản nướng, nộm kiểu Trung tận nơi · Hotline 0386 126 065',
-    notes: 'Xiên Nướng Trung Hoa · Hương vị Trung Hoa đậm đà khó quên · KCN Bá Thiện 2, Bình Xuyên, Vĩnh Phúc · Hotline 0386 126 065 · Wifi: Xiên Nướng Trung Hoa (Pass: 88888889) · Đại tiệc xiên nướng than hoa Chuanr thơm lừng cay tê: Xiên bò củ quả 25k, cánh gà nướng sốt cay 35k, mực nguyên con 35k, tuộc baby 25k, hàu nướng mỡ hành phô mai 15k, sườn lợn 30k, nộm cải thảo & đậu bắp kiểu Trung 30k, bia Trung Quốc & trà thảo mộc Vương Lão Cát.',
+    notes: 'Xiên Nướng Trung Hoa · Hương vị Trung Hoa đậm đà khó quên · KCN Bá Thiện 2, Bình Xuyên, Phú Thọ · Hotline 0386 126 065 · Wifi: Xiên Nướng Trung Hoa (Pass: 88888889) · Đại tiệc xiên nướng than hoa Chuanr thơm lừng cay tê: Xiên bò củ quả 25k, cánh gà nướng sốt cay 35k, mực nguyên con 35k, tuộc baby 25k, hàu nướng mỡ hành phô mai 15k, sườn lợn 30k, nộm cải thảo & đậu bắp kiểu Trung 30k, bia Trung Quốc & trà thảo mộc Vương Lão Cát.',
     menuHighlights: [
       'Xiên thịt bò củ quả (牛肉串): 25.000đ (Best Seller số 1)',
       'Cánh gà nướng sốt cay Trung Hoa: 35.000đ (Best Seller)',
@@ -654,7 +654,7 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // 8p. Tiệm Cơm Nhà Lê Huyền (Chân dốc KTX Sinh Viên - Nguyễn Văn Linh)
   tiem_le_huyen: {
     name: 'Tiệm Cơm Nhà Lê Huyền - Ngon Như Nhà, Ấm Như Tình Thân',
-    address: 'Chân dốc KTX Sinh Viên, Đường Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    address: 'Chân dốc KTX Sinh Viên, Đường Nguyễn Văn Linh, P. Xuân Hòa, Tỉnh Phú Thọ',
     phone: '0965 924 229',
     mapsQuery: 'Doc KTX Sinh Vien Nguyen Van Linh Xuan Hoa Phuc Yen',
     verified: true,
@@ -702,12 +702,12 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
     ]
   },
 
-  // 8r. Quán Dừa Khả Do (Số 18 Khả Do, P. Nam Viêm, TP. Phúc Yên)
+  // 8r. Quán Dừa Khả Do (Số 18 Khả Do, P. Nam Viêm, Tỉnh Phú Thọ)
   quan_dua_kha_do: {
     name: 'Quán Dừa Khả Do',
-    address: 'Số 18 Khả Do, P. Nam Viêm, TP. Phúc Yên, Vĩnh Phúc',
+    address: 'Số 18 Khả Do, P. Nam Viêm, Tỉnh Phú Thọ',
     phone: '0378 457 263',
-    mapsQuery: '18 Kha Do Nam Viem Phuc Yen Vinh Phuc',
+    mapsQuery: '18 Kha Do Nam Viem Phuc Yen Phu Tho',
     verified: true,
     serviceMode: 'both',
     deliveryNote: 'Nhận ship tận nơi quanh Phúc Yên & Xuân Hòa qua hotline 0378 457 263 · 13k/quả dừa tại quán, 15k/quả nếu ship',
@@ -722,9 +722,9 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // 8s. Bún Bò Huế 102 Nguyễn Văn Linh
   bun_bo_hue_102: {
     name: 'Bún Bò Huế 102 Nguyễn Văn Linh',
-    address: '102 Đường Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    address: '102 Đường Nguyễn Văn Linh, P. Xuân Hòa, Tỉnh Phú Thọ',
     phone: '0358 299 789 - 0979 666 839',
-    mapsQuery: '102 Nguyen Van Linh Xuan Hoa Phuc Yen Vinh Phuc',
+    mapsQuery: '102 Nguyen Van Linh Xuan Hoa Phuc Yen Phu Tho',
     verified: true,
     serviceMode: 'both',
     deliveryNote: 'Mở cửa: 07h-12h & 18h-20h · Phục vụ tại quán & Nhận ship quanh Xuân Hòa qua hotline 0358 299 789 - 0979 666 839',
@@ -1605,7 +1605,7 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // 39. Quán Cô Loan - Ăn Vặt & Mì Cay (Số 12, Ngõ 8 Nguyễn Văn Linh)
   co_loan: {
     name: 'Quán Cô Loan - Ăn Vặt & Mì Cay',
-    address: 'Số 12, Ngõ 8 Đường Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    address: 'Số 12, Ngõ 8 Đường Nguyễn Văn Linh, P. Xuân Hòa, Tỉnh Phú Thọ',
     phone: '0363 919 378 · 0986 617 822',
     mapsQuery: 'Số 12 Ngõ 8 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
     verified: true,
@@ -1633,7 +1633,7 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // 40. Bánh Tráng Trứng Chảy Nhà BOOM (204 Nguyễn Văn Linh)
   banh_trang_nha_boom: {
     name: 'Bánh Tráng Trứng Chảy Nhà BOOM',
-    address: '204 Đường Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc',
+    address: '204 Đường Nguyễn Văn Linh, P. Xuân Hòa, Tỉnh Phú Thọ',
     phone: '0394 464 614',
     mapsQuery: '204 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
     verified: true,
@@ -1660,7 +1660,7 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // 41. Bếp Nhà Cún - Mì Trộn & Ăn Vặt Đêm (Số 12 ngõ 4 Nguyễn Văn Linh)
   bep_nha_cun: {
     name: 'Bếp Nhà Cún - Mì Trộn & Ăn Vặt Đêm',
-    address: 'Số 12 ngõ 4 Nguyễn Văn Linh, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc (Chuyên ship & Khách ghé lấy ngay)',
+    address: 'Số 12 ngõ 4 Nguyễn Văn Linh, P. Xuân Hòa, Tỉnh Phú Thọ (Chuyên ship & Khách ghé lấy ngay)',
     phone: '0968 863 445',
     mapsQuery: 'Số 12 ngõ 4 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
     verified: true,
@@ -1688,13 +1688,13 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // 42. Quán Lẩu Nướng Phong Việt (Số 1 ngõ 2 Hoàng Quốc Việt, dốc bờ hồ Phúc Yên)
   lau_nuong_phong_viet: {
     name: 'Quán Lẩu Nướng Phong Việt (Lẩu & Nướng Chảo Gang)',
-    address: 'Số 1 ngõ 2 đường Hoàng Quốc Việt (dốc bờ hồ Phúc Yên), P. Trưng Trắc, TP. Phúc Yên, Vĩnh Phúc',
+    address: 'Số 1 ngõ 2 đường Hoàng Quốc Việt (dốc bờ hồ Phúc Yên), P. Trưng Trắc, Tỉnh Phú Thọ',
     phone: '0376 076 376 - 098 7722 129',
     mapsQuery: 'Số 1 ngõ 2 Hoàng Quốc Việt Trưng Trắc Phúc Yên',
     verified: true,
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship lẩu nướng tận nhà quanh Phúc Yên (9h-13h & 16h-Hết khách) · Hotline: 0376 076 376 - 098 7722 129',
-    notes: 'Quán Lẩu Nướng Phong Việt – Số 1 ngõ 2 Hoàng Quốc Việt (dốc bờ hồ Phúc Yên), P. Trưng Trắc, TP. Phúc Yên · Hotline: 0376 076 376 - 098 7722 129 · Giờ mở cửa: 09:00 - 13:00 và 16:00 - Hết khách · Phục vụ tại quán & Nhận ship lẩu nướng tận nơi quanh Phúc Yên. Nổi tiếng với Combo nướng chảo gang xì xèo 350k - 500k ngập tràn bò tươi, ba chỉ bò Mỹ, nầm, sụn, má đào nướng bơ thơm nức mũi; Lẩu Thái Tomyum hải sản 400k - 650k; Lẩu ếch măng cay nồi đồng 350k - 650k; Lẩu cá tầm SaPa, Lẩu gà thảo mộc; cùng các món bản gang cháy tỏi nức tiếng: Nầm bản gang 160k, Dải bản gang 160k, Má đào bản gang 180k, Sụn bản gang 120k; Ếch rang muối sả ớt 150k, Bò xào măng trúc 150k, Trâu / Bò nhúng mẻ 180k, Trâu xào lá lốt 150k, Chân gà chiên mắm 80k, Gà chiên sốt mắm 120k, Phomai que kéo sợi 70k, Ngao hấp Thái 60k.',
+    notes: 'Quán Lẩu Nướng Phong Việt – Số 1 ngõ 2 Hoàng Quốc Việt (dốc bờ hồ Phúc Yên), P. Trưng Trắc, Tỉnh Phú Thọ · Hotline: 0376 076 376 - 098 7722 129 · Giờ mở cửa: 09:00 - 13:00 và 16:00 - Hết khách · Phục vụ tại quán & Nhận ship lẩu nướng tận nơi quanh Phúc Yên. Nổi tiếng với Combo nướng chảo gang xì xèo 350k - 500k ngập tràn bò tươi, ba chỉ bò Mỹ, nầm, sụn, má đào nướng bơ thơm nức mũi; Lẩu Thái Tomyum hải sản 400k - 650k; Lẩu ếch măng cay nồi đồng 350k - 650k; Lẩu cá tầm SaPa, Lẩu gà thảo mộc; cùng các món bản gang cháy tỏi nức tiếng: Nầm bản gang 160k, Dải bản gang 160k, Má đào bản gang 180k, Sụn bản gang 120k; Ếch rang muối sả ớt 150k, Bò xào măng trúc 150k, Trâu / Bò nhúng mẻ 180k, Trâu xào lá lốt 150k, Chân gà chiên mắm 80k, Gà chiên sốt mắm 120k, Phomai que kéo sợi 70k, Ngao hấp Thái 60k.',
     menuHighlights: [
       'Combo nướng chảo gang xì xèo: 350.000đ - 500.000đ (Best Choice)',
       'Lẩu ếch măng cay đặc sản: 350.000đ - 500.000đ - 650.000đ (Bestseller)',
@@ -2005,7 +2005,7 @@ export function getSpotForDish(dishName: string): SpotInfo {
     return xuanHoaSpots.canteen_ktx_sp2;
   }
 
-  // Quán Dừa Khả Do (Số 18 Khả Do, TP. Phúc Yên)
+  // Quán Dừa Khả Do (Số 18 Khả Do, Tỉnh Phú Thọ)
   if (
     name.includes('khả do') ||
     name.includes('kha do') ||

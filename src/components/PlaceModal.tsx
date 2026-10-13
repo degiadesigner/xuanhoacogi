@@ -87,7 +87,7 @@ export function PlaceModal({
   };
 
   const handleMaps = () => {
-    const url = activePlace.mapsUrl || (activePlace.mapsQuery.startsWith('http') ? activePlace.mapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activePlace.mapsQuery + (activePlace.mapsQuery.includes('Vĩnh Phúc') ? '' : ' Xuân Hòa'))}`);
+    const url = activePlace.mapsUrl || (activePlace.mapsQuery.startsWith('http') ? activePlace.mapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activePlace.mapsQuery + (activePlace.mapsQuery.includes('Phú Thọ') ? '' : ' Xuân Hòa'))}`);
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -105,59 +105,77 @@ export function PlaceModal({
         <div className="golden-passport-ribbon">
           <div className="golden-ribbon-inner">
             <span className="golden-ribbon-star">★</span>
-            <span className="golden-ribbon-text">TẤM THẺ TỌA ĐỘ VÀNG XUÂN HÒA · BẢO CHỨNG THỰC TẾ 2026</span>
+            <span className="golden-ribbon-text">
+              <span className="hidden sm:inline">TẤM THẺ TỌA ĐỘ VÀNG XUÂN HÒA · </span>BẢO CHỨNG THỰC TẾ 2026
+            </span>
             <span className="golden-ribbon-star">★</span>
           </div>
         </div>
 
-        {/* Hero Header */}
+        {/* Hero Visual Card (Chỉ chứa ảnh + gradient + Tags & Nút Đóng tách bạch) */}
         <div 
-          className="modal-hero golden-hero" 
-          style={{ backgroundImage: `linear-gradient(to bottom, rgba(14, 16, 21, 0.45) 0%, rgba(14, 16, 21, 0.95) 100%), url(${imgUrl})` }}
+          className="modal-hero-cover" 
+          style={{ backgroundImage: `url(${imgUrl})` }}
         >
-          <button className="modal-close-btn" onClick={onClose} aria-label="Đóng">
-            <X size={18} />
-          </button>
+          <div className="modal-hero-overlay" />
           
-          <div className="modal-hero-content">
-            <div className="modal-tags">
-              <span className="badge-tag verified">
-                <ShieldCheck size={12} className="inline mr-1 text-emerald-400" />
-                Xuân Hòa Xác Thực
+          {/* Top Bar inside Image: Tags bên trái, Nút đóng bên phải */}
+          <div className="modal-hero-top-bar">
+            <div className="modal-hero-top-tags">
+              <span className="badge-tag rating">
+                <Star size={12} fill="#FFB800" color="#FFB800" /> {activePlace.rating} ({activePlace.reviewCount})
               </span>
               <span className="badge-tag style-group">
                 {currentStyleLabel}
               </span>
-              <span 
-                className="badge-tag amenity-tag font-bold inline-flex items-center gap-1.5"
-                style={{ borderColor: amenity.badgeColor, color: amenity.badgeColor }}
-              >
-                {renderAmenityIcon(amenity.id, 12)}
-                <span>{amenity.label}</span>
-              </span>
-              <span className="badge-tag open-status font-bold text-emerald-400 border-emerald-500/40 inline-flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span>{activePlace.openHours ? `Mở cửa (${activePlace.openHours})` : 'Đang mở cửa'}</span>
-              </span>
-              <span className="badge-tag rating">
-                <Star size={12} fill="#FFB800" color="#FFB800" /> {activePlace.rating} ({activePlace.reviewCount} đánh giá)
-              </span>
             </div>
             
+            <button className="modal-close-btn" onClick={onClose} aria-label="Đóng" type="button">
+              <X size={17} />
+            </button>
+          </div>
+
+          {/* Bottom of Image: Tiêu đề quán nổi bật */}
+          <div className="modal-hero-bottom-title">
             <h2 className="modal-title golden-title">{formatTypography(activePlace.name)}</h2>
-            <p className="modal-tagline">"{activePlace.tagline}"</p>
-            <p className="modal-address">
-              <MapPin size={14} className="text-amber-400 shrink-0" /> 
-              <span>{formatTypography(activePlace.address)}</span>
-            </p>
           </div>
         </div>
 
-        {/* 3 TỌA ĐỘ TRỌNG YẾU (Golden 3-Metrics Grid) */}
-        <div className="golden-coords-grid">
+        {/* Modal Body Content: Toàn bộ thông tin chữ hiển thị trên nền tối chuẩn, không bao giờ bị đè chữ */}
+        <div className="modal-body-content">
+          {/* Hàng nhãn chứng thực & giờ mở cửa */}
+          <div className="modal-status-row">
+            <span className="badge-tag verified">
+              <ShieldCheck size={12} className="inline mr-1 text-emerald-400" />
+              Xuân Hòa Xác Thực
+            </span>
+            <span className="badge-tag open-status font-bold text-emerald-400 border-emerald-500/40 inline-flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>{activePlace.openHours ? `Mở cửa: ${activePlace.openHours}` : 'Đang mở cửa'}</span>
+            </span>
+            <span 
+              className="badge-tag amenity-tag font-bold inline-flex items-center gap-1.5"
+              style={{ borderColor: amenity.badgeColor, color: amenity.badgeColor }}
+            >
+              {renderAmenityIcon(amenity.id, 12)}
+              <span>{amenity.label}</span>
+            </span>
+          </div>
+          
+          {/* Lời tựa quán */}
+          <p className="modal-tagline">"{activePlace.tagline}"</p>
+          
+          {/* Địa chỉ quán */}
+          <p className="modal-address">
+            <MapPin size={14} className="text-amber-400 shrink-0 mt-0.5" /> 
+            <span>{formatTypography(activePlace.address)}</span>
+          </p>
+
+          {/* 3 TỌA ĐỘ TRỌNG YẾU (Golden 3-Metrics Grid) */}
+          <div className="golden-coords-grid">
           {/* 1. Cự ly */}
           <div className="golden-coord-card">
             <div className="coord-card-head">
@@ -250,7 +268,7 @@ export function PlaceModal({
 
           {/* Nút 2: Google Maps */}
           <a 
-            href={activePlace.mapsUrl || (activePlace.mapsQuery.startsWith('http') ? activePlace.mapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activePlace.mapsQuery + (activePlace.mapsQuery.includes('Vĩnh Phúc') ? '' : ' Xuân Hòa'))}`)}
+            href={activePlace.mapsUrl || (activePlace.mapsQuery.startsWith('http') ? activePlace.mapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activePlace.mapsQuery + (activePlace.mapsQuery.includes('Phú Thọ') ? '' : ' Xuân Hòa'))}`)}
             target="_blank" 
             rel="noopener noreferrer"
             className="golden-grid-btn map"
@@ -359,6 +377,7 @@ export function PlaceModal({
             <span className="notice-text">{activePlace.deliveryNote}</span>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

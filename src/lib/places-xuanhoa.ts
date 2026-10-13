@@ -606,7 +606,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 389,
     rating: 4.9,
     reviewCount: 168,
-    imageUrl: 'dish_1968_buffet_nuong.webp',
+    imageUrl: 'ai_studio_dish_1968_buffet_nuong.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship Bánh mì chảo, đồ nướng, lẩu tận nơi quanh Xuân Hòa · Hotline 0855 222 212',
     signatureDish: {
@@ -732,7 +732,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 25,
     rating: 4.88,
     reviewCount: 96,
-    imageUrl: 'place_dua_kha_do.jpg',
+    imageUrl: 'ai_studio_drink_dua_tuoi_kha_do.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship quanh Phúc Yên, Xuân Hòa qua hotline 0378 457 263 · 13k/quả dừa tại quán, 15k/quả ship',
     signatureDish: {
@@ -794,7 +794,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 140,
     rating: 4.9,
     reviewCount: 188,
-    imageUrl: 'dish_oc2000_oc_mit.webp',
+    imageUrl: 'ai_studio_dish_oc2000_oc_mit.jpg',
     serviceMode: 'both',
     deliveryNote: 'Có phục vụ tại quán & ship đồ ăn quanh Xuân Hòa (11h sáng - 11h30 tối) · Hotline 0981 769 132',
     signatureDish: {
@@ -914,7 +914,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 40,
     rating: 4.9,
     reviewCount: 208,
-    imageUrl: 'dish_banh_mi_nuong_muoi_ot.webp',
+    imageUrl: 'ai_studio_dish_ngocquy_bm_nuong_full.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship Bánh mì nướng muối ớt, bánh tráng, trà chanh tận nơi quanh ĐHSP2 · Hotline 0963 070 046',
     signatureDish: {
@@ -1059,7 +1059,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 35,
     rating: 4.9,
     reviewCount: 195,
-    imageUrl: 'dish_thilan_bm_muoi_ot.jpg',
+    imageUrl: 'ai_studio_dish_thilan_bm_muoi_ot_bo.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship Bánh mỳ muối ớt sốt bơ vàng, thịt xiên nướng tận nơi quanh Xuân Hòa · Hotline 0979 681 885',
     signatureDish: {
@@ -1803,7 +1803,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 350,
     rating: 4.9,
     reviewCount: 168,
-    imageUrl: 'dish_cuonmoc_lau_bo_nhung_khe.webp',
+    imageUrl: 'ai_studio_dish_cuonmoc_lau_khe.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship lẩu, cuốn, bánh xèo quanh Xuân Hòa · Hotline 0988 642 233',
     signatureDish: {
@@ -1874,7 +1874,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 45,
     rating: 4.9,
     reviewCount: 192,
-    imageUrl: 'place_hung_thu_bun_tron.jpg',
+    imageUrl: 'ai_studio_dish_ht_bun_tron_full.jpg',
     serviceMode: 'both',
     deliveryNote: 'Free ship Xuân Hòa, ship tận sảnh KTX ĐHSP2 • Tặng Coca free khi tới quán / order • Hotline: 0973 368 968 - 0868 994 968',
     signatureDish: {
@@ -2066,7 +2066,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 299,
     rating: 4.9,
     reviewCount: 210,
-    imageUrl: 'place_quan_win.jpg',
+    imageUrl: 'ai_studio_dish_qw_com_rang_dua_bo.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship tận phòng KTX • SHIP MIỄN PHÍ QUANH TRƯỜNG • Hotline: 0983 262 827',
     signatureDish: {
@@ -2274,7 +2274,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 50,
     rating: 4.9,
     reviewCount: 195,
-    imageUrl: 'place_le_huyen.jpg',
+    imageUrl: 'ai_studio_dish_lh_com_trung_thit.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship quanh KTX sinh viên · Chân dốc KTX Sinh Viên, Nguyễn Văn Linh · Mở cửa 10h - 20h · Hotline 0965 924 229',
     signatureDish: {
@@ -2570,7 +2570,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 50,
     rating: 4.88,
     reviewCount: 186,
-    imageUrl: 'canteen_ktx_sp2_menu.png',
+    imageUrl: 'ai_studio_dish_canteen_my_tron_indomie.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại Canteen & Ship tận phòng KTX / lớp học quanh Xuân Hòa · Hotline 0967 796 560',
     signatureDish: {
@@ -2713,7 +2713,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 50,
     rating: 4.9,
     reviewCount: 142,
-    imageUrl: 'place_bun_bo_hue_102_nvl.png',
+    imageUrl: 'ai_studio_dish_bbh_102_cua_moc.jpg',
     serviceMode: 'both',
     deliveryNote: 'Mở cửa 07h-12h & 18h-20h · Phục vụ tại quán & Nhận ship quanh Xuân Hòa qua hotline 0358 299 789 - 0979 666 839',
     signatureDish: {
@@ -2802,7 +2802,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 50,
     rating: 4.9,
     reviewCount: 168,
-    imageUrl: 'place_quan_ba_thu.jpg',
+    imageUrl: 'dish_ba_thu_pho_ga.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại quán & Nhận ship tận nơi quanh Xuân Hòa · Hotline gọi ship: 0835 160 769',
     signatureDish: {
@@ -2882,7 +2882,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 1000,
     rating: 4.9,
     reviewCount: 520,
-    imageUrl: 'dish_trau_chay_toi.webp',
+    imageUrl: 'ai_studio_dish_trau_chay_toi.jpg',
     serviceMode: 'both',
     deliveryNote: 'Phòng lạnh tiếp khách, nhận đặt tiệc & ship cỗ trâu tận nhà · Hotline 0915 266 996',
     signatureDish: {
@@ -4828,7 +4828,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 35,
     rating: 4.9,
     reviewCount: 178,
-    imageUrl: 'dish_banh_cuon_ngoc_anh.webp',
+    imageUrl: 'ai_studio_dish_bc_trung_ngoc_anh.jpg',
     serviceMode: 'both',
     deliveryNote: 'Nhận ship bánh cuốn nóng hổi & chả nướng than hoa tận nhà · Hotline 0343 875 899',
     signatureDish: {
@@ -4870,7 +4870,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 55,
     rating: 4.9,
     reviewCount: 205,
-    imageUrl: 'dish_xoai_corner.webp',
+    imageUrl: 'ai_studio_dish_xc_tra_xoai.jpg',
     serviceMode: 'both',
     deliveryNote: 'Nhận ship mỳ cay thố đất & đồ uống tận KTX, trường học toàn Xuân Hòa · Hotline 0982 341 631',
     signatureDish: {
@@ -5527,7 +5527,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 48,
     rating: 4.9,
     reviewCount: 168,
-    imageUrl: 'dish_tram_du_de_menu.webp',
+    imageUrl: 'dish_olong_nhai_com_du_de_hd.jpg',
     serviceMode: 'both',
     deliveryNote: 'Không gian cắm trại camping & Nhận ship đồ uống, đồ ăn vặt tận nơi quanh KĐT Xuân Hòa và ĐHSP2 - Hotline: 038 516 5993',
     signatureDish: {
@@ -5630,7 +5630,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 45,
     rating: 4.88,
     reviewCount: 156,
-    imageUrl: 'dish_le_la_cafe_menu.webp',
+    imageUrl: 'dish_ts_kem_trung_dua_le_la_chuan.jpg',
     serviceMode: 'both',
     deliveryNote: 'Không gian cafe thoáng mát & Nhận ship tận nơi quanh KĐT Mới Xuân Hòa và ĐHSP2 - Hotline: 0819 060 596 · 0393 465 896',
     signatureDish: {
@@ -5782,7 +5782,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 60,
     rating: 4.9,
     reviewCount: 185,
-    imageUrl: 'banh_xeo_co_hien_menu_full.webp',
+    imageUrl: 'dish_banh_xeo_co_hien_plate.webp',
     serviceMode: 'both',
     deliveryNote: 'Phục vụ tại chỗ 09:00 - 22:00 & Nhận ship bánh xèo nóng giòn, nem lụi, chè, ăn vặt tận nơi quanh ĐHSP2 · ĐT/Zalo: 0359 637 876',
     signatureDish: {
@@ -5840,7 +5840,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 30,
     rating: 4.9,
     reviewCount: 146,
-    imageUrl: 'tra_chanh_bao_chau_banner.webp',
+    imageUrl: 'ai_studio_dish_tra_chanh_bao_chau.jpg',
     serviceMode: 'both',
     deliveryNote: 'Quán mở cửa đón khách tại chỗ & Nhận ship trà chanh mát lạnh, trà đào, đồ uống tận nơi quanh ĐHSP2, Xuân Hòa · Hotline 0975 481 996',
     signatureDish: {
@@ -5896,7 +5896,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 55,
     rating: 4.88,
     reviewCount: 156,
-    imageUrl: 'dish_zun_mi_cay_thap_cam.jpg',
+    imageUrl: 'ai_studio_dish_zun_mi_cay_thap_cam.jpg',
     serviceMode: 'both',
     deliveryNote: 'Ăn tại quán & Nhận ship quanh KĐT Xuân Hòa · Mì mang về +2k hộp/suất · Hotline 0392 716 756 (FB: Thuỳ Dung)',
     signatureDish: {
@@ -5973,7 +5973,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 160,
     rating: 4.92,
     reviewCount: 168,
-    imageUrl: 'dish_linhduong_my_ga_tan.jpg',
+    imageUrl: 'ai_studio_dish_linhduong_my_ga_tan.jpg',
     serviceMode: 'both',
     deliveryNote: 'Ăn tại quán & Nhận ship nóng hổi tận nơi quanh Xuân Hòa, KTX ĐHSP2 · Hotline 0961 564 396 · 0964 162 235',
     signatureDish: {
@@ -6110,7 +6110,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 35,
     rating: 4.95,
     reviewCount: 168,
-    imageUrl: 'cocokana_menu.jpg',
+    imageUrl: 'ai_studio_dish_cocokana_tra_hong_luu_suong_mai.jpg',
     serviceMode: 'both',
     deliveryNote: 'Take away & Nhận ship Trà trái cây tươi mát lạnh tận phòng quanh Xuân Hòa · Hotline 08.1900.0248 (0819 000 248)',
     signatureDish: {
@@ -6270,7 +6270,7 @@ export const xuanHoaPlaces: Place[] = [
     maxPrice: 55,
     rating: 4.95,
     reviewCount: 168,
-    imageUrl: 'place_bep_nha_cun_hd.jpg',
+    imageUrl: 'ai_studio_dish_bnc_mi_tron_full_topping.jpg',
     serviceMode: 'delivery_only',
     deliveryNote: 'Chỉ nhận ship tận nơi từ 11h trưa tới 2h đêm hoặc khách qua lấy trực tiếp tại Số 12 ngõ 4 Nguyễn Văn Linh (Không phục vụ ăn tại chỗ) · Hotline: 0968 863 445 (FB: Phuong Thao Pham)',
     signatureDish: {

@@ -153,6 +153,11 @@ export function WinnerDialog({
           </p>
         )}
 
+        {/* Ghi chú minh họa chuẩn xác & tinh tế */}
+        <p className="winner-illustration-note">
+          * Lưu ý: Hình ảnh mang tính chất minh họa cho sản phẩm. Quý khách vui lòng liên hệ quán để được tư vấn chi tiết hơn.
+        </p>
+
         {/* Thông tin ĐÚNG QUÁN BÁN MÓN NÀY */}
         {spot && (
           <div className="winner-restaurant-box">
@@ -211,22 +216,18 @@ export function WinnerDialog({
             {/* Tên Quán */}
             <h4 className="restaurant-name-centered">{formatTypography(spot.name)}</h4>
 
-            {/* Địa chỉ & Hotline */}
+            {/* Địa chỉ & Tiện ích Ship (Gọn gàng, loại bỏ hoàn toàn trùng lặp SĐT) */}
             <div className="restaurant-meta-center">
               <div className="restaurant-address">
                 <MapPin size={13} className="text-amber-400 shrink-0" />
                 <span>{formatTypography(spot.address)}</span>
               </div>
-              {spot.phone && (
-                <div className="restaurant-phone">
-                  <Phone size={13} className="text-emerald-400 shrink-0" />
-                  <span>Hotline / Đặt món: <strong>{spot.phone}</strong></span>
-                </div>
-              )}
               {spot.deliveryNote && (
                 <div className="text-xs text-sky-300/90 mt-1 text-center font-medium flex items-center justify-center gap-1.5">
                   <Bike size={13} className="text-sky-400 shrink-0" />
-                  <span>{spot.deliveryNote}</span>
+                  <span>
+                    {spot.deliveryNote.replace(/[·•-]?\s*(Hotline|SĐT|ĐT|Liên hệ)[\s:]*([0-9\s.-]+)/gi, '').trim()}
+                  </span>
                 </div>
               )}
             </div>

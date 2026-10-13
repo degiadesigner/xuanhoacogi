@@ -53,6 +53,34 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+@media (min-width: 860px) {
+  .header-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+@media (max-width: 767px) {
+  .header-center {
+    display: none !important;
+  }
+}
+
+.header-spin-counter {
+  height: 32px;
+  max-height: 32px;
+  box-sizing: border-box;
 }
 
 .brand-box {
@@ -1735,10 +1763,29 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
   font-size: 12px;
   color: var(--text-secondary);
   font-style: italic;
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   max-width: 390px;
   line-height: 1.4;
   opacity: 0.9;
+}
+
+.winner-illustration-note {
+  font-size: 11px;
+  color: #94A3B8;
+  font-style: italic;
+  text-align: center;
+  margin: 0 auto 10px;
+  max-width: 390px;
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+@media (max-width: 480px) {
+  .winner-illustration-note {
+    font-size: 10px;
+    margin: 0 auto 8px;
+    line-height: 1.4;
+  }
 }
 
 .winner-exp-badge-wrap {
@@ -4531,14 +4578,14 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  padding: 12px 18px 0;
+  padding: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
 @media (max-width: 640px) {
   .golden-1touch-grid {
-    padding: 10px 14px 0;
+    padding: 0;
     gap: 7px;
   }
 }
@@ -4630,7 +4677,7 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 
 /* Thực đơn xổ xuống (Accordion Menu Drawer) */
 .golden-menu-dropdown {
-  margin: 10px 18px 0;
+  margin: 8px 0 0;
   background: rgba(18, 22, 31, 0.98);
   border: 1px solid rgba(245, 158, 11, 0.35);
   border-radius: 10px;
@@ -4641,7 +4688,7 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 
 @media (max-width: 640px) {
   .golden-menu-dropdown {
-    margin: 8px 14px 0;
+    margin: 6px 0 0;
   }
 }
 

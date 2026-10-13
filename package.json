@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/cookies.test.mjs tests/case-mechanics.test.mjs && node tests/personal-pool.cjs",
     "typecheck": "tsc --noEmit",
@@ -15,6 +15,7 @@
     "@base-ui/react": "1.8.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "firebase": "^13.0.0",
     "lucide-react": "1.43.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -28,11 +29,13 @@
     "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "6.1.1",
     "esbuild": "0.28.2",
+    "sharp": "^0.35.5",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.2.2"
   },
+  "packageManager": "pnpm@12.3.4",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12.0"
   }
 }

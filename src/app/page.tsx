@@ -768,6 +768,15 @@ export default function Home() {
             </div>
           </a>
 
+          {/* Vị trí trên cùng chính giữa: Thống kê lượt mở hòm Realtime siêu gọn, sang trọng & chuẩn 100% trên PC */}
+          <div className="header-center hidden md:flex items-center justify-center">
+            <GlobalSpinCounter 
+              count={globalSpinCount} 
+              isSpinning={spinning || placeSpinning} 
+              variant="header" 
+            />
+          </div>
+
           <div className="header-right">
             {/* Compact Header EXP Gourmet Badge */}
             <div 
@@ -817,9 +826,6 @@ export default function Home() {
                 1. DESKTOP EXPERIENCE: Bàn điều khiển đầy đủ & hoành tráng
                 ======================================================== */}
             <div className="desktop-experience-deck">
-              {/* Thanh Thống Kê Tổng Lượt Mở Hòm Sang Trọng (Khởi điểm 688) */}
-              <GlobalSpinCounter count={globalSpinCount} isSpinning={spinning || placeSpinning} />
-
               {/* 2-TAB MODE SWITCHER: CHỌN MÓN vs CHỌN QUÁN */}
               <div className="main-mode-switcher">
           <button
@@ -1692,6 +1698,10 @@ export default function Home() {
                 </div>
               </div>
             )}
+
+            <p className="text-center text-[11px] text-slate-500 italic mt-3 mb-1 select-none">
+              * Lưu ý: Hình ảnh mang tính chất minh họa cho sản phẩm. Quý khách vui lòng liên hệ quán để được tư vấn chi tiết hơn.
+            </p>
           </section>
         ) : (
           <section className="inventory-section">

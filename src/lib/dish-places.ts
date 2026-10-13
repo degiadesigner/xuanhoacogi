@@ -479,8 +479,8 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
   // 8h. Quán Nhật Hạ - Buffet Nem Nướng 19k (Số 9 Đồng Tâm)
   nhat_ha: {
     name: 'Quán Nhật Hạ - Buffet Nem Nướng',
-    address: 'Số 9 Đồng Tâm, P. Xuân Hòa',
-    phone: '',
+    address: 'Số 9 Đồng Tâm, P. Xuân Hòa, Tỉnh Phú Thọ',
+    phone: '0876 286 386',
     mapsQuery: 'Số 9 Đồng Tâm Xuân Hòa',
     verified: true,
     serviceMode: 'both',

@@ -25,3 +25,4 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+*.tsbuildinfo

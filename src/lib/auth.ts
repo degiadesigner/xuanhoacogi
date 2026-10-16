@@ -6,6 +6,7 @@ import {
   signInWithRedirect, 
   getRedirectResult, 
   signInWithCredential, 
+  onAuthStateChanged,
   signOut as fbSignOut, 
   User 
 } from 'firebase/auth';
@@ -48,6 +49,7 @@ export interface UserAuthProfile {
   filterByTaste?: boolean; // Bật/Tắt bộ lọc theo gu ẩm thực
   photoURL?: string;
   hasCompletedProfile: boolean;
+  isFirstTimeSetupDone?: boolean;
   createdAt: number;
 }
 
@@ -127,23 +129,108 @@ export function getMascotById(id: string): MascotAvatar {
 }
 
 const AUTH_STORAGE_KEY = 'xuanhoa_auth_user_v1';
+const AUTH_COOKIE_NAME = 'xuanhoa_auth_cookie_v1';
+const LOGGED_OUT_KEY = 'xuanhoa_logged_out_explicitly';
+const PROFILE_BY_EMAIL_PREFIX = 'xuanhoa_profile_email_';
+const JUST_LOGGED_IN_KEY = 'xuanhoa_just_logged_in_v1';
+
+export const GOOGLE_CLIENT_ID = "691215879950-nulp01gi8js5j1m9jno1ih86g98hj381.apps.googleusercontent.com";
+export const GOOGLE_REDIRECT_URI = "https://xuanhoacogi.com/__/auth/handler";
+
+function writeAuthCookie(user: UserAuthProfile): void {
+  if (typeof document === 'undefined') return;
+  try {
+    const compactUser: UserAuthProfile = {
+      ...user,
+      photoURL: user.photoURL && user.photoURL.length < 450 ? user.photoURL : undefined,
+    };
+    const encoded = encodeURIComponent(JSON.stringify(compactUser));
+    const maxAge = 365 * 24 * 60 * 60; // 365 ngày
+    document.cookie = `${AUTH_COOKIE_NAME}=${encoded}; path=/; max-age=${maxAge}; SameSite=Lax`;
+    if (typeof window !== 'undefined' && window.location.hostname.endsWith('xuanhoacogi.com')) {
+      document.cookie = `${AUTH_COOKIE_NAME}=${encoded}; domain=.xuanhoacogi.com; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
+    }
+  } catch (err) {
+    console.warn('Cookie write warning:', err);
+  }
+}
+
+function readAuthCookie(): UserAuthProfile | null {
+  if (typeof document === 'undefined') return null;
+  try {
+    const cookies = document.cookie ? document.cookie.split('; ') : [];
+    for (const c of cookies) {
+      if (c.startsWith(`${AUTH_COOKIE_NAME}=`)) {
+        const val = c.substring(AUTH_COOKIE_NAME.length + 1);
+        const parsed: UserAuthProfile = JSON.parse(decodeURIComponent(val));
+        if (parsed && parsed.isLoggedIn) {
+          return parsed;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Cookie read warning:', err);
+  }
+  return null;
+}
+
+function deleteAuthCookie(): void {
+  if (typeof document === 'undefined') return;
+  try {
+    document.cookie = `${AUTH_COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+    if (typeof window !== 'undefined' && window.location.hostname.endsWith('xuanhoacogi.com')) {
+      document.cookie = `${AUTH_COOKIE_NAME}=; domain=.xuanhoacogi.com; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure`;
+    }
+  } catch {}
+}
+
+function getSavedProfileByEmail(email?: string): UserAuthProfile | null {
+  if (typeof window === 'undefined' || !email) return null;
+  try {
+    const raw = localStorage.getItem(PROFILE_BY_EMAIL_PREFIX + email.trim().toLowerCase());
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 export function getStoredAuthUser(): UserAuthProfile | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const user: UserAuthProfile = JSON.parse(raw);
-    return user.isLoggedIn ? user : null;
-  } catch {
+    if (raw) {
+      const user: UserAuthProfile = JSON.parse(raw);
+      if (user && user.isLoggedIn) {
+        return user;
+      }
+    }
+    // Nếu localStorage bị trống (ví dụ chuyển giữa www.xuanhoacogi.com và xuanhoacogi.com),
+    // tự động khôi phục từ Cookie 365 ngày nếu người dùng chưa bấm Đăng xuất
+    if (localStorage.getItem(LOGGED_OUT_KEY) !== '1') {
+      const cookieUser = readAuthCookie();
+      if (cookieUser && cookieUser.isLoggedIn) {
+        try {
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(cookieUser));
+        } catch {}
+        return cookieUser;
+      }
+    }
     return null;
+  } catch {
+    return readAuthCookie();
   }
 }
 
 export function saveAuthUser(user: UserAuthProfile): void {
   if (typeof window === 'undefined') return;
   try {
+    localStorage.removeItem(LOGGED_OUT_KEY);
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    if (user.email) {
+      localStorage.setItem(PROFILE_BY_EMAIL_PREFIX + user.email.trim().toLowerCase(), JSON.stringify(user));
+    }
+    writeAuthCookie(user);
     window.dispatchEvent(new CustomEvent('xuanhoa_auth_change', { detail: user }));
   } catch (err) {
     console.warn('Lỗi lưu tài khoản người dùng:', err);
@@ -153,19 +240,188 @@ export function saveAuthUser(user: UserAuthProfile): void {
 export function clearAuthUser(): void {
   if (typeof window === 'undefined') return;
   try {
+    localStorage.setItem(LOGGED_OUT_KEY, '1');
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(JUST_LOGGED_IN_KEY);
+    deleteAuthCookie();
     window.dispatchEvent(new CustomEvent('xuanhoa_auth_change', { detail: null }));
+    if (firebaseConfig.apiKey) {
+      const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      fbSignOut(auth).catch(() => {});
+    }
   } catch (err) {
     console.warn('Lỗi đăng xuất:', err);
   }
 }
 
-export const GOOGLE_CLIENT_ID = "691215879950-nulp01gi8js5j1m9jno1ih86g98hj381.apps.googleusercontent.com";
+// Giải mã JWT id_token chuẩn UTF-8 (hỗ trợ đầy đủ tiếng Việt có dấu)
+function decodeJwtPayload(token: string): any | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const jsonStr = new TextDecoder('utf-8').decode(bytes);
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    console.warn('Lỗi giải mã JWT:', err);
+    return null;
+  }
+}
 
-// Kiểm tra trình duyệt Chrome trên hệ điều hành iOS (CriOS)
-export function isChromeOnIos(): boolean {
+// Tạo hoặc cập nhật ngay lập tức hồ sơ người dùng từ thông tin Google thật và lưu bền vững
+export function createOrUpdateAuthUserFromGoogle(googleData: {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+}): UserAuthProfile {
+  const existingCurrent = getStoredAuthUser();
+  const existingByEmail = getSavedProfileByEmail(googleData.email);
+  const baseProfile =
+    existingByEmail ||
+    (existingCurrent && existingCurrent.email?.toLowerCase() === googleData.email?.toLowerCase()
+      ? existingCurrent
+      : null);
+
+  const cleanDisplayName =
+    googleData.displayName || googleData.email?.split('@')[0] || 'Thực Khách';
+
+  const updated: UserAuthProfile = {
+    isLoggedIn: true,
+    uid: googleData.uid || baseProfile?.uid || 'google_' + Date.now(),
+    email: googleData.email || baseProfile?.email || 'thuckhach@gmail.com',
+    displayName: cleanDisplayName,
+    nickname: baseProfile?.nickname || cleanDisplayName,
+    gender: baseProfile?.gender || 'male',
+    avatar: baseProfile?.avatar || '🐭',
+    avatarId: baseProfile?.avatarId || 'm_ty',
+    phone: baseProfile?.phone || '',
+    residentType: baseProfile?.residentType || 'student_sp2',
+    tastePreferences: baseProfile?.tastePreferences || ['lau_nuong', 'tra_sua'],
+    filterByTaste: baseProfile?.filterByTaste ?? true,
+    photoURL: googleData.photoURL || baseProfile?.photoURL,
+    hasCompletedProfile: true,
+    isFirstTimeSetupDone: baseProfile?.isFirstTimeSetupDone || false,
+    createdAt: baseProfile?.createdAt || Date.now(),
+  };
+
+  saveAuthUser(updated);
+  return updated;
+}
+
+// ============================================================================
+// BẮT ĐỒNG BỘ TOKEN GOOGLE OAUTH NGAY LÚC KHỞI TẠO MODULE (TRƯỚC KHI REACT RENDER)
+// ============================================================================
+let pendingOAuthAccessToken: string | null = null;
+let pendingOAuthIdToken: string | null = null;
+let synchronousOAuthUser: UserAuthProfile | null = null;
+
+if (typeof window !== 'undefined') {
+  try {
+    const rawHash =
+      (window as any).__XUANHOA_OAUTH_HASH__ ||
+      sessionStorage.getItem('xuanhoa_oauth_hash') ||
+      window.location.hash ||
+      '';
+
+    if (rawHash.includes('access_token=') || rawHash.includes('id_token=')) {
+      const cleanParamsStr = rawHash.replace(/^#\/?/, '').replace(/^#/, '');
+      const params = new URLSearchParams(cleanParamsStr);
+      const accessToken = params.get('access_token');
+      const idToken = params.get('id_token');
+
+      if (accessToken) {
+        pendingOAuthAccessToken = accessToken;
+      }
+      if (idToken) {
+        pendingOAuthIdToken = idToken;
+        const payload = decodeJwtPayload(idToken);
+        if (payload && (payload.email || payload.sub)) {
+          synchronousOAuthUser = createOrUpdateAuthUserFromGoogle({
+            uid: payload.sub || 'google_' + Date.now(),
+            email: payload.email || 'thuckhach@gmail.com',
+            displayName: payload.name || payload.email?.split('@')[0] || 'Thực Khách',
+            photoURL: payload.picture || undefined,
+          });
+          localStorage.setItem(JUST_LOGGED_IN_KEY, '1');
+        }
+      }
+
+      delete (window as any).__XUANHOA_OAUTH_HASH__;
+      try {
+        sessionStorage.removeItem('xuanhoa_oauth_hash');
+      } catch {}
+
+      if (
+        window.location.pathname.startsWith('/__/auth/handler') ||
+        window.location.hash.includes('access_token=') ||
+        window.location.hash.includes('id_token=')
+      ) {
+        window.history.replaceState(null, document.title, '/');
+      }
+    } else if (window.location.pathname.startsWith('/__/auth/handler')) {
+      window.history.replaceState(null, document.title, '/');
+    }
+  } catch (err) {
+    console.warn('Lỗi xử lý đồng bộ OAuth hash:', err);
+  }
+}
+
+export function consumeJustLoggedInFlag(): boolean {
   if (typeof window === 'undefined') return false;
-  return /CriOS/i.test(navigator.userAgent);
+  try {
+    const flag = localStorage.getItem(JUST_LOGGED_IN_KEY);
+    if (flag === '1') {
+      localStorage.removeItem(JUST_LOGGED_IN_KEY);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+// Kiểm tra có phải thiết bị di động / máy tính bảng cần dùng chuyển hướng OAuth trực tiếp cùng tên miền hay không
+export function shouldUseDirectOAuthRedirect(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase();
+  if (!host.endsWith('xuanhoacogi.com')) return false;
+
+  const ua = navigator.userAgent || '';
+  const isMobileBrowser =
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|CriOS|FxiOS|EdgiOS|CocCoc|Mobile|Tablet/i.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+    window.innerWidth <= 900;
+
+  return isMobileBrowser;
+}
+
+// Chuyển hướng OAuth 2.0 trực tiếp về cùng tên miền https://xuanhoacogi.com/__/auth/handler
+// (Hoạt động 100% trên mọi trình duyệt: Chrome iOS, Cốc Cốc iOS/Android, Safari, Samsung Internet, Edge...)
+export function redirectToGoogleOAuthDirect(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(LOGGED_OUT_KEY);
+  } catch {}
+
+  const nonce = 'xh_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now();
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: 'token id_token',
+    scope: 'openid email profile',
+    prompt: 'select_account',
+    nonce,
+    include_granted_scopes: 'true',
+  });
+
+  window.location.assign(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
 }
 
 // Đảm bảo thư viện Google Identity Services (GIS) đã nạp xong
@@ -188,63 +444,136 @@ export async function ensureGsiLoaded(): Promise<boolean> {
   });
 }
 
-// Kiểm tra kết quả chuyển hướng đăng nhập Google (dành cho Chrome iOS hoặc khi dùng redirect)
+// Kiểm tra kết quả chuyển hướng đăng nhập Google & đồng bộ trạng thái bền vững
 export async function checkRedirectAuthResult(): Promise<UserAuthProfile | null> {
   if (typeof window === 'undefined') return null;
+
+  // 1. Nếu có access_token hoặc id_token từ cùng tên miền https://xuanhoacogi.com/__/auth/handler
+  if (pendingOAuthAccessToken || synchronousOAuthUser) {
+    const accessToken = pendingOAuthAccessToken;
+    const idToken = pendingOAuthIdToken;
+    pendingOAuthAccessToken = null;
+    pendingOAuthIdToken = null;
+
+    let finalUser: UserAuthProfile | null = synchronousOAuthUser;
+    synchronousOAuthUser = null;
+
+    if (accessToken) {
+      try {
+        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (res.ok) {
+          const info = await res.json();
+          finalUser = createOrUpdateAuthUserFromGoogle({
+            uid: info.sub || finalUser?.uid || 'google_' + Date.now(),
+            email: info.email || finalUser?.email || 'thuckhach@gmail.com',
+            displayName: info.name || finalUser?.displayName || info.email?.split('@')[0] || 'Thực Khách',
+            photoURL: info.picture || finalUser?.photoURL || undefined,
+          });
+          localStorage.setItem(JUST_LOGGED_IN_KEY, '1');
+        }
+      } catch (err) {
+        console.warn('UserInfo fetch fallback to JWT user:', err);
+      }
+
+      // Đồng bộ ngầm sang Firebase Authentication (IndexedDB)
+      if (firebaseConfig.apiKey) {
+        try {
+          const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+          const auth = getAuth(app);
+          const credential = GoogleAuthProvider.credential(idToken || null, accessToken);
+          await signInWithCredential(auth, credential);
+        } catch (fbErr) {
+          console.warn('Firebase credential sync warning:', fbErr);
+        }
+      }
+    }
+
+    if (finalUser) {
+      return finalUser;
+    }
+  }
+
+  // 2. Kiểm tra dự phòng Firebase getRedirectResult và onAuthStateChanged
   try {
-    if (!firebaseConfig.apiKey) return null;
+    if (!firebaseConfig.apiKey) return getStoredAuthUser();
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const result = await getRedirectResult(auth);
-    if (result && result.user) {
-      const u = result.user;
-      const existing = getStoredAuthUser();
-      const updated: UserAuthProfile = {
-        isLoggedIn: true,
-        uid: u.uid,
-        email: u.email || 'thuckhach@gmail.com',
-        displayName: u.displayName || u.email?.split('@')[0] || 'Thực khách',
-        nickname: existing?.nickname || u.displayName || u.email?.split('@')[0] || 'Thực khách',
-        gender: existing?.gender || 'male',
-        avatar: existing?.avatar || '🐭',
-        avatarId: existing?.avatarId || 'm_ty',
-        residentType: existing?.residentType || 'student_sp2',
-        tastePreferences: existing?.tastePreferences || ['lau_nuong', 'tra_sua'],
-        filterByTaste: existing?.filterByTaste ?? true,
-        photoURL: u.photoURL || undefined,
-        hasCompletedProfile: existing?.hasCompletedProfile || false,
-        createdAt: existing?.createdAt || Date.now(),
-      };
-      saveAuthUser(updated);
-      return updated;
+
+    try {
+      const result = await getRedirectResult(auth);
+      if (result && result.user) {
+        const u = result.user;
+        const updated = createOrUpdateAuthUserFromGoogle({
+          uid: u.uid,
+          email: u.email || 'thuckhach@gmail.com',
+          displayName: u.displayName || u.email?.split('@')[0] || 'Thực Khách',
+          photoURL: u.photoURL || undefined,
+        });
+        localStorage.setItem(JUST_LOGGED_IN_KEY, '1');
+        return updated;
+      }
+    } catch (redirErr) {
+      console.warn('getRedirectResult warning:', redirErr);
+    }
+
+    // 3. Nếu người dùng chưa chủ động bấm Đăng xuất mà localStorage bị trống, tự động khôi phục từ Firebase IndexedDB
+    if (localStorage.getItem(LOGGED_OUT_KEY) !== '1' && !getStoredAuthUser()) {
+      return await new Promise<UserAuthProfile | null>((resolve) => {
+        const unsubscribe = onAuthStateChanged(
+          auth,
+          (fbUser: User | null) => {
+            unsubscribe();
+            if (fbUser && localStorage.getItem(LOGGED_OUT_KEY) !== '1') {
+              const restored = createOrUpdateAuthUserFromGoogle({
+                uid: fbUser.uid,
+                email: fbUser.email || 'thuckhach@gmail.com',
+                displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Thực Khách',
+                photoURL: fbUser.photoURL || undefined,
+              });
+              resolve(restored);
+            } else {
+              resolve(null);
+            }
+          },
+          () => {
+            unsubscribe();
+            resolve(null);
+          }
+        );
+      });
     }
   } catch (err: any) {
-    console.warn('Lỗi kiểm tra getRedirectResult:', err?.message || err);
+    console.warn('Lỗi kiểm tra trạng thái xác thực:', err?.message || err);
   }
-  return null;
+
+  return getStoredAuthUser();
 }
 
-// Xử lý xác thực Google OAuth 2.0 chuẩn chỉ, mở cửa sổ Google thật để chọn Gmail và đồng ý kết nối
+// Xử lý xác thực Google OAuth 2.0 chuẩn chỉ
 export async function signInWithGoogleService(): Promise<{
   uid: string;
   email: string;
   displayName: string;
   photoURL?: string;
 }> {
-  // 1. Kiểm tra môi trường Chrome trên iOS (CriOS):
-  // Trên Chrome iOS, cơ chế mở popup cửa sổ ngoài bị trình duyệt cô lập khiến accounts.google.com bị trắng.
-  // Do đó, trên Chrome iOS bắt buộc kích hoạt signInWithRedirect chuyển hướng toàn trang chính thống của Google!
-  if (isChromeOnIos()) {
-    const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    await signInWithRedirect(auth, provider);
-    return new Promise(() => {}); // Chờ trình duyệt chuyển hướng
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(LOGGED_OUT_KEY);
+    } catch {}
   }
 
-  // 2. Với các trình duyệt khác (Cốc Cốc, Desktop Chrome, Safari, Android, Edge...):
-  // Ưu tiên Google Identity Services (GIS) - hiển thị popup chọn Gmail và cấp quyền tức thì (Đã hoạt động 100% trên Cốc Cốc)
+  // 1. Trên điện thoại / máy tính bảng (Cốc Cốc, Chrome iOS/Android, Safari...):
+  // Chuyển hướng trực tiếp sang Google OAuth 2.0 với redirect_uri cùng tên miền https://xuanhoacogi.com/__/auth/handler
+  // Không dùng popup (tránh màn hình trắng trên Chrome iOS) và không qua firebaseapp.com (tránh bị chặn cookie chéo tên miền)
+  if (shouldUseDirectOAuthRedirect()) {
+    redirectToGoogleOAuthDirect();
+    return new Promise(() => {});
+  }
+
+  // 2. Trên máy tính (PC / Laptop) hoặc localhost:
+  // Mở cửa sổ Google Identity Services (GIS) chọn Gmail và lưu đăng nhập ngay tức thì
   const gsiReady = await ensureGsiLoaded();
   const google = typeof window !== 'undefined' ? (window as any).google : null;
 
@@ -265,7 +594,6 @@ export async function signInWithGoogleService(): Promise<{
             }
 
             try {
-              // Lấy thông tin tài khoản Google thật từ Google UserInfo API
               const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                 headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
               });
@@ -274,7 +602,17 @@ export async function signInWithGoogleService(): Promise<{
               }
               const info = await res.json();
 
-              // Đồng bộ phiên xác thực sang Firebase Authentication
+              const googleUser = {
+                uid: info.sub || 'google_' + Date.now(),
+                email: info.email || 'thuckhach@gmail.com',
+                displayName: info.name || info.email?.split('@')[0] || 'Thực Khách',
+                photoURL: info.picture || undefined,
+              };
+
+              // LƯU ĐĂNG NHẬP NGAY LẬP TỨC VÀO LOCALSTORAGE + COOKIE 365 NGÀY NGAY KHI CHỌN GMAIL XONG!
+              createOrUpdateAuthUserFromGoogle(googleUser);
+
+              // Đồng bộ phiên xác thực sang Firebase Authentication (IndexedDB)
               try {
                 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
                 const auth = getAuth(app);
@@ -284,58 +622,53 @@ export async function signInWithGoogleService(): Promise<{
                 console.warn('Firebase sync warning:', fbErr);
               }
 
-              resolve({
-                uid: info.sub || 'google_' + Date.now(),
-                email: info.email || 'thuckhach@gmail.com',
-                displayName: info.name || info.email?.split('@')[0] || 'Thực Khách',
-                photoURL: info.picture || undefined,
-              });
+              resolve(googleUser);
             } catch (fetchErr) {
               reject(fetchErr);
             }
           },
         });
 
-        // Bật cửa sổ chọn tài khoản Gmail thật của Google và cấp quyền kết nối
         client.requestAccessToken({ prompt: 'select_account' });
       });
     } catch (popupErr: any) {
-      console.warn('GIS popup failed, falling back to redirect:', popupErr);
-      if (firebaseConfig.apiKey) {
-        const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: 'select_account' });
-        await signInWithRedirect(auth, provider);
+      console.warn('GIS popup failed:', popupErr);
+      if (typeof window !== 'undefined' && window.location.hostname.endsWith('xuanhoacogi.com')) {
+        redirectToGoogleOAuthDirect();
         return new Promise(() => {});
       }
       throw popupErr;
     }
   }
 
-  // 3. Phương thức phụ trợ: Firebase signInWithRedirect
+  // 3. Dự phòng: Nếu trên xuanhoacogi.com mà GIS bị chặn bởi trình chặn quảng cáo, chuyển hướng trực tiếp
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('xuanhoacogi.com')) {
+    redirectToGoogleOAuthDirect();
+    return new Promise(() => {});
+  }
+
+  // 4. Dự phòng cho môi trường localhost nếu GIS chưa tải kịp
   if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 5) {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    await signInWithRedirect(auth, provider);
-    return new Promise(() => {});
+    const res = await signInWithPopup(auth, provider);
+    const u = res.user;
+    const googleUser = {
+      uid: u.uid,
+      email: u.email || 'thuckhach@gmail.com',
+      displayName: u.displayName || u.email?.split('@')[0] || 'Thực Khách',
+      photoURL: u.photoURL || undefined,
+    };
+    createOrUpdateAuthUserFromGoogle(googleUser);
+    return googleUser;
   }
 
   throw new Error('Chưa thể kết nối tới máy chủ Google OAuth');
 }
 
 export async function signOutService(): Promise<void> {
-  try {
-    if (firebaseConfig.apiKey) {
-      const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-      const auth = getAuth(app);
-      await fbSignOut(auth);
-    }
-  } catch (err) {
-    console.warn('Firebase signOut warning:', err);
-  } finally {
-    clearAuthUser();
-  }
+  clearAuthUser();
 }
+

@@ -57,7 +57,7 @@ import { GourmetScoreboardModal } from '@/components/GourmetScoreboardModal';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/lib/i18n';
 import { saveFoodHistoryItem } from '@/lib/food-history';
-import { getStoredAuthUser, saveAuthUser, clearAuthUser, UserAuthProfile, checkRedirectAuthResult } from '@/lib/auth';
+import { getStoredAuthUser, saveAuthUser, clearAuthUser, UserAuthProfile, checkRedirectAuthResult, consumeJustLoggedInFlag } from '@/lib/auth';
 import { GlobalSpinCounter } from '@/components/GlobalSpinCounter';
 import { useGlobalSpinCounter } from '@/hooks/use-global-spin-counter';
 import { getDishRatingSummary } from '@/lib/reviews-storage';
@@ -115,18 +115,24 @@ export default function Home() {
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
   const [isGuestGateOpen, setIsGuestGateOpen] = useState(false);
   const [isScoreboardOpen, setIsScoreboardOpen] = useState(false);
+  const [authToastMsg, setAuthToastMsg] = useState<string>('');
 
   // i18n Multi-language Hook (Vietnamese / English)
   const { lang, changeLanguage, t } = useI18n();
 
   useEffect(() => {
-    // Kiểm tra kết quả chuyển hướng từ Google (dành cho Chrome iOS hoặc đăng nhập bằng Redirect)
+    // Kiểm tra kết quả chuyển hướng từ Google (dành cho mọi trình duyệt Mobile & PC)
     checkRedirectAuthResult().then((user) => {
       if (user) {
         setAuthUser(user);
-        if (!user.hasCompletedProfile) {
-          setAuthModalStep(2);
-          setIsAuthModalOpen(true);
+        const justLogged = consumeJustLoggedInFlag();
+        if (justLogged) {
+          setAuthToastMsg(`Đã kết nối Google: ${user.email || user.nickname}`);
+          setTimeout(() => setAuthToastMsg(''), 4000);
+          if (!user.isFirstTimeSetupDone) {
+            setAuthModalStep(2);
+            setIsAuthModalOpen(true);
+          }
         }
       }
     });
@@ -2181,6 +2187,8 @@ export default function Home() {
     onClose={() => setIsAuthModalOpen(false)}
     onSuccess={(user) => {
       setAuthUser(user);
+      setAuthToastMsg(`Đã kết nối Google: ${user.email || user.nickname}`);
+      setTimeout(() => setAuthToastMsg(''), 4000);
     }}
     initialStep={authModalStep}
     existingUser={authUser}
@@ -2204,6 +2212,14 @@ export default function Home() {
         setAuthUser(null);
       }}
     />
+  )}
+
+  {/* Toast thông báo Đã kết nối Google thành công */}
+  {authToastMsg && (
+    <div className="map-dev-toast">
+      <GoogleGIcon size={18} />
+      <span>{authToastMsg}</span>
+    </div>
   )}
 
   {/* Toast thông báo Bản Đồ Số */}

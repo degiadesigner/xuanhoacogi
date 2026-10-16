@@ -11,6 +11,7 @@ import {
   UserResidentType,
   getMascotById,
   signInWithGoogleService, 
+  createOrUpdateAuthUserFromGoogle,
   saveAuthUser, 
   UserAuthProfile 
 } from '../lib/auth';
@@ -103,13 +104,22 @@ export function AuthModal({
 
   if (!isOpen) return null;
 
-  // Xử lý Bước 1: Bấm Tiếp tục với Google (Mở popup tài khoản Google thật)
+  // Xử lý Bước 1: Bấm Tiếp tục với Google (Mở tài khoản Google thật & Lưu đăng nhập ngay lập tức)
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
       const data = await signInWithGoogleService();
+      const savedProfile = createOrUpdateAuthUserFromGoogle(data);
       setTempGoogleData(data);
-      setNickname(data.displayName || 'Thực Khách');
+      setNickname(savedProfile.nickname || data.displayName || 'Thực Khách');
+      setPhone(savedProfile.phone || '');
+      setResidentType(savedProfile.residentType || 'student_sp2');
+      setFilterByTaste(savedProfile.filterByTaste ?? true);
+      setTastePreferences(savedProfile.tastePreferences || ['lau_nuong', 'tra_sua']);
+      const g = savedProfile.gender === 'female' ? 'female' : 'male';
+      setGender(g);
+      setSelectedAvatarId(savedProfile.avatarId || (g === 'female' ? 'f_ty' : 'm_ty'));
+      onSuccess(savedProfile);
       setStep(2); // Chuyển sang Bước 2: Thiết lập nhanh
     } catch (err: any) {
       console.warn('Lỗi hoặc hủy đăng nhập Google:', err?.message || err);
@@ -160,6 +170,7 @@ export function AuthModal({
       avatarId: chosenAvatar.id,
       photoURL: tempGoogleData.photoURL,
       hasCompletedProfile: true,
+      isFirstTimeSetupDone: true,
       createdAt: existingUser?.createdAt || Date.now(),
     };
 
@@ -168,8 +179,17 @@ export function AuthModal({
     onClose();
   };
 
+  // Nếu người dùng bấm dấu X đóng ở Bước 2 (sau khi đã kết nối Gmail), vẫn tự động lưu lại hồ sơ đã đăng nhập
+  const handleDismissModal = () => {
+    if (step === 2 && tempGoogleData.email) {
+      handleCompleteSetup();
+      return;
+    }
+    onClose();
+  };
+
   return (
-    <div className="auth-modal-overlay" onClick={onClose}>
+    <div className="auth-modal-overlay" onClick={handleDismissModal}>
       <div 
         className={`auth-modal-container ${step === 2 ? 'auth-modal-container-zodiac' : 'auth-modal-container-step1'}`}
         onClick={(e) => e.stopPropagation()}
@@ -180,7 +200,7 @@ export function AuthModal({
         <button 
           type="button"
           className="auth-modal-close-btn"
-          onClick={onClose}
+          onClick={handleDismissModal}
           aria-label="Đóng"
         >
           <X size={18} />
@@ -244,7 +264,7 @@ export function AuthModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={handleGoogleLogin}
                   className="text-[11px] text-slate-400 hover:text-amber-400 underline ml-2 whitespace-nowrap"
                   title="Đổi sang tài khoản khác"
                 >

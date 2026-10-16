@@ -10021,6 +10021,75 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
+/* Quick Email connect row in Step 1 */
+.auth-divider-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 16px 0 12px;
+  position: relative;
+}
+
+.auth-divider-line::before,
+.auth-divider-line::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.auth-divider-line span {
+  padding: 0 10px;
+  font-size: 10.5px;
+  color: #64748B;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.auth-email-connect-section {
+  width: 100%;
+}
+
+.auth-email-row-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.auth-email-submit-pill-btn {
+  height: 42px;
+  padding: 0 16px;
+  background: linear-gradient(135deg, #F59E0B, #D97706);
+  color: #0F172A;
+  border: none;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.auth-email-submit-pill-btn:hover {
+  background: linear-gradient(135deg, #FBBF24, #F59E0B);
+  transform: translateY(-1px);
+}
+
+.auth-connected-account-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 10px;
+  margin-top: 10px;
+}
+
 /* Bước 2 Content */
 .auth-step-2-content {
   display: flex;

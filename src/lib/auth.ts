@@ -1,6 +1,5 @@
-// Quản lý trạng thái xác thực và hồ sơ thực khách Google Gmail cho XuanHoaCoGi
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithCredential, signOut as fbSignOut, User } from 'firebase/auth';
 import { firebaseConfig } from './firebase';
 
 export type UserResidentType = 'student_sp2' | 'student_other' | 'local' | 'worker' | 'tourist';
@@ -152,116 +151,114 @@ export function clearAuthUser(): void {
   }
 }
 
-// Kiểm tra môi trường di động hoặc trình duyệt in-app (iOS Safari, Cốc Cốc, Chrome Mobile, Zalo, FB Webview...)
-export function isMobileOrInAppBrowser(): boolean {
+export const GOOGLE_CLIENT_ID = "691215879950-nulp01gi8js5j1m9jno1ih86g98hj381.apps.googleusercontent.com";
+
+// Đảm bảo thư viện Google Identity Services (GIS) đã nạp xong
+export async function ensureGsiLoaded(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
-  const ua = navigator.userAgent || '';
-  const isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);
-  const isCocCoc = /coc_coc|coccoc/i.test(ua);
-  const isInApp = /FBAN|FBAV|Instagram|Line|Zalo/i.test(ua);
-  const isSmallTouch = window.innerWidth <= 768 && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
-  return isMobile || isCocCoc || isInApp || isSmallTouch;
+  if ((window as any).google?.accounts?.oauth2) return true;
+
+  return new Promise((resolve) => {
+    let waited = 0;
+    const interval = setInterval(() => {
+      if ((window as any).google?.accounts?.oauth2) {
+        clearInterval(interval);
+        resolve(true);
+      } else if (waited >= 3500) {
+        clearInterval(interval);
+        resolve(false);
+      }
+      waited += 100;
+    }, 100);
+  });
 }
 
-// Xử lý xác thực Google (Firebase Auth thông minh, chống treo màn hình trắng trên Mobile & Cốc Cốc)
-export async function signInWithGoogleService(customEmail?: string, customName?: string): Promise<{
+// Xử lý xác thực Google OAuth 2.0 chuẩn chỉ, mở cửa sổ Google thật để chọn Gmail và đồng ý kết nối
+export async function signInWithGoogleService(): Promise<{
   uid: string;
   email: string;
   displayName: string;
   photoURL?: string;
 }> {
-  const cleanedEmail = customEmail?.trim();
-  const defaultEmail = cleanedEmail && cleanedEmail.includes('@') 
-    ? cleanedEmail 
-    : (cleanedEmail ? `${cleanedEmail}@gmail.com` : 'thuckhach.google@gmail.com');
-  const defaultDisplayName = customName?.trim() || (cleanedEmail ? cleanedEmail.split('@')[0] : 'Thực Khách Sành Ăn');
+  // 1. Phương thức chính thức: Google Identity Services (GIS) OAuth 2.0 Client
+  // Mở trực tiếp màn hình chọn tài khoản Google thật (accounts.google.com), yêu cầu cấp quyền kết nối
+  const gsiReady = await ensureGsiLoaded();
+  const google = typeof window !== 'undefined' ? (window as any).google : null;
 
-  // 1. Kiểm tra môi trường: Nếu đang truy cập qua IP mạng nội bộ LAN (192.168.x.x, 10.x.x.x, 172.x.x.x, .local)
-  const isLanOrLocalIp = typeof window !== 'undefined' && (
-    window.location.hostname.startsWith('192.168.') ||
-    window.location.hostname.startsWith('10.') ||
-    window.location.hostname.startsWith('172.') ||
-    window.location.hostname.endsWith('.local')
-  );
+  if (gsiReady && google?.accounts?.oauth2) {
+    return new Promise((resolve, reject) => {
+      try {
+        const client = google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: 'email profile openid',
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse.error) {
+              if (tokenResponse.error === 'popup_closed_by_user') {
+                reject(new Error('Người dùng đã đóng cửa sổ Google'));
+                return;
+              }
+              reject(new Error(tokenResponse.error_description || tokenResponse.error));
+              return;
+            }
 
-  if (isLanOrLocalIp) {
-    await new Promise(resolve => setTimeout(resolve, 350));
-    return {
-      uid: 'lan_user_' + Math.random().toString(36).substring(2, 9),
-      email: defaultEmail,
-      displayName: defaultDisplayName,
-      photoURL: undefined,
-    };
-  }
+            try {
+              // Lấy thông tin tài khoản Google thật từ Google UserInfo API
+              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+              });
+              if (!res.ok) {
+                throw new Error('Không thể tải thông tin hồ sơ Google');
+              }
+              const info = await res.json();
 
-  // 2. Kiểm tra môi trường di động (iOS Safari, Cốc Cốc mobile, Zalo, Chrome Mobile...):
-  // Trên trình duyệt di động, chính sách ITP của Apple, cơ chế cô lập cửa sổ và trình chặn quảng cáo (Shield Cốc Cốc)
-  // chặn cookie bên thứ 3 và làm treo cửa sổ popup thành trang trắng (auth.xuanhoacogi.com / firebaseapp.com).
-  // Vì vậy, trên mobile ta kích hoạt đăng nhập tức thì an toàn 100%, bảo vệ trải nghiệm người dùng tuyệt đối!
-  if (isMobileOrInAppBrowser()) {
-    await new Promise(resolve => setTimeout(resolve, 350));
-    return {
-      uid: 'mobile_google_' + Math.random().toString(36).substring(2, 9),
-      email: defaultEmail,
-      displayName: defaultDisplayName,
-      photoURL: undefined,
-    };
-  }
+              // Đồng bộ phiên xác thực sang Firebase Authentication
+              try {
+                const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                const credential = GoogleAuthProvider.credential(null, tokenResponse.access_token);
+                await signInWithCredential(auth, credential);
+              } catch (fbErr) {
+                console.warn('Firebase sync warning:', fbErr);
+              }
 
-  // 3. Môi trường Desktop PC (Google Chrome, Firefox, Edge, Safari Desktop):
-  if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 5) {
-    try {
-      const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-      const auth = getAuth(app);
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      
-      // Đặt timeout 8 giây để nếu popup bị chặn hoặc treo thì tự động khôi phục an toàn
-      const popupPromise = signInWithPopup(auth, provider);
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('timeout_popup')), 8000);
-      });
+              resolve({
+                uid: info.sub || 'google_' + Date.now(),
+                email: info.email || 'thuckhach@gmail.com',
+                displayName: info.name || info.email?.split('@')[0] || 'Thực Khách',
+                photoURL: info.picture || undefined,
+              });
+            } catch (fetchErr) {
+              reject(fetchErr);
+            }
+          },
+        });
 
-      const result = await Promise.race([popupPromise, timeoutPromise]);
-      const user = result.user;
-      return {
-        uid: user.uid,
-        email: user.email || defaultEmail,
-        displayName: user.displayName || user.email?.split('@')[0] || defaultDisplayName,
-        photoURL: user.photoURL || undefined,
-      };
-    } catch (err: any) {
-      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-        if (cleanedEmail) {
-          return {
-            uid: 'google_user_' + Math.random().toString(36).substring(2, 9),
-            email: defaultEmail,
-            displayName: defaultDisplayName,
-            photoURL: undefined,
-          };
-        }
-        throw new Error('Người dùng đã hủy cửa sổ đăng nhập Google');
+        // Bật cửa sổ chọn tài khoản Gmail thật của Google và cấp quyền kết nối
+        client.requestAccessToken({ prompt: 'select_account' });
+      } catch (clientErr) {
+        reject(clientErr);
       }
-      console.warn('Firebase signInWithPopup fallback:', err?.code, err?.message || err);
-
-      // Tự động khôi phục nếu trình duyệt chặn popup hoặc lỗi cross-origin
-      return {
-        uid: 'google_user_' + Math.random().toString(36).substring(2, 9),
-        email: defaultEmail,
-        displayName: defaultDisplayName,
-        photoURL: undefined,
-      };
-    }
+    });
   }
 
-  // 4. Chế độ tương thích tức thì (Demo / Localhost)
-  await new Promise(resolve => setTimeout(resolve, 350));
-  return {
-    uid: 'google_user_' + Math.random().toString(36).substring(2, 9),
-    email: defaultEmail,
-    displayName: defaultDisplayName,
-    photoURL: undefined,
-  };
+  // 2. Phương thức phụ trợ: Firebase signInWithPopup
+  if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 5) {
+    const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+    return {
+      uid: user.uid,
+      email: user.email || 'thuckhach@gmail.com',
+      displayName: user.displayName || user.email?.split('@')[0] || 'Thực khách',
+      photoURL: user.photoURL || undefined,
+    };
+  }
+
+  throw new Error('Chưa thể kết nối tới máy chủ Google OAuth');
 }
 
 export async function signOutService(): Promise<void> {

@@ -60,9 +60,7 @@ export function PlaceModal({
   authUser = null,
   onOpenLogin,
 }: PlaceModalProps) {
-  if (!place || !isOpen) return null;
-
-  const [currentPlace, setCurrentPlace] = useState<Place>(place);
+  const [currentPlace, setCurrentPlace] = useState<Place | null>(place);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -94,6 +92,8 @@ export function PlaceModal({
       setReviews(getLocalReviews(activePlace.id));
     }
   }, [activePlace?.id]);
+
+  if (!place || !isOpen || !activePlace) return null;
 
   const handleToggleTag = (tag: string) => {
     setSelectedTags(prev => 

@@ -11,6 +11,7 @@ import { formatTypography, cleanDishDisplayTitle } from '@/lib/utils';
 import { UserAuthProfile } from '@/lib/auth';
 import { GoogleGIcon } from './GoogleGIcon';
 import { getLocalDishReviews, saveLocalDishReview, DishReview } from '@/lib/reviews-storage';
+import { useI18n } from '@/lib/i18n';
 
 interface WinnerDialogProps {
   food: Food | null;
@@ -33,7 +34,7 @@ const rarityLabels = [
 
 const rarityColors = ['#10B981', '#F59E0B', '#A855F7', '#F97316', '#EF4444'];
 
-const QUICK_DISH_TAGS = [
+const QUICK_DISH_TAGS_VI = [
   '🤤 Đậm đà chuẩn vị',
   '🍲 Đầy đặn no căng',
   '🔥 Nóng hổi thơm lừng',
@@ -42,12 +43,29 @@ const QUICK_DISH_TAGS = [
   '🌿 Nguyên liệu tươi sạch',
 ];
 
-const RATING_LABELS: Record<number, string> = {
+const QUICK_DISH_TAGS_EN = [
+  '🤤 Authentic taste',
+  '🍲 Generous portion',
+  '🔥 Hot & flavorful',
+  '💸 Student friendly',
+  '🥓 Loaded toppings',
+  '🌿 Fresh ingredients',
+];
+
+const RATING_LABELS_VI: Record<number, string> = {
   5: 'Cực kỳ xuất sắc (5/5)',
   4: 'Rất ngon & vừa miệng (4/5)',
   3: 'Bình thường, tạm ổn (3/5)',
   2: 'Chưa hợp vị lắm (2/5)',
   1: 'Cần cải thiện (1/5)',
+};
+
+const RATING_LABELS_EN: Record<number, string> = {
+  5: 'Outstanding (5/5)',
+  4: 'Very tasty (4/5)',
+  3: 'Average (3/5)',
+  2: 'Not quite my taste (2/5)',
+  1: 'Needs improvement (1/5)',
 };
 
 export function WinnerDialog({ 
@@ -57,7 +75,7 @@ export function WinnerDialog({
   authUser,
   onOpenLogin,
 }: WinnerDialogProps) {
-  if (!food || !isOpen) return null;
+  const { t, lang } = useI18n();
 
   const [copied, setCopied] = useState(false);
   const [selectedSpotIndex, setSelectedSpotIndex] = useState(0);
@@ -65,7 +83,7 @@ export function WinnerDialog({
   const spot = spots[selectedSpotIndex] || spots[0];
 
   // Dish Reviews State
-  const foodKey = food.customId || `${food.name}-${food.price}`;
+  const foodKey = food ? (food.customId || `${food.name}-${food.price}`) : '';
   const [reviews, setReviews] = useState<DishReview[]>([]);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -75,6 +93,9 @@ export function WinnerDialog({
   const [newPhoto, setNewPhoto] = useState('');
   const [reviewSuccess, setReviewSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const quickTags = lang === 'en' ? QUICK_DISH_TAGS_EN : QUICK_DISH_TAGS_VI;
+  const ratingLabels = lang === 'en' ? RATING_LABELS_EN : RATING_LABELS_VI;
 
   const avgRating = useMemo(() => {
     if (!reviews.length) return '5.0';
@@ -91,6 +112,7 @@ export function WinnerDialog({
   }, [foodKey]);
 
   const handleShare = async () => {
+    if (!food) return;
     const dishTitle = cleanDishDisplayTitle(food.name);
     const text = spot 
       ? `Hôm nay mình quay trúng món: ${dishTitle} (${food.price}.000đ) tại ${spot.name} ở Xuân Hòa! Cùng thử tại: ${window.location.href}`
@@ -167,8 +189,11 @@ export function WinnerDialog({
     setNewPhoto('');
     setReviewSuccess(true);
     setIsFormOpen(false);
+    setIsReviewOpen(true);
     setTimeout(() => setReviewSuccess(false), 4000);
   };
+
+  if (!food || !isOpen) return null;
 
   const rarityName = rarityLabels[food.rarity] || rarityLabels[0];
   const rarityColor = rarityColors[food.rarity] || '#D4AF37';
@@ -410,250 +435,232 @@ export function WinnerDialog({
               </div>
             )}
 
-            {/* HỆ THỐNG ĐÁNH GIÁ MÓN ĂN CHUẨN MỰC - CÂN ĐỐI TUYỆT ĐỐI */}
+            {/* HỆ THỐNG ĐÁNH GIÁ THỰC KHÁCH SIÊU GỌN - ĐẲNG CẤP & CÂN ĐỐI */}
             <div className="dish-review-section-wrap">
-              <button
-                type="button"
-                className={`dish-review-toggle-btn ${isReviewOpen ? 'active' : ''}`}
-                onClick={() => setIsReviewOpen(!isReviewOpen)}
-              >
-                <div className="flex items-center gap-2">
-                  <Star size={15} className="text-amber-400 fill-amber-400" />
-                  <span className="font-bold text-white text-[13px]">Đánh Giá Thực Khách</span>
-                  <span className="dish-review-count-badge">
-                    {reviews.length > 0 ? `⭐ ${avgRating} (${reviews.length})` : '⭐ Chưa có đánh giá (0)'}
-                  </span>
+              {/* THANH COMPACT DUY NHẤT: TINH GỌN, KHÔNG THỪA THÃI */}
+              <div className="dish-review-compact-bar">
+                <div 
+                  className={`dish-review-bar-left ${reviews.length > 0 ? 'cursor-pointer' : ''}`}
+                  onClick={() => {
+                    if (reviews.length > 0) {
+                      setIsReviewOpen(!isReviewOpen);
+                    } else {
+                      if (!authUser || !authUser.isLoggedIn) {
+                        onOpenLogin?.();
+                        return;
+                      }
+                      setIsFormOpen(!isFormOpen);
+                    }
+                  }}
+                  title={reviews.length > 0 ? (isReviewOpen ? t('dish_reviews_hide') : `${reviews.length} ${t('dish_reviews_view')}`) : t('dish_reviews_write')}
+                >
+                  <Star size={14} className="text-amber-400 fill-amber-400 shrink-0" />
+                  <span className="dish-review-bar-title">{t('dish_reviews_title')}</span>
+                  {reviews.length > 0 ? (
+                    <span className="dish-review-score-pill">
+                      ⭐ {avgRating} ({reviews.length})
+                    </span>
+                  ) : (
+                    <span className="dish-review-none-pill">
+                      (0)
+                    </span>
+                  )}
                 </div>
-                <ChevronDown size={14} className={`transition-transform duration-200 ${isReviewOpen ? 'rotate-180' : ''}`} />
-              </button>
 
-              {isReviewOpen && (
-                <div className="dish-reviews-dropdown animate-fadeIn">
-                  {/* 1. THANH TỔNG QUAN ĐIỂM SỐ CÂN ĐỐI */}
-                  <div className="review-system-header">
-                    {reviews.length === 0 ? (
-                      <div className="review-stat-summary">
-                        <div className="review-score-big">5.0</div>
-                        <div className="review-stars-col">
-                          <div className="review-stars-row">
-                            {[1, 2, 3, 4, 5].map((s) => (
-                              <Star key={s} size={14} className="text-amber-400 fill-amber-400" />
-                            ))}
-                          </div>
-                          <div className="review-meta-text">
-                            <span className="review-meta-count">0 nhận xét thực tế</span>
-                            <span className="review-meta-bullet">·</span>
-                            <span className="text-amber-300 font-medium">Chờ bạn đánh giá</span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="review-stat-summary">
-                        <div className="review-score-big">{avgRating}</div>
-                        <div className="review-stars-col">
-                          <div className="review-stars-row">
-                            {[1, 2, 3, 4, 5].map((s) => (
-                              <Star 
-                                key={s} 
-                                size={14} 
-                                className={s <= Math.round(Number(avgRating)) ? "text-amber-400 fill-amber-400" : "text-slate-600"} 
-                              />
-                            ))}
-                          </div>
-                          <div className="review-meta-text">
-                            <span className="review-meta-count">{reviews.length} nhận xét thực tế</span>
-                            <span className="review-meta-bullet">·</span>
-                            <span className="review-meta-satisfaction">100% hài lòng</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
+                <div className="dish-review-bar-right">
+                  {reviews.length > 0 && (
                     <button
                       type="button"
-                      className={`review-write-cta-btn ${isFormOpen ? 'active' : ''}`}
-                      onClick={() => {
-                        if (!authUser || !authUser.isLoggedIn) {
-                          onOpenLogin?.();
-                          return;
-                        }
-                        setIsFormOpen(!isFormOpen);
-                      }}
+                      className="dish-review-view-btn"
+                      onClick={() => setIsReviewOpen(!isReviewOpen)}
+                      title={isReviewOpen ? t('dish_reviews_hide') : `${reviews.length} ${t('dish_reviews_view')}`}
                     >
-                      {isFormOpen ? (
-                        <>
-                          <X size={13} />
-                          <span>Đóng Form</span>
-                        </>
-                      ) : (
-                        <>
-                          <Edit3 size={13} />
-                          <span>Viết Đánh Giá</span>
-                        </>
-                      )}
+                      <span>{isReviewOpen ? t('dish_reviews_hide') : `${reviews.length} ${t('dish_reviews_view')}`}</span>
+                      <ChevronDown size={12} className={`transition-transform duration-200 ${isReviewOpen ? 'rotate-180' : ''}`} />
                     </button>
-                  </div>
-
-                  {/* 2. FORM VIẾT ĐÁNH GIÁ (GỌN GÀNG, CÂN ĐỐI, ĐẲNG CẤP) */}
-                  {isFormOpen && (
-                    <form onSubmit={handleSubmitReview} className="review-editor-form animate-fadeIn">
-                      {/* Hàng 1: User & Rating Picker */}
-                      <div className="review-editor-top">
-                        <div className="review-user-badge">
-                          <span className="review-user-avatar">{authUser?.avatar || '👤'}</span>
-                          <span className="review-user-name">{authUser?.nickname || authUser?.displayName || 'Thực khách'}</span>
-                          <span className="review-verified-pill">✓ Đã ăn món</span>
-                        </div>
-
-                        <div className="review-star-picker-wrap">
-                          <div className="review-star-picker">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button
-                                key={star}
-                                type="button"
-                                onClick={() => setNewRating(star)}
-                                className={`review-star-btn ${star <= newRating ? 'active' : ''}`}
-                                title={`${star} sao`}
-                              >
-                                ★
-                              </button>
-                            ))}
-                          </div>
-                          <span className="review-rating-hint">{RATING_LABELS[newRating]}</span>
-                        </div>
-                      </div>
-
-                      {/* Hàng 2: Quick tags */}
-                      <div className="review-quick-tags-section">
-                        <span className="review-section-subtitle">Cảm nhận nhanh:</span>
-                        <div className="review-quick-tags-wrap">
-                          {QUICK_DISH_TAGS.map((tag) => {
-                            const isSelected = selectedTags.includes(tag);
-                            return (
-                              <button
-                                key={tag}
-                                type="button"
-                                className={`review-quick-tag-chip ${isSelected ? 'active' : ''}`}
-                                onClick={() => handleToggleTag(tag)}
-                              >
-                                <span>{tag}</span>
-                                {isSelected && <Check size={11} strokeWidth={3} className="ml-1 text-amber-400 inline" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Hàng 3: Textarea */}
-                      <textarea
-                        className="review-textarea"
-                        placeholder="Cảm nhận thực tế của bạn về hương vị, độ ngon và khẩu phần món ăn này..."
-                        value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        rows={2}
-                        maxLength={300}
-                        required
-                      />
-
-                      {/* Hàng 4: Actions (Ảnh + Submit) */}
-                      <div className="review-editor-actions">
-                        <div className="review-upload-col">
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            ref={fileInputRef} 
-                            style={{ display: 'none' }} 
-                            onChange={handleFileUpload} 
-                          />
-                          <button
-                            type="button"
-                            className="review-photo-btn"
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                            <Camera size={13} />
-                            <span>{newPhoto ? 'Đổi ảnh chụp' : 'Đính kèm ảnh thực tế'}</span>
-                          </button>
-
-                          {newPhoto && (
-                            <div className="review-photo-preview">
-                              <img src={newPhoto} alt="Xem trước" />
-                              <button 
-                                type="button" 
-                                className="review-remove-photo-btn"
-                                onClick={() => setNewPhoto('')}
-                              >
-                                <X size={12} />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        <button type="submit" className="review-submit-cta">
-                          <Send size={13} />
-                          <span>Gửi Đánh Giá</span>
-                        </button>
-                      </div>
-
-                      {reviewSuccess && (
-                        <div className="review-success-banner">
-                          ✓ Đã đăng đánh giá món ăn thành công! Cảm ơn nhận xét của bạn.
-                        </div>
-                      )}
-                    </form>
                   )}
 
-                  {/* 3. DANH SÁCH NHẬN XÉT THỰC TẾ - CÂN ĐỐI TUYỆT ĐỐI */}
-                  <div className="review-cards-feed">
-                    {reviews.map((rev) => (
-                      <div key={rev.id} className="review-card-item">
-                        <div className="review-card-header">
-                          <div className="review-card-avatar-wrap">
-                            <span>{rev.avatar || '👤'}</span>
+                  <button
+                    type="button"
+                    className={`dish-review-action-btn ${isFormOpen ? 'active' : ''}`}
+                    onClick={() => {
+                      if (!authUser || !authUser.isLoggedIn) {
+                        onOpenLogin?.();
+                        return;
+                      }
+                      setIsFormOpen(!isFormOpen);
+                    }}
+                  >
+                    {isFormOpen ? (
+                      <>
+                        <X size={12} />
+                        <span>{t('dish_reviews_close_form')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Edit3 size={12} />
+                        <span>{t('dish_reviews_write')}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* THÔNG BÁO GỬI ĐÁNH GIÁ THÀNH CÔNG */}
+              {reviewSuccess && (
+                <div className="review-success-banner mt-2 animate-fadeIn">
+                  {t('dish_reviews_success')}
+                </div>
+              )}
+
+              {/* FORM VIẾT ĐÁNH GIÁ (GỌN GÀNG, SANG TRỌNG, CÂN ĐỐI) */}
+              {isFormOpen && (
+                <form onSubmit={handleSubmitReview} className="review-editor-form mt-2 animate-fadeIn">
+                  {/* Hàng 1: User & Rating Picker */}
+                  <div className="review-editor-top">
+                    <div className="review-user-badge">
+                      <span className="review-user-avatar">{authUser?.avatar || '👤'}</span>
+                      <span className="review-user-name">{authUser?.nickname || authUser?.displayName || t('dish_reviews_guest')}</span>
+                      <span className="review-verified-pill">{t('dish_reviews_verified')}</span>
+                    </div>
+
+                    <div className="review-star-picker-wrap">
+                      <div className="review-star-picker">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setNewRating(star)}
+                            className={`review-star-btn ${star <= newRating ? 'active' : ''}`}
+                            title={`${star} sao`}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+                      <span className="review-rating-hint">{ratingLabels[newRating]}</span>
+                    </div>
+                  </div>
+
+                  {/* Hàng 2: Quick tags */}
+                  <div className="review-quick-tags-section">
+                    <span className="review-section-subtitle">{t('dish_reviews_quick_tags_label')}</span>
+                    <div className="review-quick-tags-wrap">
+                      {quickTags.map((tag) => {
+                        const isSelected = selectedTags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            className={`review-quick-tag-chip ${isSelected ? 'active' : ''}`}
+                            onClick={() => handleToggleTag(tag)}
+                          >
+                            <span>{tag}</span>
+                            {isSelected && <Check size={11} strokeWidth={3} className="ml-1 text-amber-400 inline" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Hàng 3: Textarea */}
+                  <textarea
+                    className="review-textarea"
+                    placeholder={t('dish_reviews_placeholder')}
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    rows={2}
+                    maxLength={300}
+                    required
+                  />
+
+                  {/* Hàng 4: Actions (Ảnh + Submit) */}
+                  <div className="review-editor-actions">
+                    <div className="review-upload-col">
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        ref={fileInputRef} 
+                        style={{ display: 'none' }} 
+                        onChange={handleFileUpload} 
+                      />
+                      <button
+                        type="button"
+                        className="review-photo-btn"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Camera size={13} />
+                        <span>{newPhoto ? t('dish_reviews_change_photo') : t('dish_reviews_photo')}</span>
+                      </button>
+
+                      {newPhoto && (
+                        <div className="review-photo-preview">
+                          <img src={newPhoto} alt="Xem trước" />
+                          <button 
+                            type="button" 
+                            className="review-remove-photo-btn"
+                            onClick={() => setNewPhoto('')}
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <button type="submit" className="review-submit-cta">
+                      <Send size={13} />
+                      <span>{t('dish_reviews_submit')}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* DANH SÁCH NHẬN XÉT THỰC TẾ (CHỈ HIỂN THỊ KHI CÓ ĐÁNH GIÁ VÀ ĐANG MỞ) */}
+              {isReviewOpen && reviews.length > 0 && (
+                <div className="review-cards-feed mt-2 animate-fadeIn">
+                  {reviews.map((rev) => (
+                    <div key={rev.id} className="review-card-item">
+                      <div className="review-card-header">
+                        <div className="review-card-avatar-wrap">
+                          <span>{rev.avatar || '👤'}</span>
+                        </div>
+                        <div className="review-card-main-col">
+                          <div className="review-card-author-row">
+                            <span className="review-card-author-name">{rev.author}</span>
+                            {rev.isVerified && (
+                              <span className="review-card-verified-tag">{t('dish_reviews_verified')}</span>
+                            )}
                           </div>
-                          <div className="review-card-main-col">
-                            <div className="review-card-author-row">
-                              <span className="review-card-author-name">{rev.author}</span>
-                              {rev.isVerified && (
-                                <span className="review-card-verified-tag">✓ Đã thử</span>
-                              )}
+                          <div className="review-card-sub-meta">
+                            <div className="review-card-stars" aria-label={`${rev.rating || 5} sao`}>
+                              {'★'.repeat(rev.rating || 5)}
                             </div>
-                            <div className="review-card-sub-meta">
-                              <div className="review-card-stars" aria-label={`${rev.rating || 5} sao`}>
-                                {'★'.repeat(rev.rating || 5)}
-                              </div>
-                              <span className="review-card-meta-dot">·</span>
-                              <span className="review-card-date">{rev.date}</span>
-                            </div>
+                            <span className="review-card-meta-dot">·</span>
+                            <span className="review-card-date">{rev.date}</span>
                           </div>
                         </div>
-
-                        {/* TAGS RIÊNG BIỆT - KHÔNG BAO GIỜ BỊ DÍNH CHỮ */}
-                        {rev.tags && rev.tags.length > 0 && (
-                          <div className="review-card-tags-row">
-                            {rev.tags.map((t) => (
-                              <span key={t} className="review-card-tag-pill">
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <p className="review-card-text">{rev.content}</p>
-
-                        {rev.photo && (
-                          <div className="review-card-photo-wrap">
-                            <img src={rev.photo} alt="Ảnh thực tế món ăn" className="review-card-photo" />
-                          </div>
-                        )}
                       </div>
-                    ))}
 
-                    {reviews.length === 0 && (
-                      <div className="review-empty-state">
-                        Chưa có nhận xét nào cho món này. Hãy bấm &ldquo;Viết Đánh Giá&rdquo; để là người đầu tiên chia sẻ cảm nhận nhé!
-                      </div>
-                    )}
-                  </div>
+                      {/* TAGS RIÊNG BIỆT - KHÔNG BAO GIỜ BỊ DÍNH CHỮ */}
+                      {rev.tags && rev.tags.length > 0 && (
+                        <div className="review-card-tags-row">
+                          {rev.tags.map((t) => (
+                            <span key={t} className="review-card-tag-pill">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <p className="review-card-text">{rev.content}</p>
+
+                      {rev.photo && (
+                        <div className="review-card-photo-wrap">
+                          <img src={rev.photo} alt="Ảnh thực tế món ăn" className="review-card-photo" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

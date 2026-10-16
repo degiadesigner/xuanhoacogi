@@ -205,6 +205,22 @@ export const translations = {
     toast_map_title: 'Bản đồ Số : Sắp ra mắt',
     close: 'Đóng',
     back: 'Quay lại',
+
+    // Dish Reviews
+    dish_reviews_title: 'Đánh Giá Thực Khách',
+    dish_reviews_empty_badge: 'Chưa có đánh giá',
+    dish_reviews_view: 'nhận xét',
+    dish_reviews_hide: 'Thu gọn',
+    dish_reviews_write: 'Viết đánh giá',
+    dish_reviews_close_form: 'Đóng form',
+    dish_reviews_submit: 'Gửi đánh giá',
+    dish_reviews_photo: 'Đính kèm ảnh',
+    dish_reviews_change_photo: 'Đổi ảnh',
+    dish_reviews_placeholder: 'Cảm nhận thực tế về hương vị, độ ngon và khẩu phần...',
+    dish_reviews_success: '✓ Đã gửi đánh giá thành công! Cảm ơn nhận xét của bạn.',
+    dish_reviews_quick_tags_label: 'Cảm nhận nhanh:',
+    dish_reviews_verified: '✓ Đã ăn món',
+    dish_reviews_guest: 'Thực khách',
   },
   en: {
     brand_domain: 'XUANHOACOGI',
@@ -388,6 +404,22 @@ export const translations = {
     toast_map_title: 'Digital Map: Coming soon',
     close: 'Close',
     back: 'Back',
+
+    // Dish Reviews
+    dish_reviews_title: 'Gourmet Reviews',
+    dish_reviews_empty_badge: 'No reviews yet',
+    dish_reviews_view: 'reviews',
+    dish_reviews_hide: 'Hide',
+    dish_reviews_write: 'Write review',
+    dish_reviews_close_form: 'Close form',
+    dish_reviews_submit: 'Submit review',
+    dish_reviews_photo: 'Attach photo',
+    dish_reviews_change_photo: 'Change photo',
+    dish_reviews_placeholder: 'Your authentic feedback on flavor, portion & taste...',
+    dish_reviews_success: '✓ Review submitted successfully! Thank you.',
+    dish_reviews_quick_tags_label: 'Quick tags:',
+    dish_reviews_verified: '✓ Tasted',
+    dish_reviews_guest: 'Foodie',
   }
 };
 

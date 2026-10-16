@@ -48,7 +48,6 @@ export function AuthModal({
     photoURL: existingUser?.photoURL,
   });
 
-  const [directEmail, setDirectEmail] = useState<string>(existingUser?.email || '');
   const [nickname, setNickname] = useState<string>(existingUser?.nickname || '');
   const [phone, setPhone] = useState<string>(existingUser?.phone || '');
   const [residentType, setResidentType] = useState<UserResidentType>(existingUser?.residentType || 'student_sp2');
@@ -63,7 +62,6 @@ export function AuthModal({
     if (isOpen) {
       if (existingUser) {
         setStep(2);
-        setDirectEmail(existingUser.email || '');
         setNickname(existingUser.nickname || existingUser.displayName || '');
         setPhone(existingUser.phone || '');
         setResidentType(existingUser.residentType || 'student_sp2');
@@ -80,7 +78,6 @@ export function AuthModal({
         });
       } else {
         setStep(1);
-        setDirectEmail('');
         setNickname('');
         setPhone('');
         setResidentType('student_sp2');
@@ -112,32 +109,13 @@ export function AuthModal({
     try {
       const data = await signInWithGoogleService();
       setTempGoogleData(data);
-      setDirectEmail(data.email || '');
       setNickname(data.displayName || 'Thực Khách');
       setStep(2); // Chuyển sang Bước 2: Thiết lập nhanh
-    } catch (err) {
-      console.error('Lỗi đăng nhập Google:', err);
+    } catch (err: any) {
+      console.warn('Lỗi hoặc hủy đăng nhập Google:', err?.message || err);
     } finally {
       setLoading(false);
     }
-  };
-
-  // Xử lý Bước 1: Kết nối trực tiếp bằng Gmail
-  const handleDirectEmailSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = directEmail.trim();
-    if (!trimmed || !trimmed.includes('@')) {
-      alert('Vui lòng nhập địa chỉ Gmail / Email hợp lệ!');
-      return;
-    }
-    const defaultNick = trimmed.split('@')[0];
-    setTempGoogleData({
-      uid: 'gmail_' + trimmed.replace(/[^a-zA-Z0-9]/g, '_'),
-      email: trimmed,
-      displayName: defaultNick,
-    });
-    setNickname(prev => prev.trim() ? prev : defaultNick);
-    setStep(2);
   };
 
   // Đổi giới tính -> cập nhật avatar tương ứng
@@ -170,7 +148,7 @@ export function AuthModal({
     const userProfile: UserAuthProfile = {
       isLoggedIn: true,
       uid: tempGoogleData.uid || 'guest_' + Date.now(),
-      email: tempGoogleData.email || directEmail.trim() || 'thuckhach.xuanhoa@gmail.com',
+      email: tempGoogleData.email || 'thuckhach.xuanhoa@gmail.com',
       displayName: tempGoogleData.displayName || finalNickname,
       nickname: finalNickname,
       gender,
@@ -193,7 +171,7 @@ export function AuthModal({
   return (
     <div className="auth-modal-overlay" onClick={onClose}>
       <div 
-        className="auth-modal-container auth-modal-container-zodiac"
+        className={`auth-modal-container ${step === 2 ? 'auth-modal-container-zodiac' : 'auth-modal-container-step1'}`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -209,13 +187,17 @@ export function AuthModal({
         </button>
 
         {/* ==============================================================
-            BƯỚC 1: ĐĂNG NHẬP (Gọn gàng, tinh tế, không icon thừa)
+            BƯỚC 1: ĐĂNG NHẬP GỌN GÀNG, SANG TRỌNG, CÂN ĐỐI CẢ PC & MOBILE
             ============================================================== */}
         {step === 1 && (
           <div className="auth-step-1-content">
+            <div className="auth-google-icon-badge">
+              <GoogleGIcon size={26} />
+            </div>
+
             <h3 className="auth-modal-title">Đăng nhập tài khoản</h3>
             <p className="auth-modal-subtitle">
-              {customNotice || 'Lưu cấp độ và đồng bộ hồ sơ thực khách của bạn'}
+              {customNotice || 'Lưu cấp độ & đồng bộ hồ sơ thực khách của bạn'}
             </p>
 
             <button
@@ -234,28 +216,9 @@ export function AuthModal({
               )}
             </button>
 
-            <div className="auth-divider-line">
-              <span>HOẶC KẾT NỐI BẰNG GMAIL</span>
+            <div className="auth-step1-security-hint">
+              <span>🔒 Đăng nhập 1 chạm an toàn qua Google</span>
             </div>
-
-            <form onSubmit={handleDirectEmailSubmit} className="auth-email-connect-section">
-              <div className="auth-email-row-input">
-                <input
-                  type="email"
-                  className="auth-nickname-input"
-                  placeholder="Nhập địa chỉ Gmail của bạn..."
-                  value={directEmail}
-                  onChange={(e) => setDirectEmail(e.target.value)}
-                  required
-                />
-                <button type="submit" className="auth-email-submit-pill-btn">
-                  Kết nối
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2.5 text-center">
-                Đồng bộ cấp độ &amp; lưu hồ sơ thực khách theo tài khoản của bạn
-              </p>
-            </form>
           </div>
         )}
 
@@ -268,14 +231,14 @@ export function AuthModal({
               <h3 className="auth-modal-title">Hồ Sơ Thực Khách</h3>
               <p className="auth-modal-subtitle">Hoàn thiện thông tin để nhận ưu đãi quán &amp; gợi ý món chuẩn gu</p>
 
-              {/* Huy hiệu tài khoản Gmail đã kết nối */}
+              {/* Huy hiệu tài khoản Google đã kết nối */}
               <div className="auth-connected-account-badge">
                 <div className="flex items-center gap-2 overflow-hidden">
                   <GoogleGIcon size={18} />
                   <div className="flex flex-col text-left min-w-0">
-                    <span className="text-[10.5px] text-slate-400 font-medium">Tài khoản Google / Gmail kết nối:</span>
+                    <span className="text-[10.5px] text-slate-400 font-medium">Tài khoản Google đã kết nối:</span>
                     <span className="text-[12.5px] text-amber-400 font-bold truncate">
-                      {tempGoogleData.email || directEmail || 'thuckhach.xuanhoa@gmail.com'}
+                      {tempGoogleData.email || 'thuckhach.xuanhoa@gmail.com'}
                     </span>
                   </div>
                 </div>
@@ -283,7 +246,7 @@ export function AuthModal({
                   type="button"
                   onClick={() => setStep(1)}
                   className="text-[11px] text-slate-400 hover:text-amber-400 underline ml-2 whitespace-nowrap"
-                  title="Đổi sang tài khoản hoặc Gmail khác"
+                  title="Đổi sang tài khoản khác"
                 >
                   Đổi tài khoản
                 </button>

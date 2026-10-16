@@ -10021,62 +10021,20 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
-/* Quick Email connect row in Step 1 */
-.auth-divider-line {
+/* Step 1 Compact Container & Note */
+.auth-modal-container-step1 {
+  max-width: 400px;
+  padding: 30px 24px 24px;
+}
+
+.auth-step1-security-hint {
+  margin-top: 16px;
+  font-size: 11.5px;
+  color: #64748B;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  margin: 16px 0 12px;
-  position: relative;
-}
-
-.auth-divider-line::before,
-.auth-divider-line::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.auth-divider-line span {
-  padding: 0 10px;
-  font-size: 10.5px;
-  color: #64748B;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-
-.auth-email-connect-section {
-  width: 100%;
-}
-
-.auth-email-row-input {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.auth-email-submit-pill-btn {
-  height: 42px;
-  padding: 0 16px;
-  background: linear-gradient(135deg, #F59E0B, #D97706);
-  color: #0F172A;
-  border: none;
-  border-radius: 9px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.auth-email-submit-pill-btn:hover {
-  background: linear-gradient(135deg, #FBBF24, #F59E0B);
-  transform: translateY(-1px);
+  gap: 5px;
 }
 
 .auth-connected-account-badge {
@@ -13579,6 +13537,7 @@ html, body {
   /* Modal Cards trượt từ đáy lên dạng Bottom Sheet */
   .winner-card-container,
   .auth-modal-container,
+  .auth-modal-container-step1,
   .auth-modal-container-zodiac,
   .scoreboard-modal-container,
   .place-modal-container,
@@ -13606,6 +13565,7 @@ html, body {
   /* Thanh vuốt Handle Bar phong cách iOS & Android */
   .winner-card-container::before,
   .auth-modal-container::before,
+  .auth-modal-container-step1::before,
   .auth-modal-container-zodiac::before,
   .scoreboard-modal-container::before,
   .place-modal-container::before,

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { MEAL_SESSIONS, MealSession } from '@/lib/time-mechanics';
 import { PLACE_KEO_LIST, PlaceKeoType } from '@/lib/places-xuanhoa';
+import { useI18n, Language } from '@/lib/i18n';
 
 export function renderCaseTierIcon(tier: 'all' | number, size = 15) {
   switch (tier) {
@@ -226,6 +227,73 @@ export const BUDGET_CONFIG = [
   { value: 'custom', label: 'Tự nhập giá...' },
 ];
 
+export function getBudgetOptionLabel(val: string, lang: Language) {
+  if (lang === 'en') {
+    switch (val) {
+      case 'all': return 'All budgets';
+      case '35': return '≤ 35k (Budget)';
+      case '50': return '≤ 50k (Standard)';
+      case '75': return '≤ 75k (Comfort)';
+      case '100': return '≤ 100k (Feast / BBQ)';
+      case '150': return '≥ 150k (Specialties)';
+      case 'custom': return 'Custom price...';
+      default: return val;
+    }
+  }
+  switch (val) {
+    case 'all': return 'Tất cả mức giá';
+    case '35': return '≤ 35.000đ (Bình dân)';
+    case '50': return '≤ 50.000đ (Tiêu chuẩn)';
+    case '75': return '≤ 75.000đ (Khá)';
+    case '100': return '≤ 100.000đ (Lẩu/Nhậu)';
+    case '150': return '≥ 150.000đ (Đặc sản)';
+    case 'custom': return 'Tự nhập giá...';
+    default: return val;
+  }
+}
+
+export function getMealSessionName(id: MealSession, lang: Language) {
+  if (lang === 'en') {
+    switch (id) {
+      case 'morning': return 'Morning';
+      case 'noon': return 'Noon';
+      case 'afternoon': return 'Afternoon';
+      case 'evening': return 'Evening';
+      case 'night': return 'Late Night';
+      default: return 'All Day';
+    }
+  }
+  switch (id) {
+    case 'morning': return 'Sáng';
+    case 'noon': return 'Trưa';
+    case 'afternoon': return 'Xế Chiều';
+    case 'evening': return 'Tối';
+    case 'night': return 'Cú Đêm';
+    default: return 'Cả ngày';
+  }
+}
+
+export function getKeoOptionInfo(id: PlaceKeoType, lang: Language) {
+  if (lang === 'en') {
+    switch (id) {
+      case 'all': return { label: 'All dining occasions', desc: 'All venues and vibes in Xuan Hoa' };
+      case 'hen-ho': return { label: 'Dating & Couples (2 pax)', desc: 'Cozy, romantic vibes with great ambiance' };
+      case 'an-nhanh': return { label: 'Quick Bite & Solo', desc: 'Fast service, solo-friendly & convenient' };
+      case 'nhom-dong': return { label: 'Friends & Family', desc: 'Spacious tables for get-togethers & feasts' };
+      case 'ship': return { label: 'Delivery / Takeout', desc: 'Neat packaging, fast doorstep delivery' };
+      default: return { label: id, desc: '' };
+    }
+  }
+  switch (id) {
+    case 'all': return { label: 'Tất cả kèo ăn uống', desc: 'Tất cả các quán và không gian tại Xuân Hòa' };
+    case 'hen-ho': return { label: 'Hẹn hò & 2 người', desc: 'Không gian đẹp, ấm cúng, view lãng mạn' };
+    case 'an-nhanh': return { label: 'Ăn nhanh & 1 người', desc: 'Phục vụ nhanh gọn, suất ăn riêng, tiện lợi' };
+    case 'nhom-dong': return { label: 'Nhóm bạn & Gia đình', desc: 'Bàn rộng, lẩu nướng, liên hoan tụ tập' };
+    case 'ship': return { label: 'Gọi ship tận nơi', desc: 'Đóng hộp sạch sẽ, giao nhanh tận cửa' };
+    default: return { label: id, desc: '' };
+  }
+}
+
 interface BudgetDropdownProps {
   value: string;
   onChange: (value: string) => void;
@@ -237,10 +305,9 @@ export function BudgetDropdown({
   onChange,
   disabled = false,
 }: BudgetDropdownProps) {
+  const { t, lang } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const currentOption = BUDGET_CONFIG.find(b => b.value === value) || BUDGET_CONFIG[0];
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent | TouchEvent) {
@@ -265,6 +332,10 @@ export function BudgetDropdown({
     };
   }, [isOpen]);
 
+  const displayTriggerText = value === 'all' 
+    ? t('price_all') 
+    : `${t('price_prefix')} ${getBudgetOptionLabel(value, lang)}`;
+
   return (
     <div className="relative inline-block text-left w-full" ref={containerRef}>
       <button
@@ -272,11 +343,11 @@ export function BudgetDropdown({
         disabled={disabled}
         onClick={() => setIsOpen(prev => !prev)}
         className="luxury-budget-trigger w-full"
-        title="Lọc theo mức chi tiêu dự kiến"
+        title={lang === 'en' ? 'Filter by estimated dining budget' : 'Lọc theo mức chi tiêu dự kiến'}
       >
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <Wallet size={14} className="text-amber-400 shrink-0" />
-          <span className="truncate">{value === 'all' ? 'Giá: Tất cả' : currentOption.label}</span>
+          <span className="truncate">{displayTriggerText}</span>
         </div>
         <ChevronDown
           size={14}
@@ -287,7 +358,7 @@ export function BudgetDropdown({
       {isOpen && (
         <div className="luxury-budget-menu">
           <div className="luxury-filter-menu-header">
-            <span>CHỌN MỨC NGÂN SÁCH</span>
+            <span>{t('budget_title')}</span>
           </div>
           <div className="luxury-budget-menu-list">
             {BUDGET_CONFIG.map(option => {
@@ -302,7 +373,7 @@ export function BudgetDropdown({
                   }}
                   className={`luxury-budget-item ${isSelected ? 'selected' : ''}`}
                 >
-                  <span>{option.label}</span>
+                  <span>{getBudgetOptionLabel(option.value, lang)}</span>
                   {isSelected && <Check size={14} className="text-amber-400" />}
                 </button>
               );
@@ -327,6 +398,7 @@ export function SessionDropdown({
   liveSession,
   disabled = false,
 }: SessionDropdownProps) {
+  const { t, lang } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -354,6 +426,10 @@ export function SessionDropdown({
     };
   }, [isOpen]);
 
+  const displayTriggerText = value === 'all'
+    ? `${t('session_prefix')} ${t('session_all_day')}`
+    : `${t('session_prefix')} ${currentSession ? getMealSessionName(currentSession.id, lang) : (lang === 'en' ? 'Auto' : 'Tự động')}`;
+
   return (
     <div className="relative inline-block text-left w-full" ref={containerRef}>
       <button
@@ -361,14 +437,12 @@ export function SessionDropdown({
         disabled={disabled}
         onClick={() => setIsOpen(prev => !prev)}
         className="luxury-filter-trigger w-full"
-        title="Chọn khung giờ phục vụ"
+        title={lang === 'en' ? 'Select dining time frame' : 'Chọn khung giờ phục vụ'}
       >
         <Clock size={14} className="text-amber-400 shrink-0" />
         {isCurrentLive && <span className="live-gem-indicator shrink-0" />}
         <span className="luxury-trigger-label truncate">
-          {value === 'all'
-            ? 'Giờ: Cả ngày'
-            : `Giờ: ${currentSession ? currentSession.label.replace('Buổi ', '') : 'Tự động'}`}
+          {displayTriggerText}
         </span>
         <ChevronDown
           size={14}
@@ -379,7 +453,7 @@ export function SessionDropdown({
       {isOpen && (
         <div className="luxury-filter-menu luxury-session-menu">
           <div className="luxury-filter-menu-header">
-            <span>KHUNG GIỜ PHỤC VỤ</span>
+            <span>{t('session_title')}</span>
           </div>
 
           <div className="luxury-filter-menu-list">
@@ -399,7 +473,7 @@ export function SessionDropdown({
                 >
                   <div className="flex items-center gap-2">
                     {isLive && <span className="live-gem-indicator" />}
-                    <span className="font-semibold text-slate-200">{s.label}</span>
+                    <span className="font-semibold text-slate-200">{lang === 'en' ? getMealSessionName(s.id, 'en') : s.label}</span>
                     {isLive && (
                       <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-500/40">
                         LIVE
@@ -426,8 +500,8 @@ export function SessionDropdown({
             >
               <div className="flex items-center gap-2">
                 <Sparkles size={14} className="text-amber-400 shrink-0" />
-                <span className="font-semibold text-slate-200">Cả ngày</span>
-                <span className="text-[11px] text-slate-400">(Tất cả quán/món)</span>
+                <span className="font-semibold text-slate-200">{t('session_all_day')}</span>
+                <span className="text-[11px] text-slate-400">({lang === 'en' ? 'All places & dishes' : 'Tất cả quán/món'})</span>
               </div>
               {value === 'all' && <Check size={14} className="text-amber-400" />}
             </button>
@@ -449,6 +523,7 @@ export function PlaceKeoDropdown({
   onChange,
   disabled = false,
 }: PlaceKeoDropdownProps) {
+  const { t, lang } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -477,6 +552,10 @@ export function PlaceKeoDropdown({
     };
   }, [isOpen]);
 
+  const displayTriggerText = value === 'all'
+    ? `${t('keo_prefix')} ${t('catalog_filter_all')}`
+    : `${t('keo_prefix')} ${getKeoOptionInfo(currentKeo.id, lang).label}`;
+
   return (
     <div className="relative inline-block text-left w-full" ref={containerRef}>
       <button
@@ -484,12 +563,12 @@ export function PlaceKeoDropdown({
         disabled={disabled}
         onClick={() => setIsOpen(prev => !prev)}
         className="luxury-filter-trigger w-full"
-        title="Chọn kèo đi ăn tại Xuân Hòa"
+        title={lang === 'en' ? 'Choose dining occasion & vibes in Xuan Hoa' : 'Chọn kèo đi ăn tại Xuân Hòa'}
       >
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
           {renderPlaceKeoIcon(currentKeo.id, 14)}
           <span className="luxury-trigger-label truncate">
-            {value === 'all' ? 'Kèo: Tất cả' : `Kèo: ${currentKeo.label}`}
+            {displayTriggerText}
           </span>
         </div>
         <ChevronDown
@@ -501,12 +580,13 @@ export function PlaceKeoDropdown({
       {isOpen && (
         <div className="luxury-filter-menu luxury-keo-menu">
           <div className="luxury-filter-menu-header">
-            <span>KÈO ĐI ĂN TẠI XUÂN HÒA</span>
+            <span>{t('keo_title')}</span>
           </div>
 
           <div className="luxury-filter-menu-list">
             {PLACE_KEO_LIST.map(k => {
               const isSelected = k.id === value;
+              const info = getKeoOptionInfo(k.id, lang);
 
               return (
                 <button
@@ -521,10 +601,10 @@ export function PlaceKeoDropdown({
                   <div className="flex flex-col text-left">
                     <div className="flex items-center gap-2">
                       {renderPlaceKeoIcon(k.id, 14)}
-                      <span className="font-semibold text-slate-200">{k.label}</span>
+                      <span className="font-semibold text-slate-200">{info.label}</span>
                     </div>
-                    {k.desc && (
-                      <span className="text-[10.5px] text-slate-400 mt-0.5 ml-5">{k.desc}</span>
+                    {info.desc && (
+                      <span className="text-[10.5px] text-slate-400 mt-0.5 ml-5">{info.desc}</span>
                     )}
                   </div>
                   {isSelected && <Check size={14} className="text-amber-400 shrink-0 ml-2" />}

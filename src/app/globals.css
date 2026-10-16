@@ -7658,8 +7658,39 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
   color: #FFFFFF;
 }
 
+.settings-menu-modal-luxury {
+  max-width: 420px;
+  width: 100%;
+}
+
 .settings-menu-modal-compact {
-  max-width: 320px;
+  max-width: 420px;
+  width: 100%;
+}
+
+.settings-header-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-header-icon-pill {
+  font-size: 15px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-menu-body {
+  padding: 16px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .settings-menu-modal-contact {
@@ -12120,58 +12151,151 @@ html, body {
 }
 
 /* ==============================================================
-   SETTINGS MODAL: TASTE FILTER CARD
+   SETTINGS MODAL: TASTE FILTER CARD (LUXURY & BALANCED)
    ============================================================== */
 .settings-taste-filter-card {
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 16px;
+  padding: 13px 15px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 11px 14px;
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.85));
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  border-radius: 14px;
-  margin-bottom: 12px;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 15px rgba(245, 158, 11, 0.05);
+  transition: all 0.2s ease;
+}
+
+.settings-taste-filter-card:hover {
+  border-color: rgba(245, 158, 11, 0.5);
 }
 
 .settings-taste-filter-card.guest {
   cursor: pointer;
-  background: rgba(15, 23, 42, 0.6);
-  border-style: dashed;
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.75) 100%);
+  border: 1px dashed rgba(245, 158, 11, 0.35);
 }
 
 .settings-taste-filter-card.guest:hover {
-  background: rgba(30, 41, 59, 0.8);
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.85) 100%);
   border-color: rgba(245, 158, 11, 0.6);
 }
 
-.settings-taste-filter-left {
+.settings-taste-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-taste-card-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-taste-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.settings-taste-text-col {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  gap: 2px;
+  min-width: 0;
 }
 
-.settings-resident-chip {
-  font-size: 10px;
-  font-weight: 800;
-  background: rgba(56, 189, 248, 0.2);
-  color: #38BDF8;
-  padding: 1.5px 6px;
-  border-radius: 6px;
-  border: 1px solid rgba(56, 189, 248, 0.35);
+.settings-taste-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.settings-guest-chip {
+.settings-taste-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #F8FAFC;
+  letter-spacing: -0.2px;
+}
+
+.settings-taste-status-tag {
   font-size: 10px;
   font-weight: 700;
-  background: rgba(245, 158, 11, 0.2);
-  color: #FDE047;
-  padding: 1px 6px;
-  border-radius: 6px;
+  padding: 1.5px 7px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.2);
+  color: #94A3B8;
+  border: 1px solid rgba(100, 116, 139, 0.3);
 }
 
-.settings-quick-login-btn {
-  background: #F8FAFC;
+.settings-taste-status-tag.active {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34D399;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.settings-taste-desc {
+  font-size: 11px;
+  color: #94A3B8;
+  line-height: 1.4;
+}
+
+.settings-taste-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.settings-taste-profile-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #FDE047;
+  background: rgba(245, 158, 11, 0.12);
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-taste-edit-btn {
+  background: transparent;
+  border: none;
+  color: #38BDF8;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  transition: color 0.15s ease;
+  white-space: nowrap;
+}
+
+.settings-taste-edit-btn:hover {
+  color: #7DD3FC;
+  text-decoration: underline;
+}
+
+.settings-taste-login-pill {
+  background: linear-gradient(135deg, #F59E0B, #D97706);
   color: #0F172A;
   border: none;
   font-size: 11px;
@@ -12181,62 +12305,234 @@ html, body {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
   transition: all 0.2s ease;
 }
 
-.settings-quick-login-btn:hover {
-  background: #E2E8F0;
+.settings-taste-login-pill:hover {
+  filter: brightness(1.1);
   transform: translateY(-1px);
 }
 
 /* ==============================================================
-   CONSOLE / VÒNG QUAY: NÚT GẠT NHANH LỌC THEO GU (WEB & MOBILE)
+   4 LUXURY ACTION CARDS 2x2 GRID
+   ============================================================== */
+.settings-menu-grid-luxury {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.settings-luxury-card {
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.75) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 82px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-luxury-card:hover {
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.95) 100%);
+  border-color: rgba(245, 158, 11, 0.4);
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.settings-luxury-card:active {
+  transform: scale(0.98);
+}
+
+.settings-luxury-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.settings-luxury-icon-wrap {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #F8FAFC;
+  transition: all 0.2s ease;
+}
+
+.settings-luxury-card:hover .settings-luxury-icon-wrap {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #FBBF24;
+}
+
+.settings-luxury-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #94A3B8;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-luxury-badge.active {
+  color: #34D399;
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.settings-luxury-badge.muted {
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.settings-luxury-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5px;
+}
+
+.settings-luxury-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #F8FAFC;
+  letter-spacing: -0.1px;
+}
+
+.settings-luxury-sublabel {
+  font-size: 10.5px;
+  color: #64748B;
+  font-weight: 500;
+}
+
+/* ==============================================================
+   CONSOLE / VÒNG QUAY: NÚT GẠT NHANH LỌC THEO GU (WEB & MOBILE LUXURY)
    ============================================================== */
 .luxury-taste-filter-wrap {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .taste-filter-toggle-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  background: rgba(15, 23, 42, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 7px;
+  padding: 6px 13px;
+  background: linear-gradient(135deg, rgba(22, 28, 42, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.28);
   border-radius: 999px;
-  color: #CBD5E1;
-  font-size: 11px;
-  font-weight: 700;
+  color: #E2E8F0;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .taste-filter-toggle-pill:hover {
-  background: rgba(30, 41, 59, 0.85);
-  border-color: rgba(245, 158, 11, 0.4);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(17, 24, 39, 0.98) 100%);
+  border-color: rgba(245, 158, 11, 0.55);
   color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.16);
+  transform: translateY(-1px);
 }
 
 .taste-filter-toggle-pill.active {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(16, 185, 129, 0.15));
-  border-color: rgba(245, 158, 11, 0.6);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(16, 185, 129, 0.18) 100%);
+  border-color: rgba(245, 158, 11, 0.65);
   color: #FDE047;
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.2), inset 0 0 8px rgba(245, 158, 11, 0.06);
 }
 
 .taste-filter-toggle-pill.guest {
   border-style: dashed;
-  opacity: 0.8;
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #CBD5E1;
 }
 
 .taste-filter-icon {
   font-size: 12px;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .taste-filter-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748B;
+  transition: all 0.22s ease;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+.taste-filter-indicator.active {
+  background: #10B981;
+  box-shadow: 0 0 8px #10B981, 0 0 2px #34D399;
+}
+
+/* Mobile Taste Filter Pill Button (One-Touch Luxury) */
+.mobile-taste-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5.5px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, rgba(26, 32, 48, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94A3B8;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  flex-shrink: 0;
+}
+
+.mobile-taste-filter-btn:hover,
+.mobile-taste-filter-btn:active {
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #FFFFFF;
+}
+
+.mobile-taste-filter-btn.active {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(16, 185, 129, 0.18));
+  border-color: rgba(245, 158, 11, 0.65);
+  color: #FDE047;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.22);
+}
+
+.mobile-taste-icon {
+  font-size: 11.5px;
+  line-height: 1;
+}
+
+.mobile-taste-label {
+  letter-spacing: 0.01em;
+}
+
+.mobile-taste-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -12244,7 +12540,7 @@ html, body {
   transition: all 0.2s ease;
 }
 
-.taste-filter-indicator.active {
+.mobile-taste-dot.active {
   background: #10B981;
   box-shadow: 0 0 6px #10B981;
 }
@@ -13198,18 +13494,19 @@ html, body {
     border-radius: 999px !important;
   }
 
-  /* 2. Cân giữa Chọn Món / Chọn Quán */
+  /* 2. Cân đối Chọn Món / Chọn Quán & Nút Lọc Theo Gu */
   .mobile-deck-top-row {
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    gap: 8px !important;
     width: 100% !important;
     margin: 0 auto 6px auto !important;
   }
 
   .mobile-mode-segmented {
     display: inline-flex !important;
-    margin: 0 auto !important;
+    margin: 0 !important;
   }
 
   /* 3. Bổ sung chữ như web cho danh mục kho: Tiêu đề & mô tả gọn gàng */

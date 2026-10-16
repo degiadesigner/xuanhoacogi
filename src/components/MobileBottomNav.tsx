@@ -11,6 +11,8 @@ import {
 import { AppView } from '../app/page';
 import { UserAuthProfile } from '../lib/auth';
 
+import { Language, translations } from '../lib/i18n';
+
 interface MobileBottomNavProps {
   currentView: AppView;
   onNavigate: (view: AppView) => void;
@@ -20,6 +22,7 @@ interface MobileBottomNavProps {
   onOpenProfile: () => void;
   authUser?: UserAuthProfile | null;
   level: number;
+  lang?: Language;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -31,6 +34,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onOpenProfile,
   authUser,
   level,
+  lang = 'vi',
 }) => {
   const triggerHaptic = () => {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -43,6 +47,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   };
 
   const isLoggedIn = !!(authUser && authUser.isLoggedIn);
+  const t = translations[lang] || translations.vi;
 
   return (
     <nav 
@@ -58,12 +63,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             triggerHaptic();
             onNavigate('spin');
           }}
-          aria-label="Quay Món"
+          aria-label={t.dock_spin}
         >
           <div className="mobile-dock-icon-wrap">
             <RotateCw size={20} className={currentView === 'spin' ? 'text-amber-400 rotate-icon' : 'text-slate-400'} />
           </div>
-          <span className="mobile-dock-label">Quay Món</span>
+          <span className="mobile-dock-label">{t.dock_spin}</span>
         </button>
 
         {/* 2. Nút Danh Mục Món Ăn */}
@@ -74,12 +79,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             triggerHaptic();
             onNavigate('dishes');
           }}
-          aria-label="Khám Phá Món"
+          aria-label={t.dock_dishes}
         >
           <div className="mobile-dock-icon-wrap">
             <UtensilsCrossed size={20} className={currentView === 'dishes' ? 'text-amber-400' : 'text-slate-400'} />
           </div>
-          <span className="mobile-dock-label">Món Ngon</span>
+          <span className="mobile-dock-label">{t.dock_dishes}</span>
         </button>
 
         {/* 3. Nút Quán Ăn */}
@@ -90,12 +95,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             triggerHaptic();
             onNavigate('places');
           }}
-          aria-label="Quán Ăn Xuân Hòa"
+          aria-label={t.dock_places}
         >
           <div className="mobile-dock-icon-wrap">
             <Store size={20} className={currentView === 'places' ? 'text-amber-400' : 'text-slate-400'} />
           </div>
-          <span className="mobile-dock-label">Quán Xá</span>
+          <span className="mobile-dock-label">{t.dock_places}</span>
         </button>
 
         {/* 4. Nút Đăng Nhập / Tài Khoản (Thay thế vào vị trí bảng điểm) */}
@@ -107,12 +112,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               triggerHaptic();
               onOpenLogin();
             }}
-            aria-label="Đăng Nhập Tài Khoản"
+            aria-label={t.dock_login}
           >
             <div className="mobile-dock-icon-wrap">
               <User size={20} className="text-amber-400" />
             </div>
-            <span className="mobile-dock-label text-amber-300 font-extrabold">Đăng Nhập</span>
+            <span className="mobile-dock-label text-amber-300 font-extrabold">{t.dock_login}</span>
           </button>
         ) : (
           <button
@@ -122,13 +127,13 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               triggerHaptic();
               onOpenProfile();
             }}
-            aria-label="Hồ Sơ Cá Nhân"
+            aria-label={t.dock_profile}
           >
             <div className="mobile-dock-icon-wrap">
               <span className="text-lg leading-none">{authUser.avatar || '🐱'}</span>
             </div>
             <span className="mobile-dock-label truncate max-w-[56px] text-amber-300 font-extrabold">
-              {authUser.nickname || 'Tài Khoản'}
+              {authUser.nickname || t.dock_profile}
             </span>
           </button>
         )}
@@ -141,12 +146,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             triggerHaptic();
             if (onOpenSettings) onOpenSettings();
           }}
-          aria-label="Cài Đặt Hệ Thống"
+          aria-label={t.dock_settings}
         >
           <div className="mobile-dock-icon-wrap">
             <Settings size={20} className="text-slate-400" />
           </div>
-          <span className="mobile-dock-label">Cài Đặt</span>
+          <span className="mobile-dock-label">{t.dock_settings}</span>
         </button>
       </div>
     </nav>

@@ -90,7 +90,7 @@ export function SettingsMenuModal({
             ? 'settings-menu-modal-contact' 
             : activeSubModal === 'language' 
             ? 'settings-menu-modal-lang' 
-            : 'settings-menu-modal-compact'
+            : 'settings-menu-modal-luxury'
         }`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -101,7 +101,10 @@ export function SettingsMenuModal({
         {activeSubModal === 'none' && (
           <>
             <div className="settings-menu-header">
-              <h2 className="settings-menu-title">{t.menu_title}</h2>
+              <div className="settings-header-title-wrap">
+                <span className="settings-header-icon-pill">⚙️</span>
+                <h2 className="settings-menu-title">{t.settings_title || t.menu_title}</h2>
+              </div>
               <button 
                 type="button"
                 className="settings-menu-close-btn"
@@ -112,123 +115,169 @@ export function SettingsMenuModal({
               </button>
             </div>
 
-            {/* ================= THẺ BỘ LỌC THEO GU ẨM THỰC ================= */}
-            {authUser && authUser.isLoggedIn ? (
-              <div className="settings-taste-filter-card">
-                <div className="settings-taste-filter-left">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-base">🎯</span>
-                    <strong className="text-xs font-bold text-white">Lọc Theo Gu Của Bạn</strong>
-                    <span className="settings-resident-chip">
-                      {getResidentTypeInfo(authUser.residentType).label.split(' ')[0]} {getResidentTypeInfo(authUser.residentType).label.replace(/^[^\s]+\s*/, '')}
+            <div className="settings-menu-body">
+              {/* ================= THẺ BỘ LỌC THEO GU ẨM THỰC ================= */}
+              {authUser && authUser.isLoggedIn ? (
+                <div className="settings-taste-filter-card">
+                  {/* Hàng trên: Icon + Tiêu đề + Trạng thái + Toggle */}
+                  <div className="settings-taste-card-top">
+                    <div className="settings-taste-card-title-group">
+                      <div className="settings-taste-icon-box">🎯</div>
+                      <div className="settings-taste-text-col">
+                        <div className="settings-taste-title-row">
+                          <strong className="settings-taste-title">{t.taste_filter_title}</strong>
+                          <span className={`settings-taste-status-tag ${authUser.filterByTaste !== false ? 'active' : ''}`}>
+                            {authUser.filterByTaste !== false ? `● ${t.taste_filter_active}` : `○ ${t.taste_filter_inactive}`}
+                          </span>
+                        </div>
+                        <span className="settings-taste-desc">
+                          {authUser.filterByTaste !== false
+                            ? t.taste_filter_desc_on
+                            : t.taste_filter_desc_off}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`auth-switch-btn ${authUser.filterByTaste !== false ? 'active' : ''}`}
+                      onClick={() => onToggleTasteFilter && onToggleTasteFilter()}
+                      role="switch"
+                      aria-checked={authUser.filterByTaste !== false}
+                      title="Bật/Tắt chế độ lọc theo gu ẩm thực"
+                    >
+                      <span className="auth-switch-thumb" />
+                    </button>
+                  </div>
+
+                  {/* Hàng dưới: Nhóm thực khách & Nút sửa hồ sơ */}
+                  <div className="settings-taste-card-footer">
+                    <div className="settings-taste-profile-pill">
+                      <span>{getResidentTypeInfo(authUser.residentType).emoji}</span>
+                      <span>{getResidentTypeInfo(authUser.residentType).label}</span>
+                    </div>
+
+                    {onOpenProfile && (
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          handleClose();
+                          onOpenProfile();
+                        }}
+                        className="settings-taste-edit-btn"
+                      >
+                        {t.taste_filter_edit_btn}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  className="settings-taste-filter-card guest" 
+                  onClick={() => {
+                    handleClose();
+                    onOpenLogin?.();
+                  }}
+                  title="Bấm để đăng nhập và thiết lập khẩu vị theo gu"
+                >
+                  <div className="settings-taste-card-top">
+                    <div className="settings-taste-card-title-group">
+                      <div className="settings-taste-icon-box">🎯</div>
+                      <div className="settings-taste-text-col">
+                        <strong className="settings-taste-title">{t.taste_filter_title}</strong>
+                        <span className="settings-taste-desc">
+                          {t.taste_filter_guest_desc}
+                        </span>
+                      </div>
+                    </div>
+                    <button type="button" className="settings-taste-login-pill">
+                      {t.taste_filter_guest_btn} →
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ================= 4 Ô CHỨC NĂNG 2X2 SANG TRỌNG ================= */}
+              <div className="settings-menu-grid-luxury">
+                {/* Ô 1: Ngôn ngữ */}
+                <button 
+                  type="button"
+                  className="settings-luxury-card"
+                  onClick={() => setActiveSubModal('language')}
+                >
+                  <div className="settings-luxury-card-head">
+                    <div className="settings-luxury-icon-wrap">
+                      <Languages size={19} />
+                    </div>
+                    <span className="settings-luxury-badge">{lang === 'vi' ? '🇻🇳 VN' : '🇬🇧 EN'}</span>
+                  </div>
+                  <div className="settings-luxury-card-info">
+                    <strong className="settings-luxury-label">{t.menu_language}</strong>
+                    <span className="settings-luxury-sublabel">{lang === 'vi' ? 'Tiếng Việt' : 'English'}</span>
+                  </div>
+                </button>
+
+                {/* Ô 2: Âm lượng */}
+                <button 
+                  type="button"
+                  className={`settings-luxury-card ${!sound ? 'muted' : ''}`}
+                  onClick={onToggleSound}
+                  title={sound ? (lang === 'vi' ? 'Bấm để tắt âm thanh' : 'Click to mute') : (lang === 'vi' ? 'Bấm để bật âm thanh' : 'Click to unmute')}
+                >
+                  <div className="settings-luxury-card-head">
+                    <div className="settings-luxury-icon-wrap">
+                      {sound ? <Volume2 size={19} /> : <VolumeX size={19} className="text-amber-400" />}
+                    </div>
+                    <span className={`settings-luxury-badge ${sound ? 'active' : 'muted'}`}>
+                      {sound ? '100%' : 'OFF'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 m-0">
-                    {authUser.filterByTaste !== false
-                      ? '🟢 Đang BẬT: Vòng quay ưu tiên các món bạn yêu thích'
-                      : '⚪ Đang TẮT: Khám phá tất cả các món không giới hạn'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className={`auth-switch-btn ${authUser.filterByTaste !== false ? 'active' : ''}`}
-                  onClick={() => onToggleTasteFilter && onToggleTasteFilter()}
-                  role="switch"
-                  aria-checked={authUser.filterByTaste !== false}
-                  title="Bật/Tắt chế độ lọc theo gu ẩm thực"
-                >
-                  <span className="auth-switch-thumb" />
-                </button>
-              </div>
-            ) : (
-              <div 
-                className="settings-taste-filter-card guest" 
-                onClick={() => {
-                  handleClose();
-                  onOpenLogin?.();
-                }}
-                title="Bấm để đăng nhập và thiết lập khẩu vị theo gu"
-              >
-                <div className="settings-taste-filter-left">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-base">🎯</span>
-                    <strong className="text-xs font-bold text-white">Lọc Theo Gu Ẩm Thực</strong>
-                    <span className="settings-guest-chip">Cần đăng nhập</span>
+                  <div className="settings-luxury-card-info">
+                    <strong className="settings-luxury-label">{t.menu_sound}</strong>
+                    <span className="settings-luxury-sublabel">{sound ? t.menu_sound_active : t.menu_sound_muted}</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 m-0">
-                    Đăng nhập để chọn nhóm thực khách (SV / Bản địa) &amp; bật lọc theo gu
-                  </p>
-                </div>
-                <button type="button" className="settings-quick-login-btn">
-                  Đăng nhập
+                </button>
+
+                {/* Ô 3: Hướng dẫn */}
+                <button 
+                  type="button"
+                  className="settings-luxury-card"
+                  onClick={() => {
+                    onOpenGuide();
+                    handleClose();
+                  }}
+                >
+                  <div className="settings-luxury-card-head">
+                    <div className="settings-luxury-icon-wrap">
+                      <BookOpen size={19} />
+                    </div>
+                    <span className="settings-luxury-badge">{t.menu_guide_badge}</span>
+                  </div>
+                  <div className="settings-luxury-card-info">
+                    <strong className="settings-luxury-label">{t.menu_guide}</strong>
+                    <span className="settings-luxury-sublabel">User Guide</span>
+                  </div>
+                </button>
+
+                {/* Ô 4: Liên hệ với chúng tôi */}
+                <button 
+                  type="button"
+                  className="settings-luxury-card"
+                  onClick={() => setActiveSubModal('contact')}
+                  title={t.menu_contact}
+                >
+                  <div className="settings-luxury-card-head">
+                    <div className="settings-luxury-icon-wrap">
+                      <MessageSquare size={19} className="text-amber-400" />
+                    </div>
+                    <span className="settings-luxury-badge">{t.menu_contact_badge}</span>
+                  </div>
+                  <div className="settings-luxury-card-info">
+                    <strong className="settings-luxury-label">{t.menu_contact}</strong>
+                    <span className="settings-luxury-sublabel">Social & Support</span>
+                  </div>
                 </button>
               </div>
-            )}
-
-            <div className="settings-menu-grid settings-menu-grid-2x2">
-              {/* Ô 1: Ngôn ngữ */}
-              <button 
-                type="button"
-                className="settings-menu-card"
-                onClick={() => setActiveSubModal('language')}
-              >
-                <div className="settings-menu-icon">
-                  <Languages size={24} />
-                </div>
-                <span className="settings-menu-label">{t.menu_language}</span>
-              </button>
-
-              {/* Ô 2: Âm lượng (Bấm vào toggle tắt/bật lập tức) */}
-              <button 
-                type="button"
-                className={`settings-menu-card ${!sound ? 'muted' : ''}`}
-                onClick={onToggleSound}
-                title={sound ? (lang === 'vi' ? 'Bấm để tắt âm thanh' : 'Click to mute') : (lang === 'vi' ? 'Bấm để bật âm thanh 100%' : 'Click to unmute')}
-              >
-                <div className="settings-menu-icon">
-                  {sound ? <Volume2 size={24} /> : <VolumeX size={24} className="text-amber-400" />}
-                </div>
-                <span className="settings-menu-label">
-                  {sound ? t.menu_sound_on : t.menu_sound_off}
-                </span>
-              </button>
-
-              {/* Ô 3: Hướng dẫn */}
-              <button 
-                type="button"
-                className="settings-menu-card"
-                onClick={() => {
-                  onOpenGuide();
-                  handleClose();
-                }}
-              >
-                <div className="settings-menu-icon">
-                  <BookOpen size={24} />
-                </div>
-                <span className="settings-menu-label">{t.menu_guide}</span>
-              </button>
-
-              {/* Ô 4: Liên hệ với chúng tôi */}
-              <button 
-                type="button"
-                className="settings-menu-card"
-                onClick={() => setActiveSubModal('contact')}
-                title={t.menu_contact}
-              >
-                <div className="settings-menu-icon">
-                  <MessageSquare size={24} className="text-amber-400" />
-                </div>
-                <span className="settings-menu-label settings-menu-label-contact">
-                  {lang === 'vi' ? (
-                    <>
-                      <span>Liên hệ với</span>
-                      <span>chúng tôi</span>
-                    </>
-                  ) : (
-                    t.menu_contact
-                  )}
-                </span>
-              </button>
             </div>
           </>
         )}
@@ -362,8 +411,14 @@ export function SettingsMenuModal({
                     setActiveSubModal('none');
                   }}
                 >
-                  <span>{t.lang_vi}</span>
-                  {lang === 'vi' && <Check size={16} className="text-amber-400" />}
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🇻🇳</span>
+                    <div className="flex flex-col text-left">
+                      <span className="font-bold text-sm text-white">Tiếng Việt</span>
+                      <span className="text-[11px] text-slate-400">Xuân Hòa Bản Địa</span>
+                    </div>
+                  </div>
+                  {lang === 'vi' && <Check size={18} className="text-amber-400" strokeWidth={3} />}
                 </button>
                 <button 
                   type="button"
@@ -375,8 +430,14 @@ export function SettingsMenuModal({
                     setActiveSubModal('none');
                   }}
                 >
-                  <span>{t.lang_en}</span>
-                  {lang === 'en' && <Check size={16} className="text-amber-400" />}
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🇬🇧</span>
+                    <div className="flex flex-col text-left">
+                      <span className="font-bold text-sm text-white">English</span>
+                      <span className="text-[11px] text-slate-400">International (Global)</span>
+                    </div>
+                  </div>
+                  {lang === 'en' && <Check size={18} className="text-amber-400" strokeWidth={3} />}
                 </button>
               </div>
             </div>

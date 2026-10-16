@@ -896,24 +896,24 @@ export default function Home() {
                 type="button"
                 className="header-level-progress-pill"
                 onClick={() => setIsScoreboardOpen(true)}
-                title={`${profile.badge || '🥉'} Cấp ${profile.level}: ${profile.title} · ${profile.dishesCount}/${profile.nextLevelDishes} món (${expPercentage}%) - Bấm xem bảng điểm`}
+                title={`${profile.badge || '🥉'} ${t('header_level')} ${profile.level}: ${profile.title} · ${profile.dishesCount}/${profile.nextLevelDishes} ${t('dishes_unit')} (${expPercentage}%)`}
               >
-                <span className="header-level-pill-badge">{profile.badge || '🥉'} Cấp {profile.level}</span>
-                <div className="header-level-mini-progress" title={`Tiến độ cấp: ${expPercentage}%`}>
+                <span className="header-level-pill-badge">{profile.badge || '🥉'} {t('header_level')} {profile.level}</span>
+                <div className="header-level-mini-progress" title={`${expPercentage}%`}>
                   <div 
                     className="header-level-mini-fill" 
                     style={{ width: `${expPercentage}%` }} 
                   />
                 </div>
                 <span className="header-level-pill-points">
-                  {profile.dishesCount}/{profile.nextLevelDishes} <span className="font-normal text-[10px] text-slate-400">món</span>
+                  {profile.dishesCount}/{profile.nextLevelDishes} <span className="font-normal text-[10px] text-slate-400">{t('dishes_unit')}</span>
                 </span>
               </button>
 
               {/* Hàng 2: Tổng Lượt Quay (Cân đối thẳng hàng bên dưới) */}
-              <div className="header-sub-spin-counter" title="Tổng lượt quay toàn hệ thống">
-                <span className="sub-spin-label">Tổng lượt quay:</span>
-                <span className="sub-spin-value">{globalSpinCount.toLocaleString('vi-VN')}</span>
+              <div className="header-sub-spin-counter" title={t('header_total_spins')}>
+                <span className="sub-spin-label">{t('header_total_spins')}:</span>
+                <span className="sub-spin-value">{globalSpinCount.toLocaleString(lang === 'en' ? 'en-US' : 'vi-VN')}</span>
               </div>
             </div>
 
@@ -929,8 +929,8 @@ export default function Home() {
                     setAuthModalStep(1);
                     setIsAuthModalOpen(true);
                   }}
-                  title="Đăng nhập tài khoản Google"
-                  aria-label="Đăng nhập"
+                  title={t('login')}
+                  aria-label={t('login')}
                 >
                   <User size={24} className="text-amber-400" />
                 </button>
@@ -939,8 +939,8 @@ export default function Home() {
                   type="button"
                   className="header-icon-action-btn header-user-avatar-btn"
                   onClick={() => setIsUserProfileModalOpen(true)}
-                  title={`${authUser.nickname} · Xem hồ sơ cá nhân`}
-                  aria-label="Hồ sơ cá nhân"
+                  title={`${authUser.nickname} · ${t('dock_profile')}`}
+                  aria-label={t('dock_profile')}
                 >
                   <span className="text-2xl leading-none">{authUser.avatar || '🐱'}</span>
                 </button>
@@ -951,8 +951,8 @@ export default function Home() {
                 type="button"
                 className="header-icon-action-btn"
                 onClick={handleOpenMap}
-                title="Bản Đồ Số (Đang phát triển)"
-                aria-label="Bản Đồ Số"
+                title={t('map_coming_soon')}
+                aria-label={t('map_coming_soon')}
               >
                 <Map size={24} />
               </button>
@@ -962,8 +962,8 @@ export default function Home() {
                 type="button"
                 className="header-icon-action-btn header-menu-trigger-btn"
                 onClick={() => setIsSettingsMenuOpen(true)}
-                title="Menu Cài đặt"
-                aria-label="Menu Cài đặt"
+                title={t('menu_title')}
+                aria-label={t('menu_title')}
               >
                 <LayoutGrid size={24} />
               </button>
@@ -1025,26 +1025,29 @@ export default function Home() {
             <>
               {/* Row 1: Primary Category Segmented Tabs */}
               <div className="category-nav-bar category-nav-bar-dish">
-                {MAIN_CATEGORIES.map(cat => (
-                  <button
-                    key={cat.id}
-                    className={`category-nav-tab ${activeCategory === cat.id ? 'active' : ''}`}
-                    onClick={() => {
-                      if (!spinning) {
-                        setActiveCategory(cat.id);
-                        setDishSearchQuery('');
-                        setNhauSubFilter('all');
-                        setDrinkSubFilter('all');
-                        setBudget('all');
-                        setCaseTier('all');
-                        setVisibleDishCount(18);
-                      }
-                    }}
-                    disabled={spinning}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
+                {MAIN_CATEGORIES.map(cat => {
+                  const catLabel = cat.id === 'an-gi' ? t('today_eat') : cat.id === 'nhau-gi' ? t('today_pub') : t('today_drink');
+                  return (
+                    <button
+                      key={cat.id}
+                      className={`category-nav-tab ${activeCategory === cat.id ? 'active' : ''}`}
+                      onClick={() => {
+                        if (!spinning) {
+                          setActiveCategory(cat.id);
+                          setDishSearchQuery('');
+                          setNhauSubFilter('all');
+                          setDrinkSubFilter('all');
+                          setBudget('all');
+                          setCaseTier('all');
+                          setVisibleDishCount(18);
+                        }
+                      }}
+                      disabled={spinning}
+                    >
+                      {catLabel}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Row 2: Khung giờ lựa chọn (hiện toàn bộ) + Mức giá (cuộn xuống) trên cùng 1 dòng */}
@@ -1054,12 +1057,17 @@ export default function Home() {
                   <div className="session-filter-group">
                     <span className="control-label inline-flex items-center gap-1.5">
                       <Clock size={13} className="text-amber-400 shrink-0" />
-                      Khung giờ:
+                      {t('session_label')}
                     </span>
                     <div className="session-pills-wrap session-pills-6">
                       {MEAL_SESSIONS.map((s) => {
                         const isLive = s.id === liveSession;
                         const isSelected = session === s.id;
+                        const sessionName = s.id === 'morning' ? t('session_morning')
+                          : s.id === 'noon' ? t('session_noon')
+                          : s.id === 'afternoon' ? t('session_afternoon')
+                          : s.id === 'evening' ? t('session_evening')
+                          : t('session_night');
                         return (
                           <button
                             key={s.id}
@@ -1067,10 +1075,10 @@ export default function Home() {
                             className={`session-pill-btn ${isSelected ? 'active' : ''}`}
                             onClick={() => setSession(s.id)}
                             disabled={spinning}
-                            title={`${s.label} (${s.timeRange})`}
+                            title={`${sessionName} (${s.timeRange})`}
                           >
                             {isLive && <span className="live-gem-indicator mr-1.5" />}
-                            {s.label.replace('Buổi ', '')}
+                            {sessionName}
                           </button>
                         );
                       })}
@@ -1079,9 +1087,9 @@ export default function Home() {
                         className={`session-pill-btn ${session === 'all' ? 'active' : ''}`}
                         onClick={() => setSession('all')}
                         disabled={spinning}
-                        title="Tất cả các món cả ngày"
+                        title={lang === 'en' ? 'All dishes all day' : 'Tất cả các món cả ngày'}
                       >
-                        Cả ngày
+                        {t('session_all_day')}
                       </button>
                     </div>
                   </div>
@@ -1092,7 +1100,7 @@ export default function Home() {
                   <div className="session-filter-group">
                     <span className="control-label inline-flex items-center gap-1.5">
                       <Flame size={13} className="text-orange-400 shrink-0" />
-                      Kèo nhậu:
+                      {t('pub_filter_label')}
                     </span>
                     <div className="session-pills-wrap session-pills-4">
                       <button
@@ -1101,7 +1109,7 @@ export default function Home() {
                         onClick={() => setNhauSubFilter('all')}
                         disabled={spinning}
                       >
-                        Tất cả
+                        {t('pub_all')}
                       </button>
                       <button
                         type="button"
@@ -1109,7 +1117,7 @@ export default function Home() {
                         onClick={() => setNhauSubFilter('lau-nuong')}
                         disabled={spinning}
                       >
-                        Lẩu & Nướng
+                        {t('pub_hotpot_grill')}
                       </button>
                       <button
                         type="button"
@@ -1117,7 +1125,7 @@ export default function Home() {
                         onClick={() => setNhauSubFilter('oc-haisan')}
                         disabled={spinning}
                       >
-                        Ốc & Hải Sản
+                        {t('pub_snails_seafood')}
                       </button>
                       <button
                         type="button"
@@ -1125,7 +1133,7 @@ export default function Home() {
                         onClick={() => setNhauSubFilter('bia-moi')}
                         disabled={spinning}
                       >
-                        Bia & Mồi
+                        {t('pub_beer_bites')}
                       </button>
                     </div>
                   </div>
@@ -1136,7 +1144,7 @@ export default function Home() {
                   <div className="session-filter-group">
                     <span className="control-label inline-flex items-center gap-1.5">
                       <Coffee size={13} className="text-sky-400 shrink-0" />
-                      Đồ uống:
+                      {t('drink_filter_label')}
                     </span>
                     <div className="session-pills-wrap session-pills-4">
                       <button
@@ -1145,7 +1153,7 @@ export default function Home() {
                         onClick={() => setDrinkSubFilter('all')}
                         disabled={spinning}
                       >
-                        Tất cả
+                        {t('drink_all')}
                       </button>
                       <button
                         type="button"
@@ -1153,7 +1161,7 @@ export default function Home() {
                         onClick={() => setDrinkSubFilter('tra-sua')}
                         disabled={spinning}
                       >
-                        Trà sữa
+                        {t('drink_milktea')}
                       </button>
                       <button
                         type="button"
@@ -1161,7 +1169,7 @@ export default function Home() {
                         onClick={() => setDrinkSubFilter('cafe')}
                         disabled={spinning}
                       >
-                        Cà phê
+                        {t('drink_coffee')}
                       </button>
                       <button
                         type="button"
@@ -1169,7 +1177,7 @@ export default function Home() {
                         onClick={() => setDrinkSubFilter('tra-traicay')}
                         disabled={spinning}
                       >
-                        Trà trái cây
+                        {t('drink_fruittea')}
                       </button>
                     </div>
                   </div>
@@ -1197,7 +1205,7 @@ export default function Home() {
                         value={customPrice}
                         onChange={e => setCustomPrice(e.target.value)}
                         disabled={spinning}
-                        title="Nhập số nghìn đồng (VD: 45)"
+                        title={lang === 'en' ? 'Enter thousands VND (e.g. 45)' : 'Nhập số nghìn đồng (VD: 45)'}
                       />
                       <span className="custom-budget-suffix">.000đ</span>
                     </div>
@@ -1213,12 +1221,12 @@ export default function Home() {
                       onClick={handleToggleTasteFilter}
                       disabled={spinning}
                       title={authUser.filterByTaste !== false 
-                        ? 'Đang BẬT lọc theo gu ẩm thực của bạn · Bấm để tắt (Khám phá ngẫu nhiên)' 
-                        : 'Đang TẮT lọc theo gu · Bấm để bật'}
+                        ? (lang === 'en' ? 'Taste Filter ON · Click to turn off (random discovery)' : 'Đang BẬT lọc theo gu ẩm thực của bạn · Bấm để tắt (Khám phá ngẫu nhiên)')
+                        : (lang === 'en' ? 'Taste Filter OFF · Click to turn on' : 'Đang TẮT lọc theo gu · Bấm để bật')}
                     >
                       <span className="taste-filter-icon">🎯</span>
                       <span className="taste-filter-text">
-                        {authUser.filterByTaste !== false ? 'Gu của tôi: BẬT' : 'Gu của tôi: TẮT'}
+                        {authUser.filterByTaste !== false ? t('taste_pill_on') : t('taste_pill_off')}
                       </span>
                       <span className={`taste-filter-indicator ${authUser.filterByTaste !== false ? 'active' : ''}`} />
                     </button>
@@ -1227,14 +1235,14 @@ export default function Home() {
                       type="button"
                       className="taste-filter-toggle-pill guest"
                       onClick={() => {
-                        setAuthNotice('Đăng nhập Google để bật bộ lọc theo gu khẩu vị của bạn');
+                        setAuthNotice(lang === 'en' ? 'Sign in with Google to enable taste-based filtering' : 'Đăng nhập Google để bật bộ lọc theo gu khẩu vị của bạn');
                         setAuthModalStep(1);
                         setIsAuthModalOpen(true);
                       }}
-                      title="Đăng nhập để thiết lập khẩu vị theo gu"
+                      title={lang === 'en' ? 'Sign in to customize taste filter' : 'Đăng nhập để thiết lập khẩu vị theo gu'}
                     >
                       <span className="taste-filter-icon">🎯</span>
-                      <span className="taste-filter-text">Lọc theo gu</span>
+                      <span className="taste-filter-text">{t('taste_filter_nav_btn')}</span>
                     </button>
                   )}
                 </div>
@@ -1255,35 +1263,35 @@ export default function Home() {
                   }}
                   disabled={placeSpinning}
                 >
-                  Tất Cả Quán ({allPlaces.length})
+                  {t('place_cat_all')} ({allPlaces.length})
                 </button>
                 <button
                   className={`category-nav-tab ${placeCategory === 'an-chinh' ? 'active' : ''}`}
                   onClick={() => setPlaceCategory('an-chinh')}
                   disabled={placeSpinning}
                 >
-                  Quán Cơm & Bún Phở
+                  {t('place_cat_rice_noodles')}
                 </button>
                 <button
                   className={`category-nav-tab ${placeCategory === 'nhau-lau' ? 'active' : ''}`}
                   onClick={() => setPlaceCategory('nhau-lau')}
                   disabled={placeSpinning}
                 >
-                  Quán Nhậu & Lẩu Nướng
+                  {t('place_cat_pub_grill')}
                 </button>
                 <button
                   className={`category-nav-tab ${placeCategory === 'uong' ? 'active' : ''}`}
                   onClick={() => setPlaceCategory('uong')}
                   disabled={placeSpinning}
                 >
-                  Cafe & Đồ Uống
+                  {t('place_cat_cafe_drinks')}
                 </button>
                 <button
                   className={`category-nav-tab ${placeCategory === 'an-vat' ? 'active' : ''}`}
                   onClick={() => setPlaceCategory('an-vat')}
                   disabled={placeSpinning}
                 >
-                  Quán Ăn Vặt
+                  {t('place_cat_street_snacks')}
                 </button>
               </div>
 
@@ -1293,12 +1301,17 @@ export default function Home() {
                 <div className="session-filter-group">
                   <span className="control-label inline-flex items-center gap-1.5">
                     <Clock size={13} className="text-amber-400 shrink-0" />
-                    Khung giờ:
+                    {t('session_label')}
                   </span>
                   <div className="session-pills-wrap session-pills-6">
                     {MEAL_SESSIONS.map((s) => {
                       const isLive = s.id === liveSession;
                       const isSelected = placeSession === s.id;
+                      const sessionName = s.id === 'morning' ? t('session_morning')
+                        : s.id === 'noon' ? t('session_noon')
+                        : s.id === 'afternoon' ? t('session_afternoon')
+                        : s.id === 'evening' ? t('session_evening')
+                        : t('session_night');
                       return (
                         <button
                           key={s.id}
@@ -1306,10 +1319,10 @@ export default function Home() {
                           className={`session-pill-btn ${isSelected ? 'active' : ''}`}
                           onClick={() => setPlaceSession(s.id)}
                           disabled={placeSpinning}
-                          title={`${s.label} (${s.timeRange})`}
+                          title={`${sessionName} (${s.timeRange})`}
                         >
                           {isLive && <span className="live-gem-indicator mr-1.5" />}
-                          {s.label.replace('Buổi ', '')}
+                          {sessionName}
                         </button>
                       );
                     })}
@@ -1318,9 +1331,9 @@ export default function Home() {
                       className={`session-pill-btn ${placeSession === 'all' ? 'active' : ''}`}
                       onClick={() => setPlaceSession('all')}
                       disabled={placeSpinning}
-                      title="Tất cả các quán cả ngày"
+                      title={lang === 'en' ? 'All places all day' : 'Tất cả các quán cả ngày'}
                     >
-                      Cả ngày
+                      {t('session_all_day')}
                     </button>
                   </div>
                 </div>
@@ -1372,7 +1385,7 @@ export default function Home() {
           2. MOBILE DEDICATED APP DECK: Tinh gọn 1 màn hình, 1-chạm
           ======================================================== */}
       <div className="mobile-experience-deck">
-        {/* Row 1: Mode Segmented Pill Switcher + Mini Counter Pill */}
+        {/* Row 1: Mode Segmented Pill Switcher + Taste Filter Pill */}
         <div className="mobile-deck-top-row">
           <div className="mobile-mode-segmented">
             <button
@@ -1384,7 +1397,7 @@ export default function Home() {
               disabled={spinning || placeSpinning}
             >
               <UtensilsCrossed size={13} className={mainMode === 'dish' ? 'text-amber-400' : 'text-slate-400'} />
-              <span>Chọn Món</span>
+              <span>{t('mobile_mode_dishes')}</span>
             </button>
             <button
               type="button"
@@ -1395,9 +1408,32 @@ export default function Home() {
               disabled={spinning || placeSpinning}
             >
               <Store size={13} className={mainMode === 'place' ? 'text-amber-400' : 'text-slate-400'} />
-              <span>Chọn Quán</span>
+              <span>{t('mobile_mode_places')}</span>
             </button>
           </div>
+
+          {/* Taste Filter Button on Mobile: Balanced, Luxury & One-touch */}
+          {mainMode === 'dish' && (
+            <button
+              type="button"
+              className={`mobile-taste-filter-btn ${authUser?.isLoggedIn && authUser.filterByTaste !== false ? 'active' : ''}`}
+              onClick={handleToggleTasteFilter}
+              disabled={spinning}
+              title={authUser?.isLoggedIn 
+                ? (authUser.filterByTaste !== false 
+                    ? (lang === 'en' ? 'Taste Filter: Active' : 'Lọc theo gu: Đang BẬT') 
+                    : (lang === 'en' ? 'Taste Filter: Off' : 'Lọc theo gu: Đang TẮT'))
+                : (lang === 'en' ? 'Sign in to filter by taste' : 'Đăng nhập để lọc theo gu')}
+            >
+              <span className="mobile-taste-icon">🎯</span>
+              <span className="mobile-taste-label">
+                {authUser?.isLoggedIn 
+                  ? (authUser.filterByTaste !== false ? t('taste_mobile_on') : t('taste_mobile_off'))
+                  : t('taste_mobile_guest')}
+              </span>
+              <span className={`mobile-taste-dot ${authUser?.isLoggedIn && authUser.filterByTaste !== false ? 'active' : ''}`} />
+            </button>
+          )}
         </div>
 
         {/* ========================================================
@@ -1422,7 +1458,7 @@ export default function Home() {
                 disabled={spinning}
               >
                 <UtensilsCrossed size={12} className="shrink-0" />
-                <span>Món Ăn</span>
+                <span>{t('mobile_cat_food')}</span>
               </button>
               <button
                 type="button"
@@ -1438,7 +1474,7 @@ export default function Home() {
                 disabled={spinning}
               >
                 <Flame size={12} className="shrink-0 text-orange-400" />
-                <span>Kèo Nhậu</span>
+                <span>{t('mobile_cat_pub')}</span>
               </button>
               <button
                 type="button"
@@ -1454,7 +1490,7 @@ export default function Home() {
                 disabled={spinning}
               >
                 <Coffee size={12} className="shrink-0 text-sky-400" />
-                <span>Đồ Uống</span>
+                <span>{t('mobile_cat_drink')}</span>
               </button>
             </div>
 
@@ -1475,12 +1511,12 @@ export default function Home() {
                       onChange={e => setNhauSubFilter(e.target.value as any)}
                       disabled={spinning}
                       className="luxury-filter-trigger w-full mobile-select-clean"
-                      title="Chọn kèo nhậu"
+                      title={lang === 'en' ? 'Select pub style' : 'Chọn kèo nhậu'}
                     >
-                      <option value="all">🔥 Tất cả kèo nhậu</option>
-                      <option value="lau-nuong">🍲 Lẩu &amp; Nướng</option>
-                      <option value="oc-haisan">🐚 Ốc &amp; Hải sản</option>
-                      <option value="nhau-binh-dan">🍻 Nhậu bình dân</option>
+                      <option value="all">🔥 {t('pub_all')} ({t('today_pub')})</option>
+                      <option value="lau-nuong">🍲 {t('pub_hotpot_grill')}</option>
+                      <option value="oc-haisan">🐚 {t('pub_snails_seafood')}</option>
+                      <option value="nhau-binh-dan">🍻 {t('pub_casual')}</option>
                     </select>
                   </div>
                 ) : (
@@ -1490,12 +1526,12 @@ export default function Home() {
                       onChange={e => setDrinkSubFilter(e.target.value as any)}
                       disabled={spinning}
                       className="luxury-filter-trigger w-full mobile-select-clean"
-                      title="Chọn loại đồ uống"
+                      title={lang === 'en' ? 'Select drink type' : 'Chọn loại đồ uống'}
                     >
-                      <option value="all">☕ Tất cả đồ uống</option>
-                      <option value="cafe">☕ Cà phê</option>
-                      <option value="tra-sua">🧋 Trà sữa &amp; Trà</option>
-                      <option value="nuoc-ep">🍹 Nước ép &amp; Sinh tố</option>
+                      <option value="all">☕ {t('drink_all')} ({t('today_drink')})</option>
+                      <option value="cafe">☕ {t('drink_coffee')}</option>
+                      <option value="tra-sua">🧋 {t('drink_milktea')}</option>
+                      <option value="nuoc-ep">🍹 {t('drink_juice')}</option>
                     </select>
                   </div>
                 )}
@@ -1528,7 +1564,7 @@ export default function Home() {
                 }}
                 disabled={placeSpinning}
               >
-                <span>Tất Cả ({allPlaces.length})</span>
+                <span>{t('mobile_place_all')} ({allPlaces.length})</span>
               </button>
               <button
                 type="button"
@@ -1538,7 +1574,7 @@ export default function Home() {
                 }}
                 disabled={placeSpinning}
               >
-                <span>Cơm &amp; Phở</span>
+                <span>{t('mobile_place_rice_pho')}</span>
               </button>
               <button
                 type="button"
@@ -1549,7 +1585,7 @@ export default function Home() {
                 disabled={placeSpinning}
               >
                 <Flame size={11} className="text-orange-400 mr-0.5 inline" />
-                <span>Nhậu</span>
+                <span>{t('mobile_place_pub')}</span>
               </button>
               <button
                 type="button"
@@ -1560,7 +1596,7 @@ export default function Home() {
                 disabled={placeSpinning}
               >
                 <Coffee size={11} className="text-sky-400 mr-0.5 inline" />
-                <span>Cafe</span>
+                <span>{t('mobile_place_cafe')}</span>
               </button>
             </div>
 
@@ -1676,12 +1712,12 @@ export default function Home() {
                 {spinning ? (
                   <span className="flex items-center gap-2">
                     <RotateCw size={18} className="animate-spin" />
-                    ĐANG CHỌN MÓN…
+                    {t('spin_rolling_cta')}
                   </span>
                 ) : winnerFood ? (
-                  <span>QUAY TIẾP</span>
+                  <span>{t('spin_again_cta')}</span>
                 ) : (
-                  <span>QUAY CHỌN MÓN</span>
+                  <span>{t('spin_food_cta')}</span>
                 )}
               </button>
             </div>
@@ -1695,12 +1731,12 @@ export default function Home() {
                 {placeSpinning ? (
                   <span className="flex items-center gap-2">
                     <RotateCw size={18} className="animate-spin" />
-                    ĐANG CHỌN QUÁN…
+                    {t('spin_rolling_cta')}
                   </span>
                 ) : winnerPlace ? (
-                  <span>QUAY TIẾP</span>
+                  <span>{t('spin_again_cta')}</span>
                 ) : (
-                  <span>QUAY CHỌN QUÁN</span>
+                  <span>{t('spin_place_cta')}</span>
                 )}
               </button>
             </div>
@@ -1714,15 +1750,17 @@ export default function Home() {
             <div className="inventory-heading-row">
               <div className="inventory-title-col">
                 <h2>
-                  Trong kho có gì?{' '}
+                  {t('inventory_title')}{' '}
                   <span>
-                    {inventoryMode === 'unique' ? `${uniqueEligibleDishes.length} món độc bản` : `${eligibleItems.length} món`}
+                    {inventoryMode === 'unique' 
+                      ? `${uniqueEligibleDishes.length} ${lang === 'en' ? 'unique dishes' : 'món độc bản'}` 
+                      : `${eligibleItems.length} ${t('dishes_unit')}`}
                   </span>
                 </h2>
                 <span className="inventory-hint">
                   {inventoryMode === 'unique'
-                    ? 'Mỗi món đại diện 1 lần duy nhất (không trùng lặp) · Bấm vào món để xem các quán ở Xuân Hòa'
-                    : 'Hiển thị danh sách đầy đủ theo từng quán tại Xuân Hòa'}
+                    ? t('inventory_dish_desc_unique')
+                    : t('inventory_dish_desc_all')}
                 </span>
               </div>
 
@@ -1734,7 +1772,7 @@ export default function Home() {
                     className={`inventory-mode-btn ${inventoryMode === 'all' ? 'active-all' : ''}`}
                   >
                     <Layers size={13} className="shrink-0 text-amber-400" />
-                    <span>Tất cả món ({eligibleItems.length})</span>
+                    <span>{t('inventory_all_dishes')} ({eligibleItems.length})</span>
                   </button>
                   <button
                     type="button"
@@ -1742,7 +1780,7 @@ export default function Home() {
                     className={`inventory-mode-btn ${inventoryMode === 'unique' ? 'active-unique' : ''}`}
                   >
                     <Sparkles size={13} className="shrink-0 text-amber-400" />
-                    <span>Món độc bản ({uniqueEligibleDishes.length})</span>
+                    <span>{t('inventory_unique_dishes')} ({uniqueEligibleDishes.length})</span>
                   </button>
                 </div>
               </div>
@@ -1886,13 +1924,12 @@ export default function Home() {
             <div className="inventory-heading-row">
               <div className="inventory-title-col">
                 <h2>
-                  DANH SÁCH ĐỊA ĐIỂM XÁC THỰC <span>{displayedPlacesForInventory.length} quán</span>
+                  {t('inventory_place_title')} <span>{displayedPlacesForInventory.length} {lang === 'en' ? 'places' : 'quán'}</span>
                 </h2>
                 <span className="inventory-hint">
-                  Bấm vào quán để xem địa chỉ, hotline, Google Maps và thực đơn đầy đủ
+                  {t('inventory_place_desc')}
                 </span>
               </div>
-
             </div>
 
             <div className="places-grid">
@@ -2162,7 +2199,7 @@ export default function Home() {
   {mapToast && (
     <div className="map-dev-toast">
       <Map size={18} className="text-amber-400" />
-      <span>Bản đồ Số : Sắp ra mắt</span>
+      <span>{t('toast_map_title')}</span>
     </div>
   )}
 
@@ -2178,9 +2215,9 @@ export default function Home() {
         }} 
         title="Xuân Hòa Có Gì"
       >
-        XUÂN HÒA CÓ GÌ
+        {t('brand_domain')}<span>{t('brand_suffix')}</span>
       </a>
-      <p>Chuyên trị căn bệnh : &apos;&apos;Ăn gì cũng được&apos;&apos; !</p>
+      <p>{t('brand_tagline')}</p>
     </div>
     <div className="site-footer-links">
       <nav aria-label="Liên kết cuối trang">
@@ -2209,6 +2246,7 @@ export default function Home() {
     onOpenProfile={() => setIsUserProfileModalOpen(true)}
     authUser={authUser}
     level={profile.level}
+    lang={lang}
   />
     </div>
   );

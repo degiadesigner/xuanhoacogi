@@ -1,5 +1,14 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithCredential, signOut as fbSignOut, User } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithRedirect, 
+  getRedirectResult, 
+  signInWithCredential, 
+  signOut as fbSignOut, 
+  User 
+} from 'firebase/auth';
 import { firebaseConfig } from './firebase';
 
 export type UserResidentType = 'student_sp2' | 'student_other' | 'local' | 'worker' | 'tourist';
@@ -153,6 +162,12 @@ export function clearAuthUser(): void {
 
 export const GOOGLE_CLIENT_ID = "691215879950-nulp01gi8js5j1m9jno1ih86g98hj381.apps.googleusercontent.com";
 
+// Kiểm tra trình duyệt Chrome trên hệ điều hành iOS (CriOS)
+export function isChromeOnIos(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /CriOS/i.test(navigator.userAgent);
+}
+
 // Đảm bảo thư viện Google Identity Services (GIS) đã nạp xong
 export async function ensureGsiLoaded(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
@@ -173,6 +188,42 @@ export async function ensureGsiLoaded(): Promise<boolean> {
   });
 }
 
+// Kiểm tra kết quả chuyển hướng đăng nhập Google (dành cho Chrome iOS hoặc khi dùng redirect)
+export async function checkRedirectAuthResult(): Promise<UserAuthProfile | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    if (!firebaseConfig.apiKey) return null;
+    const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const result = await getRedirectResult(auth);
+    if (result && result.user) {
+      const u = result.user;
+      const existing = getStoredAuthUser();
+      const updated: UserAuthProfile = {
+        isLoggedIn: true,
+        uid: u.uid,
+        email: u.email || 'thuckhach@gmail.com',
+        displayName: u.displayName || u.email?.split('@')[0] || 'Thực khách',
+        nickname: existing?.nickname || u.displayName || u.email?.split('@')[0] || 'Thực khách',
+        gender: existing?.gender || 'male',
+        avatar: existing?.avatar || '🐭',
+        avatarId: existing?.avatarId || 'm_ty',
+        residentType: existing?.residentType || 'student_sp2',
+        tastePreferences: existing?.tastePreferences || ['lau_nuong', 'tra_sua'],
+        filterByTaste: existing?.filterByTaste ?? true,
+        photoURL: u.photoURL || undefined,
+        hasCompletedProfile: existing?.hasCompletedProfile || false,
+        createdAt: existing?.createdAt || Date.now(),
+      };
+      saveAuthUser(updated);
+      return updated;
+    }
+  } catch (err: any) {
+    console.warn('Lỗi kiểm tra getRedirectResult:', err?.message || err);
+  }
+  return null;
+}
+
 // Xử lý xác thực Google OAuth 2.0 chuẩn chỉ, mở cửa sổ Google thật để chọn Gmail và đồng ý kết nối
 export async function signInWithGoogleService(): Promise<{
   uid: string;
@@ -180,14 +231,26 @@ export async function signInWithGoogleService(): Promise<{
   displayName: string;
   photoURL?: string;
 }> {
-  // 1. Phương thức chính thức: Google Identity Services (GIS) OAuth 2.0 Client
-  // Mở trực tiếp màn hình chọn tài khoản Google thật (accounts.google.com), yêu cầu cấp quyền kết nối
+  // 1. Kiểm tra môi trường Chrome trên iOS (CriOS):
+  // Trên Chrome iOS, cơ chế mở popup cửa sổ ngoài bị trình duyệt cô lập khiến accounts.google.com bị trắng.
+  // Do đó, trên Chrome iOS bắt buộc kích hoạt signInWithRedirect chuyển hướng toàn trang chính thống của Google!
+  if (isChromeOnIos()) {
+    const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    await signInWithRedirect(auth, provider);
+    return new Promise(() => {}); // Chờ trình duyệt chuyển hướng
+  }
+
+  // 2. Với các trình duyệt khác (Cốc Cốc, Desktop Chrome, Safari, Android, Edge...):
+  // Ưu tiên Google Identity Services (GIS) - hiển thị popup chọn Gmail và cấp quyền tức thì (Đã hoạt động 100% trên Cốc Cốc)
   const gsiReady = await ensureGsiLoaded();
   const google = typeof window !== 'undefined' ? (window as any).google : null;
 
   if (gsiReady && google?.accounts?.oauth2) {
-    return new Promise((resolve, reject) => {
-      try {
+    try {
+      return await new Promise((resolve, reject) => {
         const client = google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
           scope: 'email profile openid',
@@ -235,27 +298,29 @@ export async function signInWithGoogleService(): Promise<{
 
         // Bật cửa sổ chọn tài khoản Gmail thật của Google và cấp quyền kết nối
         client.requestAccessToken({ prompt: 'select_account' });
-      } catch (clientErr) {
-        reject(clientErr);
+      });
+    } catch (popupErr: any) {
+      console.warn('GIS popup failed, falling back to redirect:', popupErr);
+      if (firebaseConfig.apiKey) {
+        const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        await signInWithRedirect(auth, provider);
+        return new Promise(() => {});
       }
-    });
+      throw popupErr;
+    }
   }
 
-  // 2. Phương thức phụ trợ: Firebase signInWithPopup
+  // 3. Phương thức phụ trợ: Firebase signInWithRedirect
   if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 5) {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    
-    const result = await signInWithPopup(auth, provider);
-    const user = result.user;
-    return {
-      uid: user.uid,
-      email: user.email || 'thuckhach@gmail.com',
-      displayName: user.displayName || user.email?.split('@')[0] || 'Thực khách',
-      photoURL: user.photoURL || undefined,
-    };
+    await signInWithRedirect(auth, provider);
+    return new Promise(() => {});
   }
 
   throw new Error('Chưa thể kết nối tới máy chủ Google OAuth');

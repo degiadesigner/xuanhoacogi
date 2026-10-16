@@ -57,7 +57,7 @@ import { GourmetScoreboardModal } from '@/components/GourmetScoreboardModal';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/lib/i18n';
 import { saveFoodHistoryItem } from '@/lib/food-history';
-import { getStoredAuthUser, saveAuthUser, clearAuthUser, UserAuthProfile } from '@/lib/auth';
+import { getStoredAuthUser, saveAuthUser, clearAuthUser, UserAuthProfile, checkRedirectAuthResult } from '@/lib/auth';
 import { GlobalSpinCounter } from '@/components/GlobalSpinCounter';
 import { useGlobalSpinCounter } from '@/hooks/use-global-spin-counter';
 import { getDishRatingSummary } from '@/lib/reviews-storage';
@@ -120,6 +120,17 @@ export default function Home() {
   const { lang, changeLanguage, t } = useI18n();
 
   useEffect(() => {
+    // Kiểm tra kết quả chuyển hướng từ Google (dành cho Chrome iOS hoặc đăng nhập bằng Redirect)
+    checkRedirectAuthResult().then((user) => {
+      if (user) {
+        setAuthUser(user);
+        if (!user.hasCompletedProfile) {
+          setAuthModalStep(2);
+          setIsAuthModalOpen(true);
+        }
+      }
+    });
+
     const handleAuthChange = (e: any) => {
       setAuthUser(e.detail !== undefined ? e.detail : getStoredAuthUser());
     };

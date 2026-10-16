@@ -7609,7 +7609,403 @@ export const phongVietDishes: Food[] = [
   },
 ];
 
+// ============================================================================
+// NEM NƯỚNG 88 - NEM NƯỚNG NHA TRANG (KI ỐT 4 NGUYỄN VĂN LINH)
+// Hotline: 0385 787 064 • Giờ bán: 10h30 - 12h30 trưa & 17h00 - 22h00 tối
+// ============================================================================
+export const nemNuong88Dishes: Food[] = [
+  // 1. Nem nướng Nha Trang suất mẹt đầy đủ (30k) - Bestseller
+  {
+    name: 'Nem nướng Nha Trang',
+    sub: 'Mẹt nem nướng than hoa, ram giòn, bún tươi, sốt tương đậu nếp béo ngậy 30k • Nem Nướng 88 Ki ốt 4 Nguyễn Văn Linh',
+    price: 30,
+    image: -3501,
+    customId: 'dish_nem_nuong_88',
+    customImage: 'ai_studio_dish_nem_nuong_88.jpg',
+    rarity: 1,
+    quip: 'Mẹt nem nướng Nha Trang 30k/suất đầy đặn: Nem lụi nướng than hoa thơm lừng xèo xèo, ram chiên giòn rụm, dưa chuột, xoài non, cà rốt chua, bún tươi, bánh tráng mềm dai và bát nước sốt tương đậu nếp gan thịt béo ngậy ấm nóng ngập hành phi.',
+  },
+  // 2. Bún trộn nem nướng (30k/suất) - Món mới
+  {
+    name: 'Bún trộn nem nướng',
+    sub: 'Tô bún tươi, nem nướng than hoa xắt lát, ram giòn, xoài dưa, đậu phộng sốt tương đậu 30k • Nem Nướng 88 Ki ốt 4 Nguyễn Văn Linh',
+    price: 30,
+    image: -3502,
+    customId: 'dish_nem_nuong_88_bun_tron',
+    customImage: 'ai_studio_dish_nem_nuong_88_bun_tron.jpg',
+    rarity: 1,
+    quip: 'Tô bún trộn nem nướng Nha Trang 30k đầy đặn thơm nức: Bún tươi mềm dai, nem nướng than hoa vàng ươm xắt lát, ram giòn rụm, xoài xanh dưa leo bùi ngậy quyện cùng sốt tương đậu phộng sền sệt.',
+  },
+  // 3. Xúc xích chiên / nướng (8k/chiếc)
+  {
+    name: 'Xúc xích',
+    sub: 'Xúc xích chiên nóng hổi vỏ giòn sần sật 8k/chiếc ăn kèm chấm tương ớt • Nem Nướng 88 Ki ốt 4 Nguyễn Văn Linh',
+    price: 8,
+    image: -3503,
+    customId: 'dish_nem_nuong_88_xuc_xich',
+    customImage: 'ai_studio_dish_zun_xuc_xich.jpg',
+    rarity: 0,
+    quip: 'Xúc xích chiên nóng hổi thơm ngon vỏ giòn sần sật chỉ 8k/chiếc ăn kèm tương ớt cay ngọt.',
+  },
+  // 4. Trà chanh (10k/cốc)
+  {
+    name: 'Trà chanh',
+    sub: 'Trà chanh tươi mát lạnh chua thanh dịu ngọt 10k/cốc • Nem Nướng 88 Ki ốt 4 Nguyễn Văn Linh',
+    price: 10,
+    image: -3504,
+    customId: 'dish_nem_nuong_88_tra_chanh',
+    customImage: 'ai_studio_dish_bt55_tra_chanh.jpg',
+    rarity: 0,
+    quip: 'Cốc trà chanh tươi mát lạnh chỉ 10k giải nhiệt cực sảng khoái khi thưởng thức nem nướng.',
+  },
+  // 5. Trà quất (10k/cốc)
+  {
+    name: 'Trà quất',
+    sub: 'Trà quất thơm lừng chua ngọt mát lành 10k/cốc • Nem Nướng 88 Ki ốt 4 Nguyễn Văn Linh',
+    price: 10,
+    image: -3505,
+    customId: 'dish_nem_nuong_88_tra_quat',
+    customImage: 'ai_studio_dish_linhduong_tra_quat.jpg',
+    rarity: 0,
+    quip: 'Cốc trà quất tươi thơm nức mũi vị chua ngọt đậm đà 10k giải ngấy chuẩn bài.',
+  },
+  // 6. Sữa đậu (10k/cốc)
+  {
+    name: 'Sữa đậu',
+    sub: 'Sữa đậu nành béo ngậy thơm mát 10k/cốc • Nem Nướng 88 Ki ốt 4 Nguyễn Văn Linh',
+    price: 10,
+    image: -3506,
+    customId: 'dish_nem_nuong_88_sua_dau',
+    customImage: 'ai_studio_dish_bepnhabong_sua_dau.jpg',
+    rarity: 0,
+    quip: 'Cốc sữa đậu nành sánh thơm béo bùi 10k bổ dưỡng ấm bụng hoặc uống đá mát lạnh.',
+  },
+];
+
+// ============================================================================
+// 1. LẨU THÁI HÀ TĨNH (13 TRƯNG NHỊ, PHÚC YÊN - SÁT BÚN ĐẬU CÔ LAN)
+// Hotline: 0977 732 021 - 0357 556 375 • Mở cửa 9h00 - 22h30 (Điều hòa mát lạnh)
+// ============================================================================
+export const lauThaiHaTinhDishes: Food[] = [
+  {
+    name: 'Ngan cháy tỏi gia truyền',
+    sub: 'Ngan cháy tỏi 200k vàng óng ngập tỏi phi giòn rụm bùi ngậy sốt cay tê • Lẩu Thái Hà Tĩnh 13 Trưng Nhị Phúc Yên',
+    price: 200,
+    image: -3601,
+    customId: 'dish_ltht_ngan_chay_toi',
+    customImage: 'ai_studio_dish_ngan_chay_toi_ha_tinh.jpg',
+    rarity: 2,
+    quip: 'Đĩa ngan cháy tỏi 200k vàng óng thơm lừng ngập tỏi phi, thịt ngan dày ngọt mềm da giòn sần sật chấm sốt cay tê đặc biệt.',
+  },
+  {
+    name: 'Bún mì thái hải sản',
+    sub: 'Tô bún mì nước Tomyum chua cay tôm mực bò nấm kim châm 40k • Lẩu Thái Hà Tĩnh 13 Trưng Nhị Phúc Yên',
+    price: 40,
+    image: -3602,
+    customId: 'dish_ltht_bun_mi_thai_hai_san',
+    customImage: 'ai_studio_dish_bun_mi_thai_ha_tinh.jpg',
+    rarity: 1,
+    quip: 'Bát bún mì thái hải sản 40k nước Tomyum chua cay đậm đà, tôm tươi, mực, bò nấm kim châm rau muống giòn mát.',
+  },
+  {
+    name: 'Bún miến ngan trộn',
+    sub: 'Thịt ngan mềm ngọt, măng giòn lạc rang hành phi sốt chua ngọt 40k • Lẩu Thái Hà Tĩnh 13 Trưng Nhị Phúc Yên',
+    price: 40,
+    image: -3603,
+    customId: 'dish_ltht_bun_mien_ngan_tron',
+    customImage: 'ai_studio_dish_ba_thu_bun_cha.jpg',
+    rarity: 0,
+    quip: 'Bún miến ngan trộn đẫm sốt chua ngọt, thịt ngan thơm mềm đậm đà ăn trưa cực cuốn.',
+  },
+  {
+    name: 'Bún mì thái tim cật',
+    sub: 'Tim cật tươi giòn sần sật béo ngậy nước Tomyum chua cay 45k • Lẩu Thái Hà Tĩnh 13 Trưng Nhị Phúc Yên',
+    price: 45,
+    image: -3604,
+    customId: 'dish_ltht_bun_mi_thai_tim_cat',
+    customImage: 'ai_studio_dish_bun_mi_thai_ha_tinh.jpg',
+    rarity: 1,
+    quip: 'Bún mì thái tim cật thơm phức bổ dưỡng nước dùng cay chua ngọt thanh.',
+  },
+  {
+    name: 'Bún mì thái full topping',
+    sub: 'Đầy đặn hải sản tôm mực, bò, tim cật, nấm kim châm 50k • Lẩu Thái Hà Tĩnh 13 Trưng Nhị Phúc Yên',
+    price: 50,
+    image: -3605,
+    customId: 'dish_ltht_bun_mi_thai_full',
+    customImage: 'ai_studio_dish_bun_mi_thai_ha_tinh.jpg',
+    rarity: 1,
+    quip: 'Bát bún mì thái đặc biệt ngập tràn tôm mực bò tim cật nấm kim châm.',
+  },
+  {
+    name: 'Lẩu thái gia truyền',
+    sub: 'Set lẩu thái hải sản ba chỉ bò Mỹ nấm rau lẩu tươi roi rói 400k • Lẩu Thái Hà Tĩnh 13 Trưng Nhị Phúc Yên',
+    price: 400,
+    image: -3606,
+    customId: 'dish_ltht_lau_thai',
+    customImage: 'ai_studio_dish_pv_lau_thai_tomyum.jpg',
+    rarity: 2,
+    quip: 'Nồi lẩu thái chua cay gia truyền 400k-500k-600k ngập tràn hải sản bò Mỹ, sụn và nấm.',
+  },
+];
+
+// ============================================================================
+// 2. HI TEA - TRÀ & MỲ CAY 7 CẤP ĐỘ (KHU ĐHSP2 XUÂN HÒA)
+// Hotline: 0968 373 123 • Mở cửa 9h00 - 23h00
+// ============================================================================
+export const hiTeaDishes: Food[] = [
+  {
+    name: 'Lẩu cô đơn',
+    sub: 'Nồi lẩu mini 1 người sôi ùng ục tôm, bò ba chỉ, xúc xích, nấm bắp 69k • Hi Tea ĐHSP2 Xuân Hòa',
+    price: 69,
+    image: -3611,
+    customId: 'dish_hitea_lau_co_don',
+    customImage: 'ai_studio_dish_lau_co_don_hitea.jpg',
+    rarity: 1,
+    quip: 'Nồi lẩu cô đơn mini 69k đầy đặn tôm, ba chỉ bò Mỹ, cá viên xúc xích nấm kim châm nước tomyum ấm nóng.',
+  },
+  {
+    name: 'Mỳ cay bò 7 cấp độ Hi Tea',
+    sub: 'Thố mỳ cay sợi Hàn Quốc bò tươi kim chi nấm kim châm 45k • Hi Tea ĐHSP2 Xuân Hòa',
+    price: 45,
+    image: -3612,
+    customId: 'dish_hitea_my_cay_bo',
+    customImage: 'ai_studio_dish_coloan_mi_cay_bo.jpg',
+    rarity: 1,
+    quip: 'Thố mỳ cay bò 7 cấp độ nghi ngút khói ngập thịt bò tươi, kim chi chua cay ấm bụng.',
+  },
+  {
+    name: 'Mỳ cay thập cẩm Hi Tea',
+    sub: 'Full topping tôm, mực, bò, xúc xích, cá viên thả lẩu 55k • Hi Tea ĐHSP2 Xuân Hòa',
+    price: 55,
+    image: -3613,
+    customId: 'dish_hitea_my_cay_thap_cam',
+    customImage: 'ai_studio_dish_canteen_my_cay_xuc_xich.jpg',
+    rarity: 1,
+    quip: 'Thố mỳ cay đặc biệt đầy ắp tôm mực bò xúc xích viên chiên ngập tràn gia vị đậm đà.',
+  },
+  {
+    name: 'Hồng trà kem cheese Hi Tea',
+    sub: 'Hồng trà đậm vị phủ lớp kem cheese mặn béo sánh ngậy 35k • Hi Tea ĐHSP2 Xuân Hòa',
+    price: 35,
+    image: -3614,
+    customId: 'dish_hitea_hong_tra_kem_cheese',
+    customImage: 'ai_studio_dish_tra_chanh_sieu_to_zian.jpg',
+    rarity: 0,
+    quip: 'Hồng trà thơm nồng lớp kem cheese mặn béo ngậy dày mịn sánh thơm.',
+  },
+  {
+    name: 'Tokbokki Hi Tea',
+    sub: 'Bánh gạo mềm dẻo sốt tương ớt Hàn Quốc cay ngọt rắc mè 40k • Hi Tea ĐHSP2 Xuân Hòa',
+    price: 40,
+    image: -3615,
+    customId: 'dish_hitea_tokbokki',
+    customImage: 'ai_studio_dish_zun_tokbokki.jpg',
+    rarity: 0,
+    quip: 'Bánh gạo tokbokki dai mềm đẫm sốt tương ớt Hàn Quốc cay ngọt bùi béo.',
+  },
+  {
+    name: 'Khoai tây chiên phô mai Hi Tea',
+    sub: 'Khoai tây giòn tan lắc đẫm bột phô mai béo ngậy ngọt bùi 30k • Hi Tea ĐHSP2 Xuân Hòa',
+    price: 30,
+    image: -3616,
+    customId: 'dish_hitea_khoai_tay_pho_mai',
+    customImage: 'ai_studio_dish_zun_xuc_xich.jpg',
+    rarity: 0,
+    quip: 'Khoai tây chiên giòn tan lắc đẫm bột phô mai thơm phức ăn vặt cực vui miệng.',
+  },
+];
+
+// ============================================================================
+// 3. ĂN VẶT NHÀ PHƯƠNG (KHU ẨM THỰC ĐHSP2 XUÂN HÒA)
+// Hotline: 0339 732 996 • Ngon giòn - Nóng hổi - Ăn là ghiền!
+// ============================================================================
+export const anVatNhaPhuongDishes: Food[] = [
+  {
+    name: 'Gà viên sốt kem hành Nhà Phương',
+    sub: 'Gà viên chiên giòn rụm ngập sốt kem béo ngậy ngọt dịu rắc hành hoa tươi 60k • Ăn Vặt Nhà Phương ĐHSP2',
+    price: 60,
+    image: -3621,
+    customId: 'dish_np_ga_vien_kem_hanh',
+    customImage: 'ai_studio_dish_ga_vien_sot_kem_hanh_nhaphuong.jpg',
+    rarity: 1,
+    quip: 'Gà viên chiên vàng giòn rụm đẫm sốt kem hành béo ngọt ngậy phủ hành lá thơm nức mũi.',
+  },
+  {
+    name: 'Gà viên sốt mắm tỏi Nhà Phương',
+    sub: 'Gà viên giòn rụm quyện sốt mắm tỏi ớt cay cay mặn ngọt đậm đà 55k • Ăn Vặt Nhà Phương ĐHSP2',
+    price: 55,
+    image: -3622,
+    customId: 'dish_np_ga_vien_mam_toi',
+    customImage: 'ai_studio_dish_ga_vien_lac_rong_bien_mr_tea.jpg',
+    rarity: 1,
+    quip: 'Gà viên sốt mắm tỏi thơm lừng đậm đà mặn ngọt bắt miệng ăn hoài không ngán.',
+  },
+  {
+    name: 'Cơm gà Nhà Phương',
+    sub: 'Cơm gà vàng ươm đùi gà chiên mắm đậm đà trứng ốp dưa góp 45k • Ăn Vặt Nhà Phương ĐHSP2',
+    price: 45,
+    image: -3623,
+    customId: 'dish_np_com_ga',
+    customImage: 'dish_coloan_com_ga_vien.webp',
+    rarity: 0,
+    quip: 'Suất cơm gà hạt tơi vàng ươm kèm đùi gà chiên sốt đậm đà, trứng ốp la béo ngậy no căng.',
+  },
+  {
+    name: 'Khoai tím phô mai Nhà Phương',
+    sub: 'Khoai môn tím chiên phồng bọc phô mai mozzarella kéo sợi béo ngậy 60k/12v • Ăn Vặt Nhà Phương ĐHSP2',
+    price: 60,
+    image: -3624,
+    customId: 'dish_np_khoai_tim_pho_mai',
+    customImage: 'ai_studio_dish_zun_tokbokki.jpg',
+    rarity: 0,
+    quip: 'Bánh khoai tím phô mai chiên xù vàng vỏ trong dẻo béo kéo sợi thơm phức.',
+  },
+  {
+    name: 'Nem chua rán Nhà Phương',
+    sub: 'Mẹt 10 nem chua rán bột xù giòn tan chấm tương ớt cay nồng 80k • Ăn Vặt Nhà Phương ĐHSP2',
+    price: 80,
+    image: -3625,
+    customId: 'dish_np_nem_chua_ran',
+    customImage: 'ai_studio_dish_zun_nem_chua_ran.jpg',
+    rarity: 0,
+    quip: 'Nem chua rán tẩm bột chiên xù nóng hổi giòn rụm 10 chiếc chấm tương ớt cay cay.',
+  },
+  {
+    name: 'Bánh bột lọc Nhà Phương',
+    sub: 'Đĩa 20 chiếc bánh bột lọc trong veo nhân tôm thịt đậm đà chấm mắm 90k • Ăn Vặt Nhà Phương ĐHSP2',
+    price: 90,
+    image: -3626,
+    customId: 'dish_np_banh_bot_loc',
+    customImage: 'ai_studio_dish_ba_thu_bun_cha.jpg',
+    rarity: 0,
+    quip: 'Bánh bột lọc vỏ dẻo dai trong veo nhân tôm thịt rim mặn ngọt chấm nước mắm ớt thơm lừng.',
+  },
+];
+
+// ============================================================================
+// 4. ZINO - CÀ PHÊ ĐẬM VỊ (266 NGUYỄN VĂN LINH, XUÂN HÒA)
+// Hotline: 0964 060 718 (Tạ Khánh Nhi) • Mở cửa 7h30 - 23h00
+// ============================================================================
+export const zinoCafeDishes: Food[] = [
+  {
+    name: 'Trà mãng cầu dâu tằm Zino',
+    sub: 'Trà trái cây dâu tằm đỏ tím ruby thịt mãng cầu xiêm tươi giòn ngọt 30k • Zino 266 Nguyễn Văn Linh',
+    price: 30,
+    image: -3631,
+    customId: 'dish_zino_tra_mang_cau_dau_tam',
+    customImage: 'ai_studio_dish_tra_mang_cau_dau_tam_zino.jpg',
+    rarity: 1,
+    quip: 'Ly trà dâu tằm mãng cầu sắc tím ruby phân tầng tuyệt đẹp, chua ngọt thanh mát giải nhiệt đỉnh cao.',
+  },
+  {
+    name: 'Cà phê muối đậm vị Zino',
+    sub: 'Cà phê phin truyền thống đậm đà lớp kem muối béo ngậy mặn ngọt sánh mịn 25k • Zino 266 Nguyễn Văn Linh',
+    price: 25,
+    image: -3632,
+    customId: 'dish_zino_cafe_muoi',
+    customImage: 'ai_studio_dish_cafe_muoi_le_la.jpg',
+    rarity: 1,
+    quip: 'Cà phê muối đậm đà tinh túy hạt cafe rang mộc phủ kem muối béo mặn sánh mịn đặc sản Zino.',
+  },
+  {
+    name: 'Hồng trà Shan Tuyết Zino',
+    sub: 'Trà cổ thụ Shan Tuyết hương hoa thanh tao ngọt sâu hậu vị 35k • Zino 266 Nguyễn Văn Linh',
+    price: 35,
+    image: -3633,
+    customId: 'dish_zino_hong_tra_shan_tuyet',
+    customImage: 'ai_studio_dish_bt55_tra_chanh.jpg',
+    rarity: 1,
+    quip: 'Trà Shan Tuyết cổ thụ hương vị thanh khiết tự nhiên, hậu vị ngọt sâu lưu luyến.',
+  },
+  {
+    name: 'Matcha kem muối Zino',
+    sub: 'Matcha thơm nồng lớp kem béo mặn sánh mịn hấp dẫn 30k • Zino 266 Nguyễn Văn Linh',
+    price: 30,
+    image: -3634,
+    customId: 'dish_zino_matcha_kem_muoi',
+    customImage: 'ai_studio_dish_tra_chanh_sieu_to_zian.jpg',
+    rarity: 1,
+    quip: 'Matcha đậm đà thơm béo kết hợp lớp kem mặn sánh mịn bồng bềnh.',
+  },
+  {
+    name: 'Hồng trà pudding đậu đỏ Zino',
+    sub: 'Hồng trà đậm vị kèm pudding trứng mềm mướt đậu đỏ bùi ngọt 40k • Zino 266 Nguyễn Văn Linh',
+    price: 40,
+    image: -3635,
+    customId: 'dish_zino_hong_tra_pudding_dau_do',
+    customImage: 'ai_studio_dish_tra_chanh_sieu_to_zian.jpg',
+    rarity: 0,
+    quip: 'Hồng trà thanh đậm kết hợp topping pudding béo mướt và hạt đậu đỏ bổ dưỡng.',
+  },
+];
+
+// ============================================================================
+// 5. UMEE TEA & FOOD (LẬP TRÍ - KIM ANH, PHÚC YÊN / SÓC SƠN)
+// Hotline: 0377 907 916 - 0368 743 735 • Mở cửa 9h00 - 01h00 đêm
+// ============================================================================
+export const umeeTeaFoodDishes: Food[] = [
+  {
+    name: 'Ốc xào măng đậu Umee',
+    sub: 'Đĩa ốc xào măng chua giòn cay nồng lá lốt tía tô đậu rán vàng 35k • Umee Tea & Food Lập Trí Kim Anh',
+    price: 35,
+    image: -3641,
+    customId: 'dish_umee_oc_xao_mang_dau',
+    customImage: 'ai_studio_dish_oc_xao_mang_dau_umee.jpg',
+    rarity: 1,
+    quip: 'Đĩa ốc xào măng chua cay nồng đậm đà giòn sần sật quyện đậu rán thơm nức mũi lá lốt tía tô.',
+  },
+  {
+    name: 'Cút lộn xào me măng đậu Umee',
+    sub: 'Cút lộn sốt me chua ngọt đậm đà măng giòn đậu rán béo ngậy 40k • Umee Tea & Food Lập Trí Kim Anh',
+    price: 40,
+    image: -3642,
+    customId: 'dish_umee_cut_lon_xao_me',
+    customImage: 'ai_studio_dish_oc_xao_mang_dau_umee.jpg',
+    rarity: 1,
+    quip: 'Trứng cút lộn xào sốt me chua cay ngọt bùi ngấm đẫm măng củ và đậu rán béo ngậy.',
+  },
+  {
+    name: 'Mì cay bò Umee',
+    sub: 'Thố mì cay sợi Hàn Quốc thịt bò tươi nấm kim châm cay nồng 40k • Umee Tea & Food Lập Trí Kim Anh',
+    price: 40,
+    image: -3643,
+    customId: 'dish_umee_my_cay_bo',
+    customImage: 'ai_studio_dish_coloan_mi_cay_bo.jpg',
+    rarity: 1,
+    quip: 'Thố mì cay bò niêu đất nóng hổi sôi sùng sục cứu đói đêm muộn cực đã.',
+  },
+  {
+    name: 'Oolong Phong Lan Umee',
+    sub: 'Trà Oolong ướp hương hoa phong lan thanh tao ngọt hậu mát lành 30k • Umee Tea & Food Lập Trí Kim Anh',
+    price: 30,
+    image: -3644,
+    customId: 'dish_umee_oolong_phong_lan',
+    customImage: 'ai_studio_dish_bt55_tra_chanh.jpg',
+    rarity: 1,
+    quip: 'Trà Oolong thơm dịu hương hoa phong lan quý phái, vị trà ngọt thanh dễ chịu.',
+  },
+  {
+    name: 'Trà sữa gạo rang Umee',
+    sub: 'Trà sữa hương gạo rang Genmaicha Nhật Bản béo bùi độc đáo 30k • Umee Tea & Food Lập Trí Kim Anh',
+    price: 30,
+    image: -3645,
+    customId: 'dish_umee_tra_sua_gao_rang',
+    customImage: 'ai_studio_dish_tra_chanh_sieu_to_zian.jpg',
+    rarity: 0,
+    quip: 'Trà sữa gạo rang thơm nồng đậm đà béo ngậy thanh tao uống là mê.',
+  },
+];
+
 export const anGiFoods: Food[] = [
+  lauThaiHaTinhDishes[0],     // BESTSELLER LẨU THÁI HÀ TĨNH: Ngan cháy tỏi 200k (13 Trưng Nhị)
+  lauThaiHaTinhDishes[1],     // LẨU THÁI HÀ TĨNH: Bún mì thái hải sản 40k
+  anVatNhaPhuongDishes[0],    // BESTSELLER ĂN VẶT NHÀ PHƯƠNG: Gà viên sốt kem hành 60k
+  hiTeaDishes[0],             // BESTSELLER HI TEA: Lẩu cô đơn 69k
+  zinoCafeDishes[0],          // BESTSELLER ZINO: Trà mãng cầu dâu tằm 30k
+  umeeTeaFoodDishes[0],       // BESTSELLER UMEE: Ốc xào măng đậu 35k
+  nemNuong88Dishes[0],        // BESTSELLER NEM NƯỚNG 88: Nem nướng Nha Trang 30k (Ki ốt 4 NVL)
+  nemNuong88Dishes[1],        // MÓN MỚI NEM NƯỚNG 88: Bún trộn nem nướng 30k (Ki ốt 4 NVL)
   phongVietDishes[0],         // BESTSELLER LẨU NƯỚNG PHONG VIỆT: Combo nướng chảo gang xì xèo 350k
   phongVietDishes[1],         // BESTSELLER LẨU NƯỚNG PHONG VIỆT: Lẩu ếch măng cay 350k
   phongVietDishes[2],         // BESTSELLER LẨU NƯỚNG PHONG VIỆT: Lẩu Thái Tomyum hải sản 400k
@@ -7726,6 +8122,17 @@ export const anGiFoods: Food[] = [
   ...seoulAnGiItems,
   ...anVatSpecialItems,
   ...rubyAnVatItems,
+  // Món thứ 320 cân đối tròn trịa chuẩn 64 hàng x 5 cột
+  {
+    name: 'Bánh mì chảo đặc biệt sốt vang',
+    sub: 'Bánh mì giòn rụm chấm chảo sốt vang bò gân mềm thơm nức mũi • Xuân Hòa Quán',
+    price: 35,
+    image: -8899,
+    customId: 'dish_banh_mi_chao_sot_vang_xh',
+    customImage: 'ai_studio_dish_banh_mi_ha_ben_xe.jpg',
+    rarity: 1,
+    quip: 'Chảo bánh mì xèo xèo sốt vang bò mềm ngậy, trứng ốp la lòng đào và pate béo bùi ăn kèm bánh mì nóng giòn.',
+  },
 ];
 
 // ============================================================================
@@ -8122,6 +8529,18 @@ export const sanBia247Items: Food[] = [
     rarity: 0,
     quip: 'Đậu mơ mềm ngậy béo ngậy rim đẫm sốt cà chua mắm hành, điểm xuyết tóp mỡ chiên giòn rụm đưa cơm.',
   },
+  // 16. Lẩu riêu cua bắp bò sườn sụn (350k) - Cân đối tròn 320 món
+  {
+    name: 'Lẩu riêu cua bắp bò sườn sụn',
+    sub: 'Nước lẩu riêu cua đồng thanh ngọt, bắp bò hoa và sườn sụn giòn sần sật • Sân Bia 247',
+    price: 350,
+    image: -795,
+    customId: 'dish_sb247_lau_rieu_cua_bap_bo',
+    customImage: 'ai_studio_dish_sb247_ca_chep_om_dua.jpg',
+    rarity: 3,
+    quip: 'Nồi lẩu riêu cua thơm nức mùi dấm bỗng, riêu cua vàng óng béo ngậy nhúng cùng bắp bò tươi thái mỏng ngọt lịm.',
+  },
+
   // 15. Cá chép om dưa (399k)
   {
     name: 'Cá chép sông om dưa chua',
@@ -9184,7 +9603,25 @@ export function getDishConceptKey(food: Food): string {
   if (name.includes('chè dừa dầm')) return 'che-dua-dam';
   if (name.includes('sữa chua') && name.includes('xuân mai')) return 'sua-chua-xuan-mai';
   if (name.includes('chè')) return 'che';
-  if (name.includes('buffet nem nướng') || name.includes('buffet nem')) return 'buffet-nem-nuong';
+  if (name.includes('ngan cháy tỏi')) return 'ltht-ngan-chay-toi';
+  if (name.includes('bún mì thái') || name.includes('mì thái')) return 'ltht-bun-mi-thai';
+  if (name.includes('bún miến ngan') || name.includes('miến ngan')) return 'ltht-bun-mien-ngan';
+  if (name.includes('lẩu cô đơn')) return 'hitea-lau-co-don';
+  if (name.includes('gà viên sốt kem hành') || name.includes('kem hành')) return 'np-ga-vien-kem-hanh';
+  if (name.includes('khoai tím phô mai') || name.includes('khoai tím')) return 'np-khoai-tim-pho-mai';
+  if (name.includes('trà mãng cầu dâu tằm') || name.includes('mãng cầu dâu tằm')) return 'zino-tra-mang-cau-dau-tam';
+  if (name.includes('hồng trà shan tuyết') || name.includes('shan tuyết')) return 'zino-hong-tra-shan-tuyet';
+  if (name.includes('matcha kem muối')) return 'zino-matcha-kem-muoi';
+  if (name.includes('ốc xào măng đậu') || name.includes('ốc xào măng')) return 'umee-oc-xao-mang-dau';
+  if (name.includes('cút lộn xào me')) return 'umee-cut-lon-xao-me';
+  if (name.includes('oolong phong lan') || name.includes('phong lan')) return 'umee-oolong-phong-lan';
+  if (name.includes('trà sữa gạo rang') || name.includes('gạo rang')) return 'umee-tra-sua-gao-rang';
+  if (name.includes('bún trộn nem nướng') && (name.includes('88') || (food.sub && food.sub.includes('88')))) return 'nem-nuong-88-bun-tron';
+  if (name.includes('xúc xích') && food.sub && food.sub.includes('Nem Nướng 88')) return 'nem-nuong-88-xuc-xich';
+  if (name.includes('trà chanh') && food.sub && food.sub.includes('Nem Nướng 88')) return 'nem-nuong-88-tra-chanh';
+  if (name.includes('trà quất') && food.sub && food.sub.includes('Nem Nướng 88')) return 'nem-nuong-88-tra-quat';
+  if (name.includes('sữa đậu') && food.sub && food.sub.includes('Nem Nướng 88')) return 'nem-nuong-88-sua-dau';
+  if (name.includes('nem nướng') && (name.includes('88') || (food.sub && food.sub.includes('Nem Nướng 88')))) return 'nem-nuong-88';
   if (name.includes('ram bắp')) return 'ram-bap';
   if (name.includes('nem lụi') || name.includes('nem nướng')) return 'nem-lui';
   if (name.includes('nem chua rán')) return 'nem-chua-ran';

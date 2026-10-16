@@ -147,123 +147,99 @@ export function PlacesCatalogView({
 
         {/* Compact, Integrated Search & Filter Controls */}
         <div className="catalog-controls-bar">
-          {/* Search Input */}
-          <div className="catalog-search-box">
-            <Search size={16} className="search-box-icon text-amber-400" />
-            <input
-              type="search"
-              className="search-box-input"
-              placeholder="Tìm quán, tên đường hoặc món tủ... (VD: Cuốn Mộc, Ốc 2000, Ruby, Mẹ Tít, Nguyễn Văn Linh...)"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button className="search-box-clear" onClick={() => setSearchQuery('')} title="Xóa tìm kiếm">
-                ×
-              </button>
-            )}
-          </div>
-
-          {/* Filter Pills & Selects */}
-          <div className="catalog-controls-row">
-            {/* Style Pills */}
-            <div className="category-pill-group">
-              <button
-                className={`cat-pill ${styleFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setStyleFilter('all')}
-              >
-                Tất Cả ({counts.all})
-              </button>
-              <button
-                className={`cat-pill ${styleFilter === 'an-chinh' ? 'active' : ''}`}
-                onClick={() => setStyleFilter('an-chinh')}
-              >
-                <Utensils size={13} className="inline mr-1 text-amber-400" />
-                Cơm, Bún &amp; Phở ({counts.anChinh})
-              </button>
-              <button
-                className={`cat-pill ${styleFilter === 'nhau-lau' ? 'active' : ''}`}
-                onClick={() => setStyleFilter('nhau-lau')}
-              >
-                <Flame size={13} className="inline mr-1 text-orange-400" />
-                Lẩu Nướng &amp; Nhậu ({counts.nhauLau})
-              </button>
-              <button
-                className={`cat-pill ${styleFilter === 'uong' ? 'active' : ''}`}
-                onClick={() => setStyleFilter('uong')}
-              >
-                <Coffee size={13} className="inline mr-1 text-sky-400" />
-                Cafe &amp; Đồ Uống ({counts.uong})
-              </button>
-              <button
-                className={`cat-pill ${styleFilter === 'an-vat' ? 'active' : ''}`}
-                onClick={() => setStyleFilter('an-vat')}
-              >
-                <Sparkles size={13} className="inline mr-1 text-emerald-400" />
-                Quán Ăn Vặt ({counts.anVat})
-              </button>
+          {/* Row 1: Search & Counter Side-by-side (Song song) */}
+          <div className="catalog-search-counter-row">
+            <div className="catalog-search-box flex-1">
+              <Search size={15} className="search-box-icon text-amber-400" />
+              <input
+                type="search"
+                className="search-box-input"
+                placeholder="Tìm tên quán, đường phố, món tủ..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button className="search-box-clear" onClick={() => setSearchQuery('')} title="Xóa tìm kiếm">
+                  ×
+                </button>
+              )}
             </div>
 
-            {/* Price & Sort Selects */}
-            <div className="select-pill-group">
-              <div className="control-select-wrap">
-                <MapPin size={13} className="text-amber-400" />
-                <label htmlFor="catalog-places-zone-select" className="sr-only">Khu vực</label>
-                <select
-                  id="catalog-places-zone-select"
-                  value={zoneFilter}
-                  onChange={(e) => setZoneFilter(e.target.value as any)}
-                >
-                  <option value="all">Mọi khu vực</option>
-                  <option value="dhsp2">Gần ĐH Sư Phạm 2 (&lt; 500m)</option>
-                  <option value="center">Trung tâm Phường Xuân Hòa</option>
-                  <option value="expanded">Mở rộng (Phúc Yên lân cận)</option>
-                </select>
-              </div>
-
-              <div className="control-select-wrap">
-                <SlidersHorizontal size={13} className="text-amber-400" />
-                <label htmlFor="catalog-places-service-select" className="sr-only">Hình thức</label>
-                <select
-                  id="catalog-places-service-select"
-                  value={serviceFilter}
-                  onChange={(e) => setServiceFilter(e.target.value as any)}
-                >
-                  <option value="all">Mọi hình thức</option>
-                  <option value="ship">Có nhận Ship tận nơi</option>
-                  <option value="dine_in">Phục vụ tại quán</option>
-                </select>
-              </div>
-
-              <div className="control-select-wrap">
-                <ArrowUpDown size={13} className="text-amber-400" />
-                <label htmlFor="catalog-places-sort-select" className="sr-only">Sắp xếp</label>
-                <select
-                  id="catalog-places-sort-select"
-                  value={sortOption}
-                  onChange={(e) => setSortOption(e.target.value as any)}
-                >
-                  <option value="rating">Đánh giá sao cao nhất</option>
-                  <option value="reviews">Lượt đánh giá nhiều nhất</option>
-                  <option value="name">Tên quán: A đến Z</option>
-                </select>
-              </div>
-
+            <div className="catalog-counter-pill shrink-0">
+              <span>{Math.min(visibleCount, filteredPlaces.length)}/{filteredPlaces.length} quán</span>
               {(searchQuery || styleFilter !== 'all' || zoneFilter !== 'all' || serviceFilter !== 'all' || sortOption !== 'rating') && (
-                <button className="control-reset-btn" onClick={resetFilters} title="Đặt lại bộ lọc">
-                  <RotateCcw size={13} />
-                  <span>Đặt lại</span>
+                <button className="catalog-mini-reset-btn" onClick={resetFilters} title="Đặt lại bộ lọc">
+                  <RotateCcw size={12} />
                 </button>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Status Counter */}
-        <div className="catalog-status-bar">
-          <span className="catalog-count-text">
-            Đang hiển thị <strong>{Math.min(visibleCount, filteredPlaces.length)}</strong> / {filteredPlaces.length} quán ăn xác thực (Tổng danh bạ {allPlaces.length} quán)
-          </span>
+          {/* Row 2: 2x2 Grid of 4 Filters (Gọn gàng, cân đối chuẩn 2x2) */}
+          <div className="catalog-2x2-filters-grid">
+            {/* Filter 1: Danh mục quán (Gom Tất cả, Cơm bún phở... thành 1 ô cuộn) */}
+            <div className="control-select-wrap">
+              <Utensils size={13} className="text-amber-400 shrink-0" />
+              <label htmlFor="catalog-places-style-select" className="sr-only">Danh mục</label>
+              <select
+                id="catalog-places-style-select"
+                value={styleFilter}
+                onChange={(e) => setStyleFilter(e.target.value as any)}
+              >
+                <option value="all">Tất cả ({counts.all})</option>
+                <option value="an-chinh">Cơm, bún &amp; phở ({counts.anChinh})</option>
+                <option value="nhau-lau">Lẩu nướng &amp; nhậu ({counts.nhauLau})</option>
+                <option value="uong">Cafe &amp; đồ uống ({counts.uong})</option>
+                <option value="an-vat">Quán ăn vặt ({counts.anVat})</option>
+              </select>
+            </div>
+
+            {/* Filter 2: Khu vực */}
+            <div className="control-select-wrap">
+              <MapPin size={13} className="text-amber-400 shrink-0" />
+              <label htmlFor="catalog-places-zone-select" className="sr-only">Khu vực</label>
+              <select
+                id="catalog-places-zone-select"
+                value={zoneFilter}
+                onChange={(e) => setZoneFilter(e.target.value as any)}
+              >
+                <option value="all">Mọi khu vực</option>
+                <option value="dhsp2">&lt; 500m ĐHSP2</option>
+                <option value="center">Phường Xuân Hòa</option>
+                <option value="expanded">Mở rộng lân cận</option>
+              </select>
+            </div>
+
+            {/* Filter 3: Hình thức */}
+            <div className="control-select-wrap">
+              <SlidersHorizontal size={13} className="text-amber-400 shrink-0" />
+              <label htmlFor="catalog-places-service-select" className="sr-only">Hình thức</label>
+              <select
+                id="catalog-places-service-select"
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value as any)}
+              >
+                <option value="all">Mọi hình thức</option>
+                <option value="ship">Có nhận Ship</option>
+                <option value="dine_in">Tại quán</option>
+              </select>
+            </div>
+
+            {/* Filter 4: Sắp xếp */}
+            <div className="control-select-wrap">
+              <ArrowUpDown size={13} className="text-amber-400 shrink-0" />
+              <label htmlFor="catalog-places-sort-select" className="sr-only">Sắp xếp</label>
+              <select
+                id="catalog-places-sort-select"
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as any)}
+              >
+                <option value="rating">Sao cao nhất</option>
+                <option value="reviews">Nhiều đánh giá</option>
+                <option value="name">Tên: A → Z</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 

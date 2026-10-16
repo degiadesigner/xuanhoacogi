@@ -15,6 +15,8 @@ import {
   Users,
   ArrowLeft
 } from 'lucide-react';
+import { Language, getStoredLanguage, saveLanguage, translations } from '../lib/i18n';
+import { UserAuthProfile, getResidentTypeInfo } from '../lib/auth';
 
 interface SettingsMenuModalProps {
   isOpen: boolean;
@@ -23,6 +25,12 @@ interface SettingsMenuModalProps {
   onToggleSound: () => void;
   onOpenGuide: () => void;
   onOpenAbout: () => void;
+  currentLang?: Language;
+  onChangeLang?: (lang: Language) => void;
+  authUser?: UserAuthProfile | null;
+  onToggleTasteFilter?: () => void;
+  onOpenLogin?: () => void;
+  onOpenProfile?: () => void;
 }
 
 export function SettingsMenuModal({
@@ -32,9 +40,25 @@ export function SettingsMenuModal({
   onToggleSound,
   onOpenGuide,
   onOpenAbout,
+  currentLang,
+  onChangeLang,
+  authUser,
+  onToggleTasteFilter,
+  onOpenLogin,
+  onOpenProfile,
 }: SettingsMenuModalProps) {
   const [activeSubModal, setActiveSubModal] = useState<'none' | 'language' | 'contact'>('none');
-  const [currentLang, setCurrentLang] = useState<'vi' | 'en'>('vi');
+  const [lang, setLang] = useState<Language>(() => currentLang || getStoredLanguage());
+
+  useEffect(() => {
+    if (currentLang) {
+      setLang(currentLang);
+    } else {
+      setLang(getStoredLanguage());
+    }
+  }, [currentLang, isOpen]);
+
+  const t = translations[lang] || translations.vi;
 
   // Đóng bằng phím Escape
   useEffect(() => {
@@ -77,16 +101,69 @@ export function SettingsMenuModal({
         {activeSubModal === 'none' && (
           <>
             <div className="settings-menu-header">
-              <h2 className="settings-menu-title">Menu</h2>
+              <h2 className="settings-menu-title">{t.menu_title}</h2>
               <button 
                 type="button"
                 className="settings-menu-close-btn"
                 onClick={handleClose}
-                aria-label="Đóng menu"
+                aria-label={t.close}
               >
                 <X size={18} />
               </button>
             </div>
+
+            {/* ================= THẺ BỘ LỌC THEO GU ẨM THỰC ================= */}
+            {authUser && authUser.isLoggedIn ? (
+              <div className="settings-taste-filter-card">
+                <div className="settings-taste-filter-left">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-base">🎯</span>
+                    <strong className="text-xs font-bold text-white">Lọc Theo Gu Của Bạn</strong>
+                    <span className="settings-resident-chip">
+                      {getResidentTypeInfo(authUser.residentType).label.split(' ')[0]} {getResidentTypeInfo(authUser.residentType).label.replace(/^[^\s]+\s*/, '')}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 m-0">
+                    {authUser.filterByTaste !== false
+                      ? '🟢 Đang BẬT: Vòng quay ưu tiên các món bạn yêu thích'
+                      : '⚪ Đang TẮT: Khám phá tất cả các món không giới hạn'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={`auth-switch-btn ${authUser.filterByTaste !== false ? 'active' : ''}`}
+                  onClick={() => onToggleTasteFilter && onToggleTasteFilter()}
+                  role="switch"
+                  aria-checked={authUser.filterByTaste !== false}
+                  title="Bật/Tắt chế độ lọc theo gu ẩm thực"
+                >
+                  <span className="auth-switch-thumb" />
+                </button>
+              </div>
+            ) : (
+              <div 
+                className="settings-taste-filter-card guest" 
+                onClick={() => {
+                  handleClose();
+                  onOpenLogin?.();
+                }}
+                title="Bấm để đăng nhập và thiết lập khẩu vị theo gu"
+              >
+                <div className="settings-taste-filter-left">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-base">🎯</span>
+                    <strong className="text-xs font-bold text-white">Lọc Theo Gu Ẩm Thực</strong>
+                    <span className="settings-guest-chip">Cần đăng nhập</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 m-0">
+                    Đăng nhập để chọn nhóm thực khách (SV / Bản địa) &amp; bật lọc theo gu
+                  </p>
+                </div>
+                <button type="button" className="settings-quick-login-btn">
+                  Đăng nhập
+                </button>
+              </div>
+            )}
 
             <div className="settings-menu-grid settings-menu-grid-2x2">
               {/* Ô 1: Ngôn ngữ */}
@@ -98,7 +175,7 @@ export function SettingsMenuModal({
                 <div className="settings-menu-icon">
                   <Languages size={24} />
                 </div>
-                <span className="settings-menu-label">Ngôn ngữ</span>
+                <span className="settings-menu-label">{t.menu_language}</span>
               </button>
 
               {/* Ô 2: Âm lượng (Bấm vào toggle tắt/bật lập tức) */}
@@ -106,13 +183,13 @@ export function SettingsMenuModal({
                 type="button"
                 className={`settings-menu-card ${!sound ? 'muted' : ''}`}
                 onClick={onToggleSound}
-                title={sound ? 'Bấm để tắt âm thanh' : 'Bấm để bật âm thanh 100%'}
+                title={sound ? (lang === 'vi' ? 'Bấm để tắt âm thanh' : 'Click to mute') : (lang === 'vi' ? 'Bấm để bật âm thanh 100%' : 'Click to unmute')}
               >
                 <div className="settings-menu-icon">
                   {sound ? <Volume2 size={24} /> : <VolumeX size={24} className="text-amber-400" />}
                 </div>
                 <span className="settings-menu-label">
-                  {sound ? 'Âm lượng - 100%' : 'Âm lượng - Tắt'}
+                  {sound ? t.menu_sound_on : t.menu_sound_off}
                 </span>
               </button>
 
@@ -128,21 +205,28 @@ export function SettingsMenuModal({
                 <div className="settings-menu-icon">
                   <BookOpen size={24} />
                 </div>
-                <span className="settings-menu-label">Hướng dẫn</span>
+                <span className="settings-menu-label">{t.menu_guide}</span>
               </button>
 
-              {/* Ô 4: Liên hệ với chúng tôi (ngắt dòng chuẩn 2 hàng, không rớt lẻ chữ "tôi") */}
+              {/* Ô 4: Liên hệ với chúng tôi */}
               <button 
                 type="button"
                 className="settings-menu-card"
                 onClick={() => setActiveSubModal('contact')}
-                title="Liên hệ với chúng tôi"
+                title={t.menu_contact}
               >
                 <div className="settings-menu-icon">
                   <MessageSquare size={24} className="text-amber-400" />
                 </div>
                 <span className="settings-menu-label settings-menu-label-contact">
-                  Liên hệ với<br />chúng tôi
+                  {lang === 'vi' ? (
+                    <>
+                      <span>Liên hệ với</span>
+                      <span>chúng tôi</span>
+                    </>
+                  ) : (
+                    t.menu_contact
+                  )}
                 </span>
               </button>
             </div>
@@ -255,12 +339,12 @@ export function SettingsMenuModal({
               >
                 <ArrowLeft size={18} />
               </button>
-              <h2 className="settings-menu-title settings-menu-title-centered">Chọn Ngôn Ngữ</h2>
+              <h2 className="settings-menu-title settings-menu-title-centered">{t.lang_modal_title}</h2>
               <button 
                 type="button"
                 className="settings-menu-close-btn"
                 onClick={handleClose}
-                aria-label="Đóng"
+                aria-label={t.close}
               >
                 <X size={18} />
               </button>
@@ -270,25 +354,29 @@ export function SettingsMenuModal({
               <div className="lang-options-list">
                 <button 
                   type="button"
-                  className={`lang-option-btn ${currentLang === 'vi' ? 'active' : ''}`}
+                  className={`lang-option-btn ${lang === 'vi' ? 'active' : ''}`}
                   onClick={() => {
-                    setCurrentLang('vi');
+                    setLang('vi');
+                    saveLanguage('vi');
+                    onChangeLang?.('vi');
                     setActiveSubModal('none');
                   }}
                 >
-                  <span>🇻🇳 Tiếng Việt (Xuân Hòa Bản Địa)</span>
-                  {currentLang === 'vi' && <Check size={16} className="text-amber-400" />}
+                  <span>{t.lang_vi}</span>
+                  {lang === 'vi' && <Check size={16} className="text-amber-400" />}
                 </button>
                 <button 
                   type="button"
-                  className={`lang-option-btn ${currentLang === 'en' ? 'active' : ''}`}
+                  className={`lang-option-btn ${lang === 'en' ? 'active' : ''}`}
                   onClick={() => {
-                    setCurrentLang('en');
+                    setLang('en');
+                    saveLanguage('en');
+                    onChangeLang?.('en');
                     setActiveSubModal('none');
                   }}
                 >
-                  <span>🇬🇧 English (International)</span>
-                  {currentLang === 'en' && <Check size={16} className="text-amber-400" />}
+                  <span>{t.lang_en}</span>
+                  {lang === 'en' && <Check size={16} className="text-amber-400" />}
                 </button>
               </div>
             </div>

@@ -16,8 +16,10 @@ import {
   Target,
   Utensils,
   Flame,
-  Coffee
+  Coffee,
+  Star
 } from 'lucide-react';
+import { getDishRatingSummary } from '@/lib/reviews-storage';
 import { formatTypography, getFoodCategoryLabel, cleanDishDisplayTitle } from '@/lib/utils';
 
 interface DishesCatalogViewProps {
@@ -30,7 +32,7 @@ interface DishesCatalogViewProps {
 
 const rarityNames = ['Phổ thông', 'Đặc biệt', 'Quý hiếm', 'Cực hiếm', 'Huyền thoại'];
 const rarityColors = ['#10B981', '#F59E0B', '#A855F7', '#F97316', '#EF4444'];
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 30;
 
 export function DishesCatalogView({
   initialCategory = 'all',
@@ -44,13 +46,14 @@ export function DishesCatalogView({
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | MainCategoryKey>(initialCategory);
   const [priceFilter, setPriceFilter] = useState<'all' | 'under35' | '35to65' | '65to120' | 'above120'>('all');
+  const [rarityFilter, setRarityFilter] = useState<'all' | number>('all');
   const [sortOption, setSortOption] = useState<'default' | 'price-asc' | 'price-desc' | 'name-asc'>('default');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Reset pagination when filter or search changes
   React.useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [searchQuery, categoryFilter, priceFilter, sortOption]);
+  }, [searchQuery, categoryFilter, priceFilter, rarityFilter, sortOption]);
 
   // Sync category filter when initialCategory prop changes
   React.useEffect(() => {
@@ -82,6 +85,11 @@ export function DishesCatalogView({
         if (priceFilter === '65to120' && (dish.price < 65 || dish.price > 120)) return false;
         if (priceFilter === 'above120' && dish.price <= 120) return false;
 
+        // Rarity filter
+        if (rarityFilter !== 'all' && (dish.rarity ?? 0) !== rarityFilter) {
+          return false;
+        }
+
         return true;
       })
       .sort((a, b) => {
@@ -95,7 +103,7 @@ export function DishesCatalogView({
       return diversifyFoodList(res);
     }
     return res;
-  }, [allDishes, searchQuery, categoryFilter, priceFilter, sortOption]);
+  }, [allDishes, searchQuery, categoryFilter, priceFilter, rarityFilter, sortOption]);
 
   const displayedDishes = useMemo(() => {
     return filteredDishes.slice(0, visibleCount);
@@ -105,6 +113,7 @@ export function DishesCatalogView({
     setSearchQuery('');
     setCategoryFilter('all');
     setPriceFilter('all');
+    setRarityFilter('all');
     setSortOption('default');
   };
 
@@ -159,104 +168,103 @@ export function DishesCatalogView({
 
         {/* Compact, Integrated Search & Filter Controls */}
         <div className="catalog-controls-bar">
-          {/* Search Input */}
-          <div className="catalog-search-box">
-            <Search size={16} className="search-box-icon text-amber-400" />
-            <input
-              type="search"
-              className="search-box-input"
-              placeholder="Tìm món, quán hoặc vị... (VD: bánh xèo, bún đậu, mì cay, lẩu, trà sữa, ốc...)"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button className="search-box-clear" onClick={() => setSearchQuery('')} title="Xóa tìm kiếm">
-                ×
-              </button>
-            )}
-          </div>
-
-          {/* Filter Pills & Selects */}
-          <div className="catalog-controls-row">
-            {/* Category Pills */}
-            <div className="category-pill-group">
-              <button
-                className={`cat-pill ${categoryFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setCategoryFilter('all')}
-              >
-                Tất Cả ({counts.all})
-              </button>
-              <button
-                className={`cat-pill ${categoryFilter === 'an-gi' ? 'active' : ''}`}
-                onClick={() => setCategoryFilter('an-gi')}
-              >
-                <Utensils size={13} className="inline mr-1 text-amber-400" />
-                Bữa Chính &amp; Bún Phở ({counts.anGi})
-              </button>
-              <button
-                className={`cat-pill ${categoryFilter === 'nhau-gi' ? 'active' : ''}`}
-                onClick={() => setCategoryFilter('nhau-gi')}
-              >
-                <Flame size={13} className="inline mr-1 text-orange-400" />
-                Món Nhậu &amp; Lẩu Nướng ({counts.nhauGi})
-              </button>
-              <button
-                className={`cat-pill ${categoryFilter === 'uong-gi' ? 'active' : ''}`}
-                onClick={() => setCategoryFilter('uong-gi')}
-              >
-                <Coffee size={13} className="inline mr-1 text-sky-400" />
-                Đồ Uống &amp; Trà Sữa ({counts.uongGi})
-              </button>
+          {/* Row 1: Search & Counter Side-by-side (Song song) */}
+          <div className="catalog-search-counter-row">
+            <div className="catalog-search-box flex-1">
+              <Search size={15} className="search-box-icon text-amber-400" />
+              <input
+                type="search"
+                className="search-box-input"
+                placeholder="Tìm món ăn, đồ uống, quán..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button className="search-box-clear" onClick={() => setSearchQuery('')} title="Xóa tìm kiếm">
+                  ×
+                </button>
+              )}
             </div>
 
-            {/* Price & Sort Selects */}
-            <div className="select-pill-group">
-              <div className="control-select-wrap">
-                <SlidersHorizontal size={13} className="text-amber-400" />
-                <label htmlFor="catalog-price-select" className="sr-only">Mức giá</label>
-                <select
-                  id="catalog-price-select"
-                  value={priceFilter}
-                  onChange={(e) => setPriceFilter(e.target.value as any)}
-                >
-                  <option value="all">Tất cả mức giá</option>
-                  <option value="under35">&lt; 35.000đ (Bình dân)</option>
-                  <option value="35to65">35k - 65k (No nê)</option>
-                  <option value="65to120">65k - 120k (Ăn ngon)</option>
-                  <option value="above120">&gt; 120k (Bàn tiệc)</option>
-                </select>
-              </div>
-
-              <div className="control-select-wrap">
-                <ArrowUpDown size={13} className="text-amber-400" />
-                <label htmlFor="catalog-sort-select" className="sr-only">Sắp xếp</label>
-                <select
-                  id="catalog-sort-select"
-                  value={sortOption}
-                  onChange={(e) => setSortOption(e.target.value as any)}
-                >
-                  <option value="default">Sắp xếp: Mặc định</option>
-                  <option value="price-asc">Giá: Thấp đến Cao</option>
-                  <option value="price-desc">Giá: Cao đến Thấp</option>
-                  <option value="name-asc">Tên món: A đến Z</option>
-                </select>
-              </div>
-
-              {(searchQuery || categoryFilter !== 'all' || priceFilter !== 'all' || sortOption !== 'default') && (
-                <button className="control-reset-btn" onClick={resetFilters} title="Đặt lại bộ lọc">
-                  <RotateCcw size={13} />
-                  <span>Đặt lại</span>
+            <div className="catalog-counter-pill shrink-0">
+              <span>{Math.min(visibleCount, filteredDishes.length)}/{filteredDishes.length} món</span>
+              {(searchQuery || categoryFilter !== 'all' || priceFilter !== 'all' || rarityFilter !== 'all' || sortOption !== 'default') && (
+                <button className="catalog-mini-reset-btn" onClick={resetFilters} title="Đặt lại bộ lọc">
+                  <RotateCcw size={12} />
                 </button>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Status Counter */}
-        <div className="catalog-status-bar">
-          <span className="catalog-count-text">
-            Đang hiển thị <strong>{Math.min(visibleCount, filteredDishes.length)}</strong> / {filteredDishes.length} món ngon xác thực (Tổng kho {allDishes.length} món)
-          </span>
+          {/* Row 2: 2x2 Grid of 4 Filters (Gọn gàng, cân đối chuẩn 2x2) */}
+          <div className="catalog-2x2-filters-grid">
+            {/* Filter 1: Danh mục món (Gom Tất cả, Bữa chính... thành 1 ô cuộn) */}
+            <div className="control-select-wrap">
+              <Utensils size={13} className="text-amber-400 shrink-0" />
+              <label htmlFor="catalog-dish-category-select" className="sr-only">Danh mục món</label>
+              <select
+                id="catalog-dish-category-select"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value as any)}
+              >
+                <option value="all">Tất cả ({counts.all})</option>
+                <option value="an-gi">Bữa chính &amp; bún phở ({counts.anGi})</option>
+                <option value="nhau-gi">Món nhậu &amp; lẩu nướng ({counts.nhauGi})</option>
+                <option value="uong-gi">Đồ uống &amp; trà sữa ({counts.uongGi})</option>
+              </select>
+            </div>
+
+            {/* Filter 2: Mức giá */}
+            <div className="control-select-wrap">
+              <SlidersHorizontal size={13} className="text-amber-400 shrink-0" />
+              <label htmlFor="catalog-price-select" className="sr-only">Mức giá</label>
+              <select
+                id="catalog-price-select"
+                value={priceFilter}
+                onChange={(e) => setPriceFilter(e.target.value as any)}
+              >
+                <option value="all">Mọi mức giá</option>
+                <option value="under35">&lt; 35k (Bình dân)</option>
+                <option value="35to65">35k - 65k (No nê)</option>
+                <option value="65to120">65k - 120k</option>
+                <option value="above120">&gt; 120k (Bàn tiệc)</option>
+              </select>
+            </div>
+
+            {/* Filter 3: Phẩm cấp hiếm */}
+            <div className="control-select-wrap">
+              <Sparkles size={13} className="text-amber-400 shrink-0" />
+              <label htmlFor="catalog-rarity-select" className="sr-only">Phẩm cấp</label>
+              <select
+                id="catalog-rarity-select"
+                value={rarityFilter}
+                onChange={(e) => setRarityFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              >
+                <option value="all">Mọi phẩm cấp</option>
+                <option value="0">Phổ thông</option>
+                <option value="1">Đặc biệt</option>
+                <option value="2">Quý hiếm</option>
+                <option value="3">Cực hiếm</option>
+                <option value="4">Huyền thoại</option>
+              </select>
+            </div>
+
+            {/* Filter 4: Sắp xếp */}
+            <div className="control-select-wrap">
+              <ArrowUpDown size={13} className="text-amber-400 shrink-0" />
+              <label htmlFor="catalog-sort-select" className="sr-only">Sắp xếp</label>
+              <select
+                id="catalog-sort-select"
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as any)}
+              >
+                <option value="default">Sắp xếp: Mặc định</option>
+                <option value="price-asc">Giá: Thấp → Cao</option>
+                <option value="price-desc">Giá: Cao → Thấp</option>
+                <option value="name-asc">Tên món: A → Z</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -280,6 +288,10 @@ export function DishesCatalogView({
                 >
                   {/* Visual Art Box - Plate Centered */}
                   <div className="dish-clean-art">
+                    <div className="catalog-card-star-badge" title="Đánh giá chất lượng món">
+                      <Star size={10} className="inline mr-1 text-amber-400 fill-amber-400" />
+                      <span>{getDishRatingSummary(dish.customId || dish.name).displayRating}</span>
+                    </div>
                     <div className="dish-plate-wrapper">
                       <div className="food-plate-halo">
                         <FoodImage food={dish} size="md" />
@@ -329,7 +341,7 @@ export function DishesCatalogView({
                   className="catalog-load-more-btn"
                   onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
                 >
-                  <span>Xem Thêm 24 Món Tiếp Theo</span>
+                  <span>Xem Thêm {Math.min(PAGE_SIZE, filteredDishes.length - visibleCount)} Món Tiếp Theo</span>
                   <span className="load-more-counter">(Còn {filteredDishes.length - visibleCount} món)</span>
                 </button>
                 <button 

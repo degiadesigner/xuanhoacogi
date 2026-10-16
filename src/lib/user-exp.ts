@@ -1,11 +1,15 @@
-// Quản lý hệ thống điểm kinh nghiệm & cấp độ ẩm thực Xuân Hòa (Không cần đăng ký tài khoản)
+// Quản lý hệ thống cấp độ ẩm thực Xuân Hòa TÍNH THEO SỐ LƯỢNG MÓN ĂN
+// Khách vãng lai: Tối đa Cấp 1 (tối đa 3 món ăn khám phá). Vượt quá 3 món -> Nhắc đăng nhập.
 
 export interface UserGourmetProfile {
   spinsCount: number;
+  dishesCount: number; // SỐ LƯỢNG MÓN ĂN TRONG BỘ SƯU TẬP
   exp: number;
   level: number;
   title: string;
   badge: string;
+  currentLevelMinDishes: number;
+  nextLevelDishes: number;
   currentLevelMinExp: number;
   nextExp: number;
   progressPercent: number;
@@ -36,11 +40,23 @@ export const LEVEL_TIERS: LevelTierConfig[] = [
 export const LEVEL_TITLES = LEVEL_TIERS.map(t => t.title);
 export const MAX_LEVEL = 50;
 
-// Hàm tính tổng EXP yêu cầu để đạt Level (Đường cong lũy tiến RPG mượt mà, chống lạm phát cấp)
-export function getMinExpForLevel(level: number): number {
+// CẤP ĐỘ TÍNH THEO SỐ LƯỢNG MÓN ĂN (DISHES COUNT)
+// Cấp 1: 0 - 3 món (Khách vãng lai)
+// Cấp 2: 4 - 7 món (Cần đăng nhập)
+// Cấp 3: 8 - 12 món ...
+export function getMinDishesForLevel(level: number): number {
   if (level <= 1) return 0;
-  const l = Math.min(MAX_LEVEL, level) - 1;
-  return Math.floor(15 * l * l + 10 * l);
+  if (level === 2) return 4;
+  if (level === 3) return 8;
+  if (level === 4) return 13;
+  if (level === 5) return 19;
+  if (level === 6) return 26;
+  if (level === 7) return 34;
+  if (level === 8) return 43;
+  if (level === 9) return 53;
+  if (level === 10) return 64;
+  const l = Math.min(MAX_LEVEL, level) - 10;
+  return 64 + l * 8;
 }
 
 export function getTierForLevel(level: number): { title: string; badge: string } {
@@ -49,8 +65,10 @@ export function getTierForLevel(level: number): { title: string; badge: string }
   return { title: LEVEL_TIERS[0].title, badge: LEVEL_TIERS[0].badge };
 }
 
-export function calculateLevelFromExp(exp: number): {
+export function calculateLevelFromDishes(dishesCount: number): {
   level: number;
+  currentLevelMinDishes: number;
+  nextLevelDishes: number;
   currentLevelMinExp: number;
   nextExp: number;
   progressPercent: number;
@@ -58,50 +76,57 @@ export function calculateLevelFromExp(exp: number): {
   badge: string;
 } {
   let level = 1;
-  while (level < MAX_LEVEL && exp >= getMinExpForLevel(level + 1)) {
+  while (level < MAX_LEVEL && dishesCount >= getMinDishesForLevel(level + 1)) {
     level++;
   }
 
-  const currentLevelMinExp = getMinExpForLevel(level);
-  const nextExp = level >= MAX_LEVEL ? currentLevelMinExp : getMinExpForLevel(level + 1);
+  const currentLevelMinDishes = getMinDishesForLevel(level);
+  const nextLevelDishes = level >= MAX_LEVEL ? currentLevelMinDishes : getMinDishesForLevel(level + 1);
   
-  const span = Math.max(1, nextExp - currentLevelMinExp);
+  const span = Math.max(1, nextLevelDishes - currentLevelMinDishes);
   const progressPercent = level >= MAX_LEVEL 
     ? 100 
-    : Math.min(100, Math.max(0, Math.round(((exp - currentLevelMinExp) / span) * 100)));
+    : Math.min(100, Math.max(0, Math.round(((dishesCount - currentLevelMinDishes) / span) * 100)));
 
   const { title, badge } = getTierForLevel(level);
 
   return {
     level,
-    currentLevelMinExp,
-    nextExp,
+    currentLevelMinDishes,
+    nextLevelDishes,
+    currentLevelMinExp: currentLevelMinDishes * 10,
+    nextExp: nextLevelDishes * 10,
     progressPercent,
     title,
     badge,
   };
 }
 
-// Thưởng điểm EXP cân bằng: Mỗi lượt quay tăng vừa phải, tạo động lực đua cấp bền vững
+// Tương thích ngược với hàm calculateLevelFromExp
+export function calculateLevelFromExp(exp: number) {
+  // Quy đổi tương đương: 10 EXP ~ 1 món
+  const dishes = Math.floor(exp / 10);
+  return calculateLevelFromDishes(dishes);
+}
+
 export function getExpForRarity(rarity: number = 0): { exp: number; label: string; color: string; isJackpot: boolean } {
   switch (rarity) {
     case 0:
-      return { exp: 6, label: '+6 EXP (Hòm Phổ Thông)', color: '#10B981', isJackpot: false };
+      return { exp: 6, label: '+1 Món (Phổ Thông)', color: '#10B981', isJackpot: false };
     case 1:
-      return { exp: 12, label: '+12 EXP (Hòm Đặc Biệt)', color: '#F59E0B', isJackpot: false };
+      return { exp: 12, label: '+1 Món (Đặc Biệt)', color: '#F59E0B', isJackpot: false };
     case 2:
-      return { exp: 20, label: '+20 EXP (Hòm Quý Hiếm)', color: '#A855F7', isJackpot: false };
+      return { exp: 20, label: '+1 Món (Quý Hiếm)', color: '#A855F7', isJackpot: false };
     case 3:
-      return { exp: 35, label: '+35 EXP (Hòm Cực Hiếm)', color: '#F97316', isJackpot: false };
+      return { exp: 35, label: '+1 Món (Cực Hiếm)', color: '#F97316', isJackpot: false };
     case 4:
-      return { exp: 80, label: '+80 EXP (HUYỀN THOẠI · NỔ HŨ)', color: '#EF4444', isJackpot: true };
+      return { exp: 80, label: '+1 Món (HUYỀN THOẠI)', color: '#EF4444', isJackpot: true };
     default:
-      return { exp: 8, label: '+8 EXP', color: '#10B981', isJackpot: false };
+      return { exp: 8, label: '+1 Món', color: '#10B981', isJackpot: false };
   }
 }
 
 const STORAGE_KEY_V2 = 'xuanhoa_gourmet_profile_v2';
-const STORAGE_KEY_V1 = 'xuanhoa_gourmet_profile_v1';
 
 export function getLocalProfile(): UserGourmetProfile {
   try {
@@ -109,75 +134,70 @@ export function getLocalProfile(): UserGourmetProfile {
     if (rawV2) {
       const data = JSON.parse(rawV2);
       const spinsCount = Number(data.spinsCount) || 0;
-      const exp = Number(data.exp) || 0;
-      const stats = calculateLevelFromExp(exp);
+      const dishesCount = Number(data.dishesCount) || Math.min(spinsCount, 1);
+      const exp = Number(data.exp) || dishesCount * 10;
+      const stats = calculateLevelFromDishes(dishesCount);
       return {
         spinsCount,
+        dishesCount,
         exp,
         ...stats,
       };
     }
-
-    // Tự động chuyển đổi dữ liệu từ v1 cũ: Cân bằng lại điểm theo số lượt quay thực tế!
-    // Tránh việc mới quay vài lần mà bị nhảy lên Cấp 7 ảo!
-    const rawV1 = localStorage.getItem(STORAGE_KEY_V1);
-    if (rawV1) {
-      const dataV1 = JSON.parse(rawV1);
-      const spinsCount = Number(dataV1.spinsCount) || 0;
-      // Điểm thực tế chuẩn = spinsCount * 8 EXP trung bình
-      const convertedExp = Math.max(0, spinsCount * 8);
-      const stats = calculateLevelFromExp(convertedExp);
-      const profile: UserGourmetProfile = {
-        spinsCount,
-        exp: convertedExp,
-        ...stats,
-      };
-      localStorage.setItem(STORAGE_KEY_V2, JSON.stringify({
-        spinsCount,
-        exp: convertedExp,
-      }));
-      return profile;
-    }
   } catch {}
 
-  const stats = calculateLevelFromExp(0);
+  const stats = calculateLevelFromDishes(0);
   return {
     spinsCount: 0,
+    dishesCount: 0,
     exp: 0,
     ...stats,
   };
 }
 
-export function addSpinExp(rarity?: number): UserGourmetProfile {
+export function addSpinExp(rarity?: number, isLoggedIn: boolean = false, isNewDish: boolean = true): {
+  profile: UserGourmetProfile;
+  reachedGuestLimit: boolean;
+} {
   const current = getLocalProfile();
   
-  let addedExp = 8;
-  let isJackpot = false;
+  const nextSpins = current.spinsCount + 1;
+  let nextDishes = current.dishesCount + (isNewDish ? 1 : 1);
+  let reachedGuestLimit = false;
 
-  if (rarity !== undefined) {
-    const reward = getExpForRarity(rarity);
-    addedExp = reward.exp;
-    isJackpot = reward.isJackpot;
+  // GIỚI HẠN CẤP 1 CHO KHÁCH VÃNG LAI: Tối đa 3 món ăn!
+  // Khi đã có 3 món và chuẩn bị vượt lên món thứ 4 (Cấp 2), kích hoạt Gate Modal
+  if (!isLoggedIn && nextDishes >= 3) {
+    reachedGuestLimit = true;
+    nextDishes = 3; // Cố định ở 3 món (trần Cấp 1)
   }
 
-  const nextExpTotal = current.exp + addedExp;
-  const nextSpins = current.spinsCount + 1;
-  const stats = calculateLevelFromExp(nextExpTotal);
+  const stats = calculateLevelFromDishes(nextDishes);
+
+  // Nếu chưa đăng nhập và đạt 3 món: Cố định Cấp 1 (100% 3/3 món)
+  if (!isLoggedIn && nextDishes >= 3) {
+    stats.level = 1;
+    stats.progressPercent = 100;
+    stats.title = 'Tân Khách Xuân Hòa';
+    stats.badge = '🥉';
+  }
 
   const updated: UserGourmetProfile = {
     spinsCount: nextSpins,
-    exp: nextExpTotal,
+    dishesCount: nextDishes,
+    exp: nextDishes * 10,
     ...stats,
-    lastExpGain: addedExp,
-    isJackpot,
+    lastExpGain: 1,
+    isJackpot: rarity === 4,
   };
 
   try {
     localStorage.setItem(STORAGE_KEY_V2, JSON.stringify({
       spinsCount: nextSpins,
-      exp: nextExpTotal,
+      dishesCount: nextDishes,
+      exp: nextDishes * 10,
     }));
   } catch {}
 
-  return updated;
+  return { profile: updated, reachedGuestLimit };
 }

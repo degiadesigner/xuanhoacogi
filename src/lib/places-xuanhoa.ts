@@ -7,16 +7,16 @@ export type PlaceStyleGroup = 'nhau-lau' | 'an-chinh' | 'uong' | 'an-vat';
 export function getPlaceStyleGroup(place: Place): PlaceStyleGroup {
   if (
     place.category === 'pub' || 
-    ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'trang-hai-san', 'lau-cuong-duong', 'lau-nuong-ba-muoi', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'nha-hang-khanh-huong', 'nha-hang-binh-nam', 'nha-hang-468', 'quan-chim-lan-anh', 'xuho-bistro', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'lau-nuong-1968', 'xien-nuong-trung-hoa', 'lau-ngua-tay-bac', 'lau-nuong-phong-viet'].includes(place.id)
+    ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'trang-hai-san', 'lau-cuong-duong', 'lau-nuong-ba-muoi', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'nha-hang-khanh-huong', 'nha-hang-binh-nam', 'nha-hang-468', 'quan-chim-lan-anh', 'xuho-bistro', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'lau-nuong-1968', 'xien-nuong-trung-hoa', 'lau-ngua-tay-bac', 'lau-nuong-phong-viet', 'lau-thai-ha-tinh'].includes(place.id)
   ) {
     return 'nhau-lau';
   }
-  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea', 'quan-co-loan', 'banh-trang-nha-boom', 'bep-nha-cun'].includes(place.id)) {
+  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea', 'quan-co-loan', 'banh-trang-nha-boom', 'bep-nha-cun', 'nem-nuong-88', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food'].includes(place.id)) {
     return 'an-vat';
   }
   if (
     place.category === 'cafe' || 
-    ['soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-sua-tocotoco', 'tiem-tra-thanh-thanh', 'cat-tien-xuan-hoa'].includes(place.id)
+    ['soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-sua-tocotoco', 'tiem-tra-thanh-thanh', 'cat-tien-xuan-hoa', 'zino-cafe'].includes(place.id)
   ) {
     return 'uong';
   }
@@ -50,6 +50,9 @@ export interface Review {
   date: string;
   content: string;
   role?: string; // "Sinh viên ĐHSP2", "Dân bản địa", "Khách du lịch"
+  photo?: string; // Ảnh review món/quán
+  tags?: string[]; // Thẻ cảm nhận thực tế (Đồ ăn ngon, Điều hòa mát, Phục vụ nhanh...)
+  isVerified?: boolean; // Thực khách đã từng trải nghiệm món/quán tại Xuân Hòa
 }
 
 export interface Place {
@@ -285,6 +288,12 @@ export interface PlaceSignboardLines {
 }
 
 const SIGNBOARD_CUSTOM_LINES: Record<string, PlaceSignboardLines> = {
+  'lau-thai-ha-tinh': { line1: 'LẨU THÁI HÀ TĨNH', line2: '13 TRƯNG NHỊ • PHÚC YÊN' },
+  'hi-tea': { line1: 'HI TEA & MỲ CAY', line2: 'MỲ CAY 7 CẤP ĐỘ • TRÀ SỮA' },
+  'an-vat-nha-phuong': { line1: 'ĂN VẶT NHÀ PHƯƠNG', line2: 'GÀ SỐT • NEM NÓNG GIÒN' },
+  'zino-cafe': { line1: 'ZINO CÀ PHÊ', line2: '266 NGUYỄN VĂN LINH' },
+  'umee-tea-food': { line1: 'UMEE TEA & FOOD', line2: 'LẬP TRÍ • KIM ANH' },
+  'nem-nuong-88': { line1: 'NEM NƯỚNG 88', line2: 'KI ỐT 4 NGUYỄN VĂN LINH' },
   'quan-dua-kha-do': { line1: 'QUÁN DỪA', line2: 'KHẢ DO' },
   'lau-ngua-tay-bac': { line1: 'LẨU NGỰA', line2: 'TÂY BẮC' },
   'lau-nuong-1968': { line1: 'LẨU NƯỚNG 1968', line2: 'BUFFET & BÁNH MÌ CHẢO' },
@@ -476,21 +485,21 @@ export function isPlaceMatchKeo(place: Place, keo: PlaceKeoType): boolean {
 
   if (keo === 'hen-ho') {
     return (
-      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-thanh-thanh', 'ruby-quan', 'xoai-corner', 'sui-cao-tieu-lau-quan', 'my-cay-seoul', 'com-tam-xuan-hoa', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185'].includes(place.id) ||
+      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-thanh-thanh', 'ruby-quan', 'xoai-corner', 'sui-cao-tieu-lau-quan', 'my-cay-seoul', 'com-tam-xuan-hoa', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-88', 'zino-cafe', 'hi-tea', 'lau-thai-ha-tinh'].includes(place.id) ||
       place.category === 'cafe'
     );
   }
 
   if (keo === 'an-nhanh') {
     return (
-      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'thanh-hang-gateaux', 'tiem-banh-a-salty-name', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'bm-nuong-muoi-ot-ngoc-quy', 'com-rang-nguyen-van-linh', 'oc-2000-xuan-hoa', 'bun-cha-xuan-hoa', 'bun-rieu-ba-mai', 'bun-anh-toan', 'com-tam-xuan-hoa', 'pho-bo-xuan-hoa', 'banh-cuon-ngoc-anh', 'banh-mi-bo-u', 'thuy-beo', 'xoi-com-185', 'sui-cao-tieu-lau-quan', 'tiem-nha-me-beo', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe'].includes(place.id) ||
+      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'thanh-hang-gateaux', 'tiem-banh-a-salty-name', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'bm-nuong-muoi-ot-ngoc-quy', 'com-rang-nguyen-van-linh', 'oc-2000-xuan-hoa', 'bun-cha-xuan-hoa', 'bun-rieu-ba-mai', 'bun-anh-toan', 'com-tam-xuan-hoa', 'pho-bo-xuan-hoa', 'banh-cuon-ngoc-anh', 'banh-mi-bo-u', 'thuy-beo', 'xoi-com-185', 'sui-cao-tieu-lau-quan', 'tiem-nha-me-beo', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'nem-nuong-88', 'an-vat-nha-phuong', 'hi-tea', 'umee-tea-food'].includes(place.id) ||
       place.category === 'fast_food'
     );
   }
 
   if (keo === 'nhom-dong') {
     return (
-      ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'nhat-ha', 'xien-nuong-trung-hoa', 'lau-nuong-1968', 'xuho-bistro', 'lau-nuong-ba-muoi', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'trang-hai-san', 'lau-cuong-duong', 'quan-chim-lan-anh', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'nha-hang-binh-nam', 'nha-hang-khanh-huong', 'nha-hang-468', 'tho-coii', 'ruby-quan'].includes(place.id) ||
+      ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'nhat-ha', 'xien-nuong-trung-hoa', 'lau-nuong-1968', 'xuho-bistro', 'lau-nuong-ba-muoi', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'trang-hai-san', 'lau-cuong-duong', 'quan-chim-lan-anh', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'nha-hang-binh-nam', 'nha-hang-khanh-huong', 'nha-hang-468', 'tho-coii', 'ruby-quan', 'nem-nuong-88', 'lau-thai-ha-tinh', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food'].includes(place.id) ||
       place.category === 'pub'
     );
   }
@@ -6363,6 +6372,272 @@ export const xuanHoaPlaces: Place[] = [
     rarity: 3,
     quip: 'Quán Lẩu Nướng Phong Việt tại Số 1 ngõ 2 Hoàng Quốc Việt (dốc bờ hồ Phúc Yên) mở cửa 9h-13h & 16h-hết khách. Nổi tiếng với Combo nướng chảo gang xì xèo 350k-500k, Lẩu Thái Tomyum 400k, Lẩu ếch măng cay 350k và các món bản gang cháy tỏi đặc sản. Phục vụ tại quán & ship tận nhà. Hotline: 0376 076 376 - 098 7722 129.',
     mealSessions: ['lunch', 'dinner', 'late']
+  },
+  {
+    id: 'nem-nuong-88',
+    name: 'Nem Nướng 88 - Nem Nướng Nha Trang',
+    tagline: 'Nem nướng Nha Trang chuẩn vị 30k • Bún trộn nem nướng 30k • Xúc xích 8k & Trà chanh, trà quất, sữa đậu 10k • Ki ốt 4 Nguyễn Văn Linh',
+    category: 'restaurant',
+    zone: 'dhsp2',
+    distance: 'Ki ốt 4 Nguyễn Văn Linh (~200m từ ĐHSP2)',
+    address: 'Ki ốt 4 Nguyễn Văn Linh, P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '8k - 30k',
+    minPrice: 8,
+    maxPrice: 30,
+    rating: 4.95,
+    reviewCount: 152,
+    imageUrl: 'ai_studio_dish_nem_nuong_88.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Phục vụ tại quán & Nhận ship mẹt nem nướng, bún trộn nem tận nơi quanh ĐHSP2 & KTX Xuân Hòa (Trưa 10h30-12h30 & Tối 17h-22h) · Hotline 0385 787 064',
+    signatureDish: {
+      id: 'nn88-nem-nuong-nha-trang',
+      name: 'Nem nướng Nha Trang (30k/suất)',
+      price: 30,
+      tag: 'Bestseller',
+      serviceTag: 'both',
+      description: 'Suất mẹt nem nướng Nha Trang chuẩn vị 30k: Nem lụi nướng than hoa vàng rụm xèo xèo, ram chiên giòn tan, dưa chuột, xoài non, cà rốt chua, bún tươi, bánh tráng cuốn mềm dai và bát nước sốt tương đậu nếp gan thịt sánh mịn béo ngậy rắc hành phi thơm nức.',
+      rarity: 1,
+    },
+    menu: [
+      { id: 'nn88-nem-nuong-nha-trang', name: 'Nem nướng Nha Trang (30k/suất)', price: 30, tag: 'Bestseller', serviceTag: 'both', rarity: 1, description: 'Suất mẹt nem nướng Nha Trang 30k đầy đặn: Nem lụi nướng than hoa thơm lừng xèo xèo, ram chiên giòn rụm, dưa chuột, xoài non, cà rốt chua, bún tươi, bánh tráng cuốn và bát nước sốt tương đậu nếp gan thịt béo ngậy ấm nóng ngập hành phi.' },
+      { id: 'nn88-bun-tron-nem-nuong', name: 'Bún trộn nem nướng (30k/suất)', price: 30, tag: 'Món mới', serviceTag: 'both', rarity: 1, description: 'Tô bún tươi, nem nướng than hoa thái lát xém cạnh vàng thơm, chả ram chiên giòn rụm, dưa leo, xoài xanh bào sợi, rau thơm, đậu phộng rang giòn và hành phi thơm nức quyện sốt tương đậu béo ngậy.' },
+      { id: 'nn88-xuc-xich', name: 'Xúc xích', price: 8, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Xúc xích chiên / nướng nóng hổi vỏ ngoài giòn sần sật 8k/chiếc ăn kèm chấm tương ớt cực cuốn.' },
+      { id: 'nn88-tra-chanh', name: 'Trà chanh', price: 10, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Cốc trà chanh tươi mát lạnh thanh tao 10k/cốc giải nhiệt sảng khoái.' },
+      { id: 'nn88-tra-quat', name: 'Trà quất', price: 10, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Cốc trà quất tươi thơm nức mũi vị chua ngọt đậm đà 10k/cốc giải ngấy chuẩn bài khi thưởng thức nem nướng.' },
+      { id: 'nn88-sua-dau', name: 'Sữa đậu', price: 10, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Cốc sữa đậu nành nấu truyền thống sánh mịn béo bùi thơm ngậy 10k/cốc uống nóng hay đá đều ngon.' }
+    ],
+    tags: ['Nem Nướng 88', 'Nem nướng Nha Trang', 'Bún trộn nem nướng', 'Ki ốt 4 Nguyễn Văn Linh', 'Nem nướng 30k', 'Xúc xích 8k', 'Trà chanh', 'Trà quất', 'Sữa đậu', '0385787064', 'ĐHSP2', 'Ăn trưa', 'Ăn tối'],
+    mapsQuery: 'Ki ốt 4 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    phone: '0385 787 064',
+    openHours: '10:30 - 12:30 & 17:00 - 22:00',
+    rarity: 2,
+    quip: 'Mẹt Nem Nướng Nha Trang & Bún trộn nem nướng 30k tại Ki ốt 4 Nguyễn Văn Linh: Nem nướng than hoa vàng ruộm, ram chiên giòn tan, kèm xúc xích 8k, trà chanh quất sữa đậu 10k cực đã! Hotline 0385 787 064.',
+    mealSessions: ['lunch', 'dinner', 'late']
+  },
+  {
+    id: 'lau-thai-ha-tinh',
+    name: 'Lẩu Thái Hà Tĩnh - Bún Mì Thái & Ngan Cháy Tỏi',
+    tagline: 'Ngan cháy tỏi 200k • Bún mì thái hải sản 40k • Bún miến ngan trộn 40k • Lẩu Thái gia truyền 400k-600k • 13 Trưng Nhị',
+    category: 'restaurant',
+    zone: 'expanded',
+    distance: '13 Trưng Nhị (sát bún đậu Cô Lan, Phúc Yên)',
+    address: '13 Trưng Nhị, P. Phúc Yên, Tỉnh Phú Thọ',
+    priceRange: '40k - 500k',
+    minPrice: 40,
+    maxPrice: 500,
+    rating: 4.95,
+    reviewCount: 178,
+    imageUrl: 'ai_studio_dish_ngan_chay_toi_ha_tinh.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Có phòng máy lạnh mát mẻ & Ship tận nhà lẩu thái, ngan cháy tỏi, bún mì thái quanh Phúc Yên & Xuân Hòa · Hotline 0977 732 021 - 0357 556 375',
+    signatureDish: {
+      id: 'ltht-ngan-chay-toi',
+      name: 'Ngan cháy tỏi gia truyền (200k/đĩa)',
+      price: 200,
+      tag: 'Bestseller',
+      serviceTag: 'both',
+      description: 'Đĩa ngan cháy tỏi 200k vàng óng rực rỡ, thịt ngan dày ngọt mềm da giòn sần sật, ngập tràn tỏi phi giòn tan bùi béo, ớt tươi thơm nồng chấm sốt tỏi ớt đặc biệt.',
+      rarity: 2,
+    },
+    menu: [
+      { id: 'ltht-ngan-chay-toi', name: 'Ngan cháy tỏi (200k/đĩa)', price: 200, tag: 'Bestseller', serviceTag: 'both', rarity: 2, description: 'Đĩa ngan cháy tỏi 200k vàng ươm giòn rụm ngập tràn tỏi phi thơm nức mũi, thịt ngan ngọt mềm chấm sốt cay đậm đà.' },
+      { id: 'ltht-bun-mi-thai-hai-san', name: 'Bún mì thái hải sản', price: 40, tag: 'Chua cay', serviceTag: 'both', rarity: 1, description: 'Bát bún mì thái hải sản 40k nước dùng Tomyum đỏ cam chua cay đậm đà, tôm tươi, mực, bò, nấm kim châm rau cải thanh mát.' },
+      { id: 'ltht-bun-mi-thai-tim-cat', name: 'Bún mì thái tim cật', price: 45, tag: 'Đậm đà', serviceTag: 'both', rarity: 1, description: 'Bún mì thái nước dùng chua cay ngọt béo, tim cật tươi giòn sần sật bổ dưỡng.' },
+      { id: 'ltht-bun-mi-thai-full', name: 'Bún mì thái full topping', price: 50, tag: 'Đặc biệt', serviceTag: 'both', rarity: 1, description: 'Bát bún mì thái đặc biệt 50k ngập tràn hải sản tôm mực, tim cật, thịt bò và nấm kim châm.' },
+      { id: 'ltht-bun-mien-ngan-mang-moc', name: 'Bún miến ngan măng mọc', price: 40, tag: 'Thanh ngọt', serviceTag: 'both', rarity: 0, description: 'Bún miến ngan nấu măng củ giòn ngọt, mọc thịt thơm bùi và thịt ngan thái dày ngọt nước.' },
+      { id: 'ltht-bun-mien-ngan-tron', name: 'Bún miến ngan trộn', price: 40, tag: 'Chua ngọt', serviceTag: 'both', rarity: 0, description: 'Bún miến ngan trộn đẫm sốt chua ngọt, thịt ngan mềm thơm, hành phi, lạc rang và rau thơm.' },
+      { id: 'ltht-lau-thai-gia-truyen', name: 'Lẩu thái gia truyền', price: 400, tag: 'Nồi lẩu', serviceTag: 'both', rarity: 2, description: 'Set lẩu thái chua cay gia truyền 400k-500k-600k ngập tràn hải sản, ba chỉ bò Mỹ, sụn, nấm và rau lẩu tươi rói.' },
+      { id: 'ltht-tra-chanh-quat', name: 'Trà chanh / Trà quất / Nước đậu', price: 10, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Đồ uống giải nhiệt mát lành đồng giá 10k/cốc.' }
+    ],
+    tags: ['Lẩu Thái Hà Tĩnh', 'Ngan cháy tỏi', 'Bún mì thái', '13 Trưng Nhị', 'Phúc Yên', '0977732021', '0357556375', 'Lẩu gia truyền', 'Điều hòa mát lạnh'],
+    mapsQuery: '13 Trưng Nhị Phúc Yên',
+    phone: '0977 732 021 - 0357 556 375',
+    openHours: '09:00 - 22:30 (Có điều hòa)',
+    rarity: 3,
+    quip: 'Ngan cháy tỏi 200k vàng óng ngập tỏi phi & Bún mì thái chua cay 40k tại 13 Trưng Nhị (sát bún đậu Cô Lan, Phúc Yên)! Hotline 0977 732 021 - 0357 556 375.',
+    mealSessions: ['lunch', 'dinner', 'late']
+  },
+  {
+    id: 'hi-tea',
+    name: 'Hi Tea - Trà & Mỳ Cay 7 Cấp Độ',
+    tagline: 'Mỳ cay 7 cấp độ 35k-55k • Lẩu cô đơn 69k • Hồng trà kem cheese 35k • Ăn vặt nóng giòn • 0968 373 123',
+    category: 'restaurant',
+    zone: 'dhsp2',
+    distance: 'Khu ẩm thực ĐHSP2 (~350m từ ĐHSP2)',
+    address: 'Khu ẩm thực ĐHSP Hà Nội 2, P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '10k - 69k',
+    minPrice: 10,
+    maxPrice: 69,
+    rating: 4.9,
+    reviewCount: 164,
+    imageUrl: 'ai_studio_dish_lau_co_don_hitea.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Nhận ship trà sữa, mỳ cay 7 cấp độ & lẩu cô đơn nóng hổi tận phòng KTX & khu trọ Xuân Hòa · Hotline 0968 373 123 (9h00 - 23h00)',
+    signatureDish: {
+      id: 'hitea-lau-co-don',
+      name: 'Lẩu cô đơn (69k/nồi)',
+      price: 69,
+      tag: 'Bestseller',
+      serviceTag: 'both',
+      description: 'Nồi lẩu mini 1 người sôi sùng sục nước lẩu tomyum chua cay đậm đà, đầy ắp tôm tươi, ba chỉ bò Mỹ, cá viên, xúc xích, nấm kim châm, bắp ngọt và rau cải xanh tươi mát kèm mì tôm.',
+      rarity: 1,
+    },
+    menu: [
+      { id: 'hitea-lau-co-don', name: 'Lẩu cô đơn (69k/nồi)', price: 69, tag: 'Bestseller', serviceTag: 'both', rarity: 1, description: 'Nồi lẩu mini 1 người 69k sôi sùng sục nước tomyum chua cay đậm đà ngập tôm, bò ba chỉ, xúc xích, nấm bắp.' },
+      { id: 'hitea-my-cay-bo', name: 'Mỳ cay bò 7 cấp độ', price: 45, tag: 'Cay nồng', serviceTag: 'both', rarity: 1, description: 'Thố mỳ cay sợi Hàn Quốc nấu thịt bò tươi, kim chi, nấm kim châm sôi ùng ục 7 cấp độ.' },
+      { id: 'hitea-my-cay-thap-cam', name: 'Mỳ cay thập cẩm 7 cấp độ', price: 55, tag: 'Đầy đặn', serviceTag: 'both', rarity: 1, description: 'Thố mỳ cay đặc biệt đầy ắp tôm, mực, bò, xúc xích, viên thả lẩu và nấm kim châm.' },
+      { id: 'hitea-my-cay-xuc-xich', name: 'Mỳ cay xúc xích / cá viên', price: 35, tag: 'Học sinh', serviceTag: 'both', rarity: 0, description: 'Mỳ cay niêu đất nóng hổi xúc xích giòn béo kèm kim chi chua cay ấm bụng.' },
+      { id: 'hitea-tokbokki', name: 'Tokbokki phô mai', price: 40, tag: 'Chuẩn Hàn', serviceTag: 'both', rarity: 0, description: 'Bánh gạo Hàn Quốc dai mềm ngập sốt ớt đỏ cay ngọt rắc mè thơm.' },
+      { id: 'hitea-nem-chua-ran', name: 'Nem chua rán giòn', price: 35, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Đĩa nem chua rán nóng hổi tẩm bột chiên xù vàng rụm chấm tương ớt.' },
+      { id: 'hitea-khoai-tay-pho-mai', name: 'Khoai tây chiên phô mai', price: 30, tag: 'Béo ngậy', serviceTag: 'both', rarity: 0, description: 'Khoai tây chiên giòn tan lắc đẫm bột phô mai thơm béo ngọt bùi.' },
+      { id: 'hitea-hong-tra-kem-cheese', name: 'Hồng trà kem cheese', price: 35, tag: 'Must Try', serviceTag: 'both', rarity: 0, description: 'Hồng trà đậm vị phủ lớp kem cheese mặn béo ngậy dày mịn thơm nức.' },
+      { id: 'hitea-tra-sua-kem-trung', name: 'Trà sữa kem trứng dừa nướng', price: 35, tag: 'Hot trend', serviceTag: 'both', rarity: 0, description: 'Trà sữa ngọt thơm phủ lớp kem trứng béo ngậy khò đường dừa nướng giòn tan.' }
+    ],
+    tags: ['Hi Tea', 'Mỳ cay 7 cấp độ', 'Lẩu cô đơn', 'Trà sữa', 'Kem cheese', '0968373123', 'ĐHSP2', 'Ăn vặt', 'Sinh viên'],
+    mapsQuery: 'Đại học Sư phạm Hà Nội 2 Xuân Hòa Phúc Yên',
+    phone: '0968 373 123',
+    openHours: '09:00 - 23:00 (Mỗi ngày)',
+    rarity: 2,
+    quip: 'Lẩu cô đơn 69k sôi sùng sục & Mỳ cay 7 cấp độ 35k-55k tại Hi Tea! Trà sữa kem cheese béo ngậy, mở cửa 9h-23h. Hotline 0968 373 123.',
+    mealSessions: ['lunch', 'dinner', 'late']
+  },
+  {
+    id: 'an-vat-nha-phuong',
+    name: 'Ăn Vặt Nhà Phương - Gà Sốt & Ăn Vặt Nóng Hổi',
+    tagline: 'Gà viên sốt kem hành 60k • Cơm gà 45k • Nem chua rán, khoai tím phô mai, bánh bột lọc • Ship nhanh 0339 732 996',
+    category: 'restaurant',
+    zone: 'dhsp2',
+    distance: 'Khu ẩm thực ĐHSP2, Xuân Hòa',
+    address: 'Khu dân cư ĐHSP Hà Nội 2, P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '10k - 80k',
+    minPrice: 10,
+    maxPrice: 80,
+    rating: 4.92,
+    reviewCount: 145,
+    imageUrl: 'ai_studio_dish_ga_vien_sot_kem_hanh_nhaphuong.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Ngon giòn - nóng hổi - ăn là ghiền! Ship tận nơi nhanh chóng quanh Xuân Hòa & Phúc Yên · Hotline 0339 732 996',
+    signatureDish: {
+      id: 'np-ga-vien-kem-hanh',
+      name: 'Gà viên sốt kem hành (60k/suất)',
+      price: 60,
+      tag: 'Bestseller',
+      serviceTag: 'both',
+      description: 'Gà viên chiên giòn rụm vàng ươm ngập tràn sốt kem hành béo ngậy ngọt dịu rắc hành hoa tươi xanh, ăn là nghiền.',
+      rarity: 1,
+    },
+    menu: [
+      { id: 'np-ga-vien-kem-hanh', name: 'Gà viên sốt kem hành (60k/suất)', price: 60, tag: 'Bestseller', serviceTag: 'both', rarity: 1, description: 'Gà viên chiên giòn rụm ngập sốt kem hành béo ngậy ngọt bùi phủ hành hoa tươi.' },
+      { id: 'np-ga-vien-mam-toi', name: 'Gà viên sốt mắm tỏi', price: 55, tag: 'Đậm đà', serviceTag: 'both', rarity: 1, description: 'Gà viên giòn rụm quyện sốt mắm tỏi ớt mặn ngọt cay tê cực kỳ bắt miệng.' },
+      { id: 'np-ga-vien-chua-ngot', name: 'Gà viên sốt chua ngọt', price: 55, tag: 'Chua ngọt', serviceTag: 'both', rarity: 0, description: 'Gà viên sốt chua ngọt bóng bẩy chuẩn vị Hàn Quốc thơm lừng.' },
+      { id: 'np-com-ga', name: 'Cơm gà Nhà Phương', price: 45, tag: 'No căng', serviceTag: 'both', rarity: 0, description: 'Suất cơm gà vàng ươm đùi gà chiên mắm / sốt đậm đà kèm trứng ốp và dưa nộm 45k.' },
+      { id: 'np-nem-chua-ran', name: 'Nem chua rán (80k/10c)', price: 80, tag: 'Nóng giòn', serviceTag: 'both', rarity: 0, description: 'Mẹt nem chua rán 10 cái vỏ xù vàng ươm giòn tan chấm tương ớt cay nồng.' },
+      { id: 'np-nem-vo-gion', name: 'Nem vỏ giòn (60k/10c)', price: 60, tag: 'Giòn rụm', serviceTag: 'both', rarity: 0, description: 'Nem rán vỏ giòn rụm rôm rốp 10 cái ăn vặt cực dính.' },
+      { id: 'np-khoai-tim-pho-mai', name: 'Khoai tím phô mai (60k/12v)', price: 60, tag: 'Kéo sợi', serviceTag: 'both', rarity: 0, description: 'Khoai môn tím chiên phồng bọc phô mai mozzarella kéo sợi béo ngậy 12 viên.' },
+      { id: 'np-pho-mai-que', name: 'Phô mai que (70k/8c)', price: 70, tag: 'Béo ngậy', serviceTag: 'both', rarity: 0, description: 'Phô mai que chiên xù vàng óng nhân phô mai dẻo béo kéo sợi siêu dài.' },
+      { id: 'np-sui-cao-chien', name: 'Sủi cảo chiên (40k/10c)', price: 40, tag: 'Thơm bùi', serviceTag: 'both', rarity: 0, description: 'Sủi cảo chiên vàng giòn rụm nhân thịt mộc nhĩ chấm sốt chua ngọt.' },
+      { id: 'np-banh-bot-loc', name: 'Bánh bột lọc (90k/20c)', price: 90, tag: 'Đậm đà', serviceTag: 'both', rarity: 0, description: 'Đĩa 20 chiếc bánh bột lọc trong veo nhân tôm thịt đậm đà chấm mắm ớt.' },
+      { id: 'np-lap-xuong-ha-khau', name: 'Lạp xưởng Hà Khẩu (150k/10c)', price: 150, tag: 'Hot trend', serviceTag: 'both', rarity: 0, description: 'Lạp xưởng nướng đá Hà Khẩu giòn ngọt mọng nước rắc ớt bột tê cay.' },
+      { id: 'np-tokboki', name: 'Tokboki cay ngọt', price: 50, tag: 'Hàn Quốc', serviceTag: 'both', rarity: 0, description: 'Tokbokki chả cá sốt ớt cay ngọt ấm nóng đậm đà.' },
+      { id: 'np-tra-chanh', name: 'Trà chanh giải ngấy', price: 10, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Cốc trà chanh tươi mát 10k giải ngấy cực chuẩn.' }
+    ],
+    tags: ['Ăn Vặt Nhà Phương', 'Gà viên sốt kem hành', 'Cơm gà', 'Nem chua rán', 'Khoai tím phô mai', '0339732996', 'ĐHSP2', 'Ăn đêm', 'Ship tận nơi'],
+    mapsQuery: 'ĐHSP2 Xuân Hòa Phúc Yên',
+    phone: '0339 732 996',
+    openHours: '09:00 - 23:30',
+    rarity: 2,
+    quip: 'Gà viên sốt kem hành 60k, cơm gà 45k & khoai tím phô mai nóng giòn tại Ăn Vặt Nhà Phương! Ship tận nơi nhanh chóng qua hotline 0339 732 996.',
+    mealSessions: ['lunch', 'dinner', 'late']
+  },
+  {
+    id: 'zino-cafe',
+    name: 'Zino - Cà Phê Đậm Vị & Trà Trái Cây',
+    tagline: 'Cà phê muối đậm vị 25k • Trà mãng cầu dâu tằm 30k • Hồng trà Shan Tuyết 35k • Matcha kem muối 30k • 266 Nguyễn Văn Linh',
+    category: 'cafe',
+    zone: 'dhsp2',
+    distance: '266 Nguyễn Văn Linh (~300m từ ĐHSP2)',
+    address: '266 Nguyễn Văn Linh, P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '20k - 45k',
+    minPrice: 20,
+    maxPrice: 45,
+    rating: 4.96,
+    reviewCount: 182,
+    imageUrl: 'ai_studio_dish_tra_mang_cau_dau_tam_zino.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Không gian cà phê hiện đại & nhận ship đồ uống tận nơi quanh Xuân Hòa · Hotline 0964 060 718 (Tạ Khánh Nhi)',
+    signatureDish: {
+      id: 'zino-tra-mang-cau-dau-tam',
+      name: 'Trà mãng cầu dâu tằm (Must Try)',
+      price: 30,
+      tag: 'Bestseller',
+      serviceTag: 'both',
+      description: 'Ly trà dâu tằm mãng cầu sắc tím ruby phân tầng tuyệt đẹp, chua ngọt thanh mát với thịt mãng cầu xiêm giòn ngọt quyện mứt dâu tằm chín mọng giải nhiệt đỉnh cao.',
+      rarity: 1,
+    },
+    menu: [
+      { id: 'zino-tra-mang-cau-dau-tam', name: 'Trà mãng cầu dâu tằm', price: 30, tag: 'Must Try', serviceTag: 'both', rarity: 1, description: 'Trà trái cây dâu tằm đỏ tím ruby quyện thịt mãng cầu xiêm tươi ngọt mát lạnh.' },
+      { id: 'zino-cafe-muoi', name: 'Cà phê muối đậm vị', price: 25, tag: 'Must Try', serviceTag: 'both', rarity: 1, description: 'Cà phê phin truyền thống đậm đà phủ lớp kem mặn béo bùi sánh mịn đặc trưng của Zino.' },
+      { id: 'zino-bac-xiu-muoi', name: 'Bạc xỉu muối', price: 30, tag: 'Thơm béo', serviceTag: 'both', rarity: 0, description: 'Bạc xỉu sữa ngọt ngào kết hợp lớp kem muối béo ngậy hài hòa.' },
+      { id: 'zino-hong-tra-shan-tuyet', name: 'Hồng trà Shan Tuyết', price: 35, tag: 'Must Try', serviceTag: 'both', rarity: 1, description: 'Trà Shan Tuyết cổ thụ hương hoa tự nhiên thanh tao hậu ngọt sâu.' },
+      { id: 'zino-hong-tra-pudding-dau-do', name: 'Hồng trà pudding đậu đỏ', price: 40, tag: 'Must Try', serviceTag: 'both', rarity: 1, description: 'Hồng trà đậm vị kèm pudding trứng mềm mướt và đậu đỏ bùi ngọt.' },
+      { id: 'zino-matcha-kem-muoi', name: 'Matcha kem muối', price: 30, tag: 'Must Try', serviceTag: 'both', rarity: 1, description: 'Matcha thơm nồng kết hợp lớp kem béo mặn sánh mịn hấp dẫn.' },
+      { id: 'zino-matcha-oreo', name: 'Matcha Oreo', price: 30, tag: 'Must Try', serviceTag: 'both', rarity: 0, description: 'Matcha sữa đá xay thơm bùi rắc vụn bánh Oreo giòn rụm.' },
+      { id: 'zino-tra-sua-matcha-dau-do', name: 'Trà sữa matcha đậu đỏ', price: 40, tag: 'Must Try', serviceTag: 'both', rarity: 0, description: 'Trà sữa matcha Nhật Bản thơm đậm kết hợp hạt đậu đỏ bùi ngọt.' },
+      { id: 'zino-tra-olong-sen-vang', name: 'Trà ô long sen vàng', price: 38, tag: 'Thanh mát', serviceTag: 'both', rarity: 0, description: 'Trà ô long thanh khiết kết hợp hạt sen bở bùi và củ năng giòn ngọt.' },
+      { id: 'zino-sua-chua-dau-machiato', name: 'Sữa chua dâu machiato', price: 35, tag: 'Thơm ngon', serviceTag: 'both', rarity: 0, description: 'Sữa chua dâu tây chua ngọt lên men tự nhiên phủ lớp machiato béo mịn.' }
+    ],
+    tags: ['Zino Cafe', 'Cà phê muối', 'Trà mãng cầu dâu tằm', 'Hồng trà Shan Tuyết', 'Matcha kem muối', '266 Nguyễn Văn Linh', '0964060718', 'ĐHSP2', 'Checkin'],
+    mapsQuery: '266 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    phone: '0964 060 718',
+    openHours: '07:30 - 23:00',
+    rarity: 3,
+    quip: 'Cà phê muối đậm vị 25k & Trà mãng cầu dâu tằm 30k Must Try tại Zino 266 Nguyễn Văn Linh! Không gian hiện đại, menu đồ uống phong phú. Hotline 0964 060 718.',
+    mealSessions: ['morning', 'lunch', 'dinner', 'late']
+  },
+  {
+    id: 'umee-tea-food',
+    name: 'Umee Tea & Food - Đồ Ăn Vặt & Trà',
+    tagline: 'Oolong Phong Lan & Trà sữa gạo rang 30k • Mì cay bò 40k • Ốc xào măng đậu 35k • Mẹt xiên que giòn rụm • Lập Trí - Kim Anh',
+    category: 'restaurant',
+    zone: 'expanded',
+    distance: 'Lập Trí - Kim Anh (Giáp ranh Phúc Yên / Sóc Sơn)',
+    address: 'Lập Trí - Kim Anh, Phúc Yên / Sóc Sơn',
+    priceRange: '10k - 59k',
+    minPrice: 10,
+    maxPrice: 59,
+    rating: 4.88,
+    reviewCount: 139,
+    imageUrl: 'ai_studio_dish_oc_xao_mang_dau_umee.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Mở cửa xuyên đêm từ 9:00 sáng đến 01:00 đêm! Ship trà sữa, đồ ăn vặt & ốc nóng hổi · Hotline 0377 907 916 - 0368 743 735',
+    signatureDish: {
+      id: 'umee-oc-xao-mang-dau',
+      name: 'Ốc xào măng đậu (35k/đĩa)',
+      price: 35,
+      tag: 'Bestseller',
+      serviceTag: 'both',
+      description: 'Đĩa ốc nhồi/mít xào măng chua giòn cay nồng đượm vị lá lốt tía tô, đậu phụ rán vàng rụm ngấm nước sốt sánh đậm đà ăn cực cuốn.',
+      rarity: 1,
+    },
+    menu: [
+      { id: 'umee-oc-xao-mang-dau', name: 'Ốc xào măng đậu', price: 35, tag: 'Bestseller', serviceTag: 'both', rarity: 1, description: 'Đĩa ốc xào măng chua cay giòn sần sật, đậu rán vàng ruộm, tía tô lá lốt thơm lừng.' },
+      { id: 'umee-oc-luoc', name: 'Ốc luộc lá bưởi mắm gừng', price: 30, tag: 'Nóng hổi', serviceTag: 'both', rarity: 0, description: 'Bát ốc luộc sả ớt lá bưởi nóng hổi chấm nước mắm gừng ớt chua ngọt ấm lòng.' },
+      { id: 'umee-cut-lon-xao-me', name: 'Cút lộn xào me măng đậu', price: 40, tag: 'Chua cay', serviceTag: 'both', rarity: 1, description: 'Trứng cút lộn xào sốt me chua ngọt đậm đà, măng củ giòn cay và đậu rán béo ngậy.' },
+      { id: 'umee-my-cay-bo', name: 'Mì cay bò Umee', price: 40, tag: 'Cay nồng', serviceTag: 'both', rarity: 1, description: 'Thố mì cay niêu đất ngập thịt bò tươi, kim chi và nấm kim châm sôi ùng ục.' },
+      { id: 'umee-my-cay-xuc-xich', name: 'Mì cay xúc xích', price: 35, tag: 'Ấm bụng', serviceTag: 'both', rarity: 0, description: 'Mì cay sợi dai Hàn Quốc nước dùng đậm đà xúc xích khía hoa chiên giòn.' },
+      { id: 'umee-met-xien', name: 'Mẹt xiên que thập cẩm', price: 39, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Mẹt xiên que chiên nóng giòn: cá viên, bò viên, xúc xích, hồ lô, tôm viên chấm tương ớt.' },
+      { id: 'umee-nem-xu', name: 'Nem chua rán xù (55k/10c)', price: 55, tag: 'Giòn rụm', serviceTag: 'both', rarity: 0, description: 'Nem chua rán tẩm bột chiên xù vàng ươm giòn tan 10 chiếc.' },
+      { id: 'umee-oolong-phong-lan', name: 'Oolong Phong Lan', price: 30, tag: 'Must Try', serviceTag: 'both', rarity: 1, description: 'Trà Oolong ướp hương hoa phong lan dịu dàng quý phái thanh tao ngọt hậu.' },
+      { id: 'umee-tra-sua-gao-rang', name: 'Trà sữa gạo rang', price: 30, tag: 'Must Try', serviceTag: 'both', rarity: 1, description: 'Trà sữa thơm nồng hương gạo rang Genmaicha Nhật Bản béo bùi độc đáo.' },
+      { id: 'umee-matcha-late', name: 'Matcha Late (JP)', price: 25, tag: 'Must Try', serviceTag: 'both', rarity: 0, description: 'Matcha Nhật Bản nguyên chất phân tầng sữa tươi ngọt bùi thơm mát.' }
+    ],
+    tags: ['Umee Tea', 'Umee Food', 'Ốc xào măng đậu', 'Oolong Phong Lan', 'Mì cay bò', 'Cút lộn xào me', 'Lập Trí Kim Anh', '0377907916', 'Ăn đêm 1h sáng'],
+    mapsQuery: 'Lập Trí Kim Anh Sóc Sơn',
+    phone: '0377 907 916 - 0368 743 735',
+    openHours: '09:00 - 01:00 (Mở tới 1h đêm)',
+    rarity: 2,
+    quip: 'Ốc xào măng đậu 35k, Mì cay bò 40k & Oolong Phong Lan 30k tại Umee Tea & Food Lập Trí Kim Anh! Mở cửa xuyên đêm tới 1h sáng. Hotline 0377 907 916.',
+    mealSessions: ['lunch', 'dinner', 'late']
   }
 ];
 
@@ -7277,6 +7552,114 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       date: 'Hôm qua',
       role: 'Cư dân bờ hồ Phúc Yên',
       content: 'Cực mê các món bản gang cháy tỏi ở đây, nhất là nầm bản gang và má đào sốt tỏi ớt xèo xèo thơm nức. Đặt ship lẩu về nhà qua hotline 0376076376 quán đóng gói rất chỉn chu, nước lẩu và thịt ếch tươi ngon đóng hộp sạch sẽ nóng hổi!',
+    }
+  ],
+  'nem-nuong-88': [
+    {
+      id: 'r_nn88_1',
+      author: 'Lê Thu Trang K48',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Nem Nướng 88 ở Ki ốt 4 Nguyễn Văn Linh ngon xuất sắc luôn! Suất 30k mà mẹt đầy ăm ắp nem nướng thơm nức mùi than hoa, ram chiên vàng rộm giòn tan. Đỉnh nhất là bát nước sốt chấm tương đậu nếp béo ngậy ấm nóng ngập hành phi. Ăn trưa từ 10h30 hay tối ghé ăn đều siêu đông khách!',
+    },
+    {
+      id: 'r_nn88_2',
+      author: 'Trần Hoàng Quân',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Dân sành ăn Xuân Hòa',
+      content: 'Chỗ này cuốn nem nướng chuẩn vị Nha Trang nhất khu Nguyễn Văn Linh, bánh tráng mềm dai không bị khô, rau dưa xoài xanh sạch sẽ tươi rói. Gọi ship qua hotline 0385 787 064 đóng hộp cẩn thận, nước chấm nóng hổi giao cực nhanh!',
+    }
+  ],
+  'lau-thai-ha-tinh': [
+    {
+      id: 'r_ltht_1',
+      author: 'Nguyễn Đình Trọng',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Thực khách Phúc Yên',
+      content: 'Lẩu Thái Hà Tĩnh ở 13 Trưng Nhị (sát bún đậu Cô Lan) đồ ăn ngon đỉnh chóp! Ngan cháy tỏi 200k thịt ngan dày béo ngọt lịm ngập tràn tỏi phi giòn rụm bùi ngậy chấm sốt cay tê cực cuốn. Bát bún mì thái hải sản 40k nước tomyum chua cay đậm đà, tôm mực tươi rói. Quán có điều hòa mát rượi!',
+    },
+    {
+      id: 'r_ltht_2',
+      author: 'Lê Thùy Dung',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Cư dân Trưng Nhị Phúc Yên',
+      content: 'Gọi ship lẩu thái gia truyền về nhà qua hotline 0977 732 021 - 0357 556 375 ship siêu nhanh và đóng gói sạch sẽ. Bún miến ngan trộn 40k ăn trưa cực ngon miệng, thịt ngan mềm không hề hôi!',
+    }
+  ],
+  'hi-tea': [
+    {
+      id: 'r_hitea_1',
+      author: 'Đỗ Hải Yến K49',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Hi Tea là điểm tụ tập quen thuộc của lớp mình! Lẩu cô đơn 69k sôi sùng sục đầy đặn tôm, bò, xúc xích nấm bắp ăn ấm bụng dã man. Mỳ cay 7 cấp độ nước dùng đậm đà chua cay vừa miệng, trà sữa kem cheese 35k lớp kem mặn béo ngậy thơm ngon tuyệt hảo!',
+    },
+    {
+      id: 'r_hitea_2',
+      author: 'Trần Văn Long',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Dân cú đêm Xuân Hòa',
+      content: 'Quán mở từ 9h sáng tới tận 23h đêm, cày deadline đói bụng gọi hotline 0968 373 123 ship mỳ cay xúc xích và nem chua rán tới phòng KTX rất nhanh. Đồ ăn nóng hổi, phục vụ nhiệt tình!',
+    }
+  ],
+  'an-vat-nha-phuong': [
+    {
+      id: 'r_np_1',
+      author: 'Nguyễn Thị Mai K48',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Ăn Vặt Nhà Phương đúng chuẩn "ngon giòn - nóng hổi - ăn là ghiền"! Mê nhất món Gà viên sốt kem hành 60k sốt kem béo ngậy phủ hành hoa thơm phức, cắn miếng gà giòn rụm tan trong miệng. Khoai tím phô mai 60k kéo sợi dài ngoằng, cơm gà 45k no nê!',
+    },
+    {
+      id: 'r_np_2',
+      author: 'Hoàng Anh Tuấn',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Tín đồ ăn vặt Xuân Hòa',
+      content: 'Nem chua rán 80k/10c và nem vỏ giòn 60k ở đây ngon xuất sắc, vỏ xù giòn tan rụm rộp. Bánh bột lọc 90k/20c nhân tôm thịt đậm đà, ship qua hotline 0339 732 996 siêu nhanh và còn nóng bỏng tay!',
+    }
+  ],
+  'zino-cafe': [
+    {
+      id: 'r_zino_1',
+      author: 'Phạm Quỳnh Anh K48',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Zino ở 266 Nguyễn Văn Linh có không gian check-in cực xinh xắn và hiện đại! Cà phê muối 25k Must Try thơm nức mùi cafe phin truyền thống, lớp kem mặn béo ngậy sánh mịn đỉnh chóp. Trà mãng cầu dâu tằm 30k màu tím ruby sống ảo đẹp mê ly, uống chua ngọt thanh mát cực sảng khoái!',
+    },
+    {
+      id: 'r_zino_2',
+      author: 'Lê Quang Huy',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Cư dân đường Nguyễn Văn Linh',
+      content: 'Hồng trà Shan Tuyết 35k và Matcha kem muối 30k ở Zino chuẩn xịn vị trà cổ thụ, hậu ngọt thanh tao. Quán mở từ sáng 7h30 tới 23h đêm, nhân viên siêu ngoan và lễ phép!',
+    }
+  ],
+  'umee-tea-food': [
+    {
+      id: 'r_umee_1',
+      author: 'Nguyễn Văn Toàn',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Khách quen Lập Trí Kim Anh',
+      content: 'Umee Tea & Food ở Lập Trí mở cửa xuyên đêm tới tận 1h sáng, cứu đói đêm khuya tuyệt vời! Ốc xào măng đậu 35k cay nồng thơm lừng lá lốt tía tô ăn dính kinh khủng. Mẹt xiên que 39k chiên giòn rụm, cút lộn xào me đậm vị chua ngọt!',
+    },
+    {
+      id: 'r_umee_2',
+      author: 'Trần Thị Thu Thảo K49',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Sinh viên KTX Xuân Hòa',
+      content: 'Trà Oolong Phong Lan và Trà sữa gạo rang 30k ở Umee thơm lừng vị hoa quả và trà rang mộc, uống không hề bị ngọt gắt. Gọi ship qua hotline 0377 907 916 giao hàng đêm muộn rất nhanh và chu đáo!',
     }
   ]
 };

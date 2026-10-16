@@ -9,9 +9,23 @@ import {
 } from '@/lib/places-xuanhoa';
 import { 
   X, MapPin, Phone, Star, Sparkles, Navigation, RotateCw, UtensilsCrossed, 
-  ShieldCheck, DollarSign, Search, ChevronDown, Bike, Wind, Flame, Compass 
+  ShieldCheck, DollarSign, Search, ChevronDown, Bike, Wind, Flame, Compass,
+  MessageSquare, Send, Camera
 } from 'lucide-react';
 import { formatTypography, cleanDishDisplayTitle } from '@/lib/utils';
+import { Review } from '@/lib/places-xuanhoa';
+import { getLocalReviews, saveLocalReview } from '@/lib/reviews-storage';
+import { UserAuthProfile } from '@/lib/auth';
+import { GoogleGIcon } from './GoogleGIcon';
+
+const QUICK_PLACE_TAGS = [
+  '😋 Đồ ăn tươi ngon',
+  '⚡ Phục vụ nhanh',
+  '💰 Giá sinh viên',
+  '❄️ Điều hòa mát rượi',
+  '🛵 Ship đúng giờ',
+  '🧹 Quán sạch sẽ',
+];
 
 function renderAmenityIcon(id: string, size = 14) {
   switch (id) {
@@ -34,6 +48,8 @@ interface PlaceModalProps {
   onSpinAgain?: () => void;
   allPlaces?: Place[];
   onSelectPlace?: (place: Place) => void;
+  authUser?: UserAuthProfile | null;
+  onOpenLogin?: () => void;
 }
 
 export function PlaceModal({ 
@@ -41,23 +57,100 @@ export function PlaceModal({
   isOpen, 
   onClose, 
   onSpinAgain, 
+  authUser = null,
+  onOpenLogin,
 }: PlaceModalProps) {
   if (!place || !isOpen) return null;
 
   const [currentPlace, setCurrentPlace] = useState<Place>(place);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [newRating, setNewRating] = useState<number>(5);
+  const [newComment, setNewComment] = useState<string>('');
+  const [newPhoto, setNewPhoto] = useState<string>('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [reviewSuccess, setReviewSuccess] = useState<boolean>(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Sync when prop place changes
   useEffect(() => {
     if (place) {
       setCurrentPlace(place);
       setIsMenuOpen(false);
+      setIsReviewOpen(false);
       setMenuSearch('');
+      setReviewSuccess(false);
+      setSelectedTags([]);
+      setNewPhoto('');
     }
   }, [place]);
 
   const activePlace = currentPlace || place;
+
+  useEffect(() => {
+    if (activePlace?.id) {
+      setReviews(getLocalReviews(activePlace.id));
+    }
+  }, [activePlace?.id]);
+
+  const handleToggleTag = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxW = 500;
+        const scale = Math.min(1, maxW / img.width);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.7);
+          setNewPhoto(compressed);
+        }
+      };
+      if (typeof event.target?.result === 'string') {
+        img.src = event.target.result;
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmitReview = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim() || !activePlace) return;
+    if (!authUser || !authUser.isLoggedIn) {
+      onOpenLogin?.();
+      return;
+    }
+    const created = saveLocalReview(activePlace.id, {
+      author: authUser.nickname || authUser.displayName || 'Thực khách',
+      avatar: authUser.avatar || '🐱',
+      rating: newRating,
+      content: newComment.trim(),
+      tags: selectedTags.length > 0 ? selectedTags : undefined,
+      photo: newPhoto.trim() || undefined,
+      isVerified: true,
+    });
+    setReviews(prev => [created, ...prev]);
+    setNewComment('');
+    setSelectedTags([]);
+    setNewPhoto('');
+    setReviewSuccess(true);
+    setTimeout(() => setReviewSuccess(false), 4000);
+  };
   const currentStyle = getPlaceStyleGroup(activePlace);
   const currentStyleLabel = getPlaceStyleLabel(currentStyle);
   const amenity = getPlaceAmenity(activePlace);
@@ -239,8 +332,34 @@ export function PlaceModal({
           </div>
         )}
 
-        {/* BỘ TIỆN ÍCH 1-CHẠM: GRID 2X2 CÂN XỨNG TUYỆT ĐỐI */}
-        <div className="golden-1touch-grid">
+        {/* ==============================================================
+            PHÂN BIỆT KHÁCH VÃNG LAI VS ĐÃ ĐĂNG NHẬP
+            Khách vãng lai: Khóa thông tin hotline, Google maps, thực đơn
+            Đã đăng nhập: Mở khóa đầy đủ bộ tiện ích 2x2, thực đơn và feedback
+            ============================================================== */}
+        {!authUser || !authUser.isLoggedIn ? (
+          <div className="guest-spot-lock-card place-lock-card">
+            <div className="lock-icon-badge">🔒</div>
+            <h4 className="lock-title">Mở khóa thông tin liên hệ &amp; Thực đơn quán</h4>
+            <p className="lock-desc">
+              Bạn đang ở chế độ <strong>Khách Vãng Lai</strong> (chỉ trải nghiệm quay thử). Hãy đăng nhập tài khoản Google để xem địa chỉ chính xác, hotline gọi điện, toàn bộ thực đơn và gửi feedback cho quán nhé!
+            </p>
+            <button
+              type="button"
+              className="auth-google-cta-btn guest-unlock-btn"
+              onClick={() => {
+                onClose();
+                onOpenLogin?.();
+              }}
+            >
+              <GoogleGIcon size={18} />
+              <span>Đăng nhập để xem đầy đủ Quán</span>
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* BỘ TIỆN ÍCH 1-CHẠM: GRID 2X2 CÂN XỨNG TUYỆT ĐỐI */}
+            <div className="golden-1touch-grid">
           {/* Nút 1: Gọi điện thoại */}
           {activePlace.phone ? (
             <a 
@@ -286,25 +405,34 @@ export function PlaceModal({
           <button
             type="button"
             className={`golden-grid-btn menu ${isMenuOpen ? 'active' : ''}`}
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            onClick={() => {
+              setIsMenuOpen(!isMenuOpen);
+              if (!isMenuOpen) setIsReviewOpen(false);
+            }}
             title={isMenuOpen ? "Đóng danh sách thực đơn" : "Xem danh sách thực đơn niêm yết"}
           >
             <UtensilsCrossed size={15} className="shrink-0" />
             <span className="truncate">
-              {isMenuOpen ? `Đóng Menu (${activePlace.menu.length})` : `Xem Menu (${activePlace.menu.length} món)`}
+              {isMenuOpen ? `Đóng Menu (${activePlace.menu.length})` : `Xem Menu (${activePlace.menu.length})`}
             </span>
             <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isMenuOpen ? 'rotate-180' : ''}`} />
           </button>
 
-          {/* Nút 4: Quay Quán Khác */}
-          <button 
+          {/* Nút 4: Góp Ý & Feedback (Xổ xuống) */}
+          <button
             type="button"
-            className="golden-grid-btn spin"
-            onClick={handleSpinAgain}
-            title="Quay tiếp quán khác trên vòng quay"
+            className={`golden-grid-btn feedback-toggle-btn ${isReviewOpen ? 'active' : ''}`}
+            onClick={() => {
+              setIsReviewOpen(!isReviewOpen);
+              if (!isReviewOpen) setIsMenuOpen(false);
+            }}
+            title="Đánh giá & Gửi feedback thực tế cho quán"
           >
-            <RotateCw size={15} className="shrink-0" /> 
-            <span className="truncate">Quay Quán Khác</span>
+            <MessageSquare size={15} className="shrink-0" />
+            <span className="truncate">
+              {isReviewOpen ? 'Đóng Góp Ý' : `Góp Ý & Feedback (${reviews.length})`}
+            </span>
+            <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isReviewOpen ? 'rotate-180' : ''}`} />
           </button>
         </div>
 
@@ -368,6 +496,180 @@ export function PlaceModal({
               )}
             </div>
           </div>
+        )}
+
+        {/* KHU VỰC ĐÁNH GIÁ & GÓP Ý QUÁN CHO KHÁCH & NGƯỜI DÙNG */}
+        {isReviewOpen && (
+          <div className="golden-menu-dropdown animate-fadeIn place-reviews-dropdown">
+            <div className="golden-menu-header">
+              <div className="flex items-center gap-2">
+                <MessageSquare size={14} className="text-amber-400" />
+                <span className="font-bold text-xs uppercase tracking-wider text-amber-300">
+                  Góp Ý &amp; Đánh Giá Cho Quán ({reviews.length})
+                </span>
+              </div>
+            </div>
+
+            {/* FORM GỬI ĐÁNH GIÁ HOẶC THÔNG BÁO CHO KHÁCH VÃNG LAI */}
+            {!authUser || !authUser.isLoggedIn ? (
+              <div className="guest-review-gate-box">
+                <p className="guest-review-gate-text">
+                  🔒 <strong>Chế độ Khách Vãng Lai:</strong> Đăng nhập tài khoản Google để gửi nhận xét, bình chọn sao và tải ảnh feedback trực tiếp cho quán nhé!
+                </p>
+                <button
+                  type="button"
+                  className="auth-google-cta-btn guest-review-btn"
+                  onClick={() => {
+                    onClose();
+                    onOpenLogin?.();
+                  }}
+                >
+                  <GoogleGIcon size={16} />
+                  <span>Đăng nhập để gửi Feedback</span>
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitReview} className="place-review-form">
+                <div className="place-review-form-header">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{authUser.avatar || '🐱'}</span>
+                    <strong className="text-xs text-white">{authUser.nickname}</strong>
+                    <span className="verified-badge-mini">✓ Đã ghé quán</span>
+                  </div>
+                  {/* Rating stars */}
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setNewRating(star)}
+                        className={`star-select-btn ${star <= newRating ? 'active' : ''}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quick tags picker */}
+                <div className="quick-tags-picker">
+                  <span className="quick-tags-label">Cảm nhận nhanh:</span>
+                  <div className="quick-tags-list">
+                    {QUICK_PLACE_TAGS.map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        className={`quick-tag-chip ${selectedTags.includes(tag) ? 'active' : ''}`}
+                        onClick={() => handleToggleTag(tag)}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <textarea
+                  className="place-review-textarea"
+                  placeholder="Nhận xét hương vị, chất lượng món ăn, phục vụ để feedback cho quán..."
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  rows={2}
+                  maxLength={300}
+                  required
+                />
+
+                {/* Upload ảnh thực tế */}
+                <div className="review-photo-row">
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    ref={fileInputRef} 
+                    style={{ display: 'none' }} 
+                    onChange={handleFileUpload} 
+                  />
+                  <button
+                    type="button"
+                    className="photo-upload-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Tải ảnh đĩa thức ăn hoặc không gian quán thực tế"
+                  >
+                    <Camera size={13} />
+                    <span>{newPhoto ? 'Đổi ảnh chụp' : 'Đính kèm ảnh thực tế (Tùy chọn)'}</span>
+                  </button>
+
+                  {newPhoto && (
+                    <div className="photo-preview-box">
+                      <img src={newPhoto} alt="Xem trước" className="photo-preview-thumb" />
+                      <button 
+                        type="button" 
+                        className="remove-photo-btn"
+                        onClick={() => setNewPhoto('')}
+                        title="Xóa ảnh"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="place-review-form-footer">
+                  <button type="submit" className="place-review-submit-btn w-full justify-center">
+                    <Send size={13} />
+                    <span>Gửi Góp Ý Cho Quán</span>
+                  </button>
+                </div>
+
+                {reviewSuccess && (
+                  <div className="place-review-success-msg">
+                    ✓ Đã gửi đánh giá thành công! Cảm ơn bạn đã đóng góp cho quán ăn Xuân Hòa.
+                  </div>
+                )}
+              </form>
+            )}
+
+            {/* DANH SÁCH CÁC ĐÁNH GIÁ HIỆN CÓ */}
+            <div className="place-reviews-list">
+              {reviews.map((rev) => (
+                <div key={rev.id} className="place-review-item">
+                  <div className="review-card-header">
+                    <div className="review-card-avatar-wrap">
+                      <span>{rev.avatar || '👤'}</span>
+                    </div>
+                    <div className="review-card-main-col">
+                      <div className="review-card-author-row">
+                        <span className="review-card-author-name">{rev.author}</span>
+                      </div>
+                      <div className="review-card-sub-meta">
+                        <div className="review-card-stars" aria-label={`${rev.rating || 5} sao`}>
+                          {'★'.repeat(rev.rating || 5)}
+                        </div>
+                        <span className="review-card-meta-dot">·</span>
+                        <span className="review-card-date">{rev.date}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {rev.tags && rev.tags.length > 0 && (
+                    <div className="review-card-tags-row">
+                      {rev.tags.map(t => (
+                        <span key={t} className="review-card-tag-pill">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="place-review-content">{rev.content}</p>
+                  {rev.photo && (
+                    <img src={rev.photo} alt="Ảnh đánh giá" className="place-review-photo" />
+                  )}
+                </div>
+              ))}
+              {reviews.length === 0 && (
+                <div className="text-center py-6 text-slate-400 text-xs">
+                  Chưa có đánh giá nào cho quán này. Hãy là người đầu tiên gửi feedback nhé!
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+          </>
         )}
 
         {/* GHI CHÚ GIAO HÀNG & PHỤC VỤ (Delivery Note) */}

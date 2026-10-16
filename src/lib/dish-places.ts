@@ -1718,11 +1718,201 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
       'Khoai tây chiên lắc phomai: 60.000đ',
       'Ngao hấp Thái sả ớt chua cay: 60.000đ'
     ]
+  },
+
+  // 43. Quán Nem Nướng 88 (Ki ốt 4 Nguyễn Văn Linh)
+  nem_nuong_88: {
+    name: 'Nem Nướng 88 - Nem Nướng Nha Trang',
+    address: 'Ki ốt 4 Đường Nguyễn Văn Linh, P. Xuân Hòa',
+    phone: '0385 787 064',
+    mapsQuery: 'Ki ốt 4 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Phục vụ tại quán & Nhận ship mẹt nem nướng, bún trộn nem tận nơi quanh ĐHSP2 & KTX Xuân Hòa (Trưa 10h30-12h30 & Tối 17h-22h) · Hotline 0385 787 064',
+    notes: 'Quán Nem Nướng 88 · Ki ốt 4 Nguyễn Văn Linh, P. Xuân Hòa · Hotline 0385 787 064 · Giờ bán: 10h30 - 12h30 trưa & 17h00 - 22h00 tối · Chuyên Nem Nướng Nha Trang chuẩn vị 30k/suất (Bestseller), Bún trộn nem nướng 30k, Xúc xích 8k cùng Trà chanh, Trà quất, Sữa đậu 10k/cốc giải ngấy cực đã.',
+    menuHighlights: [
+      'Nem nướng Nha Trang (suất mẹt đầy đủ): 30.000đ (Bestseller)',
+      'Bún trộn nem nướng: 30.000đ/suất',
+      'Xúc xích chiên / nướng: 8.000đ/chiếc',
+      'Trà chanh thanh mát: 10.000đ/cốc',
+      'Trà quất tươi chua ngọt: 10.000đ/cốc',
+      'Sữa đậu nành béo ngậy: 10.000đ/cốc'
+    ]
+  },
+
+  // 44. Lẩu Thái Hà Tĩnh (13 Trưng Nhị, Phúc Yên)
+  lau_thai_ha_tinh: {
+    name: 'Lẩu Thái Hà Tĩnh - Bún Mì Thái & Ngan Cháy Tỏi',
+    address: '13 Trưng Nhị, P. Phúc Yên (sát bún đậu Cô Lan)',
+    phone: '0977 732 021 - 0357 556 375',
+    mapsQuery: '13 Trưng Nhị Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Có phòng máy lạnh mát mẻ & Ship tận nhà lẩu thái, ngan cháy tỏi, bún mì thái quanh Phúc Yên & Xuân Hòa · Hotline 0977 732 021 - 0357 556 375',
+    notes: 'Lẩu Thái Hà Tĩnh · 13 Trưng Nhị, Phúc Yên (sát bún đậu Cô Lan) · Hotline 0977 732 021 - 0357 556 375 · Mở cửa 9h00 - 22h30 có máy lạnh · Chuyên Ngan cháy tỏi 200k/đĩa, Bún mì thái hải sản 40k, Bún miến ngan trộn 40k, Lẩu Thái gia truyền 400k-600k.',
+    menuHighlights: [
+      'Ngan cháy tỏi gia truyền: 200.000đ (Bestseller)',
+      'Bún mì thái hải sản: 40.000đ',
+      'Bún mì thái tim cật: 45.000đ',
+      'Bún mì thái full topping: 50.000đ',
+      'Bún miến ngan trộn / măng mọc: 40.000đ',
+      'Lẩu Thái gia truyền: 400.000đ - 600.000đ'
+    ]
+  },
+
+  // 45. Hi Tea - Trà & Mỳ Cay 7 Cấp Độ (ĐHSP2 Xuân Hòa)
+  hi_tea: {
+    name: 'Hi Tea - Trà & Mỳ Cay 7 Cấp Độ',
+    address: 'Khu ẩm thực ĐHSP Hà Nội 2, P. Xuân Hòa',
+    phone: '0968 373 123',
+    mapsQuery: 'ĐHSP2 Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Nhận ship trà sữa, mỳ cay 7 cấp độ & lẩu cô đơn nóng hổi tận phòng KTX & khu trọ Xuân Hòa · Hotline 0968 373 123',
+    notes: 'Hi Tea · Khu ẩm thực ĐHSP2 Xuân Hòa · Hotline 0968 373 123 (9h-23h) · Chuyên Lẩu cô đơn 69k, Mỳ cay bò/thập cẩm 35k-55k, Hồng trà kem cheese 35k, Tokbokki 40k, Ăn vặt nóng giòn.',
+    menuHighlights: [
+      'Lẩu cô đơn mini: 69.000đ (Bestseller)',
+      'Mỳ cay bò 7 cấp độ: 45.000đ',
+      'Mỳ cay thập cẩm: 55.000đ',
+      'Hồng trà kem cheese: 35.000đ',
+      'Tokbokki phô mai: 40.000đ',
+      'Khoai tây chiên phô mai: 30.000đ'
+    ]
+  },
+
+  // 46. Ăn Vặt Nhà Phương (Khu ẩm thực ĐHSP2)
+  an_vat_nha_phuong: {
+    name: 'Ăn Vặt Nhà Phương - Gà Sốt & Ăn Vặt Nóng Hổi',
+    address: 'Khu ẩm thực ĐHSP Hà Nội 2, P. Xuân Hòa',
+    phone: '0339 732 996',
+    mapsQuery: 'ĐHSP2 Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Ngon giòn - nóng hổi - ăn là ghiền! Ship tận nơi nhanh chóng quanh Xuân Hòa & Phúc Yên · Hotline 0339 732 996',
+    notes: 'Ăn Vặt Nhà Phương · Khu ẩm thực ĐHSP2 · Hotline 0339 732 996 · Chuyên Gà viên sốt kem hành 60k, Cơm gà 45k, Nem chua rán 80k/10c, Khoai tím phô mai 60k/12v, Bánh bột lọc 90k/20c.',
+    menuHighlights: [
+      'Gà viên sốt kem hành: 60.000đ (Bestseller)',
+      'Gà viên sốt mắm tỏi: 55.000đ',
+      'Cơm gà Nhà Phương: 45.000đ',
+      'Khoai tím phô mai: 60.000đ/12v',
+      'Nem chua rán: 80.000đ/10c',
+      'Bánh bột lọc: 90.000đ/20c'
+    ]
+  },
+
+  // 47. Zino - Cà Phê Đậm Vị (266 Nguyễn Văn Linh)
+  zino_cafe: {
+    name: 'Zino - Cà Phê Đậm Vị & Trà Trái Cây',
+    address: '266 Nguyễn Văn Linh, P. Xuân Hòa',
+    phone: '0964 060 718',
+    mapsQuery: '266 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Không gian cà phê hiện đại & nhận ship đồ uống tận nơi quanh Xuân Hòa · Hotline 0964 060 718 (Tạ Khánh Nhi)',
+    notes: 'Zino Cafe · 266 Nguyễn Văn Linh, P. Xuân Hòa · Hotline 0964 060 718 · Mở cửa 7h30 - 23h00 · Chuyên Cà phê muối đậm vị 25k, Trà mãng cầu dâu tằm 30k, Hồng trà Shan Tuyết 35k, Matcha kem muối 30k.',
+    menuHighlights: [
+      'Trà mãng cầu dâu tằm: 30.000đ (Must Try)',
+      'Cà phê muối đậm vị: 25.000đ (Must Try)',
+      'Hồng trà Shan Tuyết: 35.000đ (Must Try)',
+      'Matcha kem muối: 30.000đ (Must Try)',
+      'Hồng trà pudding đậu đỏ: 40.000đ',
+      'Trà ô long sen vàng: 38.000đ'
+    ]
+  },
+
+  // 48. Umee Tea & Food (Lập Trí - Kim Anh)
+  umee_tea_food: {
+    name: 'Umee Tea & Food - Đồ Ăn Vặt & Trà',
+    address: 'Lập Trí - Kim Anh, Phúc Yên / Sóc Sơn',
+    phone: '0377 907 916 - 0368 743 735',
+    mapsQuery: 'Lập Trí Kim Anh Sóc Sơn',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Mở cửa xuyên đêm từ 9:00 sáng đến 01:00 đêm! Ship trà sữa, đồ ăn vặt & ốc nóng hổi · Hotline 0377 907 916 - 0368 743 735',
+    notes: 'Umee Tea & Food · Lập Trí - Kim Anh · Hotline 0377 907 916 - 0368 743 735 · Mở cửa tới 1h đêm · Chuyên Ốc xào măng đậu 35k, Cút lộn xào me 40k, Mì cay bò 40k, Oolong Phong Lan 30k, Trà sữa gạo rang 30k.',
+    menuHighlights: [
+      'Ốc xào măng đậu: 35.000đ (Bestseller)',
+      'Cút lộn xào me măng đậu: 40.000đ',
+      'Mì cay bò Umee: 40.000đ',
+      'Oolong Phong Lan: 30.000đ',
+      'Trà sữa gạo rang: 30.000đ',
+      'Mẹt xiên que thập cẩm: 39.000đ'
+    ]
   }
 };
 
 export function getSpotForDish(dishName: string): SpotInfo {
   const name = dishName.toLowerCase();
+
+  // Lẩu Thái Hà Tĩnh (13 Trưng Nhị)
+  if (
+    name.includes('hà tĩnh') ||
+    name.includes('ha tinh') ||
+    name.includes('ngan cháy tỏi') ||
+    name.includes('ngan chay toi') ||
+    name.includes('13 trưng nhị') ||
+    name.includes('0977732021') ||
+    name.includes('0357556375')
+  ) {
+    return xuanHoaSpots.lau_thai_ha_tinh;
+  }
+
+  // Hi Tea (ĐHSP2)
+  if (
+    name.includes('hi tea') ||
+    name.includes('hitea') ||
+    name.includes('lẩu cô đơn') ||
+    name.includes('lau co don') ||
+    name.includes('0968373123')
+  ) {
+    return xuanHoaSpots.hi_tea;
+  }
+
+  // Ăn Vặt Nhà Phương
+  if (
+    name.includes('nhà phương') ||
+    name.includes('nha phuong') ||
+    name.includes('kem hành') ||
+    name.includes('khoai tím phô mai') ||
+    name.includes('0339732996')
+  ) {
+    return xuanHoaSpots.an_vat_nha_phuong;
+  }
+
+  // Zino Cafe (266 Nguyễn Văn Linh)
+  if (
+    name.includes('zino') ||
+    name.includes('mãng cầu dâu tằm') ||
+    name.includes('shan tuyết') ||
+    name.includes('266 nguyễn văn linh') ||
+    name.includes('0964060718')
+  ) {
+    return xuanHoaSpots.zino_cafe;
+  }
+
+  // Umee Tea & Food
+  if (
+    name.includes('umee') ||
+    name.includes('lập trí') ||
+    name.includes('kim anh') ||
+    name.includes('ốc xào măng đậu') ||
+    name.includes('0377907916') ||
+    name.includes('0368743735')
+  ) {
+    return xuanHoaSpots.umee_tea_food;
+  }
+
+  // Nem Nướng 88 (Ki ốt 4 Nguyễn Văn Linh)
+  if (
+    name.includes('nem nướng 88') ||
+    name.includes('nem nuong 88') ||
+    name.includes('0385787064') ||
+    name.includes('0385 787 064') ||
+    (name.includes('bún trộn nem') && (name.includes('88') || name.includes('ki ốt 4') || name.includes('nguyễn văn linh'))) ||
+    (name.includes('nem nướng') && (name.includes('ki ốt 4') || name.includes('kiot 4') || name.includes('30k')))
+  ) {
+    return xuanHoaSpots.nem_nuong_88;
+  }
 
   // Quán Cô Loan (Số 12, Ngõ 8 Nguyễn Văn Linh)
   if (
@@ -2665,10 +2855,37 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
     sub = (dishInput.sub || '').toLowerCase();
   }
 
+  if (name.includes('ngan cháy tỏi') || name.includes('ngan chay toi') || name.includes('bún mì thái') || name.includes('bún miến ngan')) {
+    return [xuanHoaSpots.lau_thai_ha_tinh, xuanHoaSpots.pv_lau_nuong];
+  }
+
+  if (name.includes('lẩu cô đơn') || (name.includes('mỳ cay') && (customId.includes('hitea') || sub.includes('hi tea')))) {
+    return [xuanHoaSpots.hi_tea, xuanHoaSpots.co_loan, xuanHoaSpots.nhungs_corner];
+  }
+
+  if (name.includes('kem hành') || name.includes('khoai tím') || (name.includes('gà viên') && (customId.includes('np') || sub.includes('nhà phương')))) {
+    return [xuanHoaSpots.an_vat_nha_phuong, xuanHoaSpots.mr_tea, xuanHoaSpots.co_loan];
+  }
+
+  if (name.includes('mãng cầu dâu tằm') || name.includes('shan tuyết') || ((name.includes('cà phê muối') || name.includes('matcha kem muối')) && (customId.includes('zino') || sub.includes('zino')))) {
+    return [xuanHoaSpots.zino_cafe, xuanHoaSpots.le_la, xuanHoaSpots.soh_tea];
+  }
+
+  if (name.includes('ốc xào măng') || name.includes('cút lộn xào me') || (name.includes('phong lan') && sub.includes('umee'))) {
+    return [xuanHoaSpots.umee_tea_food, xuanHoaSpots.quan_oc_ngon, xuanHoaSpots.oc_2000];
+  }
+
   if (name.includes('bánh xèo') || name.includes('banh xeo')) {
     if (customId.includes('co_hien') || sub.includes('cô hiền') || sub.includes('90 nguyễn văn linh')) return [xuanHoaSpots.co_hien, xuanHoaSpots.cuon_moc];
     if (customId.includes('cuonmoc') || sub.includes('cuốn mộc')) return [xuanHoaSpots.cuon_moc, xuanHoaSpots.co_hien];
     return [xuanHoaSpots.co_hien, xuanHoaSpots.cuon_moc];
+  }
+
+  if (name.includes('nem nướng') || name.includes('nem nuong')) {
+    if (customId.includes('88') || sub.includes('88') || sub.includes('ki ốt 4') || name.includes('30k')) return [xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha, xuanHoaSpots.tho_coii];
+    if (customId.includes('nhat_ha') || sub.includes('nhật hạ')) return [xuanHoaSpots.nhat_ha, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.tho_coii];
+    if (customId.includes('tho_coii') || sub.includes('thơ còii')) return [xuanHoaSpots.tho_coii, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha];
+    return [xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha, xuanHoaSpots.tho_coii];
   }
 
   if (name.includes('nem lụi') || name.includes('nem lui')) {

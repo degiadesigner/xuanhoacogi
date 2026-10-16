@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xuân Hòa Có Gì - Mobile App Demo</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes spinReel {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-960px); }
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); opacity: 0.5; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .reel-strip-anim {
+      animation: spinReel 3s cubic-bezier(0.12, 0.8, 0.25, 1) forwards;
+    }
+    .bottom-sheet-anim {
+      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      display: none;
+    }
+  </style>
+</head>
+<body class="bg-transparent text-[var(--foreground)] antialiased p-2 flex flex-col items-center justify-center font-sans">
+
+  <!-- Interactive Info Bar -->
+  <div class="w-full max-w-[390px] mb-2.5 flex items-center justify-between px-2 text-xs text-slate-400">
+    <div class="flex items-center gap-1.5 font-bold text-amber-400">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+      <span>Đã Cập Nhật Theo 4 Yêu Cầu Của Bạn</span>
+    </div>
+    <span class="bg-slate-800/80 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/20 font-mono text-[11px]">
+      iPhone View
+    </span>
+  </div>
+
+  <!-- Phone Frame Simulator -->
+  <div class="relative w-full max-w-[380px] h-[720px] bg-[#0A0D14] rounded-[42px] border-[5px] border-slate-700/80 shadow-2xl overflow-hidden flex flex-col text-slate-100 select-none">
+    
+    <!-- iPhone Dynamic Island -->
+    <div class="w-full pt-2.5 pb-1 flex justify-center items-center bg-[#07090E] shrink-0 z-50">
+      <div class="w-24 h-5 bg-black rounded-full flex items-center justify-between px-2">
+        <span class="w-2 h-2 rounded-full bg-slate-900 border border-slate-700"></span>
+        <span class="w-2.5 h-2.5 rounded-full bg-[#111625] border border-blue-900/40"></span>
+      </div>
+    </div>
+
+    <!-- 1. HEADER MỚI: 1 Bên là Logo & Tên · 1 Bên là Cấp Độ & Lượt Quay (Không có nút Đăng nhập chật chội) -->
+    <header class="px-3.5 py-2.5 bg-[#0C101A]/95 backdrop-blur-md border-b border-amber-500/20 flex items-center justify-between shrink-0 z-40">
+      <!-- Bên trái: Logo + Tên -->
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/40 flex items-center justify-center text-amber-400 font-black text-sm shadow-sm">
+          XH
+        </div>
+        <div class="flex flex-col">
+          <span class="font-extrabold text-[13.5px] tracking-tight text-white leading-tight">
+            XUÂNHÒACÓGÌ.COM
+          </span>
+          <span class="text-[9.5px] text-amber-300 font-semibold tracking-wide">Chuyên trị: “Ăn gì cũng được”</span>
+        </div>
+      </div>
+
+      <!-- Bên phải: CẤP ĐỘ + THANH KÉO ĐIỂM (trên) & LƯỢT QUAY (dưới) -->
+      <div class="flex flex-col items-end gap-1">
+        <button onclick="openScoreboardModal()" class="inline-flex items-center gap-1.5 bg-[#121622] border border-amber-500/40 text-amber-300 font-bold text-[10.5px] px-2 py-0.5 rounded-full shadow-sm active:scale-95 transition-transform" title="Bấm xem bảng điểm">
+          <span class="bg-amber-500/25 px-1.5 py-0.2 rounded-full font-black text-[10px]">🥉 Cấp 1</span>
+          <div class="w-8 h-1.5 bg-slate-900 border border-white/10 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-amber-500 to-yellow-300 rounded-full w-[25%] shadow-[0_0_4px_rgba(245,158,11,0.8)]"></div>
+          </div>
+          <span class="text-[9.5px] text-slate-300 font-semibold font-mono">0/4 món</span>
+        </button>
+        <div class="text-[10px] text-slate-400 font-mono tracking-tight pr-0.5">
+          Tổng lượt quay: <strong class="text-amber-300 font-bold" id="demoSpinCounter">5.313</strong>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Scrollable Screen Body -->
+    <div id="mainScreenContent" class="flex-1 overflow-y-auto custom-scroll relative pb-20">
+      
+      <!-- MODE 1: SPIN VIEW (VÒNG QUAY) -->
+      <div id="viewSpin" class="p-3 flex flex-col gap-3">
+        
+        <!-- 2. CÂN GIỮA 100%: Chọn Món vs Chọn Quán -->
+        <div class="w-full flex items-center justify-center my-0.5">
+          <div class="inline-flex bg-[#121622] p-1 rounded-full border border-amber-500/25 shadow-sm">
+            <button id="btnModeDish" onclick="switchMainMode('dish')" class="px-5 py-1 rounded-full text-center text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm transition-all">
+              🍴 Chọn Món
+            </button>
+            <button id="btnModePlace" onclick="switchMainMode('place')" class="px-5 py-1 rounded-full text-center text-xs font-semibold text-slate-400 hover:text-white transition-all">
+              🏠 Chọn Quán
+            </button>
+          </div>
+        </div>
+
+        <!-- 3 Category Pills (Ăn gì / Nhậu gì / Uống gì) -->
+        <div class="grid grid-cols-3 gap-1.5 text-[11.5px] font-bold text-center">
+          <button class="py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-200 shadow-sm">
+            🍚 Món Ăn
+          </button>
+          <button class="py-1.5 rounded-lg bg-slate-900/80 border border-white/10 text-slate-400 hover:text-white">
+            🍻 Kèo Nhậu
+          </button>
+          <button class="py-1.5 rounded-lg bg-slate-900/80 border border-white/10 text-slate-400 hover:text-white">
+            🧋 Đồ Uống
+          </button>
+        </div>
+
+        <!-- Dropdowns song song -->
+        <div class="grid grid-cols-2 gap-2 text-[11.5px]">
+          <div class="bg-[#121622] border border-amber-500/30 rounded-lg px-2.5 py-1.5 text-slate-200 flex items-center justify-between">
+            <span>🕒 Giờ: <strong>Sáng</strong></span>
+            <span class="text-slate-400 text-[10px]">▼</span>
+          </div>
+          <div class="bg-[#121622] border border-amber-500/30 rounded-lg px-2.5 py-1.5 text-slate-200 flex items-center justify-between">
+            <span>💵 Giá: <strong>Tất cả</strong></span>
+            <span class="text-slate-400 text-[10px]">▼</span>
+          </div>
+        </div>
+
+        <!-- 🎯 Công Tắc Nhanh: Bộ Lọc Theo Gu Ẩm Thực (Đồng bộ Web & Mobile) -->
+        <div class="flex items-center justify-between bg-[#111624] px-3 py-1.5 rounded-xl border border-amber-500/30">
+          <div class="flex items-center gap-1.5 text-xs">
+            <span>🎯</span>
+            <span class="text-white font-bold text-[11px]" id="simTasteFilterTitle">Lọc theo gu:</span>
+            <span class="text-[9.5px] bg-sky-500/20 text-sky-300 border border-sky-500/30 px-1.5 rounded font-bold" id="simResidentBadge">🎓 SV ĐHSP2</span>
+          </div>
+          <button 
+            id="simBtnTasteToggle"
+            onclick="toggleSimTasteFilter()"
+            class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm active:scale-95 transition-all"
+            title="Bật/Tắt lọc theo gu"
+          >
+            BẬT (Theo gu)
+          </button>
+        </div>
+
+        <!-- Case Opening Roulette Track -->
+        <div class="relative w-full h-[180px] bg-[#0E121C] rounded-2xl border-2 border-amber-500/30 overflow-hidden shadow-inner flex items-center my-1">
+          <!-- Center Needle Pointer -->
+          <div class="absolute left-1/2 top-0 bottom-0 w-[3px] bg-gradient-to-b from-amber-300 via-amber-400 to-amber-600 -translate-x-1/2 z-30 shadow-[0_0_12px_rgba(245,158,11,0.9)]">
+            <div class="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-amber-300"></div>
+            <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-amber-300"></div>
+          </div>
+
+          <!-- Reel Strip (Cards) -->
+          <div id="rouletteTrack" class="flex gap-2.5 px-4 items-center transition-transform duration-300">
+            <!-- Card 1 -->
+            <div class="w-[130px] h-[155px] bg-[#161B26] border border-amber-500/30 rounded-xl p-2 shrink-0 flex flex-col items-center justify-between text-center shadow-md">
+              <span class="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Phổ thông</span>
+              <div class="w-16 h-16 rounded-full bg-slate-800 border-2 border-emerald-400 flex items-center justify-center text-2xl shadow-sm">
+                🥖
+              </div>
+              <div class="w-full">
+                <p class="text-[11px] font-bold text-white truncate">Bánh mì Hà Bến Xe</p>
+                <p class="text-[10px] text-amber-400 font-mono font-bold">20.000đ</p>
+              </div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="w-[130px] h-[155px] bg-[#161B26] border border-amber-500/40 rounded-xl p-2 shrink-0 flex flex-col items-center justify-between text-center shadow-md">
+              <span class="text-[9px] font-bold text-purple-400 uppercase tracking-wider">Quý hiếm</span>
+              <div class="w-16 h-16 rounded-full bg-slate-800 border-2 border-purple-400 flex items-center justify-center text-2xl shadow-sm">
+                🍢
+              </div>
+              <div class="w-full">
+                <p class="text-[11px] font-bold text-white truncate">Nem nướng 88</p>
+                <p class="text-[10px] text-amber-400 font-mono font-bold">30.000đ</p>
+              </div>
+            </div>
+
+            <!-- Card 3 (Target Winner) -->
+            <div class="w-[130px] h-[155px] bg-[#1a1c24] border-2 border-amber-400 rounded-xl p-2 shrink-0 flex flex-col items-center justify-between text-center shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+              <span class="text-[9px] font-black text-amber-300 uppercase tracking-wider flex items-center justify-center gap-1">
+                ⭐ Cực hiếm
+              </span>
+              <div class="w-16 h-16 rounded-full bg-amber-950/40 border-2 border-amber-400 flex items-center justify-center text-2xl shadow-inner">
+                🍲
+              </div>
+              <div class="w-full">
+                <p class="text-[11px] font-black text-amber-200 truncate">Lẩu cô đơn Hi Tea</p>
+                <p class="text-[10px] text-amber-400 font-mono font-extrabold">69.000đ</p>
+              </div>
+            </div>
+
+            <!-- Card 4 -->
+            <div class="w-[130px] h-[155px] bg-[#161B26] border border-orange-500/40 rounded-xl p-2 shrink-0 flex flex-col items-center justify-between text-center shadow-md">
+              <span class="text-[9px] font-bold text-orange-400 uppercase tracking-wider">Đặc biệt</span>
+              <div class="w-16 h-16 rounded-full bg-slate-800 border-2 border-orange-400 flex items-center justify-center text-2xl shadow-sm">
+                🍜
+              </div>
+              <div class="w-full">
+                <p class="text-[11px] font-bold text-white truncate">Bún bò trộn</p>
+                <p class="text-[10px] text-amber-400 font-mono font-bold">40.000đ</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Master Spin Button -->
+        <div class="flex justify-center mt-1">
+          <button id="btnSpinAction" onclick="triggerSpinDemo()" class="w-full max-w-[280px] h-[48px] bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-slate-950 font-black text-sm tracking-wider rounded-xl shadow-[0_4px_20px_rgba(245,158,11,0.4)] active:scale-95 transition-all flex items-center justify-center gap-2">
+            <span>🎲</span>
+            <span id="btnSpinText">QUAY CHỌN MÓN</span>
+          </button>
+        </div>
+
+        <!-- 3. GIẢM LƯỢC BỚT THỪA THÃI (ẢNH 2): Tiêu đề gọn gàng, không dài dòng, không nút trùng lặp -->
+        <div class="mt-2 border-t border-white/5 pt-3">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <h3 class="text-xs font-black text-white flex items-center gap-1.5">
+              <span>Trong kho có gì?</span>
+              <span class="bg-slate-800 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30 text-[10.5px] font-mono">
+                27 món
+              </span>
+            </h3>
+          </div>
+
+          <!-- Lưới 2 cột món ăn chuẩn -->
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-[#121622] border border-white/5 rounded-xl p-2.5 flex flex-col justify-between">
+              <div class="w-full h-20 rounded-lg bg-slate-800 flex items-center justify-center text-3xl mb-1.5 shadow-inner">
+                🍲
+              </div>
+              <span class="text-[11px] font-bold text-white truncate">Lẩu cô đơn Hi Tea</span>
+              <div class="flex items-center justify-between mt-1 text-[10px]">
+                <span class="text-amber-400 font-mono font-bold">69.000đ</span>
+                <span class="text-slate-400">⭐ 5.0</span>
+              </div>
+            </div>
+
+            <div class="bg-[#121622] border border-white/5 rounded-xl p-2.5 flex flex-col justify-between">
+              <div class="w-full h-20 rounded-lg bg-slate-800 flex items-center justify-center text-3xl mb-1.5 shadow-inner">
+                🥖
+              </div>
+              <span class="text-[11px] font-bold text-white truncate">Bánh mì sốt bơ mật ong</span>
+              <div class="flex items-center justify-between mt-1 text-[10px]">
+                <span class="text-amber-400 font-mono font-bold">25.000đ</span>
+                <span class="text-slate-400">⭐ 5.0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. CÂN ĐỐI 2 Ô CÙNG 1 DÒNG (ẢNH 3): Giảm bớt diện tích -->
+          <div class="mt-3 p-2 rounded-xl bg-[#121620] border border-white/5 flex flex-col gap-2">
+            <div class="text-[10.5px] text-slate-400 text-center font-mono">
+              Đang hiển thị <strong class="text-amber-300">18 / 27</strong> món đề xuất
+            </div>
+            
+            <!-- Hai nút song song cùng 1 dòng -->
+            <div class="grid grid-cols-2 gap-2 w-full">
+              <button class="h-[38px] px-2 bg-amber-500/15 border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 active:scale-95 transition-all">
+                <span>▼</span>
+                <span>Xem tiếp (+9)</span>
+              </button>
+              <button class="h-[38px] px-2 bg-slate-800 border border-white/10 text-slate-200 rounded-lg text-[11px] font-semibold flex items-center justify-center active:scale-95 transition-all">
+                <span>Xem tất cả (27)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODE 2: CATALOG VIEW (MÓN ĂN) -->
+      <div id="viewDishes" class="p-3 hidden flex flex-col gap-2.5">
+        <div class="flex items-center justify-between border-b border-white/10 pb-1.5">
+          <h3 class="font-extrabold text-sm text-amber-300">🍜 MÓN NGON XUÂN HÒA</h3>
+          <span class="text-[10px] text-slate-400 font-mono">Tỉnh Phú Thọ</span>
+        </div>
+
+        <!-- Row 1: Search & Counter Side-by-side (Song song) -->
+        <div class="flex items-center gap-1.5 w-full">
+          <div class="flex-1 bg-[#121622] border border-white/10 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+            <span class="text-xs text-amber-400">🔍</span>
+            <input type="text" placeholder="Tìm món ăn..." class="bg-transparent text-xs text-white outline-none w-full placeholder-slate-500" />
+          </div>
+          <div class="shrink-0 bg-slate-900 border border-white/10 rounded-lg px-2 py-1.5 text-[10.5px] font-bold text-amber-300">
+            24/319 món
+          </div>
+        </div>
+
+        <!-- Row 2: 2x2 Grid of 4 Filters (Cân đối chuẩn 2x2) -->
+        <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+          <div class="bg-[#121622] border border-white/10 rounded-lg px-2 py-1.5 flex items-center justify-between text-slate-200">
+            <span>🍴 Bữa chính & bún...</span>
+            <span class="text-[9px] text-slate-400">▼</span>
+          </div>
+          <div class="bg-[#121622] border border-white/10 rounded-lg px-2 py-1.5 flex items-center justify-between text-slate-200">
+            <span>💵 Mọi mức giá</span>
+            <span class="text-[9px] text-slate-400">▼</span>
+          </div>
+          <div class="bg-[#121622] border border-white/10 rounded-lg px-2 py-1.5 flex items-center justify-between text-slate-200">
+            <span>⭐ Mọi phẩm cấp</span>
+            <span class="text-[9px] text-slate-400">▼</span>
+          </div>
+          <div class="bg-[#121622] border border-white/10 rounded-lg px-2 py-1.5 flex items-center justify-between text-slate-200">
+            <span>⇅ Giá: Thấp → Cao</span>
+            <span class="text-[9px] text-slate-400">▼</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 mt-1">
+          <div class="bg-[#121622] border border-white/5 rounded-xl p-2 flex flex-col gap-1">
+            <div class="h-16 bg-slate-800 rounded-lg flex items-center justify-center text-2xl">🍗</div>
+            <span class="text-xs font-bold text-white truncate">Gà sốt kem hành</span>
+            <div class="flex items-center justify-between text-[10px]">
+              <span class="text-amber-400 font-bold">60.000đ</span>
+              <span class="text-red-400 font-bold">HUYỀN THOẠI</span>
+            </div>
+          </div>
+          <div class="bg-[#121622] border border-white/5 rounded-xl p-2 flex flex-col gap-1">
+            <div class="h-16 bg-slate-800 rounded-lg flex items-center justify-center text-2xl">🐚</div>
+            <span class="text-xs font-bold text-white truncate">Ốc xào măng đậu</span>
+            <div class="flex items-center justify-between text-[10px]">
+              <span class="text-amber-400 font-bold">35.000đ</span>
+              <span class="text-purple-400 font-bold">QUÝ HIẾM</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODE 3: PLACES VIEW (QUÁN ĂN) -->
+      <div id="viewPlaces" class="p-3 hidden flex flex-col gap-2.5">
+        <div class="flex items-center justify-between border-b border-white/10 pb-1.5">
+          <h3 class="font-extrabold text-sm text-amber-300">🏠 DANH BẠ QUÁN ĂN</h3>
+          <span class="text-[10px] text-slate-400 font-mono">Tỉnh Phú Thọ</span>
+        </div>
+
+        <!-- Row 1: Search & Counter Side-by-side (Song song) -->
+        <div class="flex items-center gap-1.5 w-full">
+          <div class="flex-1 bg-[#121622] border border-white/10 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+            <span class="text-xs text-amber-400">🔍</span>
+            <input type="text" placeholder="Tìm tên quán..." class="bg-transparent text-xs text-white outline-none w-full placeholder-slate-500" />
+          </div>
+          <div class="shrink-0 bg-slate-900 border border-white/10 rounded-lg px-2 py-1.5 text-[10.5px] font-bold text-amber-300">
+            16/86 quán
+          </div>
+        </div>
+
+        <!-- Row 2: 2x2 Grid of 4 Filters (Gọn gàng, cân đối chuẩn 2x2) -->
+        <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+          <div class="bg-[#121622] border border-white/10 rounded-lg px-2 py-1.5 flex items-center justify-between text-slate-200">
+            <span>🥢 Cơm, bún & phở</span>
+            <span class="text-[9px] text-slate-400">▼</span>
+          </div>
+          <div class="bg-[#121622] border border-white/10 rounded-lg px-2 py-1.5 flex items-center justify-between text-slate-200">
+            <span>📍 Mọi khu vực</span>
+            <span class="text-[9px] text-slate-400">▼</span>
+          </div>
+          <div class="bg-[#121622] border border-white/10 rounded-lg px-2 py-1.5 flex items-center justify-between text-slate-200">
+            <span>🛵 Mọi hình thức</span>
+            <span class="text-[9px] text-slate-400">▼</span>
+          </div>
+          <div class="bg-[#121622] border border-white/10 rounded-lg px-2 py-1.5 flex items-center justify-between text-slate-200">
+            <span>⇅ Sao cao nhất</span>
+            <span class="text-[9px] text-slate-400">▼</span>
+          </div>
+        </div>
+
+        <!-- Thẻ quán ăn tinh giản -->
+        <div class="bg-[#131826] border border-white/10 rounded-xl overflow-hidden mt-1">
+          <div class="bg-gradient-to-r from-amber-100 to-amber-50 p-2 text-center text-slate-900 border-b border-amber-500/20">
+            <h4 class="font-black text-xs uppercase tracking-wide">QUÁN LẨU NƯỚNG PHONG VIỆT</h4>
+            <span class="text-[10px] text-amber-800 font-bold block">(LẨU & NƯỚNG CHẢO GANG)</span>
+          </div>
+          <div class="p-2.5 flex flex-col gap-1.5 text-xs">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">~600m</span>
+              <span class="text-[10px] bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded font-bold">Ship & Quán</span>
+              <span class="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">Nhậu Xôm</span>
+            </div>
+            <div class="bg-amber-500/10 border border-amber-500/20 rounded p-1 text-[11px] flex justify-between">
+              <span class="text-amber-300 font-semibold">⭐ Món tủ: Combo nướng</span>
+              <span class="text-amber-400 font-bold font-mono">~350k</span>
+            </div>
+            <div class="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
+              <span class="text-slate-400 font-mono">~85k - 130k/người</span>
+              <button class="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-[10px] font-bold">Xem Quán →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Sheet: Bảng Điểm Thực Khách -->
+    <div id="scoreboardBottomSheet" class="absolute inset-0 bg-black/75 z-50 hidden flex-col justify-end backdrop-blur-sm transition-all" onclick="closeScoreboardModal()">
+      <div class="w-full bg-[#0F1420] border-t-2 border-amber-500/50 rounded-t-[28px] p-4 bottom-sheet-anim flex flex-col gap-3 max-h-[88%] overflow-y-auto custom-scroll" onclick="event.stopPropagation()">
+        <div class="w-10 h-1 bg-white/30 rounded-full mx-auto mb-1"></div>
+        <div class="flex items-center justify-between border-b border-white/10 pb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xl text-amber-400">🏆</span>
+            <div>
+              <h4 class="font-black text-sm text-white">BẢNG ĐIỂM THỰC KHÁCH</h4>
+              <p class="text-[10px] text-slate-400">Lộ trình 50 cấp độ & 9 bậc danh hiệu</p>
+            </div>
+          </div>
+          <button onclick="closeScoreboardModal()" class="w-6 h-6 rounded-full bg-white/10 text-slate-300 text-xs font-bold flex items-center justify-center">✕</button>
+        </div>
+
+        {/* Hero Card / Thẻ điểm */}
+        <div class="bg-gradient-to-br from-[#161C2C] to-[#0D111A] p-3 rounded-2xl border border-amber-500/25 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🎒</span>
+              <div>
+                <span class="font-bold text-xs text-white block">Khách Vãng Lai</span>
+                <span class="text-[10px] text-amber-400 font-semibold">Tân Khách Xuân Hòa</span>
+              </div>
+            </div>
+            <span class="text-[11px] font-black text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full">
+              🥉 Cấp 1
+            </span>
+          </div>
+
+          <!-- 4 Ô Thống Kê Điểm -->
+          <div class="grid grid-cols-4 gap-1.5 text-center text-xs">
+            <div class="bg-slate-900/80 p-1.5 rounded-lg border border-white/5">
+              <span class="text-[8.5px] text-slate-400 block uppercase">Đã mở</span>
+              <strong class="text-amber-300 text-xs font-bold">3 món</strong>
+            </div>
+            <div class="bg-slate-900/80 p-1.5 rounded-lg border border-white/5">
+              <span class="text-[8.5px] text-slate-400 block uppercase">Mục tiêu</span>
+              <strong class="text-sky-400 text-xs font-bold">4 món</strong>
+            </div>
+            <div class="bg-slate-900/80 p-1.5 rounded-lg border border-white/5">
+              <span class="text-[8.5px] text-slate-400 block uppercase">Còn thiếu</span>
+              <strong class="text-emerald-400 text-xs font-bold">1 món</strong>
+            </div>
+            <div class="bg-slate-900/80 p-1.5 rounded-lg border border-white/5">
+              <span class="text-[8.5px] text-slate-400 block uppercase">Tiến độ</span>
+              <strong class="text-amber-400 text-xs font-bold">75%</strong>
+            </div>
+          </div>
+
+          <!-- Thanh Kéo Điểm (EXP Progress Bar) -->
+          <div class="flex flex-col gap-1 mt-1">
+            <div class="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-amber-500/30 p-[1px]">
+              <div class="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 rounded-full" style="width: 75%;"></div>
+            </div>
+            <div class="flex items-center justify-between text-[9.5px] text-slate-400">
+              <span>Cấp 1 (0 món)</span>
+              <span class="text-amber-300 font-bold">75%</span>
+              <span>Cấp 2 (4 món)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Nút Bật / Tắt Hướng Dẫn & Chi Tiết 9 Bậc -->
+        <button 
+          id="btnToggleDetails" 
+          onclick="toggleScoreboardDetails()" 
+          class="w-full py-2.5 px-3 bg-[#151A27] hover:bg-[#1C2333] border border-amber-500/30 rounded-xl flex items-center justify-between text-xs font-bold text-white transition-all shadow-sm"
+        >
+          <div class="flex items-center gap-2">
+            <span>📜</span>
+            <span id="toggleDetailsText">Xem hướng dẫn & chi tiết 9 bậc danh hiệu</span>
+          </div>
+          <span id="toggleDetailsArrow" class="text-amber-400 text-sm">▾</span>
+        </button>
+
+        <!-- Khối Chi Tiết Mở Rộng: Hướng Dẫn EXP + Lộ Trình 9 Bậc -->
+        <div id="scoreboardDetailsSection" class="hidden flex-col gap-2.5">
+          <!-- Bảng Quy Tắc Tích Lũy Điểm EXP -->
+          <div class="bg-[#121622] border border-amber-500/25 rounded-xl p-2.5 flex flex-col gap-1.5">
+            <div class="flex items-center justify-between border-b border-white/5 pb-1">
+              <span class="text-[11px] font-black text-amber-300">⚡ CÁCH TÍCH LŨY ĐIỂM (EXP)</span>
+              <span class="text-[9px] text-slate-400">Mẹo thăng cấp</span>
+            </div>
+            <div class="grid grid-cols-2 gap-1.5 text-[10px]">
+              <div class="bg-slate-900/60 p-1.5 rounded flex items-center gap-1.5">
+                <span class="font-bold text-sky-400 bg-sky-500/20 px-1 rounded">+6 EXP</span>
+                <span class="text-slate-300 truncate">Mỗi lượt quay</span>
+              </div>
+              <div class="bg-slate-900/60 p-1.5 rounded flex items-center gap-1.5">
+                <span class="font-bold text-sky-400 bg-sky-500/20 px-1 rounded">+12 EXP</span>
+                <span class="text-slate-300 truncate">Gửi đánh giá</span>
+              </div>
+              <div class="bg-slate-900/60 p-1.5 rounded flex items-center gap-1.5">
+                <span class="font-bold text-sky-400 bg-sky-500/20 px-1 rounded">+20 EXP</span>
+                <span class="text-slate-300 truncate">Mở món mới</span>
+              </div>
+              <div class="bg-slate-900/60 p-1.5 rounded flex items-center gap-1.5">
+                <span class="font-bold text-sky-400 bg-sky-500/20 px-1 rounded">+35 EXP</span>
+                <span class="text-slate-300 truncate">Chia sẻ bạn bè</span>
+              </div>
+              <div class="col-span-2 bg-amber-500/10 border border-amber-500/30 p-1.5 rounded flex items-center gap-1.5">
+                <span class="font-bold text-amber-300 bg-amber-500/30 px-1.5 rounded">+80 EXP</span>
+                <span class="text-amber-200 font-semibold text-[10.5px]">Thăng bậc danh hiệu ẩm thực</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lộ Trình 9 Bậc Thực Khách -->
+          <div class="bg-[#121622] border border-white/5 rounded-xl p-2.5 flex flex-col gap-1.5">
+            <span class="text-[11px] font-black text-white">🎖️ LỘ TRÌNH 9 BẬC DANH HIỆU</span>
+            <div class="flex flex-col gap-1.5 text-xs">
+              <div class="p-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 flex items-center justify-between">
+                <div class="flex items-center gap-1.5">
+                  <span>🥉</span>
+                  <div>
+                    <span class="font-bold text-[11px] text-amber-300 block">Bậc 1: Tân Khách Xuân Hòa</span>
+                    <span class="text-[9.5px] text-slate-400">Cấp 1 - 5 (0 - 15 món)</span>
+                  </div>
+                </div>
+                <span class="text-[9px] font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded-full">Đang ở bậc này</span>
+              </div>
+              <div class="p-1.5 rounded-lg bg-slate-900/50 border border-white/5 flex items-center justify-between opacity-80">
+                <div class="flex items-center gap-1.5">
+                  <span>🥈</span>
+                  <div>
+                    <span class="font-bold text-[11px] text-white block">Bậc 2: Tín Đồ Ăn Vặt</span>
+                    <span class="text-[9.5px] text-slate-400">Cấp 6 - 10 (16 - 35 món)</span>
+                  </div>
+                </div>
+                <span class="text-[9px] text-slate-500">🔒 Chưa mở</span>
+              </div>
+              <div class="p-1.5 rounded-lg bg-slate-900/50 border border-white/5 flex items-center justify-between opacity-80">
+                <div class="flex items-center gap-1.5">
+                  <span>🥇</span>
+                  <div>
+                    <span class="font-bold text-[11px] text-white block">Bậc 3: Thực Khách Quen Mặt</span>
+                    <span class="text-[9.5px] text-slate-400">Cấp 11 - 15 (36 - 60 món)</span>
+                  </div>
+                </div>
+                <span class="text-[9px] text-slate-500">🔒 Chưa mở</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Nút Tắt Chi Tiết Quay Về Bảng Điểm -->
+          <button 
+            onclick="toggleScoreboardDetails()" 
+            class="w-full py-2 bg-slate-800 hover:bg-slate-750 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 flex items-center justify-center gap-1.5"
+          >
+            <span>▴</span>
+            <span>Tắt chi tiết, trở về bảng điểm</span>
+          </button>
+        </div>
+
+        <div class="flex flex-col gap-1.5 mt-1">
+          <button onclick="closeScoreboardModal()" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-md active:scale-98 transition-all">
+            Tiếp Tục Mở Hòm
+          </button>
+          <button onclick="closeScoreboardModal()" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-white/10 flex items-center justify-center gap-1.5 active:scale-98 transition-all" title="Đóng bảng điểm và quay về màn hình chính">
+            <span>🏠</span>
+            <span>Trở về màn hình chính</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Sheet: Auth Modal (Đăng Nhập) -->
+    <div id="authBottomSheet" class="absolute inset-0 bg-black/75 z-50 hidden flex-col justify-end backdrop-blur-sm transition-all" onclick="closeAuthModal()">
+      <div class="w-full bg-[#0F1420] border-t-2 border-amber-500/50 rounded-t-[28px] p-4 bottom-sheet-anim flex flex-col gap-3" onclick="event.stopPropagation()">
+        <div class="w-10 h-1 bg-white/30 rounded-full mx-auto mb-1"></div>
+        <div class="text-center">
+          <h4 class="font-black text-base text-white">ĐĂNG NHẬP GMAIL</h4>
+          <p class="text-xs text-slate-400">Lưu cấp độ & mở khóa linh vật 12 con giáp</p>
+        </div>
+        <button class="w-full py-2.5 rounded-xl bg-white text-slate-900 font-extrabold text-xs flex items-center justify-center gap-2 shadow-md">
+          <span>G</span>
+          <span>Đăng nhập với Google</span>
+        </button>
+        <button onclick="closeAuthModal()" class="w-full py-2 text-slate-400 text-xs">
+          Đóng
+        </button>
+      </div>
+    </div>
+
+    <!-- Bottom Sheet: Settings Modal (Cài Đặt) -->
+    <div id="settingsBottomSheet" class="absolute inset-0 bg-black/75 z-50 hidden flex-col justify-end backdrop-blur-sm transition-all" onclick="closeSettingsModal()">
+      <div class="w-full bg-[#0F1420] border-t-2 border-amber-500/50 rounded-t-[28px] p-4 bottom-sheet-anim flex flex-col gap-3" onclick="event.stopPropagation()">
+        <div class="w-10 h-1 bg-white/30 rounded-full mx-auto mb-1"></div>
+        <div class="flex items-center justify-between border-b border-white/10 pb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-lg text-amber-400">⚙️</span>
+            <h4 class="font-black text-sm text-white">CÀI ĐẶT HỆ THỐNG</h4>
+          </div>
+          <button onclick="closeSettingsModal()" class="w-6 h-6 rounded-full bg-white/10 text-slate-300 text-xs font-bold flex items-center justify-center">✕</button>
+        </div>
+
+        <div class="flex flex-col gap-2 text-xs">
+          <!-- Bộ Lọc Theo Gu -->
+          <div class="flex items-center justify-between p-2.5 bg-gradient-to-r from-amber-500/15 to-[#161C2C] rounded-xl border border-amber-500/30">
+            <div class="flex flex-col">
+              <div class="flex items-center gap-1.5">
+                <span class="text-sm">🎯</span>
+                <span class="text-white font-bold">Lọc theo gu ẩm thực</span>
+                <span class="text-[9px] bg-sky-500/20 text-sky-300 px-1.5 py-0.2 rounded font-bold">SV ĐHSP2</span>
+              </div>
+              <span class="text-[10px] text-slate-400 mt-0.5" id="simSettingsTasteDesc">Vòng quay ưu tiên các món bạn thích</span>
+            </div>
+            <button 
+              id="simBtnSettingsTasteToggle" 
+              onclick="toggleSimTasteFilter()" 
+              class="text-[10.5px] font-black px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+            >
+              BẬT
+            </button>
+          </div>
+
+          <div class="flex items-center justify-between p-2.5 bg-[#161C2C] rounded-xl border border-white/5">
+            <span class="text-white font-semibold">🔊 Âm thanh vòng quay</span>
+            <span class="text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full">Bật</span>
+          </div>
+          <div class="flex items-center justify-between p-2.5 bg-[#161C2C] rounded-xl border border-white/5">
+            <span class="text-white font-semibold">🌐 Ngôn ngữ</span>
+            <span class="text-amber-300 font-bold">Tiếng Việt (VN)</span>
+          </div>
+          <div class="flex items-center justify-between p-2.5 bg-[#161C2C] rounded-xl border border-white/5">
+            <span class="text-white font-semibold">📍 Khu vực phục vụ</span>
+            <span class="text-slate-300">Xuân Hòa, Phú Thọ</span>
+          </div>
+        </div>
+
+        <button onclick="closeSettingsModal()" class="w-full py-2.5 rounded-xl bg-slate-800 text-slate-200 font-bold text-xs mt-1">
+          Đóng Cài Đặt
+        </button>
+      </div>
+    </div>
+
+    <!-- THANH ĐIỀU HƯỚNG ĐÁY MỚI: TAB 4 = ĐĂNG NHẬP, TAB 5 = CÀI ĐẶT -->
+    <nav class="absolute bottom-0 left-0 right-0 h-[60px] bg-[#0A0D15]/95 backdrop-blur-xl border-t border-amber-500/25 px-2 flex items-center justify-around z-40">
+      <!-- Tab 1: Quay Món -->
+      <button onclick="showView('spin')" id="tabSpin" class="flex flex-col items-center justify-center gap-1 flex-1 py-1 text-amber-400">
+        <span class="text-base leading-none">🎲</span>
+        <span class="text-[9.5px] font-extrabold tracking-tight">Quay Món</span>
+      </button>
+
+      <!-- Tab 2: Món Ăn -->
+      <button onclick="showView('dishes')" id="tabDishes" class="flex flex-col items-center justify-center gap-1 flex-1 py-1 text-slate-400 hover:text-white">
+        <span class="text-base leading-none">🍜</span>
+        <span class="text-[9.5px] font-bold tracking-tight">Món Ngon</span>
+      </button>
+
+      <!-- Tab 3: Quán Xá -->
+      <button onclick="showView('places')" id="tabPlaces" class="flex flex-col items-center justify-center gap-1 flex-1 py-1 text-slate-400 hover:text-white">
+        <span class="text-base leading-none">📍</span>
+        <span class="text-[9.5px] font-bold tracking-tight">Quán Xá</span>
+      </button>
+
+      <!-- Tab 4: ĐĂNG NHẬP (Thay thế vào vị trí bảng điểm) -->
+      <button onclick="openAuthModal()" id="tabAuth" class="flex flex-col items-center justify-center gap-1 flex-1 py-1 text-amber-300">
+        <span class="text-base leading-none">👤</span>
+        <span class="text-[9.5px] font-black tracking-tight text-amber-300">Đăng Nhập</span>
+      </button>
+
+      <!-- Tab 5: CÀI ĐẶT (Trả lại vị trí góc cho cài đặt) -->
+      <button onclick="openSettingsModal()" id="tabSettings" class="flex flex-col items-center justify-center gap-1 flex-1 py-1 text-slate-400 hover:text-white">
+        <span class="text-base leading-none">⚙️</span>
+        <span class="text-[9.5px] font-bold tracking-tight">Cài Đặt</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <script>
+    let currentSpinCount = 5313;
+    let isSpinning = false;
+
+    function triggerSpinDemo() {
+      if (isSpinning) return;
+      isSpinning = true;
+      currentSpinCount++;
+      document.getElementById('demoSpinCounter').innerText = currentSpinCount.toLocaleString('vi-VN');
+
+      const btn = document.getElementById('btnSpinAction');
+      const btnText = document.getElementById('btnSpinText');
+      const track = document.getElementById('rouletteTrack');
+
+      btnText.innerText = "ĐANG CHỌN MÓN…";
+      btn.classList.add('opacity-75');
+
+      track.classList.add('reel-strip-anim');
+
+      setTimeout(() => {
+        track.classList.remove('reel-strip-anim');
+        isSpinning = false;
+        btnText.innerText = "QUAY CHỌN MÓN";
+        btn.classList.remove('opacity-75');
+
+        document.getElementById('winnerBottomSheet').classList.remove('hidden');
+        document.getElementById('winnerBottomSheet').classList.add('flex');
+      }, 3000);
+    }
+
+    function closeWinnerModal() {
+      document.getElementById('winnerBottomSheet').classList.add('hidden');
+      document.getElementById('winnerBottomSheet').classList.remove('flex');
+    }
+
+    function openScoreboardModal() {
+      document.getElementById('scoreboardBottomSheet').classList.remove('hidden');
+      document.getElementById('scoreboardBottomSheet').classList.add('flex');
+    }
+
+    function closeScoreboardModal() {
+      document.getElementById('scoreboardBottomSheet').classList.add('hidden');
+      document.getElementById('scoreboardBottomSheet').classList.remove('flex');
+    }
+
+    function toggleScoreboardDetails() {
+      const section = document.getElementById('scoreboardDetailsSection');
+      const text = document.getElementById('toggleDetailsText');
+      const arrow = document.getElementById('toggleDetailsArrow');
+      const isHidden = section.classList.contains('hidden');
+
+      if (isHidden) {
+        section.classList.remove('hidden');
+        section.classList.add('flex');
+        text.innerText = 'Ẩn bớt hướng dẫn & chi tiết';
+        arrow.innerText = '▴';
+      } else {
+        section.classList.add('hidden');
+        section.classList.remove('flex');
+        text.innerText = 'Xem hướng dẫn & chi tiết 9 bậc danh hiệu';
+        arrow.innerText = '▾';
+      }
+    }
+
+    let simTasteFilterActive = true;
+
+    function toggleSimTasteFilter() {
+      simTasteFilterActive = !simTasteFilterActive;
+      const btnSpin = document.getElementById('simBtnTasteToggle');
+      const btnSettings = document.getElementById('simBtnSettingsTasteToggle');
+      const desc = document.getElementById('simSettingsTasteDesc');
+
+      if (simTasteFilterActive) {
+        btnSpin.innerText = 'BẬT (Theo gu)';
+        btnSpin.className = 'text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm active:scale-95 transition-all';
+        btnSettings.innerText = 'BẬT';
+        btnSettings.className = 'text-[10.5px] font-black px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        desc.innerText = 'Vòng quay ưu tiên các món bạn thích';
+      } else {
+        btnSpin.innerText = 'TẮT (Tất cả)';
+        btnSpin.className = 'text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-white/10 shadow-sm active:scale-95 transition-all';
+        btnSettings.innerText = 'TẮT';
+        btnSettings.className = 'text-[10.5px] font-black px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 border border-white/10';
+        desc.innerText = 'Khám phá tất cả các món không giới hạn';
+      }
+    }
+
+    function openSettingsModal() {
+      document.getElementById('settingsBottomSheet').classList.remove('hidden');
+      document.getElementById('settingsBottomSheet').classList.add('flex');
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settingsBottomSheet').classList.add('hidden');
+      document.getElementById('settingsBottomSheet').classList.remove('flex');
+    }
+
+    function openAuthModal() {
+      document.getElementById('authBottomSheet').classList.remove('hidden');
+      document.getElementById('authBottomSheet').classList.add('flex');
+    }
+
+    function closeAuthModal() {
+      document.getElementById('authBottomSheet').classList.add('hidden');
+      document.getElementById('authBottomSheet').classList.remove('flex');
+    }
+
+    function showView(viewId) {
+      document.getElementById('viewSpin').classList.add('hidden');
+      document.getElementById('viewDishes').classList.add('hidden');
+      document.getElementById('viewPlaces').classList.add('hidden');
+
+      ['tabSpin', 'tabDishes', 'tabPlaces'].forEach(t => {
+        document.getElementById(t).classList.remove('text-amber-400');
+        document.getElementById(t).classList.add('text-slate-400');
+      });
+
+      if (viewId === 'spin') {
+        document.getElementById('viewSpin').classList.remove('hidden');
+        document.getElementById('tabSpin').classList.add('text-amber-400');
+      } else if (viewId === 'dishes') {
+        document.getElementById('viewDishes').classList.remove('hidden');
+        document.getElementById('tabDishes').classList.add('text-amber-400');
+      } else if (viewId === 'places') {
+        document.getElementById('viewPlaces').classList.remove('hidden');
+        document.getElementById('tabPlaces').classList.add('text-amber-400');
+      }
+    }
+
+    function switchMainMode(mode) {
+      const btnDish = document.getElementById('btnModeDish');
+      const btnPlace = document.getElementById('btnModePlace');
+      const btnSpinText = document.getElementById('btnSpinText');
+
+      if (mode === 'dish') {
+        btnDish.className = "px-5 py-1 rounded-full text-center text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm transition-all";
+        btnPlace.className = "px-5 py-1 rounded-full text-center text-xs font-semibold text-slate-400 hover:text-white transition-all";
+        btnSpinText.innerText = "QUAY CHỌN MÓN";
+      } else {
+        btnPlace.className = "px-5 py-1 rounded-full text-center text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm transition-all";
+        btnDish.className = "px-5 py-1 rounded-full text-center text-xs font-semibold text-slate-400 hover:text-white transition-all";
+        btnSpinText.innerText = "QUAY CHỌN QUÁN";
+      }
+    }
+  </script>
+</body>
+</html>

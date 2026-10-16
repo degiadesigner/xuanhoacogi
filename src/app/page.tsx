@@ -42,15 +42,25 @@ import {
   stopFraction as placeStopFraction 
 } from '@/lib/places-spin';
 import { CaseAudio } from '@/lib/case-audio';
-import { Volume2, VolumeX, RotateCw, Shuffle, Search, UtensilsCrossed, Store, Sparkles, ChevronDown, ChevronUp, Clock, Flame, Coffee, Layers, X, ChevronRight, LayoutGrid, MapPin, Heart, Map, ExternalLink } from 'lucide-react';
+import { Volume2, VolumeX, RotateCw, Shuffle, Search, UtensilsCrossed, Store, Sparkles, ChevronDown, ChevronUp, Clock, Flame, Coffee, Layers, X, ChevronRight, LayoutGrid, MapPin, Heart, Map, ExternalLink, User, LogIn, Star } from 'lucide-react';
 import { DishesCatalogView } from '@/components/DishesCatalogView';
 import { PlacesCatalogView } from '@/components/PlacesCatalogView';
 import { UserGuideView } from '@/components/UserGuideView';
 import { AboutView } from '@/components/AboutView';
 import { ComingSoonView } from '@/components/ComingSoonView';
 import { SettingsMenuModal } from '@/components/SettingsMenuModal';
+import { GoogleGIcon } from '@/components/GoogleGIcon';
+import { AuthModal } from '@/components/AuthModal';
+import { UserProfileModal } from '@/components/UserProfileModal';
+import { GuestUpgradeGateModal } from '@/components/GuestUpgradeGateModal';
+import { GourmetScoreboardModal } from '@/components/GourmetScoreboardModal';
+import { MobileBottomNav } from '@/components/MobileBottomNav';
+import { useI18n } from '@/lib/i18n';
+import { saveFoodHistoryItem } from '@/lib/food-history';
+import { getStoredAuthUser, saveAuthUser, clearAuthUser, UserAuthProfile } from '@/lib/auth';
 import { GlobalSpinCounter } from '@/components/GlobalSpinCounter';
 import { useGlobalSpinCounter } from '@/hooks/use-global-spin-counter';
+import { getDishRatingSummary } from '@/lib/reviews-storage';
 import { BudgetDropdown, PlaceKeoDropdown, SessionDropdown } from '@/components/LuxuryFilterDropdowns';
 import { CatalogFoodItem, getDishConceptKey, diversifyFoodList, getUniqueConceptFoods } from '@/lib/xuanhoa-catalog';
 import { getSpotsForDish } from '@/lib/dish-places';
@@ -94,8 +104,28 @@ function shuffleArray<T>(array: readonly T[]): T[] {
 }
 
 export default function Home() {
-  // Gourmet profile (Level & EXP without requiring login)
+  // Gourmet profile (Level & EXP)
   const [profile, setProfile] = useState<UserGourmetProfile>(() => getLocalProfile());
+
+  // Google Auth User Profile State
+  const [authUser, setAuthUser] = useState<UserAuthProfile | null>(() => getStoredAuthUser());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalStep, setAuthModalStep] = useState<1 | 2>(1);
+  const [authNotice, setAuthNotice] = useState<string>('');
+  const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
+  const [isGuestGateOpen, setIsGuestGateOpen] = useState(false);
+  const [isScoreboardOpen, setIsScoreboardOpen] = useState(false);
+
+  // i18n Multi-language Hook (Vietnamese / English)
+  const { lang, changeLanguage, t } = useI18n();
+
+  useEffect(() => {
+    const handleAuthChange = (e: any) => {
+      setAuthUser(e.detail !== undefined ? e.detail : getStoredAuthUser());
+    };
+    window.addEventListener('xuanhoa_auth_change', handleAuthChange);
+    return () => window.removeEventListener('xuanhoa_auth_change', handleAuthChange);
+  }, []);
 
   // Global total spins counter (starting from 688)
   const { count: globalSpinCount, increment: incrementGlobalSpins } = useGlobalSpinCounter();
@@ -183,6 +213,55 @@ export default function Home() {
       return nextSound;
     });
   }, []);
+
+  const handleToggleTasteFilter = useCallback(() => {
+    if (!authUser || !authUser.isLoggedIn) {
+      setAuthNotice('Đăng nhập Google để bật bộ lọc theo gu ẩm thực của bạn');
+      setAuthModalStep(1);
+      setIsAuthModalOpen(true);
+      return;
+    }
+    const updatedUser: UserAuthProfile = {
+      ...authUser,
+      filterByTaste: authUser.filterByTaste === false ? true : false,
+    };
+    setAuthUser(updatedUser);
+    saveAuthUser(updatedUser);
+  }, [authUser]);
+
+  const isFoodMatchingTaste = (food: Food, prefs: string[]): boolean => {
+    if (!prefs || prefs.length === 0) return true;
+    const name = (food.name || '').toLowerCase();
+    const sub = (food.sub || '').toLowerCase();
+    const text = `${name} ${sub}`;
+
+    return prefs.some(pref => {
+      switch (pref) {
+        case 'spicy':
+          return text.includes('cay') || text.includes('sa tế') || text.includes('tiêu') || text.includes('lẩu thái') || text.includes('bò né') || text.includes('chua cay') || text.includes('mì cay');
+        case 'non_spicy':
+          return text.includes('phở') || text.includes('cháo') || text.includes('súp') || text.includes('thanh đạm') || text.includes('cơm') || text.includes('gà hấp') || text.includes('canh');
+        case 'lau_nuong':
+          return text.includes('lẩu') || text.includes('nướng') || text.includes('bbq') || text.includes('chảo gang') || text.includes('bò tơ') || text.includes('nhúng');
+        case 'tra_sua':
+          return text.includes('trà sữa') || text.includes('matcha') || text.includes('chè') || text.includes('trân châu') || text.includes('kem') || text.includes('sữa chua') || text.includes('bánh');
+        case 'nhau_bia':
+          return text.includes('bia') || text.includes('nem') || text.includes('chân gà') || text.includes('dồi') || text.includes('ốc') || text.includes('mực') || text.includes('lòng') || text.includes('sụn') || text.includes('nộm');
+        case 'bun_pho':
+          return text.includes('bún') || text.includes('phở') || text.includes('miến') || text.includes('hủ tiếu') || text.includes('bánh đa') || text.includes('bánh canh');
+        case 'an_vat_dem':
+          return text.includes('bánh tráng') || text.includes('nem rán') || text.includes('khoai') || text.includes('xúc xích') || text.includes('tokbokki') || text.includes('mì tôm') || text.includes('xiên');
+        case 'cafe_chill':
+          return text.includes('cà phê') || text.includes('cafe') || text.includes('bạc xỉu') || text.includes('trà') || text.includes('nước ép');
+        case 'healthy':
+          return text.includes('salad') || text.includes('gỏi cuốn') || text.includes('nước ép') || text.includes('ức gà') || text.includes('sinh tố') || text.includes('trái cây');
+        case 'an_chay':
+          return !!food.veg || text.includes('chay') || text.includes('nấm') || text.includes('đậu') || text.includes('rau');
+        default:
+          return false;
+      }
+    });
+  };
 
 
 
@@ -288,8 +367,16 @@ export default function Home() {
       }
     }
 
+    // 5. Lọc theo Gu Ẩm Thực (nếu người dùng đã đăng nhập và bật filterByTaste)
+    if (authUser?.isLoggedIn && authUser.filterByTaste !== false && authUser.tastePreferences && authUser.tastePreferences.length > 0) {
+      const tasteFiltered = filtered.filter(f => isFoodMatchingTaste(f, authUser.tastePreferences!));
+      if (tasteFiltered.length >= 4) {
+        filtered = tasteFiltered;
+      }
+    }
+
     return filtered.length ? filtered : sessionFiltered;
-  }, [categoryItems, activeCategory, session, nhauSubFilter, drinkSubFilter, budget, customPrice, caseTier]);
+  }, [categoryItems, activeCategory, session, nhauSubFilter, drinkSubFilter, budget, customPrice, caseTier, authUser]);
 
   // Reel State (Bắt đầu với dải món độc bản được xáo trộn ngẫu nhiên, không trùng lặp)
   const [reel, setReel] = useState<{ food: Food; id: number }[]>(() => {
@@ -417,17 +504,19 @@ export default function Home() {
   const displayedPlacesForInventory = useMemo(() => {
     if (placeSearchQuery.trim()) {
       const q = placeSearchQuery.toLowerCase().trim();
-      return eligiblePlaces.filter(p => {
+      return allPlaces.filter(p => {
         const matchName = p.name.toLowerCase().includes(q);
         const matchAddress = p.address ? p.address.toLowerCase().includes(q) : false;
         const matchTagline = p.tagline ? p.tagline.toLowerCase().includes(q) : false;
+        const matchTags = p.tags ? p.tags.some(t => t.toLowerCase().includes(q)) : false;
         const matchMenu = p.menu?.some(m => m.name.toLowerCase().includes(q)) ?? false;
-        return matchName || matchAddress || matchTagline || matchMenu;
+        return matchName || matchAddress || matchTagline || matchTags || matchMenu;
       });
     }
+
     // Ngẫu nhiên hóa thứ tự danh sách quán mỗi lần quay hoặc mỗi lần đổi bộ lọc
     return shuffleArray(eligiblePlaces);
-  }, [eligiblePlaces, placeSearchQuery, placeShuffleKey]);
+  }, [allPlaces, eligiblePlaces, placeSearchQuery, placeShuffleKey]);
 
   // Tự động reset về chuẩn 4x4 = 16 quán và xáo trộn ngẫu nhiên khi thay đổi bất kỳ bộ lọc hoặc tìm kiếm quán nào
   useEffect(() => {
@@ -510,6 +599,9 @@ export default function Home() {
   const spinCase = () => {
     if (busy.current || !eligibleItems.length || !track.current || !viewport.current) return;
     incrementGlobalSpins();
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate(35); } catch {}
+    }
     audio.current?.unlock();
     busy.current = true;
 
@@ -617,13 +709,31 @@ export default function Home() {
       }
 
       // Spin complete: Add EXP & Level theo độ hiếm món
-      const nextProf = addSpinExp(winner.rarity);
+      const { profile: nextProf, reachedGuestLimit } = addSpinExp(winner.rarity, !!authUser?.isLoggedIn);
       setProfile(nextProf);
+
+      // Tự động lưu món vào lịch sử món đã ăn
+      const winnerId = winner.customId || `${winner.name}-${winner.price}`;
+      const winnerImg = winner.customImage || (typeof winner.image === 'number' ? `food_${winner.image}.jpg` : String(winner.image));
+      saveFoodHistoryItem({
+        foodId: winnerId,
+        name: winner.name,
+        image: winnerImg,
+        price: winner.price,
+        placeName: getSpotsForDish(winner)[0]?.name,
+      });
+
+      if (reachedGuestLimit && (!authUser || !authUser.isLoggedIn)) {
+        setIsGuestGateOpen(true);
+      }
 
       busy.current = false;
       setSpinning(false);
       setWinnerFood(winner);
       setDialogOpen(true);
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate([40, 50, 70]); } catch {}
+      }
       setDishShuffleKey(Date.now() + Math.random());
 
       const revealSounds = [
@@ -642,6 +752,9 @@ export default function Home() {
   const spinPlace = () => {
     if (placeBusy.current || !eligiblePlaces.length || !placeTrack.current || !placeViewport.current) return;
     incrementGlobalSpins();
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate(35); } catch {}
+    }
     audio.current?.unlock();
     placeBusy.current = true;
 
@@ -713,13 +826,20 @@ export default function Home() {
       }
 
       // Spin complete: Add EXP & Level theo độ hiếm quán
-      const nextProf = addSpinExp(winner.rarity);
+      const { profile: nextProf, reachedGuestLimit } = addSpinExp(winner.rarity, !!authUser?.isLoggedIn);
       setProfile(nextProf);
+
+      if (reachedGuestLimit && (!authUser || !authUser.isLoggedIn)) {
+        setIsGuestGateOpen(true);
+      }
 
       placeBusy.current = false;
       setPlaceSpinning(false);
       setWinnerPlace(winner);
       setPlaceModalOpen(true);
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate([40, 50, 70]); } catch {}
+      }
       setPlaceShuffleKey(Date.now() + Math.random());
 
       const revealSounds = [
@@ -759,61 +879,95 @@ export default function Home() {
               />
             </div>
             <div className="brand-text-col">
-              <div className="brand-name">
-                XUÂN HÒA <span>CÓ GÌ</span>
+              <div className="brand-name brand-name-domain">
+                {t('brand_domain')}<span>{t('brand_suffix')}</span>
               </div>
               <div className="brand-tagline">
-                Chuyên trị: &ldquo;Ăn gì cũng được&rdquo;
+                {t('brand_tagline')}
               </div>
             </div>
           </a>
 
-          {/* Vị trí trên cùng chính giữa: Thống kê lượt mở hòm Realtime siêu gọn, sang trọng & chuẩn 100% trên PC */}
-          <div className="header-center hidden md:flex items-center justify-center">
-            <GlobalSpinCounter 
-              count={globalSpinCount} 
-              isSpinning={spinning || placeSpinning} 
-              variant="header" 
-            />
-          </div>
-
           <div className="header-right">
-            {/* Compact Header EXP Gourmet Badge */}
-            <div 
-              className="header-exp-pill" 
-              title={`${profile.badge ? `${profile.badge} ` : ''}${profile.title} · ${profile.exp}/${profile.nextExp} EXP (Đã mở ${profile.spinsCount} lượt) · Bấm để xem Menu`}
-              onClick={() => setIsSettingsMenuOpen(true)}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="header-exp-info">
-                <span className="header-exp-level">Cấp {profile.level}</span>
-                <span className="header-exp-title">{profile.badge ? `${profile.badge} ` : ''}{profile.title}</span>
-              </div>
-              <div className="header-exp-track">
-                <div className="header-exp-fill" style={{ width: `${expPercentage}%` }} />
+            {/* 🎯 CỘT CÂN ĐỐI: CẤP ĐỘ + THANH KÉO ĐIỂM Ở TRÊN, TỔNG LƯỢT QUAY Ở DƯỚI */}
+            <div className="header-auth-counter-col">
+              {/* Hàng 1: Cấp độ + Thanh kéo điểm (EXP Progress) */}
+              <button
+                type="button"
+                className="header-level-progress-pill"
+                onClick={() => setIsScoreboardOpen(true)}
+                title={`${profile.badge || '🥉'} Cấp ${profile.level}: ${profile.title} · ${profile.dishesCount}/${profile.nextLevelDishes} món (${expPercentage}%) - Bấm xem bảng điểm`}
+              >
+                <span className="header-level-pill-badge">{profile.badge || '🥉'} Cấp {profile.level}</span>
+                <div className="header-level-mini-progress" title={`Tiến độ cấp: ${expPercentage}%`}>
+                  <div 
+                    className="header-level-mini-fill" 
+                    style={{ width: `${expPercentage}%` }} 
+                  />
+                </div>
+                <span className="header-level-pill-points">
+                  {profile.dishesCount}/{profile.nextLevelDishes} <span className="font-normal text-[10px] text-slate-400">món</span>
+                </span>
+              </button>
+
+              {/* Hàng 2: Tổng Lượt Quay (Cân đối thẳng hàng bên dưới) */}
+              <div className="header-sub-spin-counter" title="Tổng lượt quay toàn hệ thống">
+                <span className="sub-spin-label">Tổng lượt quay:</span>
+                <span className="sub-spin-value">{globalSpinCount.toLocaleString('vi-VN')}</span>
               </div>
             </div>
 
-            {/* 1. Nút Bản Đồ Số (Icon Maps - Ấn vào thông báo Đang phát triển) */}
-            <button 
-              className="header-icon-action-btn"
-              onClick={handleOpenMap}
-              title="Bản Đồ Số (Đang phát triển)"
-              aria-label="Bản Đồ Số"
-            >
-              <Map size={17} />
-            </button>
+            {/* 🎯 CÁC NÚT ICON GỌN GÀNG Ở CẠNH (ĐĂNG NHẬP, BẢN ĐỒ, CÀI ĐẶT) */}
+            <div className="header-action-icons-wrap header-btn-desktop-only">
+              {/* 1. Nút Đăng Nhập / Hồ Sơ Gọn Gàng */}
+              {!authUser || !authUser.isLoggedIn ? (
+                <button 
+                  type="button"
+                  className="header-icon-action-btn header-auth-icon-btn"
+                  onClick={() => {
+                    setAuthNotice('');
+                    setAuthModalStep(1);
+                    setIsAuthModalOpen(true);
+                  }}
+                  title="Đăng nhập tài khoản Google"
+                  aria-label="Đăng nhập"
+                >
+                  <User size={24} className="text-amber-400" />
+                </button>
+              ) : (
+                <button 
+                  type="button"
+                  className="header-icon-action-btn header-user-avatar-btn"
+                  onClick={() => setIsUserProfileModalOpen(true)}
+                  title={`${authUser.nickname} · Xem hồ sơ cá nhân`}
+                  aria-label="Hồ sơ cá nhân"
+                >
+                  <span className="text-2xl leading-none">{authUser.avatar || '🐱'}</span>
+                </button>
+              )}
 
+              {/* 2. Nút Bản Đồ Số */}
+              <button 
+                type="button"
+                className="header-icon-action-btn"
+                onClick={handleOpenMap}
+                title="Bản Đồ Số (Đang phát triển)"
+                aria-label="Bản Đồ Số"
+              >
+                <Map size={24} />
+              </button>
 
-            {/* 3. Nút Menu Cài đặt (9 ô vuông Grid) - Âm lượng đã được đưa vào trong cài đặt này */}
-            <button 
-              className="header-icon-action-btn header-menu-trigger-btn"
-              onClick={() => setIsSettingsMenuOpen(true)}
-              title="Menu Cài đặt"
-              aria-label="Menu Cài đặt"
-            >
-              <LayoutGrid size={18} />
-            </button>
+              {/* 3. Nút Menu Cài đặt (Grid) */}
+              <button 
+                type="button"
+                className="header-icon-action-btn header-menu-trigger-btn"
+                onClick={() => setIsSettingsMenuOpen(true)}
+                title="Menu Cài đặt"
+                aria-label="Menu Cài đặt"
+              >
+                <LayoutGrid size={24} />
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -839,11 +993,10 @@ export default function Home() {
           >
             <div className="mode-btn-title-row">
               <UtensilsCrossed size={18} className={mainMode === 'dish' ? 'text-amber-400' : 'text-slate-400'} />
-              <span>QUAY CHỌN MÓN</span>
+              <span>{t('spin_dish_tab')}</span>
             </div>
             <span className="mode-sub-tag">
-              <span className="hidden sm:inline">150+ món ngon · Lọc món theo bữa &amp; ví tiền</span>
-              <span className="sm:hidden">150+ món ngon · Lọc bữa &amp; ví</span>
+              <span>{t('spin_dish_sub')}</span>
             </span>
           </button>
 
@@ -858,11 +1011,10 @@ export default function Home() {
           >
             <div className="mode-btn-title-row">
               <Store size={18} className={mainMode === 'place' ? 'text-amber-400' : 'text-slate-400'} />
-              <span>QUAY CHỌN QUÁN</span>
+              <span>{t('spin_place_tab')}</span>
             </div>
             <span className="mode-sub-tag">
-              <span className="hidden sm:inline">{allPlaces.length}+ quán thực tế · Lọc theo khung giờ &amp; sở thích</span>
-              <span className="sm:hidden">{allPlaces.length}+ quán · Lọc giờ &amp; kèo</span>
+              <span>{t('spin_place_sub')}</span>
             </span>
           </button>
         </div>
@@ -1051,6 +1203,41 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+
+                {/* 3. Công Tắc Nhanh: Bộ Lọc Theo Gu Ẩm Thực (Đồng bộ Web & Mobile) */}
+                <div className="luxury-taste-filter-wrap">
+                  {authUser?.isLoggedIn ? (
+                    <button
+                      type="button"
+                      className={`taste-filter-toggle-pill ${authUser.filterByTaste !== false ? 'active' : ''}`}
+                      onClick={handleToggleTasteFilter}
+                      disabled={spinning}
+                      title={authUser.filterByTaste !== false 
+                        ? 'Đang BẬT lọc theo gu ẩm thực của bạn · Bấm để tắt (Khám phá ngẫu nhiên)' 
+                        : 'Đang TẮT lọc theo gu · Bấm để bật'}
+                    >
+                      <span className="taste-filter-icon">🎯</span>
+                      <span className="taste-filter-text">
+                        {authUser.filterByTaste !== false ? 'Gu của tôi: BẬT' : 'Gu của tôi: TẮT'}
+                      </span>
+                      <span className={`taste-filter-indicator ${authUser.filterByTaste !== false ? 'active' : ''}`} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="taste-filter-toggle-pill guest"
+                      onClick={() => {
+                        setAuthNotice('Đăng nhập Google để bật bộ lọc theo gu khẩu vị của bạn');
+                        setAuthModalStep(1);
+                        setIsAuthModalOpen(true);
+                      }}
+                      title="Đăng nhập để thiết lập khẩu vị theo gu"
+                    >
+                      <span className="taste-filter-icon">🎯</span>
+                      <span className="taste-filter-text">Lọc theo gu</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </>
           ) : (
@@ -1211,8 +1398,6 @@ export default function Home() {
               <span>Chọn Quán</span>
             </button>
           </div>
-
-          <GlobalSpinCounter count={globalSpinCount} isSpinning={spinning || placeSpinning} compact={true} />
         </div>
 
         {/* ========================================================
@@ -1418,13 +1603,23 @@ export default function Home() {
                       }}
                       onClick={() => {
                         if (!spinning) {
+                          if (!authUser || !authUser.isLoggedIn) {
+                            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết món ăn này! Khách vãng lai chỉ có thể quay thưởng.');
+                            setAuthModalStep(1);
+                            setIsAuthModalOpen(true);
+                            return;
+                          }
                           setWinnerFood(food);
                           setDialogOpen(true);
                         }
                       }}
                     >
                       <div className="reel-card-top-tag">
-                        {rarityNames[food.rarity ?? 0]}
+                        <span>{rarityNames[food.rarity ?? 0]}</span>
+                        <span className="dish-corner-star-badge" title="Đánh giá chất lượng món">
+                          <Star size={10} className="inline mr-1 text-amber-400 fill-amber-400" />
+                          <span>{getDishRatingSummary(food.customId || food.name).displayRating}</span>
+                        </span>
                       </div>
                       <div className="reel-card-art-area">
                         <div className="food-plate-halo">
@@ -1450,6 +1645,12 @@ export default function Home() {
                       isReel={true}
                       onClick={() => {
                         if (!placeSpinning) {
+                          if (!authUser || !authUser.isLoggedIn) {
+                            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết quán ăn này! Khách vãng lai chỉ có thể quay thưởng.');
+                            setAuthModalStep(1);
+                            setIsAuthModalOpen(true);
+                            return;
+                          }
                           setWinnerPlace(place);
                           setPlaceModalOpen(true);
                         }
@@ -1526,8 +1727,7 @@ export default function Home() {
               </div>
 
               <div className="inventory-controls-col">
-                {/* Hàng 1: 2 Tab lớn chia đôi 50/50 chiều rộng màn hình, chữ to rõ ràng */}
-                <div className="inventory-mode-toggle inventory-mode-toggle-full">
+                <div className="inventory-mode-toggle">
                   <button
                     type="button"
                     onClick={() => setInventoryMode('all')}
@@ -1543,39 +1743,6 @@ export default function Home() {
                   >
                     <Sparkles size={13} className="shrink-0 text-amber-400" />
                     <span>Món độc bản ({uniqueEligibleDishes.length})</span>
-                  </button>
-                </div>
-
-                {/* Hàng 2: Ô tìm kiếm + Nút Đổi ngẫu nhiên song song */}
-                <div className="inventory-search-and-action-row">
-                  <div className="inventory-search-wrap">
-                    <Search size={15} className="search-icon" />
-                    <input
-                      type="text"
-                      placeholder="Tìm món, quán... (VD: bún đậu, kem)"
-                      value={dishSearchQuery}
-                      onChange={e => setDishSearchQuery(e.target.value)}
-                      className="inventory-search-input"
-                    />
-                    {dishSearchQuery && (
-                      <button 
-                        onClick={() => setDishSearchQuery('')} 
-                        className="search-clear-btn inline-flex items-center justify-center"
-                        title="Xóa tìm kiếm"
-                      >
-                        <X size={13} />
-                      </button>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setDishShuffleKey(Date.now() + Math.random())}
-                    className="inventory-shuffle-btn inventory-shuffle-btn-compact"
-                    title="Xáo trộn ngẫu nhiên danh sách món ở dưới"
-                  >
-                    <Shuffle size={13} className="shrink-0 text-amber-400" />
-                    <span>Đổi món</span>
                   </button>
                 </div>
               </div>
@@ -1619,11 +1786,21 @@ export default function Home() {
                           ['--rarity-color' as any]: rarityColor
                         }}
                         onClick={() => {
+                          if (!authUser || !authUser.isLoggedIn) {
+                            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết món ăn này! Khách vãng lai chỉ có thể quay thưởng.');
+                            setAuthModalStep(1);
+                            setIsAuthModalOpen(true);
+                            return;
+                          }
                           setWinnerFood(food);
                           setDialogOpen(true);
                         }}
                       >
                         <div className="catalog-card-art">
+                          <div className="catalog-card-star-badge" title="Đánh giá chất lượng món">
+                            <Star size={10} className="inline mr-1 text-amber-400 fill-amber-400" />
+                            <span>{getDishRatingSummary(food.customId || food.name).displayRating}</span>
+                          </div>
                           <div className="food-plate-halo">
                             <FoodImage food={food} size="md" />
                           </div>
@@ -1669,15 +1846,15 @@ export default function Home() {
                         className="btn-load-more"
                         onClick={() => setVisibleDishCount(prev => prev + 18)}
                       >
-                        <ChevronDown size={18} />
-                        <span>Xem tiếp (+{Math.min(18, displayedDishes.length - visibleDishCount)} món nữa)</span>
+                        <ChevronDown size={16} />
+                        <span>Xem tiếp (+{Math.min(18, displayedDishes.length - visibleDishCount)})</span>
                       </button>
                       <button
                         type="button"
                         className="btn-load-all"
                         onClick={() => setVisibleDishCount(displayedDishes.length)}
                       >
-                        Xem tất cả ({displayedDishes.length} món)
+                        <span>Xem tất cả ({displayedDishes.length})</span>
                       </button>
                     </>
                   )}
@@ -1716,41 +1893,6 @@ export default function Home() {
                 </span>
               </div>
 
-              {/* Smart Search Bar & Xáo trộn ngẫu nhiên cho bên quán */}
-              <div className="inventory-controls-col">
-                <div className="inventory-search-and-action-row">
-                  <div className="inventory-search-wrap">
-                    <Search size={15} className="search-icon" />
-                    <input
-                      type="text"
-                      placeholder="Tìm tên quán, địa chỉ hoặc món ăn..."
-                      value={placeSearchQuery}
-                      onChange={e => setPlaceSearchQuery(e.target.value)}
-                      className="inventory-search-input"
-                    />
-                    {placeSearchQuery && (
-                      <button 
-                        onClick={() => setPlaceSearchQuery('')} 
-                        className="search-clear-btn inline-flex items-center justify-center"
-                        title="Xóa tìm kiếm"
-                      >
-                        <X size={13} />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Nút Đổi quán ngẫu nhiên */}
-                  <button
-                    type="button"
-                    onClick={() => setPlaceShuffleKey(Date.now() + Math.random())}
-                    className="inventory-shuffle-btn inventory-shuffle-btn-compact"
-                    title="Xáo trộn ngẫu nhiên danh sách quán ở dưới"
-                  >
-                    <Shuffle size={13} className="shrink-0 text-amber-400" />
-                    <span>Đổi quán</span>
-                  </button>
-                </div>
-              </div>
             </div>
 
             <div className="places-grid">
@@ -1761,6 +1903,12 @@ export default function Home() {
                   key={place.id}
                   place={place}
                   onClick={() => {
+                    if (!authUser || !authUser.isLoggedIn) {
+                      setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết quán ăn này! Khách vãng lai chỉ có thể quay thưởng.');
+                      setAuthModalStep(1);
+                      setIsAuthModalOpen(true);
+                      return;
+                    }
                     setWinnerPlace(place);
                     setPlaceModalOpen(true);
                   }}
@@ -1798,15 +1946,15 @@ export default function Home() {
                           });
                         }}
                       >
-                        <ChevronDown size={18} />
-                        <span>Xem tiếp (+{Math.min(16, displayedPlacesForInventory.length - visiblePlaceCount)} quán nữa)</span>
+                        <ChevronDown size={16} />
+                        <span>Xem tiếp (+{Math.min(16, displayedPlacesForInventory.length - visiblePlaceCount)})</span>
                       </button>
                       <button
                         type="button"
                         className="btn-load-all"
                         onClick={() => setVisiblePlaceCount(displayedPlacesForInventory.length)}
                       >
-                        Xem tất cả ({displayedPlacesForInventory.length} quán)
+                        <span>Xem tất cả ({displayedPlacesForInventory.length})</span>
                       </button>
                     </>
                   )}
@@ -1836,6 +1984,12 @@ export default function Home() {
       <DishesCatalogView
         initialCategory={activeCategory}
         onSelectDish={(dish) => {
+          if (!authUser || !authUser.isLoggedIn) {
+            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết món ăn này! Khách vãng lai chỉ có thể quay thưởng.');
+            setAuthModalStep(1);
+            setIsAuthModalOpen(true);
+            return;
+          }
           setWinnerFood(dish);
           setDialogOpen(true);
         }}
@@ -1852,6 +2006,12 @@ export default function Home() {
     {currentView === 'places' && (
       <PlacesCatalogView
         onSelectPlace={(place) => {
+          if (!authUser || !authUser.isLoggedIn) {
+            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết quán ăn này! Khách vãng lai chỉ có thể quay thưởng.');
+            setAuthModalStep(1);
+            setIsAuthModalOpen(true);
+            return;
+          }
           setWinnerPlace(place);
           setPlaceModalOpen(true);
         }}
@@ -1894,6 +2054,12 @@ export default function Home() {
     onSpinAgain={spinCase}
     allActiveFoods={eligibleItems}
     onSelectFood={(f) => setWinnerFood(f)}
+    authUser={authUser}
+    onOpenLogin={() => {
+      setAuthNotice('Đăng nhập tài khoản Google để xem địa chỉ quán, hotline và đánh giá món ăn nhé!');
+      setAuthModalStep(1);
+      setIsAuthModalOpen(true);
+    }}
   />
 
   {/* Place Modal (Quán Ăn) */}
@@ -1904,9 +2070,25 @@ export default function Home() {
     onSpinAgain={spinPlace}
     allPlaces={allPlaces}
     onSelectPlace={setWinnerPlace}
+    authUser={authUser}
+    onOpenLogin={() => {
+      setAuthNotice('Đăng nhập tài khoản Google để xem hotline, bản đồ và gửi đánh giá cho quán nhé!');
+      setAuthModalStep(1);
+      setIsAuthModalOpen(true);
+    }}
   />
 
-  {/* Settings Menu Modal (Chuẩn Trưa Nay Ăn Gì - Grid 3 Cột) */}
+  {/* Modal Cảnh báo thăng cấp khi chạm trần Cấp 1 dành cho Khách Vãng Lai */}
+  <GuestUpgradeGateModal
+    isOpen={isGuestGateOpen}
+    onClose={() => setIsGuestGateOpen(false)}
+    onOpenLogin={() => {
+      setIsGuestGateOpen(false);
+      setAuthModalStep(1);
+      setIsAuthModalOpen(true);
+    }}
+  />
+
   {/* Settings Menu Modal (4 ô tinh gọn: Ngôn ngữ, Âm lượng, Hướng dẫn, Cộng đồng) */}
   <SettingsMenuModal 
     isOpen={isSettingsMenuOpen}
@@ -1915,7 +2097,66 @@ export default function Home() {
     onToggleSound={toggleSound}
     onOpenGuide={() => navigateTo('guide')}
     onOpenAbout={() => navigateTo('about')}
+    currentLang={lang}
+    onChangeLang={changeLanguage}
+    authUser={authUser}
+    onToggleTasteFilter={handleToggleTasteFilter}
+    onOpenLogin={() => {
+      setAuthNotice('');
+      setAuthModalStep(1);
+      setIsAuthModalOpen(true);
+    }}
+    onOpenProfile={() => setIsUserProfileModalOpen(true)}
   />
+
+  {/* Bảng Điểm Thực Khách Chuyên Nghiệp (Scorecard Modal) */}
+  <GourmetScoreboardModal
+    isOpen={isScoreboardOpen}
+    onClose={() => setIsScoreboardOpen(false)}
+    profile={profile}
+    authUser={authUser}
+    onOpenLogin={() => {
+      setIsScoreboardOpen(false);
+      setAuthNotice('');
+      setAuthModalStep(1);
+      setIsAuthModalOpen(true);
+    }}
+    onContinueSpinning={() => {
+      setIsScoreboardOpen(false);
+      navigateTo('spin');
+    }}
+  />
+
+  {/* Modal Đăng nhập & Thiết lập nhanh (Bước 1 & Bước 2) */}
+  <AuthModal 
+    isOpen={isAuthModalOpen}
+    onClose={() => setIsAuthModalOpen(false)}
+    onSuccess={(user) => {
+      setAuthUser(user);
+    }}
+    initialStep={authModalStep}
+    existingUser={authUser}
+    customNotice={authNotice}
+  />
+
+  {/* Modal Hồ sơ Cá nhân Chi tiết khi đã đăng nhập */}
+  {authUser && authUser.isLoggedIn && (
+    <UserProfileModal 
+      isOpen={isUserProfileModalOpen}
+      onClose={() => setIsUserProfileModalOpen(false)}
+      user={authUser}
+      profile={profile}
+      onOpenScoreboard={() => setIsScoreboardOpen(true)}
+      onEditProfile={() => {
+        setAuthModalStep(2);
+        setIsAuthModalOpen(true);
+      }}
+      onSignOut={() => {
+        clearAuthUser();
+        setAuthUser(null);
+      }}
+    />
+  )}
 
   {/* Toast thông báo Bản Đồ Số */}
   {mapToast && (
@@ -1943,16 +2184,32 @@ export default function Home() {
     </div>
     <div className="site-footer-links">
       <nav aria-label="Liên kết cuối trang">
-        <button className={`footer-link-btn ${currentView === 'dishes' ? 'active' : ''}`} onClick={() => navigateTo('dishes')}>Khám phá món</button>
-        <button className={`footer-link-btn ${currentView === 'places' ? 'active' : ''}`} onClick={() => navigateTo('places')}>Quán ăn</button>
-        <button className={`footer-link-btn ${currentView === 'guide' ? 'active' : ''}`} onClick={() => navigateTo('guide')}>Cách sử dụng</button>
-        <button className={`footer-link-btn ${currentView === 'about' ? 'active' : ''}`} onClick={() => navigateTo('about')}>Giới thiệu</button>
+        <button className={`footer-link-btn ${currentView === 'dishes' ? 'active' : ''}`} onClick={() => navigateTo('dishes')}>{t('footer_dishes')}</button>
+        <button className={`footer-link-btn ${currentView === 'places' ? 'active' : ''}`} onClick={() => navigateTo('places')}>{t('footer_places')}</button>
+        <button className={`footer-link-btn ${currentView === 'guide' ? 'active' : ''}`} onClick={() => navigateTo('guide')}>{t('footer_guide')}</button>
+        <button className={`footer-link-btn ${currentView === 'about' ? 'active' : ''}`} onClick={() => navigateTo('about')}>{t('footer_about')}</button>
       </nav>
       <div className="site-footer-contact">
         <span>Crafted &amp; Curated by MinhTT © 2026</span>
       </div>
     </div>
   </footer>
+
+  {/* Thanh điều hướng cố định đáy chuẩn Mobile App (Chỉ hiển thị trên điện thoại) */}
+  <MobileBottomNav
+    currentView={currentView}
+    onNavigate={navigateTo}
+    onOpenScoreboard={() => setIsScoreboardOpen(true)}
+    onOpenSettings={() => setIsSettingsMenuOpen(true)}
+    onOpenLogin={() => {
+      setAuthNotice('');
+      setAuthModalStep(1);
+      setIsAuthModalOpen(true);
+    }}
+    onOpenProfile={() => setIsUserProfileModalOpen(true)}
+    authUser={authUser}
+    level={profile.level}
+  />
     </div>
   );
 }

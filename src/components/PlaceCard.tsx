@@ -200,14 +200,7 @@ export function PlaceCard({ place, onClick, isReel = false, slot }: PlaceCardPro
 
       <div className="grid-card-content">
         <div className="grid-card-tags">
-          {/* Tiện ích quán badge */}
-          <span 
-            className="tag-chip font-semibold inline-flex items-center"
-            style={{ borderColor: amenity.badgeColor, color: amenity.badgeColor }}
-          >
-            {renderAmenityIcon(amenity.id)}
-            {amenity.label.split(' ')[0]} {amenity.label.split(' ')[1] || ''}
-          </span>
+          <span className="dist-chip"><MapPin size={11} /> {shortDist}</span>
 
           {place.serviceMode === 'delivery_only' && (
             <span className="tag-chip service-delivery inline-flex items-center gap-1">
@@ -224,18 +217,23 @@ export function PlaceCard({ place, onClick, isReel = false, slot }: PlaceCardPro
               <UtensilsCrossed size={11} className="text-amber-400" /> Tại Quán
             </span>
           )}
-          {place.tags.slice(0, 1).map(tag => (
-            <span key={tag} className="tag-chip">{tag}</span>
-          ))}
-          <span className="dist-chip"><MapPin size={11} /> {shortDist}</span>
+
+          {/* Tiện ích quán badge */}
+          <span 
+            className="tag-chip font-semibold inline-flex items-center"
+            style={{ borderColor: amenity.badgeColor, color: amenity.badgeColor }}
+          >
+            {renderAmenityIcon(amenity.id)}
+            {amenity.label.split(' ')[0]} {amenity.label.split(' ')[1] || ''}
+          </span>
         </div>
 
         <h3 className="grid-place-title">{formatTypography(place.name)}</h3>
         <p className="grid-place-tagline">{place.tagline}</p>
 
         <div className="grid-signature-box">
-          <span className="sig-label">Món tủ nổi tiếng:</span>
           <div className="sig-row">
+            <span className="sig-label">Món tủ:</span>
             <strong className="sig-name">{formatTypography(place.signatureDish.name)}</strong>
             <span className="sig-price">~{place.signatureDish.price}k</span>
           </div>
@@ -243,11 +241,11 @@ export function PlaceCard({ place, onClick, isReel = false, slot }: PlaceCardPro
 
         <div className="grid-card-bottom">
           <div className="flex flex-col text-left">
-            <span className="text-[11px] text-slate-400">Tầm giá / người:</span>
+            <span className="text-[11px] text-slate-400">Tầm giá:</span>
             <strong className="text-amber-400 text-xs font-bold">{perPerson}</strong>
           </div>
           <button className="btn-view-details">
-            Xem Tọa Độ Vàng →
+            Xem Quán →
           </button>
         </div>
       </div>

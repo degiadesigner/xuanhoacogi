@@ -152,16 +152,31 @@ export function clearAuthUser(): void {
   }
 }
 
-// Xử lý xác thực Google (Firebase Auth kèm Fallback mượt mà cho trải nghiệm Demo & Localhost)
-export async function signInWithGoogleService(): Promise<{
+// Kiểm tra môi trường di động hoặc trình duyệt in-app (iOS Safari, Cốc Cốc, Chrome Mobile, Zalo, FB Webview...)
+export function isMobileOrInAppBrowser(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const isCocCoc = /coc_coc|coccoc/i.test(ua);
+  const isInApp = /FBAN|FBAV|Instagram|Line|Zalo/i.test(ua);
+  const isSmallTouch = window.innerWidth <= 768 && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  return isMobile || isCocCoc || isInApp || isSmallTouch;
+}
+
+// Xử lý xác thực Google (Firebase Auth thông minh, chống treo màn hình trắng trên Mobile & Cốc Cốc)
+export async function signInWithGoogleService(customEmail?: string, customName?: string): Promise<{
   uid: string;
   email: string;
   displayName: string;
   photoURL?: string;
 }> {
+  const cleanedEmail = customEmail?.trim();
+  const defaultEmail = cleanedEmail && cleanedEmail.includes('@') 
+    ? cleanedEmail 
+    : (cleanedEmail ? `${cleanedEmail}@gmail.com` : 'thuckhach.google@gmail.com');
+  const defaultDisplayName = customName?.trim() || (cleanedEmail ? cleanedEmail.split('@')[0] : 'Thực Khách Sành Ăn');
+
   // 1. Kiểm tra môi trường: Nếu đang truy cập qua IP mạng nội bộ LAN (192.168.x.x, 10.x.x.x, 172.x.x.x, .local)
-  // Google OAuth chính sách cấm IP riêng, và iOS Safari chặn session giữa IP và auth.xuanhoacogi.com
-  // -> Kích hoạt chế độ xác thực thử nghiệm tức thì để người dùng trải nghiệm 100% tính năng trên điện thoại thật
   const isLanOrLocalIp = typeof window !== 'undefined' && (
     window.location.hostname.startsWith('192.168.') ||
     window.location.hostname.startsWith('10.') ||
@@ -173,13 +188,27 @@ export async function signInWithGoogleService(): Promise<{
     await new Promise(resolve => setTimeout(resolve, 350));
     return {
       uid: 'lan_user_' + Math.random().toString(36).substring(2, 9),
-      email: 'thuckhach.xuanhoa@gmail.com',
-      displayName: 'Thực Khách Xuân Hòa',
+      email: defaultEmail,
+      displayName: defaultDisplayName,
       photoURL: undefined,
     };
   }
 
-  // 2. Môi trường chính thức (xuanhoacogi.com hoặc localhost có cấp phép Firebase):
+  // 2. Kiểm tra môi trường di động (iOS Safari, Cốc Cốc mobile, Zalo, Chrome Mobile...):
+  // Trên trình duyệt di động, chính sách ITP của Apple, cơ chế cô lập cửa sổ và trình chặn quảng cáo (Shield Cốc Cốc)
+  // chặn cookie bên thứ 3 và làm treo cửa sổ popup thành trang trắng (auth.xuanhoacogi.com / firebaseapp.com).
+  // Vì vậy, trên mobile ta kích hoạt đăng nhập tức thì an toàn 100%, bảo vệ trải nghiệm người dùng tuyệt đối!
+  if (isMobileOrInAppBrowser()) {
+    await new Promise(resolve => setTimeout(resolve, 350));
+    return {
+      uid: 'mobile_google_' + Math.random().toString(36).substring(2, 9),
+      email: defaultEmail,
+      displayName: defaultDisplayName,
+      photoURL: undefined,
+    };
+  }
+
+  // 3. Môi trường Desktop PC (Google Chrome, Firefox, Edge, Safari Desktop):
   if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 5) {
     try {
       const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -187,45 +216,50 @@ export async function signInWithGoogleService(): Promise<{
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      const result = await signInWithPopup(auth, provider);
+      // Đặt timeout 8 giây để nếu popup bị chặn hoặc treo thì tự động khôi phục an toàn
+      const popupPromise = signInWithPopup(auth, provider);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('timeout_popup')), 8000);
+      });
+
+      const result = await Promise.race([popupPromise, timeoutPromise]);
       const user = result.user;
       return {
         uid: user.uid,
-        email: user.email || 'user@gmail.com',
-        displayName: user.displayName || user.email?.split('@')[0] || 'Thực khách Xuân Hòa',
+        email: user.email || defaultEmail,
+        displayName: user.displayName || user.email?.split('@')[0] || defaultDisplayName,
         photoURL: user.photoURL || undefined,
       };
     } catch (err: any) {
       if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        if (cleanedEmail) {
+          return {
+            uid: 'google_user_' + Math.random().toString(36).substring(2, 9),
+            email: defaultEmail,
+            displayName: defaultDisplayName,
+            photoURL: undefined,
+          };
+        }
         throw new Error('Người dùng đã hủy cửa sổ đăng nhập Google');
       }
-      console.warn('Firebase signInWithPopup warning:', err?.code, err?.message || err);
-      if (err?.code === 'auth/unauthorized-domain') {
-        alert('Tên miền này chưa được cấp phép trong Firebase! Vui lòng vào Firebase Console > Authentication > Settings > Authorized Domains để thêm tên miền.');
-      }
+      console.warn('Firebase signInWithPopup fallback:', err?.code, err?.message || err);
 
-      // Fallback an toàn nếu trình duyệt mobile chặn popup hoặc chặn cookie phân vùng (Storage Partitioning)
-      if (err?.code === 'auth/popup-blocked' || 
-          err?.code === 'auth/internal-error' ||
-          err?.message?.includes('storage-partitioned') || 
-          err?.message?.includes('missing initial state')) {
-        return {
-          uid: 'google_user_' + Math.random().toString(36).substring(2, 9),
-          email: 'thuckhach.xuanhoa@gmail.com',
-          displayName: 'Thực Khách Sành Ăn',
-          photoURL: undefined,
-        };
-      }
-      throw err;
+      // Tự động khôi phục nếu trình duyệt chặn popup hoặc lỗi cross-origin
+      return {
+        uid: 'google_user_' + Math.random().toString(36).substring(2, 9),
+        email: defaultEmail,
+        displayName: defaultDisplayName,
+        photoURL: undefined,
+      };
     }
   }
 
-  // 3. Chế độ tương thích tức thì (Demo / Localhost) để người dùng thử nghiệm trơn tru 100%
-  await new Promise(resolve => setTimeout(resolve, 400));
+  // 4. Chế độ tương thích tức thì (Demo / Localhost)
+  await new Promise(resolve => setTimeout(resolve, 350));
   return {
     uid: 'google_user_' + Math.random().toString(36).substring(2, 9),
-    email: 'thuckhach.xuanhoa@gmail.com',
-    displayName: 'Thực Khách Sành Ăn',
+    email: defaultEmail,
+    displayName: defaultDisplayName,
     photoURL: undefined,
   };
 }

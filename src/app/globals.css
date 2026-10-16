@@ -10054,13 +10054,111 @@ html, body {
 
 /* Step 1 Compact Container & Note */
 .auth-modal-container-step1 {
-  max-width: 400px;
-  padding: 30px 24px 24px;
+  max-width: 420px;
+  padding: 28px 22px 22px;
+}
+
+.auth-step1-quick-box {
+  width: 100%;
+  margin-bottom: 14px;
+  text-align: left;
+}
+
+.auth-step1-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #D4AF37;
+  margin-bottom: 6px;
+  letter-spacing: 0.2px;
+}
+
+.auth-step1-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.auth-step1-input {
+  flex: 1;
+  height: 44px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 12px;
+  padding: 0 12px;
+  color: #FFFFFF;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.auth-step1-input:focus {
+  border-color: #F59E0B;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.auth-step1-input::placeholder {
+  color: #64748B;
+  font-size: 12px;
+}
+
+.auth-step1-quick-submit-btn {
+  height: 44px;
+  padding: 0 15px;
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  color: #0F172A;
+  border: none;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+}
+
+.auth-step1-quick-submit-btn:hover {
+  background: linear-gradient(135deg, #FBBF24 0%, #F59E0B 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.35);
+}
+
+.auth-step1-quick-submit-btn:active {
+  transform: scale(0.97);
+}
+
+.auth-step1-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 10px 0 14px;
+  width: 100%;
+}
+
+.auth-step1-divider::before,
+.auth-step1-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.auth-step1-divider span {
+  padding: 0 10px;
+  color: #64748B;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
 }
 
 .auth-step1-security-hint {
-  margin-top: 16px;
-  font-size: 11.5px;
+  margin-top: 14px;
+  font-size: 11px;
   color: #64748B;
   display: flex;
   align-items: center;

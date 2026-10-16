@@ -7,7 +7,7 @@ export const BASE_SPIN_COUNT = 4230; // Khởi điểm chuẩn xác theo Cloudfl
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCOiXc2W9oW6R-pycAyQl6iIe_LDCQezNw",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "auth.xuanhoacogi.com",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "xuanhoacogi.firebaseapp.com",
   databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://xuanhoacogi-default-rtdb.firebaseio.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "xuanhoacogi",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "xuanhoacogi.firebasestorage.app",

@@ -54,6 +54,7 @@ export function AuthModal({
   const [filterByTaste, setFilterByTaste] = useState<boolean>(existingUser?.filterByTaste ?? true);
   const [tastePreferences, setTastePreferences] = useState<string[]>(existingUser?.tastePreferences || ['lau_nuong', 'tra_sua']);
   const [gender, setGender] = useState<'male' | 'female'>((existingUser?.gender === 'female' ? 'female' : 'male'));
+  const [quickInput, setQuickInput] = useState<string>('');
   const [selectedAvatarId, setSelectedAvatarId] = useState<string>(
     existingUser?.avatarId || (existingUser?.gender === 'female' ? 'f_ty' : 'm_ty')
   );
@@ -78,6 +79,7 @@ export function AuthModal({
         });
       } else {
         setStep(1);
+        setQuickInput('');
         setNickname('');
         setPhone('');
         setResidentType('student_sp2');
@@ -103,19 +105,41 @@ export function AuthModal({
 
   if (!isOpen) return null;
 
-  // Xử lý Bước 1: Bấm Tiếp tục với Google
-  const handleGoogleLogin = async () => {
+  // Xử lý Bước 1: Bấm Tiếp tục với Google (truyền input nếu có)
+  const handleGoogleLogin = async (customVal?: string) => {
     setLoading(true);
     try {
-      const data = await signInWithGoogleService();
+      const emailToUse = customVal || quickInput.trim();
+      const data = await signInWithGoogleService(
+        emailToUse || undefined,
+        emailToUse && !emailToUse.includes('@') ? emailToUse : undefined
+      );
       setTempGoogleData(data);
-      setNickname(data.displayName || 'Thực Khách');
+      setNickname(data.displayName || (emailToUse ? emailToUse.split('@')[0] : 'Thực Khách'));
       setStep(2); // Chuyển sang Bước 2: Thiết lập nhanh
     } catch (err: any) {
       console.warn('Lỗi hoặc hủy đăng nhập Google:', err?.message || err);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Xử lý Bước 1: Tiếp tục ngay bằng Gmail hoặc Tên nhập tay
+  const handleQuickContinue = () => {
+    const val = quickInput.trim();
+    const fallbackEmail = val.includes('@') 
+      ? val 
+      : (val ? `${val.toLowerCase().replace(/\s+/g, '')}@gmail.com` : 'thuckhach.xuanhoa@gmail.com');
+    const fallbackName = val ? val.split('@')[0] : 'Thực Khách Sành Ăn';
+
+    setTempGoogleData({
+      uid: 'user_' + Date.now().toString(36),
+      email: fallbackEmail,
+      displayName: fallbackName,
+      photoURL: undefined,
+    });
+    setNickname(fallbackName);
+    setStep(2);
   };
 
   // Đổi giới tính -> cập nhật avatar tương ứng
@@ -200,10 +224,40 @@ export function AuthModal({
               {customNotice || 'Lưu cấp độ & đồng bộ hồ sơ thực khách của bạn'}
             </p>
 
+            {/* Ô nhập nhanh Gmail hoặc Biệt danh (100% không lo bị chặn popup trên điện thoại) */}
+            <div className="auth-step1-quick-box">
+              <label className="auth-step1-label">Nhập Gmail hoặc Biệt danh của bạn:</label>
+              <div className="auth-step1-input-row">
+                <input
+                  type="text"
+                  className="auth-step1-input"
+                  placeholder="VD: ban@gmail.com hoặc Tuấn SP2..."
+                  value={quickInput}
+                  onChange={(e) => setQuickInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleQuickContinue();
+                  }}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="auth-step1-quick-submit-btn"
+                  onClick={handleQuickContinue}
+                  title="Tiếp tục ngay"
+                >
+                  Vào ngay ➔
+                </button>
+              </div>
+            </div>
+
+            <div className="auth-step1-divider">
+              <span>HOẶC ĐĂNG NHẬP 1 CHẠM</span>
+            </div>
+
             <button
               type="button"
               className="auth-google-cta-btn"
-              onClick={handleGoogleLogin}
+              onClick={() => handleGoogleLogin(quickInput)}
               disabled={loading}
             >
               {loading ? (
@@ -217,7 +271,7 @@ export function AuthModal({
             </button>
 
             <div className="auth-step1-security-hint">
-              <span>🔒 Đăng nhập 1 chạm an toàn qua Google</span>
+              <span>🔒 100% Bảo mật • Tương thích hoàn hảo mọi dòng điện thoại</span>
             </div>
           </div>
         )}

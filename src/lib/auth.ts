@@ -176,7 +176,14 @@ export async function signInWithGoogleService(): Promise<{
         photoURL: user.photoURL || undefined,
       };
     } catch (err: any) {
-      console.warn('Firebase signInWithPopup fallback sang Demo Mode do cấu hình hoặc popup chặn:', err?.message || err);
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        throw new Error('Người dùng đã hủy cửa sổ đăng nhập Google');
+      }
+      console.warn('Firebase signInWithPopup warning:', err?.code, err?.message || err);
+      if (err?.code === 'auth/unauthorized-domain') {
+        alert('Tên miền này chưa được cấp phép trong Firebase! Vui lòng vào Firebase Console > Authentication > Settings > Authorized Domains để thêm tên miền.');
+      }
+      throw err;
     }
   }
 

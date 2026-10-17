@@ -1838,11 +1838,53 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
       'Trà sữa gạo rang: 30.000đ',
       'Mẹt xiên que thập cẩm: 39.000đ'
     ]
+  },
+
+  // 49. Nem Nướng Nhà Mơ & Tiệm Nhà Chou Chou (Cổng ABC Xuân Hoà)
+  nem_nuong_nha_mo_chou_chou: {
+    name: 'Nem Nướng Nhà Mơ & Tiệm Nhà Chou Chou - Cổng ABC Xuân Hoà',
+    address: 'Cổng ABC Xuân Hoà, P. Xuân Hòa, Tỉnh Phú Thọ',
+    phone: '0960 371 110 - 0969 371 110',
+    mapsQuery: 'Cổng ABC Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Phục vụ tại quán & Nhận ship tận nơi quanh Cổng ABC, ĐHSP2 & toàn Xuân Hòa · Hotline: 0960 371 110 - 0969 371 110 (FB: Lại Thị Cúc Nga)',
+    notes: 'Nem Nướng Nhà Mơ & Tiệm Nhà Chou Chou · Cổng ABC Xuân Hoà · Hotline 0960 371 110 - 0969 371 110 · Chuyên Nem nướng chuẩn vị ngon 30k-35k, Nem lụi 30k, Trà sữa Chou Chou size 700ml (Kem trứng dừa nướng 25k, Trà sữa khoai môn tươi 30k, Trà sữa kem cốm tươi 30k, Ô long sen vàng 30k, Trà mãng cầu 25k...), Trà Full Topping 700ml đồng giá 15k & Nước ép tươi đồng giá M 15k / L 20k.',
+    menuHighlights: [
+      'Nem nướng Nhà Mơ suất tiêu chuẩn: 30.000đ (Bestseller)',
+      'Nem nướng Nhà Mơ suất đặc biệt: 35.000đ (Đầy đặn)',
+      'Nem lụi nướng Nhà Mơ: 30.000đ/suất',
+      'Kem trứng dừa nướng / Trà mãng cầu / Ôlong sữa / Hồng trà sữa / Trà trái cây nhiệt đới / Sữa tươi trân châu đường đen / Matcha latte (Size 700ml): 25.000đ',
+      'Trà sữa khoai môn tươi / Ô long sen vàng / Trà sữa kem cốm tươi (Size 700ml): 30.000đ',
+      'Trà Full Topping Size 700ml (Trà nho đỏ, Trà bí đao, Trà thạch đào, Trà chanh, Trà quất): Đồng giá 15.000đ',
+      'Nước ép hoa quả tươi các loại: Đồng giá Size M 15.000đ / Size L 20.000đ',
+      'Trà chanh / Trà quất uống kèm: 10.000đ/cốc',
+      'Gọi thêm: Giòn thêm 5k | Nem thêm 5k | Nem lụi thêm 6k/que'
+    ]
   }
 };
 
 export function getSpotForDish(dishName: string): SpotInfo {
   const name = dishName.toLowerCase();
+
+  // Nem Nướng Nhà Mơ & Tiệm Nhà Chou Chou (Cổng ABC Xuân Hoà)
+  if (
+    name.includes('nhà mơ') ||
+    name.includes('nha mo') ||
+    name.includes('chou chou') ||
+    name.includes('chouchou') ||
+    name.includes('cổng abc') ||
+    name.includes('cong abc') ||
+    name.includes('0960371110') ||
+    name.includes('0960 371 110') ||
+    name.includes('0969371110') ||
+    name.includes('0969 371 110') ||
+    name.includes('trà nho đỏ full topping') ||
+    name.includes('khoai môn tươi') ||
+    name.includes('kem cốm tươi')
+  ) {
+    return xuanHoaSpots.nem_nuong_nha_mo_chou_chou;
+  }
 
   // Lẩu Thái Hà Tĩnh (13 Trưng Nhị)
   if (
@@ -2855,6 +2897,21 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
     sub = (dishInput.sub || '').toLowerCase();
   }
 
+  if (
+    customId.includes('nhamo') ||
+    customId.includes('chouchou') ||
+    sub.includes('nhà mơ') ||
+    sub.includes('chou chou') ||
+    sub.includes('cổng abc') ||
+    name.includes('nhà mơ') ||
+    name.includes('chou chou') ||
+    name.includes('trà nho đỏ full topping') ||
+    name.includes('khoai môn tươi') ||
+    name.includes('kem cốm tươi')
+  ) {
+    return [xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha];
+  }
+
   if (name.includes('ngan cháy tỏi') || name.includes('ngan chay toi') || name.includes('bún mì thái') || name.includes('bún miến ngan')) {
     return [xuanHoaSpots.lau_thai_ha_tinh, xuanHoaSpots.pv_lau_nuong];
   }
@@ -2882,15 +2939,17 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
   }
 
   if (name.includes('nem nướng') || name.includes('nem nuong')) {
-    if (customId.includes('88') || sub.includes('88') || sub.includes('ki ốt 4') || name.includes('30k')) return [xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha, xuanHoaSpots.tho_coii];
-    if (customId.includes('nhat_ha') || sub.includes('nhật hạ')) return [xuanHoaSpots.nhat_ha, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.tho_coii];
-    if (customId.includes('tho_coii') || sub.includes('thơ còii')) return [xuanHoaSpots.tho_coii, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha];
-    return [xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha, xuanHoaSpots.tho_coii];
+    if (customId.includes('nhamo') || sub.includes('nhà mơ') || sub.includes('cổng abc')) return [xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha];
+    if (customId.includes('88') || sub.includes('88') || sub.includes('ki ốt 4') || name.includes('30k')) return [xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.nhat_ha, xuanHoaSpots.tho_coii];
+    if (customId.includes('nhat_ha') || sub.includes('nhật hạ')) return [xuanHoaSpots.nhat_ha, xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.tho_coii];
+    if (customId.includes('tho_coii') || sub.includes('thơ còii')) return [xuanHoaSpots.tho_coii, xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha];
+    return [xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha, xuanHoaSpots.tho_coii];
   }
 
   if (name.includes('nem lụi') || name.includes('nem lui')) {
-    if (customId.includes('co_hien') || sub.includes('cô hiền')) return [xuanHoaSpots.co_hien, xuanHoaSpots.cuon_moc, xuanHoaSpots.tho_coii];
-    return [xuanHoaSpots.co_hien, xuanHoaSpots.cuon_moc, xuanHoaSpots.tho_coii];
+    if (customId.includes('nhamo') || sub.includes('nhà mơ') || sub.includes('cổng abc')) return [xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.co_hien, xuanHoaSpots.cuon_moc];
+    if (customId.includes('co_hien') || sub.includes('cô hiền')) return [xuanHoaSpots.co_hien, xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.cuon_moc, xuanHoaSpots.tho_coii];
+    return [xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.co_hien, xuanHoaSpots.cuon_moc, xuanHoaSpots.tho_coii];
   }
 
     if (name.includes('bún đậu') || name.includes('bun dau')) {

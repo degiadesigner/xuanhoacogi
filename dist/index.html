@@ -22,6 +22,7 @@
         try {
           var h = window.location.hash || '';
           var s = window.location.search || '';
+          var p = (window.location.pathname || '').toLowerCase();
           if (h.indexOf('access_token=') !== -1 || h.indexOf('id_token=') !== -1) {
             window.__XUANHOA_OAUTH_HASH__ = h;
             try { sessionStorage.setItem('xuanhoa_oauth_hash', h); } catch (e) {}
@@ -32,13 +33,15 @@
               try { sessionStorage.setItem('xuanhoa_oauth_search', s); } catch (e) {}
             }
             window.history.replaceState(null, document.title, '/');
+          } else if (p === '/quanly' || p === '/quanly/' || p === '/admin' || p === '/admin/' || p === '/quan-tri') {
+            window.history.replaceState(null, document.title, '/#/quanly');
           }
         } catch (err) {}
       })();
     </script>
     <title>Xuân Hòa Có Gì - Ăn Gì, Nhậu Gì, Uống Gì Hôm Nay?</title>
-    <script type="module" crossorigin src="/assets/index-C7HmEGqf.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DUB4da8y.css">
+    <script type="module" crossorigin src="/assets/index-VvEr5Uxe.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CVJdynXK.css">
   </head>
   <body>
     <div id="root"></div>

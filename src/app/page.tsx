@@ -42,12 +42,13 @@ import {
   stopFraction as placeStopFraction 
 } from '@/lib/places-spin';
 import { CaseAudio } from '@/lib/case-audio';
-import { Volume2, VolumeX, RotateCw, Shuffle, Search, UtensilsCrossed, Store, Sparkles, ChevronDown, ChevronUp, Clock, Flame, Coffee, Layers, X, ChevronRight, LayoutGrid, MapPin, Heart, Map, ExternalLink, User, LogIn, Star } from 'lucide-react';
+import { Volume2, VolumeX, RotateCw, Shuffle, Search, UtensilsCrossed, Store, Sparkles, ChevronDown, ChevronUp, Clock, Flame, Coffee, Layers, X, ChevronRight, LayoutGrid, MapPin, Heart, Map, ExternalLink, User, LogIn, Star, Shield } from 'lucide-react';
 import { DishesCatalogView } from '@/components/DishesCatalogView';
 import { PlacesCatalogView } from '@/components/PlacesCatalogView';
 import { UserGuideView } from '@/components/UserGuideView';
 import { AboutView } from '@/components/AboutView';
 import { ComingSoonView } from '@/components/ComingSoonView';
+import { AdminDashboardView } from '@/components/AdminDashboardView';
 import { SettingsMenuModal } from '@/components/SettingsMenuModal';
 import { GoogleGIcon } from '@/components/GoogleGIcon';
 import { AuthModal } from '@/components/AuthModal';
@@ -65,12 +66,32 @@ import { BudgetDropdown, PlaceKeoDropdown, SessionDropdown } from '@/components/
 import { CatalogFoodItem, getDishConceptKey, diversifyFoodList, getUniqueConceptFoods } from '@/lib/xuanhoa-catalog';
 import { getSpotsForDish } from '@/lib/dish-places';
 import { formatTypography, getFoodCategoryLabel, cleanDishDisplayTitle } from '@/lib/utils';
+import {
+  getActivePublicCategoryItems,
+  getActivePublicPlaces,
+  syncUserToAdminRegistry,
+  getMemberRestrictionStatus,
+  initAdminCloudSync,
+} from '@/lib/admin-store';
 
-export type AppView = 'spin' | 'dishes' | 'places' | 'guide' | 'about' | 'coming-soon';
+export type AppView = 'spin' | 'dishes' | 'places' | 'guide' | 'about' | 'coming-soon' | 'admin';
 
 function parseHashToView(): AppView {
   if (typeof window === 'undefined') return 'spin';
   const hash = window.location.hash.toLowerCase();
+  const pathname = (window.location.pathname || '').toLowerCase();
+  if (
+    hash.includes('quanly') ||
+    hash.includes('quan-ly') ||
+    hash.includes('admin') ||
+    hash.includes('quan-tri') ||
+    pathname === '/quanly' ||
+    pathname === '/quanly/' ||
+    pathname === '/admin' ||
+    pathname === '/admin/'
+  ) {
+    return 'admin';
+  }
   if (hash.includes('coming-soon') || hash.includes('sap-ra-mat') || hash.includes('teaser')) {
     return 'coming-soon';
   }
@@ -116,15 +137,19 @@ export default function Home() {
   const [isGuestGateOpen, setIsGuestGateOpen] = useState(false);
   const [isScoreboardOpen, setIsScoreboardOpen] = useState(false);
   const [authToastMsg, setAuthToastMsg] = useState<string>('');
+  const [adminSyncTick, setAdminSyncTick] = useState<number>(0);
 
   // i18n Multi-language Hook (Vietnamese / English)
   const { lang, changeLanguage, t } = useI18n();
 
   useEffect(() => {
+    initAdminCloudSync();
+
     // Kiểm tra kết quả chuyển hướng từ Google (dành cho mọi trình duyệt Mobile & PC)
     checkRedirectAuthResult().then((user) => {
       if (user) {
         setAuthUser(user);
+        syncUserToAdminRegistry(user, profile.dishesCount, profile.level);
         const justLogged = consumeJustLoggedInFlag();
         if (justLogged) {
           setAuthToastMsg(`Đã kết nối Google: ${user.email || user.nickname}`);
@@ -138,16 +163,27 @@ export default function Home() {
     });
 
     const handleAuthChange = (e: any) => {
-      setAuthUser(e.detail !== undefined ? e.detail : getStoredAuthUser());
+      const nextUser = e.detail !== undefined ? e.detail : getStoredAuthUser();
+      setAuthUser(nextUser);
+      if (nextUser && nextUser.isLoggedIn) {
+        syncUserToAdminRegistry(nextUser, profile.dishesCount, profile.level);
+      }
+    };
+    const handleAdminSync = () => {
+      setAdminSyncTick(t => t + 1);
     };
     window.addEventListener('xuanhoa_auth_change', handleAuthChange);
-    return () => window.removeEventListener('xuanhoa_auth_change', handleAuthChange);
-  }, []);
+    window.addEventListener('xuanhoa_admin_sync', handleAdminSync);
+    return () => {
+      window.removeEventListener('xuanhoa_auth_change', handleAuthChange);
+      window.removeEventListener('xuanhoa_admin_sync', handleAdminSync);
+    };
+  }, [profile.dishesCount, profile.level]);
 
   // Global total spins counter (starting from 688)
   const { count: globalSpinCount, increment: incrementGlobalSpins } = useGlobalSpinCounter();
 
-  // Active App View: 'spin' | 'dishes' | 'places' | 'guide' | 'about' | 'coming-soon'
+  // Active App View: 'spin' | 'dishes' | 'places' | 'guide' | 'about' | 'coming-soon' | 'admin'
   const [currentView, setCurrentView] = useState<AppView>(() => parseHashToView());
 
   const navigateTo = (view: AppView) => {
@@ -159,6 +195,7 @@ export default function Home() {
       guide: '#/cach-su-dung',
       about: '#/gioi-thieu',
       'coming-soon': '#/sap-ra-mat',
+      admin: '#/quanly',
     };
     if (typeof window !== 'undefined') {
       window.location.hash = hashMap[view];
@@ -282,10 +319,11 @@ export default function Home() {
 
 
 
-  // Items for the chosen category
+  // Items for the chosen category (Đồng bộ 2 chiều thời gian thực với Admin)
   const categoryItems = useMemo(() => {
-    return getCategoryItems(activeCategory);
-  }, [activeCategory]);
+    const activeList = getActivePublicCategoryItems(activeCategory);
+    return activeList.length > 0 ? activeList : getCategoryItems(activeCategory);
+  }, [activeCategory, adminSyncTick]);
 
   // Dish count statistics per rarity tier
   const tierCounts = useMemo(() => {
@@ -420,10 +458,10 @@ export default function Home() {
   const [dishShuffleKey, setDishShuffleKey] = useState<number>(() => Date.now());
   const [placeShuffleKey, setPlaceShuffleKey] = useState<number>(() => Date.now());
 
-  // Danh sách món độc bản (mỗi món chỉ đại diện 1 lần, triệt tiêu trùng lặp)
+  // Danh sách món độc bản (xáo trộn trước khi gom nhóm để mọi quán đều có cơ hội xuất hiện công bằng 100%)
   const uniqueEligibleDishes = useMemo(() => {
-    return getUniqueConceptFoods(eligibleItems);
-  }, [eligibleItems]);
+    return getUniqueConceptFoods(shuffleArray(eligibleItems));
+  }, [eligibleItems, dishShuffleKey]);
 
   // Danh sách món hiển thị trong kho (Xáo trộn ngẫu nhiên hoàn toàn mỗi lần hiển thị & mỗi lần quay)
   const displayedDishes = useMemo(() => {
@@ -464,10 +502,11 @@ export default function Home() {
   const [placeSpinning, setPlaceSpinning] = useState(false);
   const [placeVisibleStart, setPlaceVisibleStart] = useState(0);
 
-  // Toàn bộ 100% các quán ăn và cơ sở ẩm thực xác thực tại Xuân Hòa
+  // Toàn bộ 100% các quán ăn và cơ sở ẩm thực xác thực tại Xuân Hòa (Đồng bộ 2 chiều với Admin)
   const allPlaces = useMemo(() => {
-    return xuanHoaPlaces;
-  }, []);
+    const active = getActivePublicPlaces();
+    return active.length > 0 ? active : xuanHoaPlaces;
+  }, [adminSyncTick]);
 
   // Eligible places filtered by Category, Kèo đi ăn, Meal Session, and Budget
   const eligiblePlaces = useMemo(() => {
@@ -517,11 +556,20 @@ export default function Home() {
   // Place pagination state ("Xem tiếp" / Load more - Chuẩn 4x4 = 16 quán mỗi đợt)
   const [visiblePlaceCount, setVisiblePlaceCount] = useState<number>(16);
 
-  // Danh sách quán hiển thị trong kho quán (hỗ trợ tìm kiếm thông minh & ngẫu nhiên hóa)
+  // Danh sách quán hiển thị trong kho quán (hỗ trợ tìm kiếm thông minh & ngẫu nhiên hóa, không trùng lặp thẻ)
   const displayedPlacesForInventory = useMemo(() => {
+    const uniqueById = (arr: Place[]) => {
+      const seen = new Set<string>();
+      return arr.filter(p => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
+    };
+
     if (placeSearchQuery.trim()) {
       const q = placeSearchQuery.toLowerCase().trim();
-      return allPlaces.filter(p => {
+      return uniqueById(allPlaces).filter(p => {
         const matchName = p.name.toLowerCase().includes(q);
         const matchAddress = p.address ? p.address.toLowerCase().includes(q) : false;
         const matchTagline = p.tagline ? p.tagline.toLowerCase().includes(q) : false;
@@ -532,7 +580,7 @@ export default function Home() {
     }
 
     // Ngẫu nhiên hóa thứ tự danh sách quán mỗi lần quay hoặc mỗi lần đổi bộ lọc
-    return shuffleArray(eligiblePlaces);
+    return uniqueById(shuffleArray(eligiblePlaces));
   }, [allPlaces, eligiblePlaces, placeSearchQuery, placeShuffleKey]);
 
   // Tự động reset về chuẩn 4x4 = 16 quán và xáo trộn ngẫu nhiên khi thay đổi bất kỳ bộ lọc hoặc tìm kiếm quán nào
@@ -592,17 +640,20 @@ export default function Home() {
   const position = useRef(-400);
   const frame = useRef(0);
   const busy = useRef(false);
+  const recentDishWinners = useRef<string[]>([]);
+  const recentPlaceWinners = useRef<string[]>([]);
 
   const attachTrack = useCallback((node: HTMLDivElement | null) => {
     track.current = node;
     if (node) node.style.transform = `translate3d(${position.current}px,0,0)`;
   }, []);
 
-  // Sync reel when eligible items change: Xáo trộn danh sách MÓN ĐỘC BẢN tuyệt đối không bao giờ trùng món
+  // Sync reel when eligible items change: Xáo trộn danh sách trước khi lọc độc bản để công bằng 100% giữa các quán
   useEffect(() => {
     if (spinning || !eligibleItems.length) return;
-    const uniquePool = getUniqueConceptFoods(eligibleItems);
-    const pool = uniquePool.length >= 6 ? uniquePool : eligibleItems;
+    const shuffledEligible = shuffleArray(eligibleItems);
+    const uniquePool = getUniqueConceptFoods(shuffledEligible);
+    const pool = uniquePool.length >= 6 ? uniquePool : shuffledEligible;
     const diversified = shuffleArray(pool);
     setReel(current => current.map((item, idx) => ({
       id: item.id,
@@ -622,10 +673,21 @@ export default function Home() {
     audio.current?.unlock();
     busy.current = true;
 
-    // Pick winner từ danh sách MÓN ĐỘC BẢN (Unique Concept)
-    const uniquePool = getUniqueConceptFoods(eligibleItems);
-    const pool = uniquePool.length >= 6 ? uniquePool : (eligibleItems.length ? eligibleItems : categoryItems);
-    const winner = pool[Math.floor(Math.random() * pool.length)];
+    // 1. Xáo trộn toàn bộ eligibleItems trước khi lọc Unique Concept để mọi quán đều có xác suất trúng ngang nhau
+    const shuffledEligible = shuffleArray(eligibleItems);
+    const uniquePool = getUniqueConceptFoods(shuffledEligible);
+    const pool = uniquePool.length >= 6 ? uniquePool : (shuffledEligible.length ? shuffledEligible : shuffleArray(categoryItems));
+
+    // 2. Chống lặp lại món vừa trúng ở 3 lượt quay gần nhất
+    const getDishKey = (f: Food) => f.customId || `${f.name}-${f.price}`;
+    const nonRepeatingPool = pool.length > 3
+      ? pool.filter(f => !recentDishWinners.current.includes(getDishKey(f)) && getDishConceptKey(f) !== (winnerFood ? getDishConceptKey(winnerFood) : ''))
+      : pool.length > 1
+      ? pool.filter(f => getDishKey(f) !== (winnerFood ? getDishKey(winnerFood) : ''))
+      : pool;
+    const finalWinnerPool = nonRepeatingPool.length > 0 ? nonRepeatingPool : pool;
+    const winner = finalWinnerPool[Math.floor(Math.random() * finalWinnerPool.length)];
+    recentDishWinners.current = [...recentDishWinners.current.slice(-2), getDishKey(winner)];
 
     const step = 254;
     const tileWidth = 236;
@@ -775,9 +837,16 @@ export default function Home() {
     audio.current?.unlock();
     placeBusy.current = true;
 
-    // Pick winner place
-    const pool = eligiblePlaces.length ? eligiblePlaces : allPlaces;
-    const winner = pool[Math.floor(Math.random() * pool.length)];
+    // Pick winner place (Xáo trộn và chống lặp lại quán vừa trúng ở 3 lượt gần nhất)
+    const pool = shuffleArray(eligiblePlaces.length ? eligiblePlaces : allPlaces);
+    const nonRepeatingPlaces = pool.length > 3
+      ? pool.filter(p => !recentPlaceWinners.current.includes(p.id) && p.id !== winnerPlace?.id)
+      : pool.length > 1
+      ? pool.filter(p => p.id !== winnerPlace?.id)
+      : pool;
+    const finalPlacePool = nonRepeatingPlaces.length > 0 ? nonRepeatingPlaces : pool;
+    const winner = finalPlacePool[Math.floor(Math.random() * finalPlacePool.length)];
+    recentPlaceWinners.current = [...recentPlaceWinners.current.slice(-2), winner.id];
 
     const step = 260;
     const tileWidth = 242;
@@ -794,16 +863,22 @@ export default function Home() {
     const last = items.length ? Math.max(...items.map(item => item.id)) : 0;
 
     let prevPlace = items.length ? items[items.length - 1].place : null;
+    const recentPlaceIds = items.slice(-4).map(it => it.place.id);
     for (let id = last + 1; id <= target + 4; id++) {
       let place: Place;
       if (id === target) {
         place = winner;
       } else {
-        const poolWithoutPrev = pool.filter(p => p.id !== prevPlace?.id);
-        const source = poolWithoutPrev.length ? poolWithoutPrev : pool;
+        const recentWindow = recentPlaceIds.slice(-3);
+        let poolWithoutRecent = pool.filter(p => p.id !== prevPlace?.id && !recentWindow.includes(p.id));
+        if (!poolWithoutRecent.length) {
+          poolWithoutRecent = pool.filter(p => p.id !== prevPlace?.id);
+        }
+        const source = poolWithoutRecent.length ? poolWithoutRecent : pool;
         place = source[Math.floor(Math.random() * source.length)];
       }
       prevPlace = place;
+      recentPlaceIds.push(place.id);
       items.push({ id, place });
     }
 
@@ -873,9 +948,66 @@ export default function Home() {
 
   const currentSessionObj = MEAL_SESSIONS.find(s => s.id === session) || MEAL_SESSIONS[1];
   const expPercentage = profile.progressPercent ?? Math.min(100, Math.round(((profile.exp % 150) / 150) * 100));
+  const memberRestriction = getMemberRestrictionStatus(authUser);
+
+  if (currentView === 'admin') {
+    return (
+      <>
+        <AdminDashboardView
+          onBack={() => navigateTo('spin')}
+          authUser={authUser}
+          onOpenAuthModal={() => {
+            setAuthModalStep(1);
+            setIsAuthModalOpen(true);
+          }}
+        />
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          initialStep={authModalStep}
+          existingUser={authUser}
+          customNotice={authNotice}
+          onClose={() => {
+            setIsAuthModalOpen(false);
+            setAuthNotice('');
+          }}
+          onSuccess={(user) => {
+            setAuthUser(user);
+            syncUserToAdminRegistry(user, profile.dishesCount, profile.level);
+            setIsAuthModalOpen(false);
+            setAuthNotice('');
+            setAuthToastMsg(`Xin chào Quản trị viên ${user.nickname}!`);
+            setTimeout(() => setAuthToastMsg(''), 3500);
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="site-shell">
+      {memberRestriction.status === 'banned' && (
+        <div
+          style={{
+            background: 'linear-gradient(90deg, #991B1B, #DC2626)',
+            color: '#FFF',
+            padding: '10px 16px',
+            textAlign: 'center',
+            fontSize: 13,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            zIndex: 200,
+          }}
+        >
+          <span>
+            🚫 Tài khoản ({authUser?.email}) hiện đang bị khóa truy cập bởi Quản trị viên:{' '}
+            {memberRestriction.banReason || 'Vi phạm quy chuẩn cộng đồng'}.
+          </span>
+        </div>
+      )}
+
       {/* Header (Clean, Professional, No Emojis) */}
       <header className="site-header">
         <div className="header-inner">
@@ -963,7 +1095,7 @@ export default function Home() {
                 </button>
               )}
 
-              {/* 2. Nút Bản Đồ Số */}
+              {/* 3. Nút Bản Đồ Số */}
               <button 
                 type="button"
                 className="header-icon-action-btn"
@@ -974,7 +1106,7 @@ export default function Home() {
                 <Map size={24} />
               </button>
 
-              {/* 3. Nút Menu Cài đặt (Grid) */}
+              {/* 4. Nút Menu Cài đặt (Grid) */}
               <button 
                 type="button"
                 className="header-icon-action-btn header-menu-trigger-btn"
@@ -2230,7 +2362,7 @@ export default function Home() {
     </div>
   )}
 
-  {/* Footer (Clean, Humorous & Professional) */}
+  {/* Footer: Trên Web PC vẫn có Khám phá món & Quán ăn để tìm kiếm; trên Mobile (đã có thanh tab dưới) tự động ẩn gọn */}
   <footer className="site-footer">
     <div className="site-footer-identity">
       <a 
@@ -2244,14 +2376,12 @@ export default function Home() {
       >
         {t('brand_domain')}<span>{t('brand_suffix')}</span>
       </a>
-      <p>{t('brand_tagline')}</p>
+      <p className="header-btn-desktop-only">{t('brand_tagline')}</p>
     </div>
     <div className="site-footer-links">
-      <nav aria-label="Liên kết cuối trang">
+      <nav className="header-btn-desktop-only" aria-label="Liên kết cuối trang">
         <button className={`footer-link-btn ${currentView === 'dishes' ? 'active' : ''}`} onClick={() => navigateTo('dishes')}>{t('footer_dishes')}</button>
         <button className={`footer-link-btn ${currentView === 'places' ? 'active' : ''}`} onClick={() => navigateTo('places')}>{t('footer_places')}</button>
-        <button className={`footer-link-btn ${currentView === 'guide' ? 'active' : ''}`} onClick={() => navigateTo('guide')}>{t('footer_guide')}</button>
-        <button className={`footer-link-btn ${currentView === 'about' ? 'active' : ''}`} onClick={() => navigateTo('about')}>{t('footer_about')}</button>
       </nav>
       <div className="site-footer-contact">
         <span>Crafted &amp; Curated by MinhTT © 2026</span>

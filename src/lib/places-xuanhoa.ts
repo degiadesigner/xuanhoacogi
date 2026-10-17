@@ -11,7 +11,7 @@ export function getPlaceStyleGroup(place: Place): PlaceStyleGroup {
   ) {
     return 'nhau-lau';
   }
-  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea', 'quan-co-loan', 'banh-trang-nha-boom', 'bep-nha-cun', 'nem-nuong-88', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food'].includes(place.id)) {
+  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea', 'quan-co-loan', 'banh-trang-nha-boom', 'bep-nha-cun', 'nem-nuong-88', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou'].includes(place.id)) {
     return 'an-vat';
   }
   if (
@@ -272,6 +272,7 @@ export function getPlaceShortDistance(place: Place): string {
   if (addr.includes('Trường Chinh') || dist.includes('Trường Chinh')) return '~300m Trường Chinh';
   if (addr.includes('Lê Quang Đạo') || dist.includes('Lê Quang Đạo')) return '~450m Lê Quang Đạo';
   if (addr.includes('Trần Phú') || dist.includes('Trần Phú')) return '~500m Trần Phú';
+  if (addr.includes('Cổng ABC') || dist.includes('Cổng ABC')) return '~300m Cổng ABC';
   if (addr.includes('Con Chim Xanh') || dist.includes('Con Chim Xanh') || addr.includes('Kim Ngọc') || dist.includes('Kim Ngọc')) return '~350m Con Chim Xanh';
   if (addr.includes('Chợ') || dist.includes('Chợ')) return '~250m Dốc Chợ';
   if (addr.includes('KĐT') || dist.includes('Sinh Viên')) return '~300m KĐT Sinh Viên';
@@ -288,6 +289,7 @@ export interface PlaceSignboardLines {
 }
 
 const SIGNBOARD_CUSTOM_LINES: Record<string, PlaceSignboardLines> = {
+  'nem-nuong-nha-mo-chou-chou': { line1: 'NEM NƯỚNG NHÀ MƠ', line2: 'TIỆM NHÀ CHOU CHOU • CỔNG ABC' },
   'lau-thai-ha-tinh': { line1: 'LẨU THÁI HÀ TĨNH', line2: '13 TRƯNG NHỊ • PHÚC YÊN' },
   'hi-tea': { line1: 'HI TEA & MỲ CAY', line2: 'MỲ CAY 7 CẤP ĐỘ • TRÀ SỮA' },
   'an-vat-nha-phuong': { line1: 'ĂN VẶT NHÀ PHƯƠNG', line2: 'GÀ SỐT • NEM NÓNG GIÒN' },
@@ -485,28 +487,28 @@ export function isPlaceMatchKeo(place: Place, keo: PlaceKeoType): boolean {
 
   if (keo === 'hen-ho') {
     return (
-      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-thanh-thanh', 'ruby-quan', 'xoai-corner', 'sui-cao-tieu-lau-quan', 'my-cay-seoul', 'com-tam-xuan-hoa', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-88', 'zino-cafe', 'hi-tea', 'lau-thai-ha-tinh'].includes(place.id) ||
+      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-thanh-thanh', 'ruby-quan', 'xoai-corner', 'sui-cao-tieu-lau-quan', 'my-cay-seoul', 'com-tam-xuan-hoa', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-88', 'zino-cafe', 'hi-tea', 'lau-thai-ha-tinh', 'nem-nuong-nha-mo-chou-chou'].includes(place.id) ||
       place.category === 'cafe'
     );
   }
 
   if (keo === 'an-nhanh') {
     return (
-      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'thanh-hang-gateaux', 'tiem-banh-a-salty-name', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'bm-nuong-muoi-ot-ngoc-quy', 'com-rang-nguyen-van-linh', 'oc-2000-xuan-hoa', 'bun-cha-xuan-hoa', 'bun-rieu-ba-mai', 'bun-anh-toan', 'com-tam-xuan-hoa', 'pho-bo-xuan-hoa', 'banh-cuon-ngoc-anh', 'banh-mi-bo-u', 'thuy-beo', 'xoi-com-185', 'sui-cao-tieu-lau-quan', 'tiem-nha-me-beo', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'nem-nuong-88', 'an-vat-nha-phuong', 'hi-tea', 'umee-tea-food'].includes(place.id) ||
+      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'thanh-hang-gateaux', 'tiem-banh-a-salty-name', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'bm-nuong-muoi-ot-ngoc-quy', 'com-rang-nguyen-van-linh', 'oc-2000-xuan-hoa', 'bun-cha-xuan-hoa', 'bun-rieu-ba-mai', 'bun-anh-toan', 'com-tam-xuan-hoa', 'pho-bo-xuan-hoa', 'banh-cuon-ngoc-anh', 'banh-mi-bo-u', 'thuy-beo', 'xoi-com-185', 'sui-cao-tieu-lau-quan', 'tiem-nha-me-beo', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'nem-nuong-88', 'an-vat-nha-phuong', 'hi-tea', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou'].includes(place.id) ||
       place.category === 'fast_food'
     );
   }
 
   if (keo === 'nhom-dong') {
     return (
-      ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'nhat-ha', 'xien-nuong-trung-hoa', 'lau-nuong-1968', 'xuho-bistro', 'lau-nuong-ba-muoi', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'trang-hai-san', 'lau-cuong-duong', 'quan-chim-lan-anh', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'nha-hang-binh-nam', 'nha-hang-khanh-huong', 'nha-hang-468', 'tho-coii', 'ruby-quan', 'nem-nuong-88', 'lau-thai-ha-tinh', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food'].includes(place.id) ||
+      ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'nhat-ha', 'xien-nuong-trung-hoa', 'lau-nuong-1968', 'xuho-bistro', 'lau-nuong-ba-muoi', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'trang-hai-san', 'lau-cuong-duong', 'quan-chim-lan-anh', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'nha-hang-binh-nam', 'nha-hang-khanh-huong', 'nha-hang-468', 'tho-coii', 'ruby-quan', 'nem-nuong-88', 'lau-thai-ha-tinh', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou'].includes(place.id) ||
       place.category === 'pub'
     );
   }
 
   if (keo === 'ship') {
     return (
-      ['vanh-dai-quan', 'nhungs-corner', 'san-bia-247', 'banh-trang-55-nguyen-van-linh', 'bia-sai-gon-tuan-hien', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'xien-nuong-trung-hoa', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'bm-nuong-muoi-ot-ngoc-quy', 'oc-2000-xuan-hoa', 'tiem-nha-me-beo', 'gamitra-xuan-hoa', 'thuy-beo', 'banh-mi-bo-u', 'ruby-quan', 'xoai-corner', 'tiem-tra-sua-tocotoco', 'soh-tea', 'tiem-tra-thanh-thanh', 'com-rang-nguyen-van-linh', 'com-tam-xuan-hoa', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185'].includes(place.id) ||
+      ['vanh-dai-quan', 'nhungs-corner', 'san-bia-247', 'banh-trang-55-nguyen-van-linh', 'bia-sai-gon-tuan-hien', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'xien-nuong-trung-hoa', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'bm-nuong-muoi-ot-ngoc-quy', 'oc-2000-xuan-hoa', 'tiem-nha-me-beo', 'gamitra-xuan-hoa', 'thuy-beo', 'banh-mi-bo-u', 'ruby-quan', 'xoai-corner', 'tiem-tra-sua-tocotoco', 'soh-tea', 'tiem-tra-thanh-thanh', 'com-rang-nguyen-van-linh', 'com-tam-xuan-hoa', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-nha-mo-chou-chou'].includes(place.id) ||
       place.serviceMode === 'both'
     );
   }
@@ -6638,6 +6640,64 @@ export const xuanHoaPlaces: Place[] = [
     rarity: 2,
     quip: 'Ốc xào măng đậu 35k, Mì cay bò 40k & Oolong Phong Lan 30k tại Umee Tea & Food Lập Trí Kim Anh! Mở cửa xuyên đêm tới 1h sáng. Hotline 0377 907 916.',
     mealSessions: ['lunch', 'dinner', 'late']
+  },
+  // 71. NEM NƯỚNG NHÀ MƠ & TIỆM NHÀ CHOU CHOU (CỔNG ABC XUÂN HÒA)
+  {
+    id: 'nem-nuong-nha-mo-chou-chou',
+    name: 'Nem Nướng Nhà Mơ & Tiệm Nhà Chou Chou - Cổng ABC Xuân Hoà',
+    tagline: 'Nem nướng Nha Trang 30k-35k • Nem lụi 30k • Trà sữa Chou Chou 700ml 25k-30k • Trà Full Topping 15k • Nước ép M 15k / L 20k',
+    category: 'fast_food',
+    zone: 'center',
+    distance: '~300m từ Cổng ABC Xuân Hòa',
+    address: 'Cổng ABC Xuân Hoà, P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '10k - 35k',
+    minPrice: 10,
+    maxPrice: 35,
+    rating: 5.0,
+    reviewCount: 64,
+    imageUrl: 'ai_studio_dish_bepnhabong_nem_nuong.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Nhận ship tận nơi siêu tốc quanh Cổng ABC, ĐHSP2 & toàn Xuân Hòa · Hotline: 0960 371 110 - 0969 371 110 (FB: Lại Thị Cúc Nga)',
+    signatureDish: {
+      id: 'nhamo-nem-nuong-30',
+      name: 'Mẹt Nem nướng Nhà Mơ chuẩn vị ngon (30k)',
+      price: 30,
+      tag: 'Bestseller',
+      serviceTag: 'both',
+      description: 'Mẹt nem nướng chuẩn vị ngon đầy đặn: nem nướng than hoa thơm lừng, ram giòn rụm, xoài chua, dưa chuột, bún tươi, rau sống và sốt chấm đậm đà.',
+      rarity: 1,
+    },
+    menu: [
+      { id: 'nhamo-nem-nuong-30', name: 'Nem nướng Nhà Mơ (Suất tiêu chuẩn)', price: 30, tag: 'Bestseller', serviceTag: 'both', rarity: 1, description: 'Mẹt nem nướng chuẩn vị ngon đầy đặn: nem nướng than hoa thơm lừng, ram giòn rụm, xoài chua, dưa chuột, bún tươi, rau sống và sốt chấm đậm đà.' },
+      { id: 'nhamo-nem-nuong-35', name: 'Nem nướng Nhà Mơ (Suất đặc biệt)', price: 35, tag: 'Đầy đặn', serviceTag: 'both', rarity: 1, description: 'Suất nem nướng đặc biệt nhiều nem nướng & ram giòn hơn, kèm rau sống, bánh tráng và sốt chấm gia truyền béo ngậy.' },
+      { id: 'nhamo-nem-lui-30', name: 'Nem lụi nướng Nhà Mơ', price: 30, tag: 'Món tủ', serviceTag: 'both', rarity: 1, description: 'Suất nem lụi nướng sả thơm phức vàng ươm, ăn kèm bánh tráng, rau sống tươi ngon và nước chấm sánh quyện.' },
+      { id: 'chouchou-kem-trung-dua-nuong', name: 'Kem trứng dừa nướng (Size 700ml)', price: 25, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Cốc 700ml khổng lồ (đã gồm 1 loại topping) phủ kem trứng sánh mịn béo ngậy và vụn dừa nướng giòn thơm.' },
+      { id: 'chouchou-ts-khoai-mon-tuoi', name: 'Trà sữa khoai môn tươi (Size 700ml)', price: 30, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Trà sữa kết hợp khoai môn tươi nghiền bùi béo thơm ngậy (Size 700ml đã bao gồm 1 loại topping).' },
+      { id: 'chouchou-tra-mang-cau', name: 'Trà mãng cầu tươi (Size 700ml)', price: 25, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Trà mãng cầu tươi chua ngọt thanh mát giải nhiệt cực đã (Size 700ml đã bao gồm 1 loại topping).' },
+      { id: 'chouchou-olong-sen-vang', name: 'Ô long sen vàng (Size 700ml)', price: 30, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Trà Ô long đậm vị kết hợp hạt sen vàng bùi ngọt và lớp kem béo mịn (Size 700ml đã gồm 1 loại topping).' },
+      { id: 'chouchou-ts-kem-com-tuoi', name: 'Trà sữa kem cốm tươi (Size 700ml)', price: 30, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Hương cốm non thơm lừng quyện lớp kem béo dẻo sánh mịn (Size 700ml đã bao gồm 1 loại topping).' },
+      { id: 'chouchou-olong-sua', name: 'Ôlong sữa (Size 700ml)', price: 25, tag: 'Best Seller', serviceTag: 'both', rarity: 0, description: 'Trà Ôlong rang đậm hương vị truyền thống pha sữa thơm béo (Size 700ml đã gồm 1 loại topping).' },
+      { id: 'chouchou-hong-tra-sua', name: 'Hồng trà sữa (Size 700ml)', price: 25, tag: 'Best Seller', serviceTag: 'both', rarity: 0, description: 'Hồng trà sữa đậm vị trà thơm ngậy chuẩn gu sinh viên (Size 700ml đã bao gồm 1 loại topping).' },
+      { id: 'chouchou-tra-trai-cay-nhiet-doi', name: 'Trà trái cây nhiệt đới (Size 700ml)', price: 25, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Ly trà 700ml ngập tràn các loại trái cây nhiệt đới tươi mát giàu vitamin.' },
+      { id: 'chouchou-sua-tuoi-tcdd', name: 'Sữa tươi trân châu đường đen (Size 700ml)', price: 25, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Sữa tươi béo thanh quyện trân châu nấu đường đen sóng sánh ngọt ngào (Size 700ml).' },
+      { id: 'chouchou-matcha-latte', name: 'Matcha Latte (Size 700ml)', price: 25, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Matcha trà xanh Nhật Bản phân tầng sữa tươi mịn màng thơm mát (Size 700ml đã gồm 1 loại topping).' },
+      { id: 'chouchou-tra-nho-do-full-topping', name: 'Trà nho đỏ Full Topping (Size 700ml)', price: 15, tag: 'Full Topping', serviceTag: 'both', rarity: 0, description: 'Cốc 700ml trà nho đỏ chua ngọt thơm lừng ngập tràn thạch và trân châu full topping chỉ 15k.' },
+      { id: 'chouchou-tra-bi-dao-full-topping', name: 'Trà bí đao Full Topping (Size 700ml)', price: 15, tag: 'Full Topping', serviceTag: 'both', rarity: 0, description: 'Trà bí đao thanh nhiệt ngọt mát size 700ml đầy ắp thạch & trân châu full topping chỉ 15k.' },
+      { id: 'chouchou-tra-thach-dao-full-topping', name: 'Trà thạch đào Full Topping (Size 700ml)', price: 15, tag: 'Full Topping', serviceTag: 'both', rarity: 0, description: 'Trà đào thơm mát kèm thạch đào giòn mềm và full topping size 700ml giá 15k.' },
+      { id: 'chouchou-tra-chanh-full-topping', name: 'Trà chanh Full Topping (Size 700ml)', price: 15, tag: 'Full Topping', serviceTag: 'both', rarity: 0, description: 'Trà chanh tươi giã tay chua thanh sảng khoái kèm full topping size 700ml khổng lồ 15k.' },
+      { id: 'chouchou-tra-quat-full-topping', name: 'Trà quất Full Topping (Size 700ml)', price: 15, tag: 'Full Topping', serviceTag: 'both', rarity: 0, description: 'Trà quất thơm dịu mát lạnh đầy ắp thạch & trân châu full topping size 700ml chỉ 15k.' },
+      { id: 'chouchou-nuoc-ep-m', name: 'Nước ép trái cây tươi (Size M)', price: 15, tag: 'Đồng giá 15k', serviceTag: 'both', rarity: 0, description: 'Nước ép hoa quả tươi nguyên chất các loại đồng giá Size M 15k thanh mát đẹp da.' },
+      { id: 'chouchou-nuoc-ep-l', name: 'Nước ép trái cây tươi (Size L)', price: 20, tag: 'Đồng giá 20k', serviceTag: 'both', rarity: 0, description: 'Nước ép hoa quả tươi nguyên chất các loại đồng giá Size L 20k cốc lớn giải nhiệt.' },
+      { id: 'nhamo-tra-chanh-quat-10', name: 'Trà chanh / Trà quất tươi', price: 10, tag: 'Giải khát', serviceTag: 'both', rarity: 0, description: 'Cốc trà chanh hoặc trà quất mát lạnh uống kèm nem nướng chỉ 10k/cốc.' },
+      { id: 'nhamo-goi-them-nem-ram', name: 'Gọi thêm: Ram giòn (5k) / Nem thêm (5k) / Nem lụi (6k)', price: 5, tag: 'Topping thêm', serviceTag: 'both', rarity: 0, description: 'Gọi thêm ăn kèm: Giòn thêm 5k, Nem nướng thêm 5k, Nem lụi thêm 6k/que.' }
+    ],
+    tags: ['Nem Nướng Nhà Mơ', 'Tiệm Nhà Chou Chou', 'Chou Chou', 'Cổng ABC Xuân Hoà', 'Nem nướng', 'Nem lụi', 'Kem trứng dừa nướng', 'Trà sữa khoai môn', 'Trà full topping 15k', 'Nước ép 15k 20k', '0960371110', '0969371110', 'Lại Thị Cúc Nga'],
+    mapsQuery: 'Cổng ABC Xuân Hòa Phúc Yên',
+    phone: '0960 371 110 - 0969 371 110',
+    openHours: '09:00 - 22:30 (Mở cửa hàng ngày)',
+    rarity: 1,
+    quip: 'Mẹt Nem nướng Nhà Mơ 30k-35k, Nem lụi 30k kết hợp Trà sữa Chou Chou 700ml (25k-30k), Trà Full Topping 700ml đồng giá 15k & Nước ép tươi M 15k / L 20k ngay Cổng ABC Xuân Hoà! Hotline 0960 371 110 - 0969 371 110.',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late']
   }
 ];
 
@@ -7660,6 +7720,24 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       date: 'Hôm qua',
       role: 'Sinh viên KTX Xuân Hòa',
       content: 'Trà Oolong Phong Lan và Trà sữa gạo rang 30k ở Umee thơm lừng vị hoa quả và trà rang mộc, uống không hề bị ngọt gắt. Gọi ship qua hotline 0377 907 916 giao hàng đêm muộn rất nhanh và chu đáo!',
+    }
+  ],
+  'nem-nuong-nha-mo-chou-chou': [
+    {
+      id: 'r_nhamo_1',
+      author: 'Nguyễn Khánh Linh K49',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Nem nướng Nhà Mơ ở ngay Cổng ABC Xuân Hòa ăn đỉnh thật sự! Suất 30k-35k đầy đặn nem nướng thơm lừng, ram giòn tan, rau sống tươi sạch chấm sốt tương béo ngậy ấm nóng. Gọi thêm que nem lụi nướng sả 30k ăn cuốn hết nước chấm!',
+    },
+    {
+      id: 'r_nhamo_2',
+      author: 'Phạm Hoàng Minh',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Dân bản địa Cổng ABC Xuân Hòa',
+      content: 'Đồ uống Tiệm Nhà Chou Chou size 700ml siêu to mà giá hạt dẻ! Kem trứng dừa nướng 25k, Trà sữa khoai môn tươi 30k và Trà nho đỏ Full Topping 15k uống mê ly. Nước ép tươi M 15k / L 20k cũng nguyên chất mát lạnh, gọi ship 0960 371 110 giao siêu nhanh!',
     }
   ]
 };

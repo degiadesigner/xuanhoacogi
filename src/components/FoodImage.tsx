@@ -20,7 +20,7 @@ export function FoodImage({
           backgroundImage: `url(${basePath}/${food.customImage})`,
           backgroundSize: 'cover',
           backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'center',
+          backgroundPosition: 'center center',
           backgroundColor: '#1F2125',
           borderRadius: '50%',
         }}
@@ -60,39 +60,41 @@ export function FoodImage({
   let atlas = '';
   let backgroundPosition = '';
   let backgroundSize = '400% 300%';
-  let clipPath: string | undefined = undefined;
 
   if (e >= 600 && e <= 623) {
-    let t = (e - 600) % 12;
+    const t = (e - 600) % 12;
     atlas = `food-meals-${Math.floor((e - 600) / 12)}`;
-    backgroundPosition = `${(t % 4 / 3) * 100}% ${[0, 46, 94][Math.floor(t / 4)]}%`;
+    backgroundPosition = `${((t % 4) / 3) * 100}% ${[0, 50, 100][Math.floor(t / 4)]}%`;
   } else if (e >= 500 && e <= 547) {
-    let t = (e - 500) % 12, n = Math.floor((e - 500) / 12), a = Math.floor(t / 4), i = [[0, 47, 94], [0, 48, 98], [0, 50, 96], [0, 47, 97]][n];
+    const t = (e - 500) % 12;
+    const n = Math.floor((e - 500) / 12);
+    const a = Math.floor(t / 4);
     atlas = `drink-${2 + n}`;
-    clipPath = (0 === a && 0 === n) ? "inset(0 0 2% 0)" : (0 === a && 3 === n) || (1 === a && 0 === n) ? "inset(0 0 7% 0)" : (1 === a && 2 === n) ? "inset(0 0 6% 0)" : undefined;
-    backgroundPosition = `${(t % 4 / 3) * 100}% ${i[a]}%`;
+    backgroundPosition = `${((t % 4) / 3) * 100}% ${[0, 50, 100][a]}%`;
   } else if (e >= 400 && e <= 447) {
-    let t = (e - 400) % 12, n = Math.floor((e - 400) / 12), a = [[0, 50, 100], [0, 46, 91], [0, 46, 90], [1, 46, 91]][n];
+    const t = (e - 400) % 12;
+    const n = Math.floor((e - 400) / 12);
     atlas = `nhau-${n}`;
-    backgroundPosition = `${(t % 4 / 3) * 100}% ${a[Math.floor(t / 4)]}%`;
+    backgroundPosition = `${((t % 4) / 3) * 100}% ${[0, 50, 100][Math.floor(t / 4)]}%`;
   } else if (e >= 168 && e <= 183) {
-    let t = (e - 168) % 4;
+    const t = (e - 168) % 4;
     atlas = ["food-chinese-0", "food-korean-0", "food-japanese-0", "food-indian-0"][Math.floor((e - 168) / 4)];
     backgroundSize = "200% 200%";
     backgroundPosition = `${(t % 2) * 100}% ${100 * Math.floor(t / 2)}%`;
   } else if (e >= 300 && e <= 383) {
-    let t = (e - 300) % 12, n = Math.floor((e - 300) / 12), a = Math.floor(t / 4), i = [[0, 46, 94], [0, 49, 98.5], [0, 46, 94], [0, 46, 94], [0, 50, 100], [0, 49, 98.5], [0, 46, 94]][n];
-    clipPath = (2 === n && 0 === a) ? "inset(0 0 2% 0)" : (3 === n && 0 === a) ? "inset(0 0 6% 0)" : (3 === n && 1 === a) ? "inset(0 0 4% 0)" : (6 === n && 0 === a) ? "inset(0 0 3% 0)" : undefined;
+    const t = (e - 300) % 12;
+    const n = Math.floor((e - 300) / 12);
+    const a = Math.floor(t / 4);
     atlas = `snack-vietnam-${n}`;
-    backgroundPosition = `${(t % 4 / 3) * 100}% ${i[a]}%`;
+    backgroundPosition = `${((t % 4) / 3) * 100}% ${[0, 50, 100][a]}%`;
   } else if (e >= 156 && e <= 167) {
-    let t = e - 156;
+    const t = e - 156;
     atlas = "snack-0";
-    backgroundPosition = `${(t % 4 / 3) * 100}% ${[0, 47, 93][Math.floor(t / 4)]}%`;
+    backgroundPosition = `${((t % 4) / 3) * 100}% ${[0, 50, 100][Math.floor(t / 4)]}%`;
   } else if (e >= 132 && e <= 155) {
-    let t = (e - 132) % 12, n = (e < 144 ? [0, 47, 94] : [0, 50, 100])[Math.floor(t / 4)];
+    const t = (e - 132) % 12;
     atlas = `drink-${Math.floor((e - 132) / 12)}`;
-    backgroundPosition = `${(t % 4 / 3) * 100}% ${n}%`;
+    backgroundPosition = `${((t % 4) / 3) * 100}% ${[0, 50, 100][Math.floor(t / 4)]}%`;
   } else {
     const common = e >= 120;
     const lunch = e >= 72 && !common;
@@ -114,9 +116,10 @@ export function FoodImage({
       ? `food-expanded-${Math.floor((e - 36) / 12)}`
       : `food-hd-${Math.floor(e / 4)}`;
 
-    clipPath = 89 === e ? "inset(0 0 12% 0)" : 93 === e ? undefined : e < 36 && index < 2 || common ? "inset(0 0 4% 0)" : lunch ? "inset(0 0 7% 0)" : undefined;
     backgroundSize = expanded ? "400% 300%" : "200% 200%";
-    backgroundPosition = 93 === e ? `${100 / 3}% 89%` : expanded ? `${(index % 4 / 3) * 100}% ${[0, 46, 92][Math.floor(index / 4)]}%` : `${(index % 2) * 100}% ${94 * Math.floor(index / 2)}%`;
+    backgroundPosition = expanded
+      ? `${((index % 4) / 3) * 100}% ${[0, 50, 100][Math.floor(index / 4)]}%`
+      : `${(index % 2) * 100}% ${100 * Math.floor(index / 2)}%`;
   }
 
   return (
@@ -125,10 +128,10 @@ export function FoodImage({
       aria-label={food.name}
       className={`food-image size-${size}`}
       style={{
-        clipPath,
         backgroundImage: `url(${basePath}/${atlas}.webp)`,
         backgroundSize,
         backgroundPosition,
+        borderRadius: '50%',
       }}
     />
   );

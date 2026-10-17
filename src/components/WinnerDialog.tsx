@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Food } from '@/lib/foods';
 import { FoodImage } from './FoodImage';
-import { getSpotsForDish } from '@/lib/dish-places';
+import { getSpotsForDish, SpotInfo } from '@/lib/dish-places';
+import { getAllManagedPlaces } from '@/lib/admin-store';
+import { xuanHoaPlaces } from '@/lib/places-xuanhoa';
 import { getExpForRarity } from '@/lib/user-exp';
 import { 
   Share2, Check, MapPin, Phone, Navigation, X, Sparkles, Zap, Bike, 
@@ -79,7 +81,75 @@ export function WinnerDialog({
 
   const [copied, setCopied] = useState(false);
   const [selectedSpotIndex, setSelectedSpotIndex] = useState(0);
-  const spots = useMemo(() => (food ? getSpotsForDish(food) : []), [food]);
+  const [syncTick, setSyncTick] = useState(0);
+
+  useEffect(() => {
+    const onSync = () => setSyncTick(prev => prev + 1);
+    window.addEventListener('xuanhoa_admin_sync', onSync);
+    return () => window.removeEventListener('xuanhoa_admin_sync', onSync);
+  }, []);
+
+  const spots = useMemo(() => {
+    if (!food) return [];
+    const activeManaged = getAllManagedPlaces().filter(p => p.status === 'active');
+    const basePlacesById = new Map(xuanHoaPlaces.map(p => [p.id, p]));
+
+    const toSpotInfo = (pItem: ReturnType<typeof getAllManagedPlaces>[number]): SpotInfo => ({
+      name: pItem.place.name,
+      address: pItem.place.address,
+      phone: pItem.place.phone || '',
+      mapsQuery: pItem.place.mapsQuery || `${pItem.place.name} ${pItem.place.address}`,
+      mapsUrl: pItem.place.mapsUrl,
+      verified: pItem.isVerified,
+      serviceMode: pItem.place.serviceMode,
+      deliveryNote: pItem.place.deliveryNote || `Giờ mở cửa: ${pItem.place.openHours || 'Cả ngày'}`,
+      notes: pItem.place.quip || pItem.place.tagline,
+      menuHighlights: (pItem.fullMenu || [])
+        .filter(m => !m.isLocked)
+        .slice(0, 8)
+        .map(m => `${m.name}: ${m.price}.000đ`),
+    });
+
+    const normDishName = food.name.toLowerCase().trim();
+    const subLower = (food.sub || '').toLowerCase();
+
+    // 1. Tìm quán trong Admin khớp trực tiếp với món ăn này (kể cả món mới hoặc quán mới thêm từ Admin)
+    const directMatched = activeManaged.filter(pItem => {
+      const cleanName = pItem.place.name.toLowerCase().split(' - ')[0].split(' (')[0].trim();
+      const matchSub = cleanName.length >= 4 && subLower.includes(cleanName);
+      const matchMenu = (pItem.fullMenu || []).some(
+        m => !m.isLocked && m.name.toLowerCase().trim() === normDishName
+      );
+      const matchCustomId = food.customId && food.customId.includes(pItem.place.id);
+      return matchSub || matchMenu || matchCustomId;
+    });
+
+    const baseSpots = getSpotsForDish(food).map(bs => {
+      const bsClean = bs.name.toLowerCase().split(' - ')[0].split(' (')[0].trim();
+      const matchedManaged = activeManaged.find(pItem => {
+        const baseP = basePlacesById.get(pItem.place.id);
+        const origClean = (baseP?.name || pItem.place.name).toLowerCase().split(' - ')[0].split(' (')[0].trim();
+        return (
+          (origClean.length >= 4 && (bsClean.includes(origClean) || origClean.includes(bsClean))) ||
+          (bs.phone && pItem.place.phone && bs.phone.replace(/\s+/g, '') === pItem.place.phone.replace(/\s+/g, ''))
+        );
+      });
+      if (matchedManaged && matchedManaged.isModified) {
+        return toSpotInfo(matchedManaged);
+      }
+      return bs;
+    });
+
+    const mergedSpots: SpotInfo[] = [...directMatched.map(toSpotInfo), ...baseSpots];
+    const seenNames = new Set<string>();
+    return mergedSpots.filter(s => {
+      const k = s.name.toLowerCase().split(' (')[0].trim();
+      if (seenNames.has(k)) return false;
+      seenNames.add(k);
+      return true;
+    });
+  }, [food, syncTick]);
+
   const spot = spots[selectedSpotIndex] || spots[0];
 
   // Dish Reviews State

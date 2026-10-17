@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { xuanHoaPlaces, Place, getPlaceStyleGroup } from '@/lib/places-xuanhoa';
+import { getActivePublicPlaces } from '@/lib/admin-store';
 import { PlaceCard } from './PlaceCard';
 import { 
   Search, 
@@ -31,7 +32,23 @@ export function PlacesCatalogView({
   onGoToSpin,
   onGoToDishes,
 }: PlacesCatalogViewProps) {
-  const allPlaces = useMemo(() => xuanHoaPlaces, []);
+  const [syncTick, setSyncTick] = useState(0);
+  useEffect(() => {
+    const onSync = () => setSyncTick(t => t + 1);
+    window.addEventListener('xuanhoa_admin_sync', onSync);
+    return () => window.removeEventListener('xuanhoa_admin_sync', onSync);
+  }, []);
+
+  const allPlaces = useMemo(() => {
+    const active = getActivePublicPlaces();
+    const list = active.length > 0 ? active : xuanHoaPlaces;
+    const seen = new Set<string>();
+    return list.filter(p => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  }, [syncTick]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [styleFilter, setStyleFilter] = useState<'all' | 'an-chinh' | 'nhau-lau' | 'uong' | 'an-vat'>('all');

@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { getAllCatalogFoods, CatalogFoodItem, MainCategoryKey, diversifyFoodList } from '@/lib/xuanhoa-catalog';
+import { getAllManagedDishes } from '@/lib/admin-store';
 import { FoodImage } from './FoodImage';
 import { 
   Search, 
@@ -34,6 +35,12 @@ const rarityNames = ['Phổ thông', 'Đặc biệt', 'Quý hiếm', 'Cực hi�
 const rarityColors = ['#10B981', '#F59E0B', '#A855F7', '#F97316', '#EF4444'];
 const PAGE_SIZE = 30;
 
+const CATEGORY_LABELS: Record<MainCategoryKey, string> = {
+  'an-gi': 'Bữa Chính & Cơm Bún Phở',
+  'nhau-gi': 'Món Nhậu & Lẩu Nướng',
+  'uong-gi': 'Đồ Uống & Trà Sữa',
+};
+
 export function DishesCatalogView({
   initialCategory = 'all',
   onSelectDish,
@@ -41,7 +48,22 @@ export function DishesCatalogView({
   onGoToSpin,
   onGoToPlaces,
 }: DishesCatalogViewProps) {
-  const allDishes = useMemo(() => getAllCatalogFoods(), []);
+  const [syncTick, setSyncTick] = useState(0);
+  useEffect(() => {
+    const onSync = () => setSyncTick(t => t + 1);
+    window.addEventListener('xuanhoa_admin_sync', onSync);
+    return () => window.removeEventListener('xuanhoa_admin_sync', onSync);
+  }, []);
+
+  const allDishes = useMemo(() => {
+    const managed = getAllManagedDishes().filter(item => item.status === 'active');
+    if (managed.length === 0) return getAllCatalogFoods();
+    return managed.map(item => ({
+      ...item.food,
+      categoryKey: item.categoryKey,
+      categoryLabel: CATEGORY_LABELS[item.categoryKey] || 'Bữa Chính & Cơm Bún Phở',
+    }));
+  }, [syncTick]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | MainCategoryKey>(initialCategory);

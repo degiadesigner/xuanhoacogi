@@ -7997,7 +7997,140 @@ export const umeeTeaFoodDishes: Food[] = [
   },
 ];
 
+// ============================================================================
+// 6. NEM NƯỚNG NHÀ MƠ & TIỆM NHÀ CHOU CHOU (CỔNG ABC XUÂN HOÀ)
+// Hotline: 0960 371 110 - 0969 371 110 (FB: Lại Thị Cúc Nga)
+// ============================================================================
+export const nhaMoChouChouFoodDishes: Food[] = [
+  {
+    name: 'Nem nướng Nhà Mơ (Suất 30k)',
+    sub: 'Mẹt nem nướng than hoa thơm lừng, ram giòn, xoài dưa, bún tươi & sốt chấm đậm đà 30k • Nem Nướng Nhà Mơ Cổng ABC Xuân Hoà',
+    price: 30,
+    image: -3651,
+    customId: 'dish_nhamo_nem_nuong_30',
+    customImage: 'ai_studio_dish_bepnhabong_nem_nuong.jpg',
+    rarity: 1,
+    quip: 'Mẹt nem nướng Nhà Mơ 30k chuẩn vị ngon tại Cổng ABC Xuân Hoà: Nem nướng vàng ươm thơm phức, ram giòn rụm, rau sống tươi sạch cuốn bánh tráng chấm sốt tương béo ngậy.',
+  },
+  {
+    name: 'Nem nướng Nhà Mơ đặc biệt (Suất 35k)',
+    sub: 'Suất nem nướng đặc biệt nhiều nem & ram giòn ăn no căng bụng 35k • Nem Nướng Nhà Mơ Cổng ABC Xuân Hoà',
+    price: 35,
+    image: -3652,
+    customId: 'dish_nhamo_nem_nuong_35',
+    customImage: 'ai_studio_dish_nem_nuong_88.jpg',
+    rarity: 1,
+    quip: 'Suất nem nướng đặc biệt 35k đầy ắp nem nướng than hoa và ram chiên giòn tan, chấm đẫm bát nước sốt tương gia truyền ấm nóng.',
+  },
+  {
+    name: 'Nem lụi nướng Nhà Mơ (Suất 30k)',
+    sub: 'Suất nem lụi nướng sả vàng ươm cuốn bánh tráng rau sống sốt chấm 30k • Nem Nướng Nhà Mơ Cổng ABC Xuân Hoà',
+    price: 30,
+    image: -3653,
+    customId: 'dish_nhamo_nem_lui_30',
+    customImage: 'ai_studio_dish_cuonmoc_nem_lui.jpg',
+    rarity: 1,
+    quip: 'Những cây nem lụi bọc sả nướng xèo xèo thơm nức mũi, thịt ngọt mềm cuốn cùng rau sống xoài chua chấm sốt tương đậu phộng mê ly.',
+  },
+];
+
+export const chouChouDrinkDishes: Food[] = [
+  {
+    name: 'Kem trứng dừa nướng Chou Chou (700ml)',
+    sub: 'Best Seller size 700ml đã gồm 1 loại topping, kem trứng sánh mịn phủ dừa nướng giòn 25k • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
+    price: 25,
+    image: -3654,
+    customId: 'dish_chouchou_kem_trung_dua_nuong',
+    customImage: 'ai_studio_dish_cattien_ts_kem_trung_dua.jpg',
+    rarity: 1,
+    quip: 'Cốc 700ml khổng lồ với lớp kem trứng nướng béo ngậy thơm lừng rắc dừa nướng giòn rụm chỉ 25k (đã bao gồm 1 loại topping).',
+  },
+  {
+    name: 'Trà sữa khoai môn tươi Chou Chou (700ml)',
+    sub: 'Best Seller khoai môn tươi nghiền bùi béo quyện trà sữa thơm ngậy 30k (700ml gồm 1 topping) • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
+    price: 30,
+    image: -3655,
+    customId: 'dish_chouchou_ts_khoai_mon_tuoi',
+    customImage: 'ai_studio_dish_lh_khoai_mon.jpg',
+    rarity: 1,
+    quip: 'Vị khoai môn tươi bùi dẻo tự nhiên hòa quyện trà sữa đậm đà trong cốc 700ml siêu to đã kèm sẵn topping.',
+  },
+  {
+    name: 'Trà sữa kem cốm tươi Chou Chou (700ml)',
+    sub: 'Best Seller hương cốm non thơm ngát phủ kem béo sánh mịn 30k (700ml gồm 1 topping) • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
+    price: 30,
+    image: -3656,
+    customId: 'dish_chouchou_ts_kem_com_tuoi',
+    customImage: 'ai_studio_dish_olong_com_me_tit.jpg',
+    rarity: 1,
+    quip: 'Thức uống gây thương nhớ với hương cốm tươi thanh tao quyện lớp kem béo ngậy mượt mà size 700ml.',
+  },
+  {
+    name: 'Ô long sen vàng Chou Chou (700ml)',
+    sub: 'Best Seller trà Ô long đậm vị hạt sen vàng bùi ngọt kem béo 30k (700ml gồm 1 topping) • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
+    price: 30,
+    image: -3657,
+    customId: 'dish_chouchou_olong_sen_vang',
+    customImage: 'ai_studio_dish_oolong_sen_vang_le_la.jpg',
+    rarity: 1,
+    quip: 'Trà Ô long sen vàng thanh mát bùi ngọt, cốc lớn 700ml giải nhiệt sảng khoái tại Cổng ABC Xuân Hoà.',
+  },
+  {
+    name: 'Trà mãng cầu Chou Chou (700ml)',
+    sub: 'Best Seller mãng cầu tươi dầm chua ngọt thanh mát 25k (Size 700ml) • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
+    price: 25,
+    image: -3658,
+    customId: 'dish_chouchou_tra_mang_cau',
+    customImage: 'ai_studio_dish_cocokana_tra_mang_cau.jpg',
+    rarity: 1,
+    quip: 'Cốc trà mãng cầu 700ml đầy ắp thịt mãng cầu xiêm tươi chua ngọt giải khát cực đỉnh chỉ 25k.',
+  },
+  {
+    name: 'Trà nho đỏ Full Topping Chou Chou (700ml)',
+    sub: 'Trà nho đỏ 700ml chua ngọt thơm lừng ngập tràn thạch & trân châu Full Topping chỉ 15k • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
+    price: 15,
+    image: -3659,
+    customId: 'dish_chouchou_tra_nho_do_full_topping',
+    customImage: 'ai_studio_dish_cocokana_tra_hong_luu_suong_mai.jpg',
+    rarity: 0,
+    quip: 'Siêu phẩm đồng giá 15k: Cốc 700ml trà nho đỏ thơm mát ngập ngụa full topping nhai mỏi miệng!',
+  },
+  {
+    name: 'Trà bí đao Full Topping Chou Chou (700ml)',
+    sub: 'Trà bí đao thanh nhiệt size 700ml đầy ắp thạch & trân châu Full Topping đồng giá 15k • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
+    price: 15,
+    image: -3660,
+    customId: 'dish_chouchou_tra_bi_dao_full_topping',
+    customImage: 'ai_studio_dish_cattien_tra_bi_dao_db.jpg',
+    rarity: 0,
+    quip: 'Trà bí đao ngọt thanh mát lành cốc 700ml khổng lồ full topping chỉ 15k.',
+  },
+  {
+    name: 'Trà thạch đào Full Topping Chou Chou (700ml)',
+    sub: 'Trà thạch đào thơm mát size 700ml kèm Full Topping đồng giá 15k • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
+    price: 15,
+    image: -3661,
+    customId: 'dish_chouchou_tra_thach_dao_full_topping',
+    customImage: 'ai_studio_dish_cattien_tra_dao_dam.jpg',
+    rarity: 0,
+    quip: 'Cốc 700ml trà thạch đào giòn mềm thơm ngát đầy ắp topping đồng giá 15k.',
+  },
+  {
+    name: 'Nước ép trái cây tươi Nhà Mơ - Chou Chou (M 15k / L 20k)',
+    sub: 'Nước ép hoa quả tươi nguyên chất đồng giá Size M 15k / Size L 20k • Nem Nướng Nhà Mơ & Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
+    price: 15,
+    image: -3662,
+    customId: 'dish_chouchou_nuoc_ep_tuoi',
+    customImage: 'ai_studio_dish_cocokana_tra_trai_cay_nhiet_doi.jpg',
+    rarity: 0,
+    quip: 'Nước ép hoa quả tươi nguyên chất mát lạnh giàu vitamin, đồng giá Size M 15k và Size L 20k tại Cổng ABC Xuân Hoà.',
+  },
+];
+
 export const anGiFoods: Food[] = [
+  nhaMoChouChouFoodDishes[0], // BESTSELLER NHÀ MƠ: Nem nướng Nhà Mơ 30k (Cổng ABC Xuân Hoà)
+  nhaMoChouChouFoodDishes[1], // ĐẶC BIỆT NHÀ MƠ: Nem nướng Nhà Mơ suất đặc biệt 35k
+  nhaMoChouChouFoodDishes[2], // MÓN TỦ NHÀ MƠ: Nem lụi nướng Nhà Mơ 30k
   lauThaiHaTinhDishes[0],     // BESTSELLER LẨU THÁI HÀ TĨNH: Ngan cháy tỏi 200k (13 Trưng Nhị)
   lauThaiHaTinhDishes[1],     // LẨU THÁI HÀ TĨNH: Bún mì thái hải sản 40k
   anVatNhaPhuongDishes[0],    // BESTSELLER ĂN VẶT NHÀ PHƯƠNG: Gà viên sốt kem hành 60k
@@ -9188,6 +9321,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
 export const cocokanaDishes = cocokanaFruitTeaDishes;
 
 export const uongGiItems: Food[] = [
+  ...chouChouDrinkDishes,     // BESTSELLER TIỆM NHÀ CHOU CHOU (Cổng ABC Xuân Hoà): Size 700ml 25k-30k, Trà Full Topping 15k & Nước ép M 15k / L 20k
   bepNhaCunDrinkDishes[0],    // BESTSELLER BẾP NHÀ CÚN: Trà chanh 12k
   bepNhaCunDrinkDishes[1],    // BESTSELLER BẾP NHÀ CÚN: Trà tắc 12k,
   meTitDrinkItems[0],         // BESTSELLER SỐ 1 TIỆM MẸ TÍT: Trà mãng cầu tươi (30k) đưa lên đầu
@@ -9616,6 +9750,14 @@ export function getDishConceptKey(food: Food): string {
   if (name.includes('cút lộn xào me')) return 'umee-cut-lon-xao-me';
   if (name.includes('oolong phong lan') || name.includes('phong lan')) return 'umee-oolong-phong-lan';
   if (name.includes('trà sữa gạo rang') || name.includes('gạo rang')) return 'umee-tra-sua-gao-rang';
+  if (name.includes('nem nướng') && (name.includes('nhà mơ') || (food.sub && food.sub.includes('Nhà Mơ')))) {
+    if (name.includes('35k') || name.includes('đặc biệt')) return 'nhamo-nem-nuong-35';
+    return 'nhamo-nem-nuong-30';
+  }
+  if (name.includes('nem lụi') && (name.includes('nhà mơ') || (food.sub && food.sub.includes('Nhà Mơ')))) return 'nhamo-nem-lui-30';
+  if (name.includes('trà nho đỏ full topping')) return 'chouchou-tra-nho-do-full-topping';
+  if (name.includes('trà sữa khoai môn tươi')) return 'chouchou-ts-khoai-mon-tuoi';
+  if (name.includes('trà sữa kem cốm tươi')) return 'chouchou-ts-kem-com-tuoi';
   if (name.includes('bún trộn nem nướng') && (name.includes('88') || (food.sub && food.sub.includes('88')))) return 'nem-nuong-88-bun-tron';
   if (name.includes('xúc xích') && food.sub && food.sub.includes('Nem Nướng 88')) return 'nem-nuong-88-xuc-xich';
   if (name.includes('trà chanh') && food.sub && food.sub.includes('Nem Nướng 88')) return 'nem-nuong-88-tra-chanh';

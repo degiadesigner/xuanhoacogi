@@ -46,6 +46,9 @@ export function saveLocalReview(placeId: string, review: Omit<Review, 'id' | 'da
     if (!allCustom[placeId]) allCustom[placeId] = [];
     allCustom[placeId].unshift(newReview);
     localStorage.setItem(STORAGE_KEY_PLACES, JSON.stringify(allCustom));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync'));
+    }
   } catch (err) {
     console.warn('Cannot save to localStorage', err);
   }
@@ -92,6 +95,9 @@ export function saveLocalDishReview(foodId: string, review: Omit<DishReview, 'id
     if (!allCustom[foodId]) allCustom[foodId] = [];
     allCustom[foodId].unshift(newReview);
     localStorage.setItem(STORAGE_KEY_DISHES, JSON.stringify(allCustom));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync'));
+    }
   } catch (err) {
     console.warn('Cannot save dish review to localStorage', err);
   }

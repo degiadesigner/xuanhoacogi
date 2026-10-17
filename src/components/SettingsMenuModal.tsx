@@ -47,7 +47,7 @@ export function SettingsMenuModal({
   onOpenLogin,
   onOpenProfile,
 }: SettingsMenuModalProps) {
-  const [activeSubModal, setActiveSubModal] = useState<'none' | 'language' | 'contact'>('none');
+  const [activeSubModal, setActiveSubModal] = useState<'none' | 'language' | 'contact' | 'guide' | 'about'>('none');
   const [lang, setLang] = useState<Language>(() => currentLang || getStoredLanguage());
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export function SettingsMenuModal({
     <div className="settings-menu-overlay" onClick={handleClose}>
       <div 
         className={`settings-menu-modal ${
-          activeSubModal === 'contact' 
+          activeSubModal === 'contact' || activeSubModal === 'guide' || activeSubModal === 'about'
             ? 'settings-menu-modal-contact' 
             : activeSubModal === 'language' 
             ? 'settings-menu-modal-lang' 
@@ -97,7 +97,7 @@ export function SettingsMenuModal({
         aria-modal="true"
         aria-label="Cài đặt hệ thống"
       >
-        {/* ================= VIEW 1: MENU CHÍNH (2x2 Grid) ================= */}
+        {/* ================= VIEW 1: MENU CHÍNH GỌN GÀNG ================= */}
         {activeSubModal === 'none' && (
           <>
             <div className="settings-menu-header">
@@ -119,7 +119,6 @@ export function SettingsMenuModal({
               {/* ================= THẺ BỘ LỌC THEO GU ẨM THỰC ================= */}
               {authUser && authUser.isLoggedIn ? (
                 <div className="settings-taste-filter-card">
-                  {/* Hàng trên: Icon + Tiêu đề + Trạng thái + Toggle */}
                   <div className="settings-taste-card-top">
                     <div className="settings-taste-card-title-group">
                       <div className="settings-taste-icon-box">🎯</div>
@@ -150,7 +149,6 @@ export function SettingsMenuModal({
                     </button>
                   </div>
 
-                  {/* Hàng dưới: Nhóm thực khách & Nút sửa hồ sơ */}
                   <div className="settings-taste-card-footer">
                     <div className="settings-taste-profile-pill">
                       <span>{getResidentTypeInfo(authUser.residentType).emoji}</span>
@@ -197,7 +195,7 @@ export function SettingsMenuModal({
                 </div>
               )}
 
-              {/* ================= 4 Ô CHỨC NĂNG 2X2 SANG TRỌNG ================= */}
+              {/* ================= 4 Ô CHỨC NĂNG 2X2 GỌN GÀNG ================= */}
               <div className="settings-menu-grid-luxury">
                 {/* Ô 1: Ngôn ngữ */}
                 <button 
@@ -238,51 +236,224 @@ export function SettingsMenuModal({
                   </div>
                 </button>
 
-                {/* Ô 3: Hướng dẫn */}
+                {/* Ô 3: Cách sử dụng (Form gọn gàng ngay trong Cài đặt) */}
                 <button 
                   type="button"
                   className="settings-luxury-card"
-                  onClick={() => {
-                    onOpenGuide();
-                    handleClose();
-                  }}
+                  onClick={() => setActiveSubModal('guide')}
                 >
                   <div className="settings-luxury-card-head">
                     <div className="settings-luxury-icon-wrap">
                       <BookOpen size={19} />
                     </div>
-                    <span className="settings-luxury-badge">{t.menu_guide_badge}</span>
+                    <span className="settings-luxury-badge">{lang === 'vi' ? '3 bước' : 'Guide'}</span>
                   </div>
                   <div className="settings-luxury-card-info">
-                    <strong className="settings-luxury-label">{t.menu_guide}</strong>
-                    <span className="settings-luxury-sublabel">User Guide</span>
+                    <strong className="settings-luxury-label">{lang === 'vi' ? 'Cách sử dụng' : 'How to Use'}</strong>
+                    <span className="settings-luxury-sublabel">{lang === 'vi' ? 'Hướng dẫn nhanh' : 'Quick Guide'}</span>
                   </div>
                 </button>
 
-                {/* Ô 4: Liên hệ với chúng tôi */}
+                {/* Ô 4: Giới thiệu (Form gọn gàng ngay trong Cài đặt) */}
                 <button 
                   type="button"
                   className="settings-luxury-card"
-                  onClick={() => setActiveSubModal('contact')}
-                  title={t.menu_contact}
+                  onClick={() => setActiveSubModal('about')}
                 >
                   <div className="settings-luxury-card-head">
                     <div className="settings-luxury-icon-wrap">
-                      <MessageSquare size={19} className="text-amber-400" />
+                      <Compass size={19} className="text-amber-400" />
                     </div>
-                    <span className="settings-luxury-badge">{t.menu_contact_badge}</span>
+                    <span className="settings-luxury-badge">{lang === 'vi' ? 'Xuân Hòa' : 'About'}</span>
                   </div>
                   <div className="settings-luxury-card-info">
-                    <strong className="settings-luxury-label">{t.menu_contact}</strong>
-                    <span className="settings-luxury-sublabel">Social & Support</span>
+                    <strong className="settings-luxury-label">{lang === 'vi' ? 'Giới thiệu' : 'About Us'}</strong>
+                    <span className="settings-luxury-sublabel">{lang === 'vi' ? 'Về Xuân Hòa Có Gì' : 'Our Story'}</span>
                   </div>
                 </button>
               </div>
+
+              {/* Thanh Liên hệ & Cộng đồng gọn gàng phía dưới */}
+              <button
+                type="button"
+                onClick={() => setActiveSubModal('contact')}
+                style={{
+                  marginTop: '10px',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '11px 14px',
+                  borderRadius: '14px',
+                  background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.75) 100%)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: '#F8FAFC',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div className="settings-luxury-icon-wrap" style={{ width: '32px', height: '32px' }}>
+                    <MessageSquare size={17} className="text-amber-400" />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <strong style={{ fontSize: '13px', fontWeight: 700, color: '#F8FAFC' }}>
+                      {t.menu_contact}
+                    </strong>
+                    <span style={{ fontSize: '11px', color: '#94A3B8' }}>
+                      Fanpage · Group Trà Đá XuHo · Founder MinhTT
+                    </span>
+                  </div>
+                </div>
+                <span className="settings-luxury-badge">{t.menu_contact_badge} →</span>
+              </button>
             </div>
           </>
         )}
 
-        {/* ================= VIEW 2: LIÊN HỆ VỚI CHÚNG TÔI ================= */}
+        {/* ================= VIEW 2: CÁCH SỬ DỤNG (FORM GỌN GÀNG) ================= */}
+        {activeSubModal === 'guide' && (
+          <div className="settings-subview-wrapper">
+            <div className="settings-menu-header">
+              <button 
+                type="button" 
+                className="settings-menu-back-btn" 
+                onClick={() => setActiveSubModal('none')}
+                title="Quay lại"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <h2 className="settings-menu-title settings-menu-title-centered">Cách Sử Dụng</h2>
+              <button 
+                type="button"
+                className="settings-menu-close-btn"
+                onClick={handleClose}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="settings-contact-body">
+              <div className="contact-options-list">
+                <div className="contact-option-card" style={{ cursor: 'default' }}>
+                  <div className="contact-option-icon contact-icon-founder" style={{ fontWeight: 800, fontSize: '14px' }}>
+                    01
+                  </div>
+                  <div className="contact-option-info">
+                    <div className="contact-option-title-row">
+                      <span className="contact-option-name">Chọn chế độ: Món Ăn hoặc Quán Xá</span>
+                    </div>
+                    <span className="contact-option-desc">
+                      Lọc theo khung giờ (Sáng, Trưa, Chiều, Tối), ngân sách và kèo đi ăn phù hợp.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="contact-option-card" style={{ cursor: 'default' }}>
+                  <div className="contact-option-icon contact-icon-page" style={{ fontWeight: 800, fontSize: '14px' }}>
+                    02
+                  </div>
+                  <div className="contact-option-info">
+                    <div className="contact-option-title-row">
+                      <span className="contact-option-name">Bấm Quay Ngẫu Nhiên</span>
+                    </div>
+                    <span className="contact-option-desc">
+                      Hệ thống chọn ngẫu nhiên 100% công bằng, chống trùng lặp món/quán vừa quay.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="contact-option-card" style={{ cursor: 'default' }}>
+                  <div className="contact-option-icon contact-icon-group" style={{ fontWeight: 800, fontSize: '14px' }}>
+                    03
+                  </div>
+                  <div className="contact-option-info">
+                    <div className="contact-option-title-row">
+                      <span className="contact-option-name">Xem Địa Chỉ, Gọi Ship & Đánh Giá</span>
+                    </div>
+                    <span className="contact-option-desc">
+                      Xem ngay thực đơn, hotline gọi ship, chỉ đường Google Maps và tích điểm lên cấp.
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= VIEW 3: GIỚI THIỆU (FORM GỌN GÀNG) ================= */}
+        {activeSubModal === 'about' && (
+          <div className="settings-subview-wrapper">
+            <div className="settings-menu-header">
+              <button 
+                type="button" 
+                className="settings-menu-back-btn" 
+                onClick={() => setActiveSubModal('none')}
+                title="Quay lại"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <h2 className="settings-menu-title settings-menu-title-centered">Giới Thiệu</h2>
+              <button 
+                type="button"
+                className="settings-menu-close-btn"
+                onClick={handleClose}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="settings-contact-body">
+              <div className="contact-options-list">
+                <div className="contact-option-card" style={{ cursor: 'default' }}>
+                  <div className="contact-option-icon contact-icon-founder">
+                    <Compass size={20} />
+                  </div>
+                  <div className="contact-option-info">
+                    <div className="contact-option-title-row">
+                      <span className="contact-option-name">Bản đồ Ẩm thực Xuân Hòa</span>
+                      <span className="contact-badge contact-badge-founder">2026</span>
+                    </div>
+                    <span className="contact-option-desc">
+                      Giải quyết câu hỏi “Hôm nay ăn gì, nhậu gì, uống gì?” cho sinh viên ĐHSP Hà Nội 2 & cư dân Xuân Hòa.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="contact-option-card" style={{ cursor: 'default' }}>
+                  <div className="contact-option-icon contact-icon-page">
+                    <BookOpen size={20} />
+                  </div>
+                  <div className="contact-option-info">
+                    <div className="contact-option-title-row">
+                      <span className="contact-option-name">Dữ liệu thực tế & Xác thực</span>
+                    </div>
+                    <span className="contact-option-desc">
+                      Tổng hợp đầy đủ thực đơn, mức giá, giờ mở cửa và số điện thoại ship tận nơi tại P. Xuân Hòa.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="contact-option-card" style={{ cursor: 'default' }}>
+                  <div className="contact-option-icon contact-icon-group">
+                    <User size={20} />
+                  </div>
+                  <div className="contact-option-info">
+                    <div className="contact-option-title-row">
+                      <span className="contact-option-name">Phát triển bởi MinhTT</span>
+                      <span className="contact-badge contact-badge-group">Founder</span>
+                    </div>
+                    <span className="contact-option-desc">
+                      Kết nối cộng đồng GR Trà Đá XuHo & Fanpage Xuân Hòa Có Gì.
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= VIEW 4: LIÊN HỆ VỚI CHÚNG TÔI ================= */}
         {activeSubModal === 'contact' && (
           <div className="settings-subview-wrapper">
             <div className="settings-menu-header">
@@ -375,7 +546,7 @@ export function SettingsMenuModal({
           </div>
         )}
 
-        {/* ================= VIEW 3: CHỌN NGÔN NGỮ ================= */}
+        {/* ================= VIEW 5: CHỌN NGÔN NGỮ ================= */}
         {activeSubModal === 'language' && (
           <div className="settings-subview-wrapper">
             <div className="settings-menu-header">

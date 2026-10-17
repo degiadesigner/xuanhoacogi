@@ -22,6 +22,7 @@
         try {
           var h = window.location.hash || '';
           var s = window.location.search || '';
+          var p = (window.location.pathname || '').toLowerCase();
           if (h.indexOf('access_token=') !== -1 || h.indexOf('id_token=') !== -1) {
             window.__XUANHOA_OAUTH_HASH__ = h;
             try { sessionStorage.setItem('xuanhoa_oauth_hash', h); } catch (e) {}
@@ -32,6 +33,8 @@
               try { sessionStorage.setItem('xuanhoa_oauth_search', s); } catch (e) {}
             }
             window.history.replaceState(null, document.title, '/');
+          } else if (p === '/quanly' || p === '/quanly/' || p === '/admin' || p === '/admin/' || p === '/quan-tri') {
+            window.history.replaceState(null, document.title, '/#/quanly');
           }
         } catch (err) {}
       })();

@@ -56,6 +56,12 @@ export interface PlaceOverride {
   signatureDishName?: string;
   signatureDishPrice?: number;
   customMenu?: CustomMenuEntry[];
+  lat?: number;
+  lng?: number;
+  coordinateVerified?: boolean;
+  coordinateSource?: 'openstreetmap' | 'admin_verified' | 'nominatim_geocoded' | 'unverified';
+  lastVerifiedAt?: string;
+  mapCategory?: string;
   updatedAt: number;
   isCustom?: boolean;
   customPlaceData?: Place;
@@ -1367,6 +1373,18 @@ export function getLoggedAdminSession(): AdminAccount | null {
   return null;
 }
 
+export function isAdminAuthenticated(authUser?: UserAuthProfile | null): boolean {
+  if (getLoggedAdminSession()) return true;
+  if (authUser && authUser.isLoggedIn && authUser.email) {
+    const state = getAdminState();
+    const emailLower = authUser.email.trim().toLowerCase();
+    return Boolean(
+      state.adminEmails?.some((e) => e.trim().toLowerCase() === emailLower)
+    );
+  }
+  return false;
+}
+
 export function loginAdminWithCredentials(
   usernameInput: string,
   passwordInput: string,
@@ -1482,5 +1500,81 @@ export function deleteAdminAccount(accountId: string): void {
   }
   saveAdminState(state);
 }
+
+export function updatePlaceCoordinates(
+  placeId: string,
+  payload: {
+    lat: number;
+    lng: number;
+    coordinateVerified: boolean;
+    coordinateSource: 'openstreetmap' | 'admin_verified' | 'nominatim_geocoded';
+    mapCategory?: string;
+    placeName?: string;
+  }
+): AdminState {
+  const lat = Number(payload.lat);
+  const lng = Number(payload.lng);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < 20.0 ||
+    lat > 23.0 ||
+    lng < 104.0 ||
+    lng > 107.0
+  ) {
+    throw new Error('Tọa độ không hợp lệ (ngoài phạm vi miền Bắc Việt Nam).');
+  }
+
+  const state = getAdminState();
+  const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
+  const nowIso = new Date().toISOString();
+
+  state.places[placeId] = {
+    ...prev,
+    id: placeId,
+    lat: Number(lat.toFixed(6)),
+    lng: Number(lng.toFixed(6)),
+    coordinateVerified: payload.coordinateVerified,
+    coordinateSource: payload.coordinateSource,
+    lastVerifiedAt: nowIso,
+    ...(payload.mapCategory ? { mapCategory: payload.mapCategory } : {}),
+    updatedAt: Date.now(),
+  };
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    payload.coordinateVerified ? 'Xác minh tọa độ Bản đồ XUHO CITY' : 'Cập nhật tọa độ đề xuất',
+    `${payload.placeName || placeId} (${lat.toFixed(5)}, ${lng.toFixed(5)}) [${payload.coordinateSource}]`,
+    'place'
+  );
+  saveAdminState(state);
+  return state;
+}
+
+export function clearPlaceCoordinates(placeId: string, placeName?: string): AdminState {
+  const state = getAdminState();
+  const prev = state.places[placeId];
+  if (!prev) return state;
+
+  state.places[placeId] = {
+    ...prev,
+    lat: undefined,
+    lng: undefined,
+    coordinateVerified: false,
+    coordinateSource: 'unverified',
+    lastVerifiedAt: undefined,
+    updatedAt: Date.now(),
+  };
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    'Đặt lại trạng thái chờ xác minh tọa độ',
+    placeName || placeId,
+    'place'
+  );
+  saveAdminState(state);
+  return state;
+}
+
 
 

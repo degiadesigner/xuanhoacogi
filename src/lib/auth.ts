@@ -693,7 +693,12 @@ export async function signInWithGoogleService(): Promise<{
       };
 
       const onMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
+        const allowedOrigins = [
+          window.location.origin,
+          'https://xuanhoacogi.com',
+          'https://www.xuanhoacogi.com',
+        ];
+        if (!allowedOrigins.includes(event.origin)) return;
         if (event.data && event.data.type === 'XUANHOA_OAUTH_CALLBACK' && event.data.hash) {
           handleHashResult(event.data.hash);
         }

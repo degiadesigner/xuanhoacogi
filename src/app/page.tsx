@@ -49,6 +49,7 @@ import { UserGuideView } from '@/components/UserGuideView';
 import { AboutView } from '@/components/AboutView';
 import { ComingSoonView } from '@/components/ComingSoonView';
 import { AdminDashboardView } from '@/components/AdminDashboardView';
+import { DigitalMapView } from '@/components/DigitalMapView';
 import { SettingsMenuModal } from '@/components/SettingsMenuModal';
 import { GoogleGIcon } from '@/components/GoogleGIcon';
 import { AuthModal } from '@/components/AuthModal';
@@ -74,7 +75,7 @@ import {
   initAdminCloudSync,
 } from '@/lib/admin-store';
 
-export type AppView = 'spin' | 'dishes' | 'places' | 'guide' | 'about' | 'coming-soon' | 'admin';
+export type AppView = 'spin' | 'dishes' | 'places' | 'map' | 'guide' | 'about' | 'coming-soon' | 'admin';
 
 function parseHashToView(): AppView {
   if (typeof window === 'undefined') return 'spin';
@@ -91,6 +92,15 @@ function parseHashToView(): AppView {
     pathname === '/admin/'
   ) {
     return 'admin';
+  }
+  if (
+    hash.includes('ban-do') ||
+    hash.includes('bando') ||
+    hash.includes('xuho-city') ||
+    hash.includes('xuhocity') ||
+    hash === '#/map'
+  ) {
+    return 'map';
   }
   if (hash.includes('coming-soon') || hash.includes('sap-ra-mat') || hash.includes('teaser')) {
     return 'coming-soon';
@@ -192,6 +202,7 @@ export default function Home() {
       spin: '#/',
       dishes: '#/kham-pha-mon',
       places: '#/quan-an',
+      map: '#/ban-do',
       guide: '#/cach-su-dung',
       about: '#/gioi-thieu',
       'coming-soon': '#/sap-ra-mat',
@@ -253,10 +264,7 @@ export default function Home() {
   const [mapToast, setMapToast] = useState(false);
 
   const handleOpenMap = useCallback(() => {
-    setMapToast(true);
-    setTimeout(() => {
-      setMapToast(false);
-    }, 2800);
+    navigateTo('map');
   }, []);
 
   const toggleSound = useCallback(() => {
@@ -2194,6 +2202,18 @@ export default function Home() {
         onGoToPlaces={() => navigateTo('places')}
       />
     )}
+
+    {currentView === 'map' && (
+      <DigitalMapView
+        onBackToHome={() => navigateTo('spin')}
+        authUser={authUser}
+        onOpenLogin={() => {
+          setAuthNotice('Đăng nhập tài khoản Google để gửi đánh giá hoặc quản trị bản đồ nhé!');
+          setAuthModalStep(1);
+          setIsAuthModalOpen(true);
+        }}
+      />
+    )}
   </main>
 
   {/* Winner Modal (Món Ăn) */}
@@ -2346,6 +2366,7 @@ export default function Home() {
       <nav className="header-btn-desktop-only" aria-label="Liên kết cuối trang">
         <button className={`footer-link-btn ${currentView === 'dishes' ? 'active' : ''}`} onClick={() => navigateTo('dishes')}>{t('footer_dishes')}</button>
         <button className={`footer-link-btn ${currentView === 'places' ? 'active' : ''}`} onClick={() => navigateTo('places')}>{t('footer_places')}</button>
+        <button className={`footer-link-btn ${currentView === 'map' ? 'active' : ''}`} onClick={() => navigateTo('map')}>Bản đồ XUHO CITY</button>
       </nav>
       <div className="site-footer-contact">
         <span>Crafted &amp; Curated by MinhTT © 2026</span>

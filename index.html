@@ -20,6 +20,15 @@
     <script>
       (function () {
         try {
+          if (window.location.hostname && window.location.hostname.toLowerCase() === 'www.xuanhoacogi.com') {
+            window.location.replace(
+              'https://xuanhoacogi.com' +
+                (window.location.pathname || '/') +
+                (window.location.search || '') +
+                (window.location.hash || '')
+            );
+            return;
+          }
           var h = window.location.hash || '';
           var s = window.location.search || '';
           var p = (window.location.pathname || '').toLowerCase();
@@ -29,7 +38,7 @@
             try { localStorage.setItem('xuanhoa_oauth_popup_hash', h); } catch (e) {}
             if (window.opener && window.opener !== window) {
               try {
-                window.opener.postMessage({ type: 'XUANHOA_OAUTH_CALLBACK', hash: h }, window.location.origin);
+                window.opener.postMessage({ type: 'XUANHOA_OAUTH_CALLBACK', hash: h }, '*');
                 window.close();
                 return;
               } catch (e) {}

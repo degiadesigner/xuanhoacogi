@@ -1,0 +1,35 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "osmId": "node/1874124407",
+        "name": "Đồng Xuân",
+        "place": "village"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          105.730269,
+          21.28993
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osmId": "node/13967896553",
+        "name": "Xuân Hòa",
+        "place": "suburb"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          105.731288,
+          21.323155
+        ]
+      }
+    }
+  ]
+}

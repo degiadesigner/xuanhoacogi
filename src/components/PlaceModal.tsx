@@ -93,6 +93,19 @@ export function PlaceModal({
     }
   }, [activePlace?.id]);
 
+  const safeMenu = activePlace?.menu || [];
+
+  // Filtered menu (MUST be called before early return to respect React Rules of Hooks)
+  const displayMenu = useMemo(() => {
+    if (!menuSearch.trim()) return safeMenu;
+    const query = menuSearch.trim().toLowerCase();
+    return safeMenu.filter(m => 
+      m.name.toLowerCase().includes(query) || 
+      (m.tag && m.tag.toLowerCase().includes(query)) ||
+      (m.description && m.description.toLowerCase().includes(query))
+    );
+  }, [safeMenu, menuSearch]);
+
   if (!place || !isOpen || !activePlace) return null;
 
   const handleToggleTag = (tag: string) => {
@@ -157,20 +170,12 @@ export function PlaceModal({
   const shortDist = getPlaceShortDistance(activePlace);
   const perPerson = getPlacePerPersonText(activePlace);
 
-  const imgUrl = activePlace.imageUrl.startsWith('http') || activePlace.imageUrl.startsWith('/') 
-    ? activePlace.imageUrl 
-    : `/${activePlace.imageUrl}`;
+  const rawImgUrl = activePlace.imageUrl || 'ai_studio_dish_com_68_suon.jpg';
+  const imgUrl = rawImgUrl.startsWith('http') || rawImgUrl.startsWith('/') || rawImgUrl.startsWith('data:')
+    ? rawImgUrl 
+    : `/${rawImgUrl}`;
 
-  // Filtered menu
-  const displayMenu = useMemo(() => {
-    if (!menuSearch.trim()) return activePlace.menu;
-    const query = menuSearch.trim().toLowerCase();
-    return activePlace.menu.filter(m => 
-      m.name.toLowerCase().includes(query) || 
-      (m.tag && m.tag.toLowerCase().includes(query)) ||
-      (m.description && m.description.toLowerCase().includes(query))
-    );
-  }, [activePlace.menu, menuSearch]);
+  const safeMapsQuery = activePlace.mapsQuery || `${activePlace.name} ${activePlace.address || 'Xuân Hòa'}`;
 
   const handleCall = () => {
     if (activePlace.phone) {
@@ -180,7 +185,7 @@ export function PlaceModal({
   };
 
   const handleMaps = () => {
-    const url = activePlace.mapsUrl || (activePlace.mapsQuery.startsWith('http') ? activePlace.mapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activePlace.mapsQuery + (activePlace.mapsQuery.includes('Phú Thọ') ? '' : ' Xuân Hòa'))}`);
+    const url = activePlace.mapsUrl || (safeMapsQuery.startsWith('http') ? safeMapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(safeMapsQuery + (safeMapsQuery.includes('Phú Thọ') ? '' : ' Xuân Hòa'))}`);
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -387,7 +392,7 @@ export function PlaceModal({
 
           {/* Nút 2: Google Maps */}
           <a 
-            href={activePlace.mapsUrl || (activePlace.mapsQuery.startsWith('http') ? activePlace.mapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activePlace.mapsQuery + (activePlace.mapsQuery.includes('Phú Thọ') ? '' : ' Xuân Hòa'))}`)}
+            href={activePlace.mapsUrl || (safeMapsQuery.startsWith('http') ? safeMapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(safeMapsQuery + (safeMapsQuery.includes('Phú Thọ') ? '' : ' Xuân Hòa'))}`)}
             target="_blank" 
             rel="noopener noreferrer"
             className="golden-grid-btn map"
@@ -413,7 +418,7 @@ export function PlaceModal({
           >
             <UtensilsCrossed size={15} className="shrink-0" />
             <span className="truncate">
-              {isMenuOpen ? `Đóng Menu (${activePlace.menu.length})` : `Xem Menu (${activePlace.menu.length})`}
+              {isMenuOpen ? `Đóng Menu (${safeMenu.length})` : `Xem Menu (${safeMenu.length})`}
             </span>
             <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isMenuOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -443,10 +448,10 @@ export function PlaceModal({
               <div className="flex items-center gap-2">
                 <UtensilsCrossed size={14} className="text-amber-400" />
                 <span className="font-bold text-xs uppercase tracking-wider text-amber-300">
-                  Thực Đơn Niêm Yết ({activePlace.menu.length} món)
+                  Thực Đơn Niêm Yết ({safeMenu.length} món)
                 </span>
               </div>
-              {activePlace.menu.length > 5 && (
+              {safeMenu.length > 5 && (
                 <div className="golden-menu-search">
                   <Search size={12} className="text-slate-400 shrink-0" />
                   <input 

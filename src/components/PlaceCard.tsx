@@ -99,7 +99,8 @@ function getPlaceShortAddress(place: Place): string {
 export function PlaceCard({ place, onClick, isReel = false, slot }: PlaceCardProps) {
   const honorBadge = getPlaceHonorBadge(place);
   const signboard = getPlaceSignboardLines(place);
-  const imgUrl = place.imageUrl.startsWith('http') || place.imageUrl.startsWith('/') ? place.imageUrl : `/${place.imageUrl}`;
+  const rawImg = place.imageUrl || 'ai_studio_dish_com_68_suon.jpg';
+  const imgUrl = rawImg.startsWith('http') || rawImg.startsWith('/') || rawImg.startsWith('data:') ? rawImg : `/${rawImg}`;
   const amenity = getPlaceAmenity(place);
   const shortDist = getPlaceShortDistance(place);
   const perPerson = getPlacePerPersonText(place);
@@ -231,13 +232,15 @@ export function PlaceCard({ place, onClick, isReel = false, slot }: PlaceCardPro
         <h3 className="grid-place-title">{formatTypography(place.name)}</h3>
         <p className="grid-place-tagline">{place.tagline}</p>
 
-        <div className="grid-signature-box">
-          <div className="sig-row">
-            <span className="sig-label">Món tủ:</span>
-            <strong className="sig-name">{formatTypography(place.signatureDish.name)}</strong>
-            <span className="sig-price">~{place.signatureDish.price}k</span>
+        {place.signatureDish && (
+          <div className="grid-signature-box">
+            <div className="sig-row">
+              <span className="sig-label">Món tủ:</span>
+              <strong className="sig-name">{formatTypography(place.signatureDish.name)}</strong>
+              <span className="sig-price">~{place.signatureDish.price}k</span>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="grid-card-bottom">
           <div className="flex flex-col text-left">

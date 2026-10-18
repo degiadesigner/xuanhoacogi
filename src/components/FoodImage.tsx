@@ -11,13 +11,18 @@ export function FoodImage({
   size?: 'sm' | 'md' | 'lg' | 'xl' 
 }) {
   if (food.customImage) {
+    const raw = food.customImage.trim();
+    const imgSrc =
+      raw.startsWith('http') || raw.startsWith('data:') || raw.startsWith('/')
+        ? raw
+        : `${basePath}/${raw}`;
     return (
       <div
         role="img"
         aria-label={food.name}
         className={`food-image size-${size}`}
         style={{
-          backgroundImage: `url(${basePath}/${food.customImage})`,
+          backgroundImage: `url("${imgSrc}"), url("${basePath}/ai_studio_dish_com_68_suon.jpg")`,
           backgroundSize: 'cover',
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'center center',

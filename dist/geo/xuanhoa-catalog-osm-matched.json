@@ -1,0 +1,506 @@
+{
+  "lau-nuong-1968": {
+    "lat": 21.278486,
+    "lng": 105.722714,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "lau-ngua-tay-bac": {
+    "lat": 21.324466,
+    "lng": 105.731942,
+    "roadName": "Đường Lê Duẩn",
+    "osmId": "way/128273256",
+    "source": "nominatim_geocoded"
+  },
+  "oc-2000-xuan-hoa": {
+    "lat": 21.27805,
+    "lng": 105.722617,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "bm-nuong-muoi-ot-ngoc-quy": {
+    "lat": 21.280136,
+    "lng": 105.726671,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "cat-tien-xuan-hoa": {
+    "lat": 21.280136,
+    "lng": 105.726671,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "thi-lan-tea": {
+    "lat": 21.278258,
+    "lng": 105.722772,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "che-xuan-mai": {
+    "lat": 21.289123,
+    "lng": 105.71697,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "nhat-ha": {
+    "lat": 21.277725,
+    "lng": 105.728261,
+    "roadName": "Phố Đồng Tâm",
+    "osmId": "way/176265731",
+    "source": "nominatim_geocoded"
+  },
+  "bia-sai-gon-tuan-hien": {
+    "lat": 21.28004,
+    "lng": 105.733514,
+    "roadName": "Đường Trường Chinh",
+    "osmId": "way/155797851",
+    "source": "nominatim_geocoded"
+  },
+  "thanh-hang-gateaux": {
+    "lat": 21.278319,
+    "lng": 105.722796,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "banh-trang-55-nguyen-van-linh": {
+    "lat": 21.282901,
+    "lng": 105.720924,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "san-bia-247": {
+    "lat": 21.294663,
+    "lng": 105.729195,
+    "roadName": "Đường Trường Chinh",
+    "osmId": "way/155797851",
+    "source": "nominatim_geocoded"
+  },
+  "vanh-dai-quan": {
+    "lat": 21.280245,
+    "lng": 105.720815,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  },
+  "nhungs-corner": {
+    "lat": 21.279723,
+    "lng": 105.724336,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "cuon-moc-xuan-hoa": {
+    "lat": 21.284662,
+    "lng": 105.719042,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "hung-thu-bun-tron-com-rang": {
+    "lat": 21.278312,
+    "lng": 105.728638,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "quan-win-nguyen-van-linh": {
+    "lat": 21.29875,
+    "lng": 105.712577,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "tiem-com-nha-le-huyen": {
+    "lat": 21.280295,
+    "lng": 105.726511,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "canteen-ktx-noi-tru-sp2": {
+    "lat": 21.29875,
+    "lng": 105.712577,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "bun-bo-hue-102-nvl": {
+    "lat": 21.29875,
+    "lng": 105.712577,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "quan-ba-thu-xuan-hoa": {
+    "lat": 21.285021,
+    "lng": 105.724274,
+    "roadName": "Phố Võ Thị Sáu",
+    "osmId": "way/176265733",
+    "source": "nominatim_geocoded"
+  },
+  "trau-phi-xuyen": {
+    "lat": 21.282647,
+    "lng": 105.719666,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  },
+  "lon-ga-xuyen-phi": {
+    "lat": 21.277741,
+    "lng": 105.722106,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  },
+  "trau-gio-dong": {
+    "lat": 21.275058,
+    "lng": 105.728098,
+    "roadName": "Đường Trường Chinh",
+    "osmId": "way/155797851",
+    "source": "nominatim_geocoded"
+  },
+  "tiem-me-soc": {
+    "lat": 21.29138,
+    "lng": 105.715788,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "nha-hang-468": {
+    "lat": 21.277834,
+    "lng": 105.722225,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  },
+  "lau-cuong-duong": {
+    "lat": 21.282349,
+    "lng": 105.722917,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "com-rang-nguyen-van-linh": {
+    "lat": 21.281416,
+    "lng": 105.725362,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "bun-cha-xuan-hoa": {
+    "lat": 21.27763,
+    "lng": 105.722171,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  },
+  "bun-rieu-ba-mai": {
+    "lat": 21.266635,
+    "lng": 105.723205,
+    "roadName": "Đường Trường Chinh",
+    "osmId": "way/155797851",
+    "source": "nominatim_geocoded"
+  },
+  "tiem-tra-sua-tocotoco": {
+    "lat": 21.29774,
+    "lng": 105.712929,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "nha-hang-binh-nam": {
+    "lat": 21.29875,
+    "lng": 105.712577,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "cafe-1975-xuan-hoa": {
+    "lat": 21.260102,
+    "lng": 105.717564,
+    "roadName": "Đường Trần Phú",
+    "osmId": "way/502809311",
+    "source": "nominatim_geocoded"
+  },
+  "com-tam-xuan-hoa": {
+    "lat": 21.280136,
+    "lng": 105.726671,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "sui-cao-tieu-lau-quan": {
+    "lat": 21.282858,
+    "lng": 105.721048,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "lau-nuong-ba-muoi": {
+    "lat": 21.29875,
+    "lng": 105.712577,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "quan-oc-ngon": {
+    "lat": 21.278342,
+    "lng": 105.729745,
+    "roadName": "Phố Lê Xoay",
+    "osmId": "way/176265713",
+    "source": "nominatim_geocoded"
+  },
+  "bun-anh-toan": {
+    "lat": 21.278214,
+    "lng": 105.722768,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "banh-mi-bo-u": {
+    "lat": 21.297283,
+    "lng": 105.713127,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "tho-coii": {
+    "lat": 21.298837,
+    "lng": 105.712454,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "thuy-beo": {
+    "lat": 21.292442,
+    "lng": 105.715473,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "ruby-quan": {
+    "lat": 21.295312,
+    "lng": 105.713968,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "my-cay-seoul": {
+    "lat": 21.283342,
+    "lng": 105.720335,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "soh-tea": {
+    "lat": 21.297343,
+    "lng": 105.713265,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "xoi-com-185": {
+    "lat": 21.280899,
+    "lng": 105.725714,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "pho-bo-xuan-hoa": {
+    "lat": 21.260295,
+    "lng": 105.718376,
+    "roadName": "Đường Trần Phú",
+    "osmId": "way/502809311",
+    "source": "nominatim_geocoded"
+  },
+  "gamitra-xuan-hoa": {
+    "lat": 21.296782,
+    "lng": 105.713507,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "quan-chim-lan-anh": {
+    "lat": 21.278183,
+    "lng": 105.722614,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "banh-cuon-ngoc-anh": {
+    "lat": 21.279978,
+    "lng": 105.733333,
+    "roadName": "Đường Trường Chinh",
+    "osmId": "way/155797851",
+    "source": "nominatim_geocoded"
+  },
+  "xoai-corner": {
+    "lat": 21.280269,
+    "lng": 105.726415,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "tiem-nha-me-beo": {
+    "lat": 21.28414,
+    "lng": 105.719367,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "tiem-tra-thanh-thanh": {
+    "lat": 21.279835,
+    "lng": 105.724627,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "beef88-xuan-hoa": {
+    "lat": 21.280789,
+    "lng": 105.720545,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  },
+  "tao-pho-chi-beo": {
+    "lat": 21.282053,
+    "lng": 105.724911,
+    "roadName": "Phố Võ Thị Sáu",
+    "osmId": "way/176265733",
+    "source": "nominatim_geocoded"
+  },
+  "bep-thanh": {
+    "lat": 21.277145,
+    "lng": 105.727375,
+    "roadName": "Phố Đồng Tâm",
+    "osmId": "way/176265731",
+    "source": "nominatim_geocoded"
+  },
+  "mr-tea-xuan-hoa": {
+    "lat": 21.281683,
+    "lng": 105.724869,
+    "roadName": "Phố Võ Thị Sáu",
+    "osmId": "way/176265733",
+    "source": "nominatim_geocoded"
+  },
+  "tiem-lan-phuong": {
+    "lat": 21.27453,
+    "lng": 105.727,
+    "roadName": "Đường Trường Chinh",
+    "osmId": "way/155797851",
+    "source": "nominatim_geocoded"
+  },
+  "goky-xuan-hoa": {
+    "lat": 21.293077,
+    "lng": 105.715022,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "dau-oi-xuan-hoa": {
+    "lat": 21.279723,
+    "lng": 105.724336,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "zun-food-tea": {
+    "lat": 21.280275,
+    "lng": 105.720968,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  },
+  "my-ga-tan-linh-duong": {
+    "lat": 21.273393,
+    "lng": 105.724486,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  },
+  "bep-nha-bong": {
+    "lat": 21.281659,
+    "lng": 105.729889,
+    "roadName": "Phố Kim Đồng",
+    "osmId": "way/176265148",
+    "source": "nominatim_geocoded"
+  },
+  "cocokana-tra-trai-cay": {
+    "lat": 21.273724,
+    "lng": 105.724153,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  },
+  "quan-co-loan": {
+    "lat": 21.295853,
+    "lng": 105.713907,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "banh-trang-nha-boom": {
+    "lat": 21.298296,
+    "lng": 105.712508,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "bep-nha-cun": {
+    "lat": 21.295795,
+    "lng": 105.713769,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "nem-nuong-88": {
+    "lat": 21.29836,
+    "lng": 105.712644,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "an-vat-nha-phuong": {
+    "lat": 21.29875,
+    "lng": 105.712577,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "zino-cafe": {
+    "lat": 21.281467,
+    "lng": 105.725013,
+    "roadName": "Đường Nguyễn Văn Linh",
+    "osmId": "way/157991278",
+    "source": "nominatim_geocoded"
+  },
+  "umee-tea-food": {
+    "lat": 21.281835,
+    "lng": 105.749719,
+    "roadName": "Đường Lập Trí",
+    "osmId": "way/385221577",
+    "source": "nominatim_geocoded"
+  },
+  "chao-long-chi-hong": {
+    "lat": 21.280656,
+    "lng": 105.726001,
+    "roadName": "Phố Kim Ngọc",
+    "osmId": "way/892145352",
+    "source": "nominatim_geocoded"
+  },
+  "quan-bap-1991": {
+    "lat": 21.283336,
+    "lng": 105.71978,
+    "roadName": "Đường Lê Quang Đạo",
+    "osmId": "way/157991262",
+    "source": "nominatim_geocoded"
+  }
+}

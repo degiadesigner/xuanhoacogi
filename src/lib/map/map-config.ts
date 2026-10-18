@@ -12,20 +12,20 @@ export const XUHO_PASTEL_THEME = {
   deepPurple: '#403064',
   deepPurpleSoft: '#5A4687',
   parkGreen: '#E5F0DF',
-  campusCream: '#F3EFE2',
+  campusCream: '#EAF4E2',
   resortMint: '#DDF2E8',
-  waterPastel: '#BCE3F2',
-  waterStroke: '#8EC5DC',
-  roadMajorFill: '#FFF5D6',
-  roadMajorCasing: '#E2C992',
-  roadSecondaryFill: '#FFFDF7',
-  roadSecondaryCasing: '#DED6C6',
+  waterPastel: '#AEE0F4',
+  waterStroke: '#7AB8D4',
+  roadMajorFill: '#FFE89E',
+  roadMajorCasing: '#D9B45B',
+  roadSecondaryFill: '#FFF4C8',
+  roadSecondaryCasing: '#D8C58E',
   roadMinorFill: '#FFFFFF',
-  roadMinorCasing: '#E6E0D3',
+  roadMinorCasing: '#D5CEC0',
   roadAlleyFill: '#FAF7F0',
-  buildingFill: '#EAE3D5',
-  buildingShadow: '#D8CFC0',
-  buildingStroke: '#CFC5B3',
+  buildingFill: '#E2DDD2',
+  buildingShadow: '#C9C1B2',
+  buildingStroke: '#BFB6A4',
   boundaryStroke: '#39B980',
   boundaryGlow: '#403064',
   textPrimary: '#2D2246',
@@ -38,7 +38,7 @@ export const XUHO_PASTEL_THEME = {
 export const XUANHOA_DEFAULT_CENTER = {
   lat: 21.2818,
   lng: 105.7262,
-  zoom: 15.2,
+  zoom: 15.3,
 } as const;
 
 /**
@@ -63,7 +63,7 @@ export const DEFAULT_LAYER_VISIBILITY: MapLayerVisibility = {
   buildings: true,
   waterAndParks: true,
   realPois: true,
-  gameAssets: false, // Tắt mặc định trong MVP hoặc bật theo công tắc rõ ràng (Phần 9)
+  gameAssets: false,
   userLocation: true,
   wardBoundary: true,
 };
@@ -86,7 +86,7 @@ export const MAP_AREA_PRESETS: MapAreaPreset[] = [
     sublabel: 'CĐ Cơ Điện, CĐ Việt-Xô & Phố Hòa Bình',
     lat: 21.2875,
     lng: 105.7192,
-    zoom: 15.5,
+    zoom: 15.6,
   },
   {
     id: 'dong-xuan',
@@ -94,7 +94,7 @@ export const MAP_AREA_PRESETS: MapAreaPreset[] = [
     sublabel: 'Cầu Xuân Hòa, Lê Xoay & Trường Chinh',
     lat: 21.2788,
     lng: 105.7295,
-    zoom: 15.5,
+    zoom: 15.6,
   },
   {
     id: 'dai-lai',
@@ -122,9 +122,6 @@ export const MAP_AREA_PRESETS: MapAreaPreset[] = [
   },
 ];
 
-/**
- * Cấu hình nguồn dữ liệu bản đồ và điều khoản sử dụng (Phần 3.1 & Phần 8)
- */
 export const MAP_DATA_SOURCE_CONFIG = {
   primaryGeoJsonBasePath: `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/geo`,
   optionalVectorTileJsonUrl:
@@ -143,382 +140,20 @@ export const MAP_DATA_SOURCE_CONFIG = {
 };
 
 /**
- * Xây dựng MapLibre GL Style chuẩn Premium Cute Pastel từ nguồn dữ liệu địa lý thật
+ * Xây dựng MapLibre GL Style sử dụng URL tuyệt đối (tránh lỗi Blob Web Worker không resolve được relative path)
  */
-export function buildXuhoPastelMapStyle(basePath = ''): StyleSpecification {
-  const cleanBase = basePath.replace(/\/$/, '');
-  const geoPath = `${cleanBase}/geo`;
-
+export function buildXuhoPastelMapStyle(_basePath = ''): StyleSpecification {
   return {
     version: 8,
     name: 'XUHO CITY — Premium Cute Pastel',
-    glyphs: MAP_DATA_SOURCE_CONFIG.glyphsUrl,
-    sources: {
-      'openfreemap-planet': {
-        type: 'vector',
-        url: MAP_DATA_SOURCE_CONFIG.optionalVectorTileJsonUrl,
-      },
-      'xuanhoa-boundary': {
-        type: 'geojson',
-        data: `${geoPath}/xuanhoa-boundary.geojson`,
-      },
-      'xuanhoa-landuse': {
-        type: 'geojson',
-        data: `${geoPath}/xuanhoa-landuse.geojson`,
-      },
-      'xuanhoa-water': {
-        type: 'geojson',
-        data: `${geoPath}/xuanhoa-water.geojson`,
-      },
-      'xuanhoa-waterways': {
-        type: 'geojson',
-        data: `${geoPath}/xuanhoa-waterways.geojson`,
-      },
-      'xuanhoa-buildings': {
-        type: 'geojson',
-        data: `${geoPath}/xuanhoa-buildings.geojson`,
-      },
-      'xuanhoa-roads': {
-        type: 'geojson',
-        data: `${geoPath}/xuanhoa-roads.geojson`,
-      },
-      'xuanhoa-places-labels': {
-        type: 'geojson',
-        data: `${geoPath}/xuanhoa-places-labels.geojson`,
-      },
-    },
+    sources: {},
     layers: [
-      // 1. Nền bản đồ kem ấm (#F8F5EE)
       {
         id: 'xuho-bg',
         type: 'background',
         paint: {
           'background-color': XUHO_PASTEL_THEME.uiBg,
-        },
-      },
-
-      // 2. Lớp nền Vector Tile (OpenFreeMap) cho vùng lân cận ngoài ranh giới
-      {
-        id: 'ofm-landcover-grass',
-        type: 'fill',
-        source: 'openfreemap-planet',
-        'source-layer': 'landcover',
-        paint: {
-          'fill-color': XUHO_PASTEL_THEME.parkGreen,
-          'fill-opacity': 0.55,
-        },
-      },
-      {
-        id: 'ofm-water',
-        type: 'fill',
-        source: 'openfreemap-planet',
-        'source-layer': 'water',
-        paint: {
-          'fill-color': XUHO_PASTEL_THEME.waterPastel,
-          'fill-opacity': 0.85,
-        },
-      },
-      {
-        id: 'ofm-roads-context',
-        type: 'line',
-        source: 'openfreemap-planet',
-        'source-layer': 'transportation',
-        paint: {
-          'line-color': '#EAE4D8',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.8, 15, 2.5, 18, 6],
-        },
-      },
-
-      // 3. Lớp Công viên, Khuôn viên Trường học & Sinh thái (OSM Verified GeoJSON)
-      {
-        id: 'xuho-landuse-fill',
-        type: 'fill',
-        source: 'xuanhoa-landuse',
-        paint: {
-          'fill-color': [
-            'match',
-            ['get', 'kind'],
-            'green',
-            XUHO_PASTEL_THEME.parkGreen,
-            'campus',
-            XUHO_PASTEL_THEME.campusCream,
-            'resort',
-            XUHO_PASTEL_THEME.resortMint,
-            '#F2EEE4',
-          ],
-          'fill-opacity': 0.85,
-        },
-      },
-      {
-        id: 'xuho-landuse-outline',
-        type: 'line',
-        source: 'xuanhoa-landuse',
-        paint: {
-          'line-color': [
-            'match',
-            ['get', 'kind'],
-            'campus',
-            '#D8CEB8',
-            'green',
-            '#C8DEC0',
-            '#E2DDD0',
-          ],
-          'line-width': 1,
-        },
-      },
-
-      // 4. Lớp Sông suối & Mặt hồ thực tế (Hồ Đại Lải, Sông Cà Lồ, Hồ Lập Đinh...)
-      {
-        id: 'xuho-waterways-line',
-        type: 'line',
-        source: 'xuanhoa-waterways',
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.waterPastel,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.5, 15, 4, 18, 8],
-        },
-      },
-      {
-        id: 'xuho-water-fill',
-        type: 'fill',
-        source: 'xuanhoa-water',
-        paint: {
-          'fill-color': XUHO_PASTEL_THEME.waterPastel,
-          'fill-opacity': 0.95,
-        },
-      },
-      {
-        id: 'xuho-water-outline',
-        type: 'line',
-        source: 'xuanhoa-water',
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.waterStroke,
-          'line-width': 1.4,
-        },
-      },
-
-      // 5. Lớp Đường ngõ, Đường nhánh & Đường chính (Casing trước, Fill sau để khớp nối liền mạch)
-      {
-        id: 'xuho-roads-alley-casing',
-        type: 'line',
-        source: 'xuanhoa-roads',
-        filter: ['==', ['get', 'tier'], 'alley'],
-        minzoom: 13.5,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.roadMinorCasing,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 13.5, 1.8, 16, 4.5, 18.5, 9],
-        },
-      },
-      {
-        id: 'xuho-roads-minor-casing',
-        type: 'line',
-        source: 'xuanhoa-roads',
-        filter: ['==', ['get', 'tier'], 'minor'],
-        minzoom: 12,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.roadMinorCasing,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.8, 15, 5.5, 18, 14],
-        },
-      },
-      {
-        id: 'xuho-roads-secondary-casing',
-        type: 'line',
-        source: 'xuanhoa-roads',
-        filter: ['==', ['get', 'tier'], 'secondary'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.roadMajorCasing,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 15, 8.5, 18, 20],
-        },
-      },
-      {
-        id: 'xuho-roads-major-casing',
-        type: 'line',
-        source: 'xuanhoa-roads',
-        filter: ['==', ['get', 'tier'], 'major'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.roadMajorCasing,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3.2, 15, 10.5, 18, 24],
-        },
-      },
-
-      // Road Fills
-      {
-        id: 'xuho-roads-alley-fill',
-        type: 'line',
-        source: 'xuanhoa-roads',
-        filter: ['==', ['get', 'tier'], 'alley'],
-        minzoom: 13.5,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.roadAlleyFill,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 13.5, 1.0, 16, 2.8, 18.5, 6.5],
-        },
-      },
-      {
-        id: 'xuho-roads-minor-fill',
-        type: 'line',
-        source: 'xuanhoa-roads',
-        filter: ['==', ['get', 'tier'], 'minor'],
-        minzoom: 12,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.roadMinorFill,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.0, 15, 3.8, 18, 11],
-        },
-      },
-      {
-        id: 'xuho-roads-secondary-fill',
-        type: 'line',
-        source: 'xuanhoa-roads',
-        filter: ['==', ['get', 'tier'], 'secondary'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.roadMajorFill,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.6, 15, 6.2, 18, 16],
-        },
-      },
-      {
-        id: 'xuho-roads-major-fill',
-        type: 'line',
-        source: 'xuanhoa-roads',
-        filter: ['==', ['get', 'tier'], 'major'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.roadMajorFill,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.0, 15, 8.0, 18, 19],
-        },
-      },
-      {
-        id: 'xuho-roads-centerline',
-        type: 'line',
-        source: 'xuanhoa-roads',
-        filter: ['in', ['get', 'tier'], ['literal', ['major', 'secondary']]],
-        minzoom: 14.2,
-        paint: {
-          'line-color': '#E5B968',
-          'line-width': 1.2,
-          'line-dasharray': [3, 3],
-          'line-opacity': 0.75,
-        },
-      },
-
-      // 6. Lớp Công trình & Khối nhà thực tế từ OpenStreetMap (5.083 tòa nhà)
-      {
-        id: 'xuho-buildings-shadow',
-        type: 'fill',
-        source: 'xuanhoa-buildings',
-        minzoom: 13.5,
-        paint: {
-          'fill-color': XUHO_PASTEL_THEME.buildingShadow,
-          'fill-translate': [2.5, 2.5],
-          'fill-opacity': 0.55,
-        },
-      },
-      {
-        id: 'xuho-buildings-fill',
-        type: 'fill',
-        source: 'xuanhoa-buildings',
-        minzoom: 13,
-        paint: {
-          'fill-color': XUHO_PASTEL_THEME.buildingFill,
-          'fill-opacity': 0.92,
-        },
-      },
-      {
-        id: 'xuho-buildings-outline',
-        type: 'line',
-        source: 'xuanhoa-buildings',
-        minzoom: 14,
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.buildingStroke,
-          'line-width': 0.9,
-        },
-      },
-
-      // 7. Đường ranh giới hành chính Phường Xuân Hòa mới (Relation 19542980)
-      {
-        id: 'xuho-boundary-glow',
-        type: 'line',
-        source: 'xuanhoa-boundary',
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.mint,
-          'line-width': 6,
-          'line-opacity': 0.22,
-        },
-      },
-      {
-        id: 'xuho-boundary-line',
-        type: 'line',
-        source: 'xuanhoa-boundary',
-        paint: {
-          'line-color': XUHO_PASTEL_THEME.deepPurple,
-          'line-width': 2.2,
-          'line-dasharray': [4, 2],
-          'line-opacity': 0.75,
-        },
-      },
-
-      // 8. Nhãn tên đường (Tự động xoay dọc theo đường, tương phản cao)
-      {
-        id: 'xuho-road-labels',
-        type: 'symbol',
-        source: 'xuanhoa-roads',
-        filter: ['!=', ['get', 'name'], ''],
-        minzoom: 13.2,
-        layout: {
-          'symbol-placement': 'line',
-          'text-field': ['get', 'name'],
-          'text-font': ['Noto Sans Bold', 'Noto Sans Regular'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 13.2, 10.5, 16, 12.5, 18, 14],
-          'text-max-angle': 30,
-          'symbol-spacing': 260,
-        },
-        paint: {
-          'text-color': XUHO_PASTEL_THEME.deepPurple,
-          'text-halo-color': '#FFFDF9',
-          'text-halo-width': 2.2,
-        },
-      },
-
-      // 9. Nhãn mặt hồ & khuôn viên
-      {
-        id: 'xuho-water-labels',
-        type: 'symbol',
-        source: 'xuanhoa-water',
-        filter: ['!=', ['get', 'name'], ''],
-        minzoom: 12,
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-font': ['Noto Sans Bold', 'Noto Sans Regular'],
-          'text-size': 12,
-        },
-        paint: {
-          'text-color': '#2B6CB0',
-          'text-halo-color': '#FFFFFF',
-          'text-halo-width': 2,
-        },
-      },
-      {
-        id: 'xuho-place-labels',
-        type: 'symbol',
-        source: 'xuanhoa-places-labels',
-        minzoom: 11.5,
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-font': ['Noto Sans Bold', 'Noto Sans Regular'],
-          'text-size': 13,
-        },
-        paint: {
-          'text-color': XUHO_PASTEL_THEME.deepPurple,
-          'text-halo-color': '#FFFDF9',
-          'text-halo-width': 2.4,
+          'background-opacity': 0,
         },
       },
     ],

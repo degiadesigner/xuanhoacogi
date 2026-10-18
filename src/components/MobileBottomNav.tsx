@@ -104,22 +104,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="mobile-dock-label">{t.dock_places}</span>
         </button>
 
-        {/* 4. Nút Bản Đồ Số (XUHO CITY) */}
-        <button
-          type="button"
-          className={`mobile-dock-tab ${currentView === 'map' ? 'active' : ''}`}
-          onClick={() => {
-            triggerHaptic();
-            onNavigate('map');
-          }}
-          aria-label={lang === 'en' ? 'Digital Map' : 'Bản Đồ'}
-        >
-          <div className="mobile-dock-icon-wrap">
-            <Map size={20} className={currentView === 'map' ? 'text-emerald-400' : 'text-slate-400'} />
-          </div>
-          <span className="mobile-dock-label">{lang === 'en' ? 'Map' : 'Bản Đồ'}</span>
-        </button>
-
         {/* 4. Nút Đăng Nhập / Tài Khoản (Thay thế vào vị trí bảng điểm) */}
         {!isLoggedIn ? (
           <button

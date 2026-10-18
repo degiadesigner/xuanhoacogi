@@ -201,8 +201,8 @@ export const translations = {
     keo_group: 'Nhóm bạn & Gia đình',
     keo_ship: 'Gọi ship tận nơi',
 
-    map_coming_soon: 'Bản Đồ Số (Đang phát triển)',
-    toast_map_title: 'Bản đồ Số : Sắp ra mắt',
+    map_coming_soon: 'Bản đồ số đang triển khai',
+    toast_map_title: 'Bản đồ số đang triển khai',
     close: 'Đóng',
     back: 'Quay lại',
 

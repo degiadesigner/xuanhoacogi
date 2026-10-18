@@ -93,13 +93,10 @@ function parseHashToView(): AppView {
   ) {
     return 'admin';
   }
-  if (
-    hash.includes('ban-do') ||
-    hash.includes('bando') ||
-    hash.includes('xuho-city') ||
-    hash.includes('xuhocity') ||
-    hash === '#/map'
-  ) {
+  const isLocalHost =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1';
+  if (isLocalHost && hash.includes('demo-ban-do')) {
     return 'map';
   }
   if (hash.includes('coming-soon') || hash.includes('sap-ra-mat') || hash.includes('teaser')) {
@@ -202,7 +199,7 @@ export default function Home() {
       spin: '#/',
       dishes: '#/kham-pha-mon',
       places: '#/quan-an',
-      map: '#/ban-do',
+      map: '#/demo-ban-do',
       guide: '#/cach-su-dung',
       about: '#/gioi-thieu',
       'coming-soon': '#/sap-ra-mat',
@@ -264,7 +261,10 @@ export default function Home() {
   const [mapToast, setMapToast] = useState(false);
 
   const handleOpenMap = useCallback(() => {
-    navigateTo('map');
+    setMapToast(true);
+    setTimeout(() => {
+      setMapToast(false);
+    }, 2800);
   }, []);
 
   const toggleSound = useCallback(() => {
@@ -1130,7 +1130,14 @@ export default function Home() {
       </header>
 
       {/* Main Container */}
-      <main className="main-wrapper">
+      <main
+        className="main-wrapper"
+        style={
+          currentView === 'map'
+            ? { maxWidth: '100%', width: '100%', padding: 0, margin: 0 }
+            : undefined
+        }
+      >
         {currentView === 'spin' && (
           <>
             {/* ========================================================
@@ -2366,7 +2373,6 @@ export default function Home() {
       <nav className="header-btn-desktop-only" aria-label="Liên kết cuối trang">
         <button className={`footer-link-btn ${currentView === 'dishes' ? 'active' : ''}`} onClick={() => navigateTo('dishes')}>{t('footer_dishes')}</button>
         <button className={`footer-link-btn ${currentView === 'places' ? 'active' : ''}`} onClick={() => navigateTo('places')}>{t('footer_places')}</button>
-        <button className={`footer-link-btn ${currentView === 'map' ? 'active' : ''}`} onClick={() => navigateTo('map')}>Bản đồ XUHO CITY</button>
       </nav>
       <div className="site-footer-contact">
         <span>Crafted &amp; Curated by MinhTT © 2026</span>

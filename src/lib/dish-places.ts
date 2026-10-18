@@ -3006,23 +3006,49 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
     return [xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.nem_nuong_88, xuanHoaSpots.nhat_ha];
   }
 
-  if (name.includes('ngan cháy tỏi') || name.includes('ngan chay toi') || name.includes('bún mì thái') || name.includes('bún miến ngan')) {
-    return [xuanHoaSpots.lau_thai_ha_tinh, xuanHoaSpots.pv_lau_nuong];
+  if (
+    customId.includes('ltht') ||
+    sub.includes('hà tĩnh') ||
+    name.includes('ngan cháy tỏi') ||
+    name.includes('ngan chay toi') ||
+    name.includes('bún mì thái') ||
+    name.includes('bún miến ngan')
+  ) {
+    return [xuanHoaSpots.lau_thai_ha_tinh, xuanHoaSpots.lau_nuong_phong_viet];
   }
 
-  if (name.includes('lẩu cô đơn') || (name.includes('mỳ cay') && (customId.includes('hitea') || sub.includes('hi tea')))) {
+  if (
+    customId.includes('hitea') ||
+    sub.includes('hi tea') ||
+    name.includes('lẩu cô đơn')
+  ) {
     return [xuanHoaSpots.hi_tea, xuanHoaSpots.co_loan, xuanHoaSpots.nhungs_corner];
   }
 
-  if (name.includes('kem hành') || name.includes('khoai tím') || (name.includes('gà viên') && (customId.includes('np') || sub.includes('nhà phương')))) {
+  if (
+    customId.includes('dish_np_') ||
+    sub.includes('nhà phương') ||
+    name.includes('kem hành') ||
+    name.includes('khoai tím')
+  ) {
     return [xuanHoaSpots.an_vat_nha_phuong, xuanHoaSpots.mr_tea, xuanHoaSpots.co_loan];
   }
 
-  if (name.includes('mãng cầu dâu tằm') || name.includes('shan tuyết') || ((name.includes('cà phê muối') || name.includes('matcha kem muối')) && (customId.includes('zino') || sub.includes('zino')))) {
-    return [xuanHoaSpots.zino_cafe, xuanHoaSpots.le_la, xuanHoaSpots.soh_tea];
+  if (
+    customId.includes('zino') ||
+    sub.includes('zino') ||
+    name.includes('mãng cầu dâu tằm') ||
+    name.includes('shan tuyết')
+  ) {
+    return [xuanHoaSpots.zino_cafe, xuanHoaSpots.le_la_cafe, xuanHoaSpots.soh_tea];
   }
 
-  if (name.includes('ốc xào măng') || name.includes('cút lộn xào me') || (name.includes('phong lan') && sub.includes('umee'))) {
+  if (
+    customId.includes('umee') ||
+    sub.includes('umee') ||
+    name.includes('ốc xào măng') ||
+    name.includes('cút lộn xào me')
+  ) {
     return [xuanHoaSpots.umee_tea_food, xuanHoaSpots.quan_oc_ngon, xuanHoaSpots.oc_2000];
   }
 
@@ -3046,15 +3072,15 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
     return [xuanHoaSpots.nem_nuong_nha_mo_chou_chou, xuanHoaSpots.co_hien, xuanHoaSpots.cuon_moc, xuanHoaSpots.tho_coii];
   }
 
-    if (name.includes('bún đậu') || name.includes('bun dau')) {
+  if (name.includes('bún đậu') || name.includes('bun dau')) {
     if (customId.includes('dau_oi') || sub.includes('đậu ơi') || sub.includes('47 kim ngọc')) return [xuanHoaSpots.dau_oi, xuanHoaSpots.tho_coii];
     if (customId.includes('tho_coii') || sub.includes('thơ còii')) return [xuanHoaSpots.tho_coii, xuanHoaSpots.dau_oi];
     return [xuanHoaSpots.dau_oi, xuanHoaSpots.tho_coii];
   }
 
   if (name.includes('cơm trộn') || name.includes('com tron')) {
-    if (customId.includes('dau_oi') || sub.includes('đậu ơi') || sub.includes('47 kim ngọc')) return [xuanHoaSpots.dau_oi, xuanHoaSpots.seoul_food];
-    return [xuanHoaSpots.dau_oi, xuanHoaSpots.seoul_food];
+    if (customId.includes('dau_oi') || sub.includes('đậu ơi') || sub.includes('47 kim ngọc')) return [xuanHoaSpots.dau_oi, xuanHoaSpots.my_cay_seoul];
+    return [xuanHoaSpots.dau_oi, xuanHoaSpots.my_cay_seoul];
   }
 
     // Món đồ uống chung có mặt tại cả Lê La Cafee & Trạm Dủ Dẻ Chạm (Trùng tên)

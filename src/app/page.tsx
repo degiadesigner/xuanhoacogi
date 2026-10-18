@@ -1788,12 +1788,6 @@ export default function Home() {
                       }}
                       onClick={() => {
                         if (!spinning) {
-                          if (!authUser || !authUser.isLoggedIn) {
-                            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết món ăn này! Khách vãng lai chỉ có thể quay thưởng.');
-                            setAuthModalStep(1);
-                            setIsAuthModalOpen(true);
-                            return;
-                          }
                           setWinnerFood(food);
                           setDialogOpen(true);
                         }
@@ -1830,12 +1824,6 @@ export default function Home() {
                       isReel={true}
                       onClick={() => {
                         if (!placeSpinning) {
-                          if (!authUser || !authUser.isLoggedIn) {
-                            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết quán ăn này! Khách vãng lai chỉ có thể quay thưởng.');
-                            setAuthModalStep(1);
-                            setIsAuthModalOpen(true);
-                            return;
-                          }
                           setWinnerPlace(place);
                           setPlaceModalOpen(true);
                         }
@@ -1973,12 +1961,6 @@ export default function Home() {
                           ['--rarity-color' as any]: rarityColor
                         }}
                         onClick={() => {
-                          if (!authUser || !authUser.isLoggedIn) {
-                            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết món ăn này! Khách vãng lai chỉ có thể quay thưởng.');
-                            setAuthModalStep(1);
-                            setIsAuthModalOpen(true);
-                            return;
-                          }
                           setWinnerFood(food);
                           setDialogOpen(true);
                         }}
@@ -2089,12 +2071,6 @@ export default function Home() {
                   key={place.id}
                   place={place}
                   onClick={() => {
-                    if (!authUser || !authUser.isLoggedIn) {
-                      setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết quán ăn này! Khách vãng lai chỉ có thể quay thưởng.');
-                      setAuthModalStep(1);
-                      setIsAuthModalOpen(true);
-                      return;
-                    }
                     setWinnerPlace(place);
                     setPlaceModalOpen(true);
                   }}
@@ -2170,12 +2146,6 @@ export default function Home() {
       <DishesCatalogView
         initialCategory={activeCategory}
         onSelectDish={(dish) => {
-          if (!authUser || !authUser.isLoggedIn) {
-            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết món ăn này! Khách vãng lai chỉ có thể quay thưởng.');
-            setAuthModalStep(1);
-            setIsAuthModalOpen(true);
-            return;
-          }
           setWinnerFood(dish);
           setDialogOpen(true);
         }}
@@ -2192,12 +2162,6 @@ export default function Home() {
     {currentView === 'places' && (
       <PlacesCatalogView
         onSelectPlace={(place) => {
-          if (!authUser || !authUser.isLoggedIn) {
-            setAuthNotice('Bạn hãy đăng nhập để xem thông tin chi tiết quán ăn này! Khách vãng lai chỉ có thể quay thưởng.');
-            setAuthModalStep(1);
-            setIsAuthModalOpen(true);
-            return;
-          }
           setWinnerPlace(place);
           setPlaceModalOpen(true);
         }}

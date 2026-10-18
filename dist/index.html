@@ -26,11 +26,22 @@
           if (h.indexOf('access_token=') !== -1 || h.indexOf('id_token=') !== -1) {
             window.__XUANHOA_OAUTH_HASH__ = h;
             try { sessionStorage.setItem('xuanhoa_oauth_hash', h); } catch (e) {}
+            try { localStorage.setItem('xuanhoa_oauth_popup_hash', h); } catch (e) {}
+            if (window.opener && window.opener !== window) {
+              try {
+                window.opener.postMessage({ type: 'XUANHOA_OAUTH_CALLBACK', hash: h }, window.location.origin);
+                window.close();
+                return;
+              } catch (e) {}
+            }
             window.history.replaceState(null, document.title, '/');
           } else if (window.location.pathname.indexOf('/__/auth/handler') === 0) {
             if (s) {
               window.__XUANHOA_OAUTH_SEARCH__ = s;
               try { sessionStorage.setItem('xuanhoa_oauth_search', s); } catch (e) {}
+            }
+            if (window.opener && window.opener !== window) {
+              try { window.close(); return; } catch (e) {}
             }
             window.history.replaceState(null, document.title, '/');
           } else if (p === '/quanly' || p === '/quanly/' || p === '/admin' || p === '/admin/' || p === '/quan-tri') {
@@ -40,7 +51,7 @@
       })();
     </script>
     <title>Xuân Hòa Có Gì - Ăn Gì, Nhậu Gì, Uống Gì Hôm Nay?</title>
-    <script type="module" crossorigin src="/assets/index-BpwqxzFo.js"></script>
+    <script type="module" crossorigin src="/assets/index-nW1dNK4x.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-DAh2v9Te.css">
   </head>
   <body>

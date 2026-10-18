@@ -1284,7 +1284,7 @@ export const rubyDrinkItems: Food[] = [
 // ============================================================================
 export const seoulAnGiItems: Food[] = [
   {
-    name: 'Mỳ kim chi thập cẩm Seoul',
+    name: 'Mỳ kim chi thập cẩm',
     sub: 'Mỳ cay Hàn Quốc 7 cấp độ • Seoul HH 48B Nguyễn Văn Linh',
     price: 55,
     image: -88,
@@ -2121,7 +2121,7 @@ export const meBeoSpecialItems: Food[] = [
 // ============================================================================
 export const thanhThanhDrinkItems: Food[] = [
   {
-    name: 'Trà đào cam sả Thanh Thanh',
+    name: 'Trà đào cam sả',
     sub: 'Đào giòn, cam mọng, sả thơm • Tiệm Trà Thanh Thanh',
     price: 20,
     image: -85,
@@ -2141,7 +2141,7 @@ export const thanhThanhDrinkItems: Food[] = [
     quip: 'Cốc trà 1 lít khổng lồ uống thỏa thích cả ngày, giải nhiệt sảng khoái giá cực kỳ hạt dẻ.',
   },
   {
-    name: 'Trà xoài chanh leo Thanh Thanh',
+    name: 'Trà xoài chanh leo',
     sub: 'Xoài ngọt thơm, chanh leo chua mát • Tiệm Trà Thanh Thanh',
     price: 20,
     image: 514,
@@ -2296,7 +2296,7 @@ export const bunChaXuanHoaItems: Food[] = [
     quip: 'Tô nước chấm ấm nóng ngập chả nướng thơm lừng, thịt ba chỉ nướng xém giòn bì béo ngọt.',
   },
   {
-    name: 'Nem cua bể giòn rụm phố Xuân Hòa',
+    name: 'Nem cua bể giòn rụm',
     sub: 'Vỏ giòn rụm đẫm thịt cua nấm • Lê Quang Đạo',
     price: 35,
     image: -204,
@@ -2338,7 +2338,7 @@ export const bunRieuBaMaiItems: Food[] = [
 // ============================================================================
 export const phoBoXuanHoaItems: Food[] = [
   {
-    name: 'Phở bò tái nạm gia truyền Xuân Hòa',
+    name: 'Phở bò tái nạm',
     sub: 'Nước dùng ninh xương 12h thanh ngọt • Phở Bò Xuân Hòa',
     price: 35,
     image: -207,
@@ -2348,7 +2348,7 @@ export const phoBoXuanHoaItems: Food[] = [
     quip: 'Nước dùng trong veo ngọt thanh từ xương ống bò, bánh phở mềm mướt và thịt bò mềm ngọt chuẩn vị gia truyền.',
   },
   {
-    name: 'Phở bò tái lăn gầu giòn Xuân Hòa',
+    name: 'Phở bò tái lăn gầu giòn',
     sub: 'Bò xào lăn tỏi ta, gầu giòn sần sật • Phở Bò Xuân Hòa',
     price: 40,
     image: -208,
@@ -2364,7 +2364,7 @@ export const phoBoXuanHoaItems: Food[] = [
 // ============================================================================
 export const comTam82Items: Food[] = [
   {
-    name: 'Cơm tấm sườn bì chả nướng 82',
+    name: 'Cơm tấm sườn bì chả nướng',
     sub: 'Sườn nướng than mật ong, chả trứng hấp • Cơm Tấm 82',
     price: 40,
     image: -209,
@@ -2374,7 +2374,7 @@ export const comTam82Items: Food[] = [
     quip: 'Miếng sườn cốt lết dày dặn nướng than hoa vàng óng thơm mật ong, bì thái sợi dai giòn và chả trứng béo ngậy.',
   },
   {
-    name: 'Cơm sườn nướng trứng ốp la 82',
+    name: 'Cơm sườn nướng trứng ốp la',
     sub: 'Sườn nướng mềm ngọt, trứng lòng đào • Cơm Tấm 82',
     price: 45,
     image: -210,
@@ -2390,7 +2390,7 @@ export const comTam82Items: Food[] = [
 // ============================================================================
 export const comRang68Items: Food[] = [
   {
-    name: 'Cơm rang dưa bò giòn hạt 68',
+    name: 'Cơm rang dưa bò giòn hạt',
     sub: 'Cơm đảo săn vàng, thịt bò xào dưa chua • Cơm 68 Nguyễn Văn Linh',
     price: 35,
     image: -211,
@@ -2400,7 +2400,7 @@ export const comRang68Items: Food[] = [
     quip: 'Hạt cơm rang săn vàng giòn rụm kết hợp thịt bò mềm ngọt xào dưa cải muối chua dịu giòn sần sật.',
   },
   {
-    name: 'Cơm sườn sốt chua ngọt 68',
+    name: 'Cơm sườn sốt chua ngọt',
     sub: 'Sườn mềm ngập sốt cà chua dứa • Cơm 68 Nguyễn Văn Linh',
     price: 35,
     image: -212,
@@ -2468,7 +2468,7 @@ export const thoCoiiSpecialItems: Food[] = [
 // ============================================================================
 export const thuyBeoSpecialItems: Food[] = [
   {
-    name: 'Bánh mì Sài Gòn pate chả trứng Thúy Béo',
+    name: 'Bánh mì Sài Gòn pate chả trứng',
     sub: 'Vỏ giòn rụm, pate béo ngậy sốt đậm đà • 122 Nguyễn Văn Linh',
     price: 25,
     image: -217,
@@ -3077,7 +3077,7 @@ export const tramDuDeItems: Food[] = [
     quip: 'Nước ép cóc bao tử chua thanh đậm đà cùng xí muội mặn ngọt giải khát cực đỉnh.',
   },
   {
-    name: 'Trà Ổi Ruby',
+    name: 'Trà ổi hồng',
     sub: 'Trạm Dủ Dẻ Chạm • Ban Quản Lý KĐT Xuân Hòa',
     price: 45,
     image: 524,
@@ -3164,7 +3164,7 @@ export const tramDuDeItems: Food[] = [
 // ============================================================================
 export const leLaDrinkItems: Food[] = [
   {
-    name: 'Cà phê muối béo ngậy Lê La',
+    name: 'Cà phê muối béo ngậy',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 35,
     image: -340,
@@ -3174,7 +3174,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Lớp foam kem muối biển béo ngậy mằn mặn hòa quyện cà phê phin đậm đà thơm lừng thức tỉnh ngày mới.',
   },
   {
-    name: 'Phin Kem Trứng Vụn Dừa Nướng Lê La',
+    name: 'Phin Kem Trứng Vụn Dừa Nướng',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 38,
     image: -341,
@@ -3184,7 +3184,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Cà phê phin truyền thống thơm đượm phủ lớp kem trứng vàng ươm béo ngậy sánh đặc và rắc vụn dừa nướng giòn rụm.',
   },
   {
-    name: 'Matcha Kem Cheese Lê La',
+    name: 'Matcha Kem Cheese',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 40,
     image: -342,
@@ -3194,7 +3194,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Matcha thanh khiết thơm đậm phân tầng kết hợp kem phô mai cheese mằn mặn béo ngậy sánh đặc chuẩn gu giới trẻ.',
   },
   {
-    name: 'Trà sữa kem trứng dừa nướng Lê La',
+    name: 'Trà sữa kem trứng dừa nướng',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 35,
     image: -343,
@@ -3204,7 +3204,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Trà sữa đậm vị phủ lớp kem trứng béo ngậy và vụn dừa nướng giòn rụm thơm nức mũi (M 35k / L 40k).',
   },
   {
-    name: 'Shan Mật Trà Sữa Đậm Vị Lê La',
+    name: 'Shan Mật Trà Sữa Đậm Vị',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 30,
     image: 518,
@@ -3214,7 +3214,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Trà Shan tuyết cổ thụ ngát hương mật ong rừng tự nhiên ngọt ngào sâu lắng hòa cùng vị sữa thơm dịu (M 30k / L 35k).',
   },
   {
-    name: 'Olong Gạo Rang Trà Sữa Lê La',
+    name: 'Olong Gạo Rang Trà Sữa',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 30,
     image: 511,
@@ -3224,7 +3224,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Trà ô long kết hợp gạo lứt rang thơm nồng ngậy bùi dễ chịu khó cưỡng (M 30k / L 35k).',
   },
   {
-    name: 'Gạo Rang Kem Dẻo Lê La',
+    name: 'Gạo Rang Kem Dẻo',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 35,
     image: -346,
@@ -3234,7 +3234,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Trà gạo rang thanh tao kết hợp lớp kem dẻo mềm mịn béo ngọt như nhung (M 35k / L 40k).',
   },
   {
-    name: 'Trà Quýt Hoa Nhài Lê La',
+    name: 'Trà Quýt Hoa Nhài',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 37,
     image: 521,
@@ -3244,7 +3244,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Tép quýt mọng nước chua ngọt thanh mát hòa quyện hương trà hoa nhài thơm ngát tao nhã.',
   },
   {
-    name: 'Trà Vải Hoa Hồng Lê La',
+    name: 'Trà Vải Hoa Hồng',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 37,
     image: 523,
@@ -3254,7 +3254,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Trái vải ngọt lịm mọng nước ướp hương hoa hồng ngát thơm quyến rũ lãng mạn.',
   },
   {
-    name: 'Trà Lựu Ngọc Trai Lê La',
+    name: 'Trà Lựu Ngọc Trai',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 37,
     image: 522,
@@ -3264,7 +3264,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Trà lựu đỏ ruby chua ngọt dịu mát kèm topping trân châu ngọc trai giòn dai lấp lánh.',
   },
   {
-    name: 'Sen Vàng Nếp Thơm Lê La',
+    name: 'Sen Vàng Nếp Thơm',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 45,
     image: 519,
@@ -3274,7 +3274,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Hương sen vàng quý phái kết hợp hương lá nếp thơm nồng nàn thanh khiết dịu dàng.',
   },
   {
-    name: 'Trà Thạch Đào Lê La',
+    name: 'Trà Thạch Đào',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 40,
     image: 516,
@@ -3284,7 +3284,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Trà đào ủ lạnh thơm nồng quyện cùng thạch đào giòn dẻo mát rượi xua tan nắng hè oi ả.',
   },
   {
-    name: 'Cà Phê Sữa Máy Espresso Lê La',
+    name: 'Cà Phê Sữa Máy Espresso',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 35,
     image: 500,
@@ -3294,7 +3294,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Espresso máy thơm nồng nàn hương hoa quả cà phê hòa quyện sữa đặc béo ngậy chuẩn gu hiện đại.',
   },
   {
-    name: 'Matcha Sữa Hạt Dinh Dưỡng Lê La',
+    name: 'Matcha Sữa Hạt Dinh Dưỡng',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 35,
     image: 138,
@@ -3304,7 +3304,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Matcha Nhật Bản kết hợp cùng sữa hạt bùi béo thanh lành không ngấy tốt cho sức khỏe.',
   },
   {
-    name: 'Ép Cam Dứa Tươi Mát Lê La',
+    name: 'Ép Cam Dứa Tươi Mát',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 40,
     image: 154,
@@ -3314,7 +3314,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Sự kết hợp hoàn hảo giữa cam mọng nước và dứa ngọt thơm giàu vitamin C tươi sáng làn da.',
   },
   {
-    name: 'Milo kem trứng béo ngậy Lê La',
+    name: 'Milo kem trứng béo ngậy',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 30,
     image: 541,
@@ -3324,7 +3324,7 @@ export const leLaDrinkItems: Food[] = [
     quip: 'Milo đậm vị phủ ngập lớp kem trứng vàng ươm sánh mịn ngọt béo thơm lừng cực kỳ dính miệng.',
   },
   {
-    name: 'Olong sen vàng thanh mát Lê La',
+    name: 'Olong sen vàng thanh mát',
     sub: 'Lê La Cafee • KĐT Mới Xuân Hòa (Cạnh TT Diamond)',
     price: 45,
     image: -371,
@@ -3558,7 +3558,7 @@ export const baoChauItems: Food[] = [
 // ============================================================================
 export const tocoTocoDrinkItems: Food[] = [
   {
-    name: 'Trà sữa ba anh em TocoToco',
+    name: 'Trà sữa ba anh em',
     sub: 'Full trân châu sợi, thạch sương sáo, pudding • 206 Nguyễn Văn Linh',
     price: 35,
     image: -219,
@@ -3568,7 +3568,7 @@ export const tocoTocoDrinkItems: Food[] = [
     quip: 'Trà sữa đậm đà kết hợp bộ ba topping quen thuộc: trân châu sợi dai ngon, thạch sương sáo mát lạnh và pudding béo ngậy.',
   },
   {
-    name: 'Trà sữa trân châu hoàng gia TocoToco',
+    name: 'Trà sữa trân châu hoàng gia',
     sub: 'Trân châu dẻo mềm chuẩn vị Đài Loan • 206 Nguyễn Văn Linh',
     price: 32,
     image: -136,
@@ -3584,7 +3584,7 @@ export const tocoTocoDrinkItems: Food[] = [
 // ============================================================================
 export const cafe1975DrinkItems: Food[] = [
   {
-    name: 'Cà phê muối béo ngậy 1975',
+    name: 'Cà phê muối béo ngậy',
     sub: 'Kem muối sánh mịn hòa quyện cà phê phin • Cafe 1975 Trần Phú',
     price: 25,
     image: -221,
@@ -3594,7 +3594,7 @@ export const cafe1975DrinkItems: Food[] = [
     quip: 'Lớp foam kem muối biển mằn mặn béo ngậy phủ trên nền cà phê phin đậm đặc thơm lừng hương hoa khói.',
   },
   {
-    name: 'Cà phê cốt dừa 1975 đá tuyết',
+    name: 'Cà phê cốt dừa đá tuyết',
     sub: 'Cốt dừa đá tuyết béo ngậy sánh mịn • 1975 Cà Phê 75 Nguyễn Văn Linh',
     price: 32,
     image: 506,
@@ -3611,7 +3611,7 @@ export const cafe1975DrinkItems: Food[] = [
 // ============================================================================
 export const matchaHouseDrinkItems: Food[] = [
   {
-    name: 'Matcha OREO Phô Mai Tan Chảy Matcha House',
+    name: 'Matcha OREO Phô Mai Tan Chảy',
     sub: 'Matcha House • Freeship từ 1 cốc tới 2h sáng',
     price: 38,
     image: -260,
@@ -3621,7 +3621,7 @@ export const matchaHouseDrinkItems: Food[] = [
     quip: 'Best Seller PEAK Matcha House: Vị matcha đậm đà béo ngậy sốt phô mai tan chảy quyện vụn Oreo giòn rụm.',
   },
   {
-    name: 'Matcha Latte nguyên chất Matcha House',
+    name: 'Matcha Latte nguyên chất',
     sub: 'Matcha House • Freeship từ 1 cốc tới 2h sáng',
     price: 25,
     image: -138,
@@ -3631,7 +3631,7 @@ export const matchaHouseDrinkItems: Food[] = [
     quip: 'Matcha cao cấp thơm nức quyện lớp sữa tươi thanh béo dịu nhẹ, freeship xuyên đêm tới 2h sáng.',
   },
   {
-    name: 'Matcha Kem Dừa béo ngậy Matcha House',
+    name: 'Matcha Kem Dừa béo ngậy',
     sub: 'Matcha House • Freeship từ 1 cốc tới 2h sáng',
     price: 30,
     image: -543,
@@ -3641,7 +3641,7 @@ export const matchaHouseDrinkItems: Food[] = [
     quip: 'Lớp kem dừa béo bùi thơm ngậy hòa quyện cùng trà matcha đậm vị mát lạnh giải tỏa cơn thèm ngọt đêm khuya.',
   },
   {
-    name: 'Trà Sữa Kem Trứng Dừa Nướng Matcha House',
+    name: 'Trà Sữa Kem Trứng Dừa Nướng',
     sub: 'Matcha House • Freeship từ 1 cốc tới 2h sáng',
     price: 28,
     image: 504,
@@ -3651,7 +3651,7 @@ export const matchaHouseDrinkItems: Food[] = [
     quip: 'Trà sữa đậm vị phủ lớp kem trứng béo ngậy khò đường xém cạnh thơm nức cùng vụn dừa nướng giòn tan.',
   },
   {
-    name: 'Trà Tắc / Trà Chanh giải nhiệt Matcha House',
+    name: 'Trà Tắc / Trà Chanh giải nhiệt',
     sub: 'Matcha House • Freeship từ 1 cốc tới 2h sáng',
     price: 10,
     image: 143,
@@ -3667,7 +3667,7 @@ export const matchaHouseDrinkItems: Food[] = [
 // ============================================================================
 export const trangHaiSanItems: Food[] = [
   {
-    name: 'Lẩu hải sản tươi sống Trang Hải Sản',
+    name: 'Lẩu hải sản tươi sống',
     sub: 'Tôm sú, mực tươi, ngao biển chua cay • Trang Hải Sản Lê Quang Đạo',
     price: 380,
     image: -223,
@@ -3725,7 +3725,7 @@ export const khanhHuongItems: Food[] = [
 // ============================================================================
 export const binhNamItems: Food[] = [
   {
-    name: 'Lươn đồng om chuối đậu Bình Năm',
+    name: 'Lươn đồng om chuối đậu',
     sub: 'Lươn đồng béo vàng ngậy thơm tía tô • Bình Năm Xuân Hòa',
     price: 130,
     image: -227,
@@ -3735,7 +3735,7 @@ export const binhNamItems: Food[] = [
     quip: 'Lươn đồng xào săn om cùng chuối xanh dẻo bùi, đậu phụ rán phồng và lá tía tô thơm nồng nàn sánh sệt.',
   },
   {
-    name: 'Lẩu cá tầm Sapa tươi sống Bình Năm',
+    name: 'Lẩu cá tầm Sapa tươi sống',
     sub: 'Cá tầm giòn sụn nước dùng chua thanh măng cay • Bình Năm Xuân Hòa',
     price: 350,
     image: 616,
@@ -7344,7 +7344,7 @@ export const bepNhaCunFoodDishes: Food[] = [
 
 export const bepNhaCunDrinkDishes: Food[] = [
   {
-    name: 'Trà chanh Bếp Nhà Cún',
+    name: 'Trà chanh',
     sub: 'Trà chanh tươi mát lạnh chua thanh ngọt dịu • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
     price: 12,
     image: -3313,
@@ -7354,7 +7354,7 @@ export const bepNhaCunDrinkDishes: Food[] = [
     quip: 'Cốc trà chanh tươi mát lạnh chua thanh sảng khoái, giải ngấy tức thì khi ăn cùng mì trộn và viên chiên.',
   },
   {
-    name: 'Trà tắc Bếp Nhà Cún',
+    name: 'Trà tắc',
     sub: 'Trà tắc thơm phức thanh mát ngọt lành • Bếp Nhà Cún Số 12 ngõ 4 Nguyễn Văn Linh',
     price: 12,
     image: -3314,
@@ -7765,7 +7765,7 @@ export const hiTeaDishes: Food[] = [
     quip: 'Nồi lẩu cô đơn mini 69k đầy đặn tôm, ba chỉ bò Mỹ, cá viên xúc xích nấm kim châm nước tomyum ấm nóng.',
   },
   {
-    name: 'Mỳ cay bò 7 cấp độ Hi Tea',
+    name: 'Mỳ cay bò 7 cấp độ',
     sub: 'Thố mỳ cay sợi Hàn Quốc bò tươi kim chi nấm kim châm 45k • Hi Tea ĐHSP2 Xuân Hòa',
     price: 45,
     image: -3612,
@@ -7775,7 +7775,7 @@ export const hiTeaDishes: Food[] = [
     quip: 'Thố mỳ cay bò 7 cấp độ nghi ngút khói ngập thịt bò tươi, kim chi chua cay ấm bụng.',
   },
   {
-    name: 'Mỳ cay thập cẩm Hi Tea',
+    name: 'Mỳ cay thập cẩm',
     sub: 'Full topping tôm, mực, bò, xúc xích, cá viên thả lẩu 55k • Hi Tea ĐHSP2 Xuân Hòa',
     price: 55,
     image: -3613,
@@ -7785,7 +7785,7 @@ export const hiTeaDishes: Food[] = [
     quip: 'Thố mỳ cay đặc biệt đầy ắp tôm mực bò xúc xích viên chiên ngập tràn gia vị đậm đà.',
   },
   {
-    name: 'Hồng trà kem cheese Hi Tea',
+    name: 'Hồng trà kem cheese',
     sub: 'Hồng trà đậm vị phủ lớp kem cheese mặn béo sánh ngậy 35k • Hi Tea ĐHSP2 Xuân Hòa',
     price: 35,
     image: -3614,
@@ -7795,7 +7795,7 @@ export const hiTeaDishes: Food[] = [
     quip: 'Hồng trà thơm nồng lớp kem cheese mặn béo ngậy dày mịn sánh thơm.',
   },
   {
-    name: 'Tokbokki Hi Tea',
+    name: 'Tokbokki',
     sub: 'Bánh gạo mềm dẻo sốt tương ớt Hàn Quốc cay ngọt rắc mè 40k • Hi Tea ĐHSP2 Xuân Hòa',
     price: 40,
     image: -3615,
@@ -7805,7 +7805,7 @@ export const hiTeaDishes: Food[] = [
     quip: 'Bánh gạo tokbokki dai mềm đẫm sốt tương ớt Hàn Quốc cay ngọt bùi béo.',
   },
   {
-    name: 'Khoai tây chiên phô mai Hi Tea',
+    name: 'Khoai tây chiên phô mai',
     sub: 'Khoai tây giòn tan lắc đẫm bột phô mai béo ngậy ngọt bùi 30k • Hi Tea ĐHSP2 Xuân Hòa',
     price: 30,
     image: -3616,
@@ -7822,7 +7822,7 @@ export const hiTeaDishes: Food[] = [
 // ============================================================================
 export const anVatNhaPhuongDishes: Food[] = [
   {
-    name: 'Gà viên sốt kem hành Nhà Phương',
+    name: 'Gà viên sốt kem hành',
     sub: 'Gà viên chiên giòn rụm ngập sốt kem béo ngậy ngọt dịu rắc hành hoa tươi 60k • Ăn Vặt Nhà Phương ĐHSP2',
     price: 60,
     image: -3621,
@@ -7832,7 +7832,7 @@ export const anVatNhaPhuongDishes: Food[] = [
     quip: 'Gà viên chiên vàng giòn rụm đẫm sốt kem hành béo ngọt ngậy phủ hành lá thơm nức mũi.',
   },
   {
-    name: 'Gà viên sốt mắm tỏi Nhà Phương',
+    name: 'Gà viên sốt mắm tỏi',
     sub: 'Gà viên giòn rụm quyện sốt mắm tỏi ớt cay cay mặn ngọt đậm đà 55k • Ăn Vặt Nhà Phương ĐHSP2',
     price: 55,
     image: -3622,
@@ -7842,7 +7842,7 @@ export const anVatNhaPhuongDishes: Food[] = [
     quip: 'Gà viên sốt mắm tỏi thơm lừng đậm đà mặn ngọt bắt miệng ăn hoài không ngán.',
   },
   {
-    name: 'Cơm gà Nhà Phương',
+    name: 'Cơm gà',
     sub: 'Cơm gà vàng ươm đùi gà chiên mắm đậm đà trứng ốp dưa góp 45k • Ăn Vặt Nhà Phương ĐHSP2',
     price: 45,
     image: -3623,
@@ -7852,7 +7852,7 @@ export const anVatNhaPhuongDishes: Food[] = [
     quip: 'Suất cơm gà hạt tơi vàng ươm kèm đùi gà chiên sốt đậm đà, trứng ốp la béo ngậy no căng.',
   },
   {
-    name: 'Khoai tím phô mai Nhà Phương',
+    name: 'Khoai tím phô mai',
     sub: 'Khoai môn tím chiên phồng bọc phô mai mozzarella kéo sợi béo ngậy 60k/12v • Ăn Vặt Nhà Phương ĐHSP2',
     price: 60,
     image: -3624,
@@ -7862,7 +7862,7 @@ export const anVatNhaPhuongDishes: Food[] = [
     quip: 'Bánh khoai tím phô mai chiên xù vàng vỏ trong dẻo béo kéo sợi thơm phức.',
   },
   {
-    name: 'Nem chua rán Nhà Phương',
+    name: 'Nem chua rán',
     sub: 'Mẹt 10 nem chua rán bột xù giòn tan chấm tương ớt cay nồng 80k • Ăn Vặt Nhà Phương ĐHSP2',
     price: 80,
     image: -3625,
@@ -7872,7 +7872,7 @@ export const anVatNhaPhuongDishes: Food[] = [
     quip: 'Nem chua rán tẩm bột chiên xù nóng hổi giòn rụm 10 chiếc chấm tương ớt cay cay.',
   },
   {
-    name: 'Bánh bột lọc Nhà Phương',
+    name: 'Bánh bột lọc',
     sub: 'Đĩa 20 chiếc bánh bột lọc trong veo nhân tôm thịt đậm đà chấm mắm 90k • Ăn Vặt Nhà Phương ĐHSP2',
     price: 90,
     image: -3626,
@@ -7889,7 +7889,7 @@ export const anVatNhaPhuongDishes: Food[] = [
 // ============================================================================
 export const zinoCafeDishes: Food[] = [
   {
-    name: 'Trà mãng cầu dâu tằm Zino',
+    name: 'Trà mãng cầu dâu tằm',
     sub: 'Trà trái cây dâu tằm đỏ tím ruby thịt mãng cầu xiêm tươi giòn ngọt 30k • Zino 266 Nguyễn Văn Linh',
     price: 30,
     image: -3631,
@@ -7899,7 +7899,7 @@ export const zinoCafeDishes: Food[] = [
     quip: 'Ly trà dâu tằm mãng cầu sắc tím ruby phân tầng tuyệt đẹp, chua ngọt thanh mát giải nhiệt đỉnh cao.',
   },
   {
-    name: 'Cà phê muối đậm vị Zino',
+    name: 'Cà phê muối đậm vị',
     sub: 'Cà phê phin truyền thống đậm đà lớp kem muối béo ngậy mặn ngọt sánh mịn 25k • Zino 266 Nguyễn Văn Linh',
     price: 25,
     image: -3632,
@@ -7909,7 +7909,7 @@ export const zinoCafeDishes: Food[] = [
     quip: 'Cà phê muối đậm đà tinh túy hạt cafe rang mộc phủ kem muối béo mặn sánh mịn đặc sản Zino.',
   },
   {
-    name: 'Hồng trà Shan Tuyết Zino',
+    name: 'Hồng trà Shan Tuyết',
     sub: 'Trà cổ thụ Shan Tuyết hương hoa thanh tao ngọt sâu hậu vị 35k • Zino 266 Nguyễn Văn Linh',
     price: 35,
     image: -3633,
@@ -7919,7 +7919,7 @@ export const zinoCafeDishes: Food[] = [
     quip: 'Trà Shan Tuyết cổ thụ hương vị thanh khiết tự nhiên, hậu vị ngọt sâu lưu luyến.',
   },
   {
-    name: 'Matcha kem muối Zino',
+    name: 'Matcha kem muối',
     sub: 'Matcha thơm nồng lớp kem béo mặn sánh mịn hấp dẫn 30k • Zino 266 Nguyễn Văn Linh',
     price: 30,
     image: -3634,
@@ -7929,7 +7929,7 @@ export const zinoCafeDishes: Food[] = [
     quip: 'Matcha đậm đà thơm béo kết hợp lớp kem mặn sánh mịn bồng bềnh.',
   },
   {
-    name: 'Hồng trà pudding đậu đỏ Zino',
+    name: 'Hồng trà pudding đậu đỏ',
     sub: 'Hồng trà đậm vị kèm pudding trứng mềm mướt đậu đỏ bùi ngọt 40k • Zino 266 Nguyễn Văn Linh',
     price: 40,
     image: -3635,
@@ -7946,7 +7946,7 @@ export const zinoCafeDishes: Food[] = [
 // ============================================================================
 export const umeeTeaFoodDishes: Food[] = [
   {
-    name: 'Ốc xào măng đậu Umee',
+    name: 'Ốc xào măng đậu',
     sub: 'Đĩa ốc xào măng chua giòn cay nồng lá lốt tía tô đậu rán vàng 35k • Umee Tea & Food Lập Trí Kim Anh',
     price: 35,
     image: -3641,
@@ -7956,7 +7956,7 @@ export const umeeTeaFoodDishes: Food[] = [
     quip: 'Đĩa ốc xào măng chua cay nồng đậm đà giòn sần sật quyện đậu rán thơm nức mũi lá lốt tía tô.',
   },
   {
-    name: 'Cút lộn xào me măng đậu Umee',
+    name: 'Cút lộn xào me măng đậu',
     sub: 'Cút lộn sốt me chua ngọt đậm đà măng giòn đậu rán béo ngậy 40k • Umee Tea & Food Lập Trí Kim Anh',
     price: 40,
     image: -3642,
@@ -7966,7 +7966,7 @@ export const umeeTeaFoodDishes: Food[] = [
     quip: 'Trứng cút lộn xào sốt me chua cay ngọt bùi ngấm đẫm măng củ và đậu rán béo ngậy.',
   },
   {
-    name: 'Mì cay bò Umee',
+    name: 'Mì cay bò',
     sub: 'Thố mì cay sợi Hàn Quốc thịt bò tươi nấm kim châm cay nồng 40k • Umee Tea & Food Lập Trí Kim Anh',
     price: 40,
     image: -3643,
@@ -7976,7 +7976,7 @@ export const umeeTeaFoodDishes: Food[] = [
     quip: 'Thố mì cay bò niêu đất nóng hổi sôi sùng sục cứu đói đêm muộn cực đã.',
   },
   {
-    name: 'Oolong Phong Lan Umee',
+    name: 'Oolong Phong Lan',
     sub: 'Trà Oolong ướp hương hoa phong lan thanh tao ngọt hậu mát lành 30k • Umee Tea & Food Lập Trí Kim Anh',
     price: 30,
     image: -3644,
@@ -7986,7 +7986,7 @@ export const umeeTeaFoodDishes: Food[] = [
     quip: 'Trà Oolong thơm dịu hương hoa phong lan quý phái, vị trà ngọt thanh dễ chịu.',
   },
   {
-    name: 'Trà sữa gạo rang Umee',
+    name: 'Trà sữa gạo rang',
     sub: 'Trà sữa hương gạo rang Genmaicha Nhật Bản béo bùi độc đáo 30k • Umee Tea & Food Lập Trí Kim Anh',
     price: 30,
     image: -3645,
@@ -8003,7 +8003,7 @@ export const umeeTeaFoodDishes: Food[] = [
 // ============================================================================
 export const nhaMoChouChouFoodDishes: Food[] = [
   {
-    name: 'Nem nướng Nhà Mơ (Suất 30k)',
+    name: 'Nem nướng Nha Trang (Suất 30k)',
     sub: 'Mẹt nem nướng than hoa thơm lừng, ram giòn, xoài dưa, bún tươi & sốt chấm đậm đà 30k • Nem Nướng Nhà Mơ Cổng ABC Xuân Hoà',
     price: 30,
     image: -3651,
@@ -8013,7 +8013,7 @@ export const nhaMoChouChouFoodDishes: Food[] = [
     quip: 'Mẹt nem nướng Nhà Mơ 30k chuẩn vị ngon tại Cổng ABC Xuân Hoà: Nem nướng vàng ươm thơm phức, ram giòn rụm, rau sống tươi sạch cuốn bánh tráng chấm sốt tương béo ngậy.',
   },
   {
-    name: 'Nem nướng Nhà Mơ đặc biệt (Suất 35k)',
+    name: 'Nem nướng đặc biệt (Suất 35k)',
     sub: 'Suất nem nướng đặc biệt nhiều nem & ram giòn ăn no căng bụng 35k • Nem Nướng Nhà Mơ Cổng ABC Xuân Hoà',
     price: 35,
     image: -3652,
@@ -8023,7 +8023,7 @@ export const nhaMoChouChouFoodDishes: Food[] = [
     quip: 'Suất nem nướng đặc biệt 35k đầy ắp nem nướng than hoa và ram chiên giòn tan, chấm đẫm bát nước sốt tương gia truyền ấm nóng.',
   },
   {
-    name: 'Nem lụi nướng Nhà Mơ (Suất 30k)',
+    name: 'Nem lụi nướng sả (Suất 30k)',
     sub: 'Suất nem lụi nướng sả vàng ươm cuốn bánh tráng rau sống sốt chấm 30k • Nem Nướng Nhà Mơ Cổng ABC Xuân Hoà',
     price: 30,
     image: -3653,
@@ -8036,7 +8036,7 @@ export const nhaMoChouChouFoodDishes: Food[] = [
 
 export const chouChouDrinkDishes: Food[] = [
   {
-    name: 'Kem trứng dừa nướng Chou Chou (700ml)',
+    name: 'Kem trứng dừa nướng (700ml)',
     sub: 'Best Seller size 700ml đã gồm 1 loại topping, kem trứng sánh mịn phủ dừa nướng giòn 25k • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
     price: 25,
     image: -3654,
@@ -8046,7 +8046,7 @@ export const chouChouDrinkDishes: Food[] = [
     quip: 'Cốc 700ml khổng lồ với lớp kem trứng nướng béo ngậy thơm lừng rắc dừa nướng giòn rụm chỉ 25k (đã bao gồm 1 loại topping).',
   },
   {
-    name: 'Trà sữa khoai môn tươi Chou Chou (700ml)',
+    name: 'Trà sữa khoai môn tươi (700ml)',
     sub: 'Best Seller khoai môn tươi nghiền bùi béo quyện trà sữa thơm ngậy 30k (700ml gồm 1 topping) • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
     price: 30,
     image: -3655,
@@ -8056,7 +8056,7 @@ export const chouChouDrinkDishes: Food[] = [
     quip: 'Vị khoai môn tươi bùi dẻo tự nhiên hòa quyện trà sữa đậm đà trong cốc 700ml siêu to đã kèm sẵn topping.',
   },
   {
-    name: 'Trà sữa kem cốm tươi Chou Chou (700ml)',
+    name: 'Trà sữa kem cốm tươi (700ml)',
     sub: 'Best Seller hương cốm non thơm ngát phủ kem béo sánh mịn 30k (700ml gồm 1 topping) • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
     price: 30,
     image: -3656,
@@ -8066,7 +8066,7 @@ export const chouChouDrinkDishes: Food[] = [
     quip: 'Thức uống gây thương nhớ với hương cốm tươi thanh tao quyện lớp kem béo ngậy mượt mà size 700ml.',
   },
   {
-    name: 'Ô long sen vàng Chou Chou (700ml)',
+    name: 'Ô long sen vàng (700ml)',
     sub: 'Best Seller trà Ô long đậm vị hạt sen vàng bùi ngọt kem béo 30k (700ml gồm 1 topping) • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
     price: 30,
     image: -3657,
@@ -8076,7 +8076,7 @@ export const chouChouDrinkDishes: Food[] = [
     quip: 'Trà Ô long sen vàng thanh mát bùi ngọt, cốc lớn 700ml giải nhiệt sảng khoái tại Cổng ABC Xuân Hoà.',
   },
   {
-    name: 'Trà mãng cầu Chou Chou (700ml)',
+    name: 'Trà mãng cầu (700ml)',
     sub: 'Best Seller mãng cầu tươi dầm chua ngọt thanh mát 25k (Size 700ml) • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
     price: 25,
     image: -3658,
@@ -8086,7 +8086,7 @@ export const chouChouDrinkDishes: Food[] = [
     quip: 'Cốc trà mãng cầu 700ml đầy ắp thịt mãng cầu xiêm tươi chua ngọt giải khát cực đỉnh chỉ 25k.',
   },
   {
-    name: 'Trà nho đỏ Full Topping Chou Chou (700ml)',
+    name: 'Trà nho đỏ Full Topping (700ml)',
     sub: 'Trà nho đỏ 700ml chua ngọt thơm lừng ngập tràn thạch & trân châu Full Topping chỉ 15k • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
     price: 15,
     image: -3659,
@@ -8096,7 +8096,7 @@ export const chouChouDrinkDishes: Food[] = [
     quip: 'Siêu phẩm đồng giá 15k: Cốc 700ml trà nho đỏ thơm mát ngập ngụa full topping nhai mỏi miệng!',
   },
   {
-    name: 'Trà bí đao Full Topping Chou Chou (700ml)',
+    name: 'Trà bí đao Full Topping (700ml)',
     sub: 'Trà bí đao thanh nhiệt size 700ml đầy ắp thạch & trân châu Full Topping đồng giá 15k • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
     price: 15,
     image: -3660,
@@ -8106,7 +8106,7 @@ export const chouChouDrinkDishes: Food[] = [
     quip: 'Trà bí đao ngọt thanh mát lành cốc 700ml khổng lồ full topping chỉ 15k.',
   },
   {
-    name: 'Trà thạch đào Full Topping Chou Chou (700ml)',
+    name: 'Trà thạch đào Full Topping (700ml)',
     sub: 'Trà thạch đào thơm mát size 700ml kèm Full Topping đồng giá 15k • Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
     price: 15,
     image: -3661,
@@ -8116,7 +8116,7 @@ export const chouChouDrinkDishes: Food[] = [
     quip: 'Cốc 700ml trà thạch đào giòn mềm thơm ngát đầy ắp topping đồng giá 15k.',
   },
   {
-    name: 'Nước ép trái cây tươi Nhà Mơ - Chou Chou (M 15k / L 20k)',
+    name: 'Nước ép trái cây tươi (M 15k / L 20k)',
     sub: 'Nước ép hoa quả tươi nguyên chất đồng giá Size M 15k / Size L 20k • Nem Nướng Nhà Mơ & Tiệm Nhà Chou Chou Cổng ABC Xuân Hoà',
     price: 15,
     image: -3662,
@@ -8133,7 +8133,7 @@ export const chouChouDrinkDishes: Food[] = [
 // ============================================================================
 export const chaoLongChiHongDishes: Food[] = [
   {
-    name: 'Cháo lòng Chị Hồng',
+    name: 'Cháo lòng thập cẩm',
     sub: 'Món cháo thập cẩm nóng hổi sánh mịn, đầy đặn dồi tiết, lòng non, gan, dạ dày giòn thơm 30k • Cháo Lòng Chị Hồng Đầu Ngõ Kim Ngọc',
     price: 30,
     image: -3670,
@@ -8143,7 +8143,7 @@ export const chaoLongChiHongDishes: Food[] = [
     quip: 'Bát cháo lòng thập cẩm Chị Hồng 30k sánh mịn bốc khói nghi ngút, đầy đặn dồi tiết bùi béo, lòng non trắng giòn ăn kèm quẩy và rau húng quế tại Đầu Ngõ Kim Ngọc.',
   },
   {
-    name: 'Bún lòng Chị Hồng',
+    name: 'Bún lòng thập cẩm',
     sub: 'Bún lòng thập cẩm nóng hổi nước dùng ngọt thanh ngập tràn lòng dồi tươi ngon 30k • Cháo Lòng Chị Hồng Đầu Ngõ Kim Ngọc',
     price: 30,
     image: -3671,
@@ -8160,7 +8160,7 @@ export const chaoLongChiHongDishes: Food[] = [
 // ============================================================================
 export const bap1991FoodDishes: Food[] = [
   {
-    name: 'Mỳ cay thập cẩm Bắp 1991',
+    name: 'Mỳ cay thập cẩm',
     sub: 'Thố mỳ cay thập cẩm sôi sùng sục đầy đặn tôm, mực, bò, xúc xích, viên thả lẩu & nấm 55k • Quán Bắp 1991 Lê Quang Đạo',
     price: 55,
     image: -3672,
@@ -8170,7 +8170,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Thố mỳ cay thập cẩm 55k tại Quán Bắp 1991 Lê Quang Đạo sôi sùng sục cay nồng chuẩn vị, ngập tràn tôm sú, mực vòng, bò Mỹ và nấm kim châm.',
   },
   {
-    name: 'Mỳ cay bò kim chi Bắp 1991',
+    name: 'Mỳ cay bò kim chi',
     sub: 'Mỳ cay bò kim chi thịt bò mềm ngọt quyện nấm kim châm cay nồng 45k • Quán Bắp 1991 Lê Quang Đạo',
     price: 45,
     image: -3673,
@@ -8180,7 +8180,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Thố mỳ cay bò kim chi 45k nóng hổi thơm nức tại Quán Bắp 1991 (gần KĐT Điện Nước Xuân Hoà).',
   },
   {
-    name: 'Mỳ cay sườn sụn Bắp 1991',
+    name: 'Mỳ cay sườn sụn',
     sub: 'Mỳ cay sườn sụn non giòn sần sật nước dùng kim chi đậm đà 50k • Quán Bắp 1991 Lê Quang Đạo',
     price: 50,
     image: -3674,
@@ -8190,7 +8190,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Mỳ cay sườn sụn 50k giòn sần sật ăn cực cuốn tại Quán Bắp 1991 Lê Quang Đạo.',
   },
   {
-    name: 'Mỳ cay hải sản Bắp 1991',
+    name: 'Mỳ cay hải sản',
     sub: 'Mỳ cay hải sản tươi ngọt tôm mực chả cá Hàn Quốc 55k-65k • Quán Bắp 1991 Lê Quang Đạo',
     price: 55,
     image: -3675,
@@ -8200,7 +8200,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Thố mỳ cay hải sản 55k-65k đầy ắp tôm tươi, mực giòn tại Quán Bắp 1991.',
   },
   {
-    name: 'Mỳ cay đặc biệt Bắp 1991',
+    name: 'Mỳ cay đặc biệt',
     sub: 'Siêu phẩm mỳ cay đặc biệt full topping hải sản, bò, sườn sụn 65k-75k • Quán Bắp 1991 Lê Quang Đạo',
     price: 65,
     image: -3676,
@@ -8210,7 +8210,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Thố mỳ cay đặc biệt 65k-75k siêu to khổng lồ full topping tại Quán Bắp 1991 Lê Quang Đạo.',
   },
   {
-    name: 'Mỳ cay xúc xích Bắp 1991',
+    name: 'Mỳ cay xúc xích',
     sub: 'Mỳ cay xúc xích nóng hổi chuẩn gu sinh viên 40k • Quán Bắp 1991 Lê Quang Đạo',
     price: 40,
     image: -3677,
@@ -8220,7 +8220,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Mỳ cay xúc xích 40k nóng hổi đậm vị kim chi tại Quán Bắp 1991.',
   },
   {
-    name: 'Tokbokki Hàn Quốc Bắp 1991',
+    name: 'Tokbokki Hàn Quốc',
     sub: 'Bánh gạo Tokbokki dẻo dai sốt tương ớt Hàn Quốc cay ngọt đậm đà 50k • Quán Bắp 1991 Lê Quang Đạo',
     price: 50,
     image: -3678,
@@ -8230,7 +8230,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Đĩa bánh gạo Tokbokki 50k sốt cay ngọt sánh quyện nóng hổi tại Quán Bắp 1991.',
   },
   {
-    name: 'Kem dừa Mã Lai Bắp 1991',
+    name: 'Kem dừa Mã Lai',
     sub: 'Kem dừa Mã Lai béo ngậy trong gáo dừa tươi kèm xôi vò, dừa khô, bánh quế 35k • Quán Bắp 1991 Lê Quang Đạo',
     price: 35,
     image: -3679,
@@ -8240,7 +8240,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Kem dừa Mã Lai 35k mát lạnh béo ngậy đựng trong gáo dừa tươi kèm cùi dừa non, xôi vò, lạc rang và bánh quế giòn tan tại Quán Bắp 1991!',
   },
   {
-    name: 'Set kem dừa Mã Lai (2 - 4 người) Bắp 1991',
+    name: 'Set kem dừa Mã Lai (2 - 4 người)',
     sub: 'Mẹt Set kem dừa Mã Lai đầy ắp các khay topping (2 người 80k / 3 người 110k / 4 người 140k) • Quán Bắp 1991 Lê Quang Đạo',
     price: 80,
     image: -3680,
@@ -8250,7 +8250,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Mẹt Set kem dừa Mã Lai 80k - 140k kèm đủ các khay topping xôi vò, sơri, dừa khô, chuối sấy, trân châu cho hội bạn thân giải nhiệt cực đã!',
   },
   {
-    name: 'Kem bơ xôi / Kem sầu Bắp 1991',
+    name: 'Kem bơ xôi / Kem sầu',
     sub: 'Kem dừa kết hợp bơ sáp dẻo mịn xôi vò hoặc sầu riêng thơm béo 35k • Quán Bắp 1991 Lê Quang Đạo',
     price: 35,
     image: -3681,
@@ -8260,7 +8260,7 @@ export const bap1991FoodDishes: Food[] = [
     quip: 'Kem bơ xôi và Kem sầu 35k béo ngậy thơm lừng tại Quán Bắp 1991 Lê Quang Đạo.',
   },
   {
-    name: 'Khoai tây chiên lắc phô mai & Nem chua phô mai Bắp 1991',
+    name: 'Khoai tây chiên lắc phô mai & Nem chua phô mai',
     sub: 'Khoai tây lắc phô mai 40k, Nem chua phô mai 40k, Nem chua rán 30k, Lạp xưởng Hà Khẩu 15k • Quán Bắp 1991 Lê Quang Đạo',
     price: 40,
     image: -3682,
@@ -8273,7 +8273,7 @@ export const bap1991FoodDishes: Food[] = [
 
 export const bap1991DrinkDishes: Food[] = [
   {
-    name: 'Trà sữa kem trứng dừa nướng Bắp 1991',
+    name: 'Trà sữa kem trứng dừa nướng',
     sub: 'Trà sữa phủ kem trứng sánh mịn và dừa nướng giòn thơm (Size M 30k / Size L 35k) • Quán Bắp 1991 Lê Quang Đạo',
     price: 30,
     image: -3683,
@@ -8283,7 +8283,7 @@ export const bap1991DrinkDishes: Food[] = [
     quip: 'Ly Trà sữa kem trứng dừa nướng béo ngậy thơm lừng (M 30k / L 35k) tại Quán Bắp 1991 Lê Quang Đạo.',
   },
   {
-    name: 'Trà sữa trân châu đường đen / Matcha / Socola Bắp 1991',
+    name: 'Trà sữa trân châu đường đen / Matcha / Socola',
     sub: 'Trà sữa trân châu đường đen, Socola, Việt Quất, Bạc Hà, Matcha đồng giá M 25k / L 30k • Quán Bắp 1991 Lê Quang Đạo',
     price: 25,
     image: -3684,
@@ -8293,7 +8293,7 @@ export const bap1991DrinkDishes: Food[] = [
     quip: 'Đủ vị Trà sữa trân châu đường đen, Matcha, Socola, Việt Quất, Bạc Hà mát lạnh (M 25k / L 30k) tại Quán Bắp 1991.',
   },
   {
-    name: 'Trà quất lắc sữa & Hồng trà sữa Bắp 1991',
+    name: 'Trà quất lắc sữa & Hồng trà sữa',
     sub: 'Trà quất lắc sữa M 15k / L 20k, Hồng trà sữa M 20k / L 25k, Trà quất M 10k / L 15k • Quán Bắp 1991 Lê Quang Đạo',
     price: 15,
     image: -3685,

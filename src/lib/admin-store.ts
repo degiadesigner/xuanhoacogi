@@ -11,6 +11,7 @@ import { Food } from './foods';
 import { Place, xuanHoaPlaces, getPlaceStyleGroup } from './places-xuanhoa';
 import { MainCategoryKey, getCategoryItems } from './xuanhoa-catalog';
 import { UserAuthProfile } from './auth';
+import { cleanDishDisplayTitle } from './utils';
 
 export type AdminThemeMode = 'ivory-gold' | 'platinum-royal' | 'emerald- pearl';
 
@@ -738,10 +739,10 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
     const status: PlaceStatus = ov?.status || 'active';
 
     const fullMenu: CustomMenuEntry[] = ov?.customMenu
-      ? ov.customMenu
+      ? ov.customMenu.map(m => ({ ...m, name: cleanDishDisplayTitle(m.name) }))
       : (basePlace.menu || []).map(m => ({
           id: m.id,
-          name: m.name,
+          name: cleanDishDisplayTitle(m.name),
           price: m.price,
           category: m.tag,
           description: m.description,
@@ -775,14 +776,14 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
       signatureDish: {
         ...basePlace.signatureDish,
         id: basePlace.signatureDish.id || `${basePlace.id}_sig`,
-        name: ov?.signatureDishName !== undefined ? ov.signatureDishName : basePlace.signatureDish.name,
+        name: cleanDishDisplayTitle(ov?.signatureDishName !== undefined ? ov.signatureDishName : basePlace.signatureDish.name),
         price: ov?.signatureDishPrice !== undefined ? ov.signatureDishPrice : basePlace.signatureDish.price,
       },
       menu: fullMenu
         .filter(m => !m.isLocked)
         .map((m, idx) => ({
           id: m.id || `${basePlace.id}_m_${idx}`,
-          name: m.name,
+          name: cleanDishDisplayTitle(m.name),
           price: m.price,
           tag: m.category,
           description: m.description,
@@ -811,10 +812,10 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
   for (const [id, ov] of Object.entries(state.places)) {
     if (ov.isCustom && ov.customPlaceData && !xuanHoaPlaces.some(p => p.id === id)) {
       const fullMenu: CustomMenuEntry[] = ov.customMenu
-        ? ov.customMenu
+        ? ov.customMenu.map(m => ({ ...m, name: cleanDishDisplayTitle(m.name) }))
         : (ov.customPlaceData.menu || []).map(m => ({
             id: m.id,
-            name: m.name,
+            name: cleanDishDisplayTitle(m.name),
             price: m.price,
             category: m.tag,
             description: m.description,
@@ -845,11 +846,17 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
         quip: ov.quip ?? ov.customPlaceData.quip,
         tags: ov.tags ?? ov.customPlaceData.tags,
         imageUrl: ov.imageUrl || ov.customPlaceData.imageUrl,
+        signatureDish: ov.customPlaceData.signatureDish
+          ? {
+              ...ov.customPlaceData.signatureDish,
+              name: cleanDishDisplayTitle(ov.signatureDishName || ov.customPlaceData.signatureDish.name),
+            }
+          : { id: `${id}_sig`, name: 'Món ngon đặc trưng', price: minP },
         menu: fullMenu
           .filter(m => !m.isLocked)
           .map((m, idx) => ({
             id: m.id || `${id}_m_${idx}`,
-            name: m.name,
+            name: cleanDishDisplayTitle(m.name),
             price: m.price,
             tag: m.category,
             description: m.description,
@@ -994,7 +1001,7 @@ export function getAllManagedDishes(): AdminDishItem[] {
 
       const boost: 1 | 2 | 3 = (placeId && placeBoostMap.get(placeId)) || 1;
 
-      const finalName = ov?.name !== undefined ? ov.name : matchedMenuEntry?.name || baseFood.name;
+      const finalName = cleanDishDisplayTitle(ov?.name !== undefined ? ov.name : matchedMenuEntry?.name || baseFood.name);
       const finalPrice = ov?.price !== undefined ? ov.price : matchedMenuEntry?.price ?? baseFood.price;
 
       const mergedFood: Food = {
@@ -1008,8 +1015,14 @@ export function getAllManagedDishes(): AdminDishItem[] {
       };
 
       seenNormalizedNames.add(finalName.toLowerCase().trim());
-      if (baseFood.customId === 'dish_clch_chao_long') seenNormalizedNames.add('cháo lòng');
-      if (baseFood.customId === 'dish_clch_bun_long') seenNormalizedNames.add('bún lòng');
+      if (baseFood.customId === 'dish_clch_chao_long') {
+        seenNormalizedNames.add('cháo lòng');
+        seenNormalizedNames.add('cháo lòng thập cẩm');
+      }
+      if (baseFood.customId === 'dish_clch_bun_long') {
+        seenNormalizedNames.add('bún lòng');
+        seenNormalizedNames.add('bún lòng thập cẩm');
+      }
 
       result.push({
         food: mergedFood,
@@ -1036,7 +1049,7 @@ export function getAllManagedDishes(): AdminDishItem[] {
         status = 'locked';
       }
       const boost: 1 | 2 | 3 = (placeId && placeBoostMap.get(placeId)) || 1;
-      const fName = ov.name || ov.customFoodData.name;
+      const fName = cleanDishDisplayTitle(ov.name || ov.customFoodData.name);
       seenNormalizedNames.add(fName.toLowerCase().trim());
 
       result.push({
@@ -1094,7 +1107,8 @@ export function getAllManagedDishes(): AdminDishItem[] {
     };
 
     placeItem.fullMenu.forEach((m, idx) => {
-      const normName = (m.name || '').toLowerCase().trim();
+      const cleanedMenuName = cleanDishDisplayTitle(m.name || '');
+      const normName = cleanedMenuName.toLowerCase().trim();
       if (!normName || seenNormalizedNames.has(normName)) return;
       seenNormalizedNames.add(normName);
 
@@ -1116,7 +1130,7 @@ export function getAllManagedDishes(): AdminDishItem[] {
       }
 
       const generatedFood: Food = {
-        name: m.name,
+        name: cleanedMenuName,
         sub: `${m.category || 'Đặc sản'} • ${placeItem.place.name}`,
         price: m.price,
         image: -101,

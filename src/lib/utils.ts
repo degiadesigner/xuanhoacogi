@@ -136,18 +136,18 @@ const SHOP_NAMES_TO_STRIP = [
   'Canteen Kí Túc Xá Sư Phạm 2', 'Canteen Kí Túc Xá SP2', 'Canteen KTX Sư Phạm 2', 'Canteen KTX SP2',
   'Canteen Kí Túc Xá', 'Canteen KTX', 'Canteen SP2', 'Canteen ĐHSP2', 'Canteen',
   'Tiệm Cơm Nhà Lê Huyền', 'Tiệm Nhà Lê Huyền', 'Tiệm Lê Huyền', 'Lê Huyền',
-  'Xiên Nướng Trung Hoa Bá Thiện 2', 'Xiên Nướng Trung Hoa',
   'Bia Sài Gòn Tuấn Hiền', 'Bia Tuấn Hiền', 'Tuấn Hiền',
   'Nhà Hàng Sân Bia 247', 'Sân Bia 247',
   'Quán Cô Loan', 'Cô Loan',
-  'Bánh Tráng Nhà BOOM', 'Nhà BOOM',
+  'Nhà BOOM',
   'cocokana', 'Cocokana',
   'Bếp Nhà Bống', 'Nhà Bống',
+  'Bếp Nhà Cún', 'Nhà Cún',
   'Linh Dương',
   'Thanh Hằng Gateaux 16 Kim Ngọc', 'Thanh Hằng Gateaux', 'Thành Hằng', 'Thanh Hằng',
   'Tiệm Bánh A Salty Name', 'A Salty Name',
   'Tiệm Lan Phương', 'Lan Phương',
-  'Bánh Mì Ngọc Quý', 'Ngọc Quý',
+  'Ngọc Quý',
   'Vành Đai Quán', 'Vành Đai',
   'Quán Ốc 2000 Số 3 Kim Ngọc', 'Quán Ốc 2000', 'Quán Ốc Ngon Dốc Chợ', 'Ốc 2000',
   'Nhung\'s Corner', 'Nhung’s Corner', 'Nhung\'s',
@@ -159,8 +159,8 @@ const SHOP_NAMES_TO_STRIP = [
   'Tiệm Nhà Mẹ Béo', 'Chị Béo', 'Mẹ Béo',
   'Tiểu Lầu Quán', 'Tiểu Lầu',
   'Quán Nhật Hạ', 'Nhật Hạ',
-  'Chè Xuân Mai', 'Xuân Mai',
-  'Bún Anh Toàn', 'Anh Toàn',
+  'Xuân Mai',
+  'Anh Toàn',
   'Bếp Thanh',
   'Bảo Châu (122 Trường Chinh)', 'Bảo Châu',
   'Thọ Còi', 'Thơ Còii', 'Thơ Còi',
@@ -172,25 +172,42 @@ const SHOP_NAMES_TO_STRIP = [
   'Mr Tea Food & Drink', 'Mr Tea', 'Mr. Tea',
   'Đậu Ơi',
   'Vũ Quỳnh Chi',
-  'Thi Lan Tea',
+  'Thi Lan Tea', 'Thi Lan',
   'Hùng Thu',
   'Quán Win',
-  'Lẩu Nướng 1968', '1968',
-  'Quán Bánh Tráng 55 Nguyễn Văn Linh', 'Quán Bánh Tráng 55', 'Quán 55 Nguyễn Văn Linh', '55 Nguyễn Văn Linh', '55 NVL',
+  '1968',
+  'Quán Bánh Tráng 55 Nguyễn Văn Linh', 'Quán 55 Nguyễn Văn Linh', '55 Nguyễn Văn Linh', '55 NVL',
   'Trạm Dủ Dẻ Chạm', 'Trạm Dủ Dẻ', 'Dủ Dẻ Chạm', 'Dủ Dẻ',
   'Cuốn Mộc',
   'Xoài Corner',
   'Phi Xuyên', 'Gió Đồng',
   'S.OH Tea', 'S.OH',
-  'Seoul HH',
+  'Seoul HH', 'Mỳ Cay Seoul', 'Seoul',
   'Khanh Hương',
-  'Lẩu Cường Dương', 'Cường Dương',
+  'Cường Dương',
   'Cô Hiền',
   'Quán Dừa Khả Do', 'Dừa Khả Do',
-  'Bún Bò Huế 102 Nguyễn Văn Linh', '102 Nguyễn Văn Linh', '102 NVL',
-  'Cơm 68',
-  'Cơm Tấm 82',
-  '1975 Cà Phê', 'Cafe 1975'
+  '102 Nguyễn Văn Linh', '102 NVL',
+  '1975 Cà Phê', 'Cafe 1975',
+  'Quán Bắp 1991', 'Bắp 1991',
+  'Chị Hồng',
+  'Nhà Mơ - Chou Chou', 'Nhà Mơ',
+  'Tiệm Nhà Chou Chou', 'Chou Chou',
+  'Ăn Vặt Nhà Phương', 'Nhà Phương',
+  'Hi Tea',
+  'Zino Cafe', 'Zino',
+  'Umee Tea & Food', 'Umee',
+  'Phong Việt',
+  'Lê La Cafee', 'Lê La',
+  'Matcha House',
+  'TocoToco',
+  'Tiệm Trà Thanh Thanh', 'Thanh Thanh',
+  'Quán Thúy Béo', 'Thúy Béo',
+  'Trang Hải Sản',
+  'Nhà Hàng Bình Năm', 'Bình Năm',
+  'Ruby Quán', 'RUBY', 'Ruby',
+  'ZUN Food & Tea', 'ZUN', 'Zun',
+  'phố Xuân Hòa', 'gia truyền Xuân Hòa', 'Xuân Hòa'
 ].sort((a, b) => b.length - a.length);
 
 /**
@@ -200,17 +217,26 @@ export function cleanDishDisplayTitle(name: string): string {
   if (!name) return '';
   let res = name;
 
-  // Xử lý tiền tố đặc biệt
+  res = res.replace(/^Cháo lòng Chị Hồng$/i, 'Cháo lòng thập cẩm');
+  res = res.replace(/^Bún lòng Chị Hồng$/i, 'Bún lòng thập cẩm');
+  res = res.replace(/^Trà Ổi Ruby$/i, 'Trà ổi hồng');
+
+  // Xử lý tiền tố & cụm đặc biệt
   if (/^Bơ Ú\s+/i.test(res)) {
     res = res.replace(/^Bơ Ú\s+/i, 'Bánh mì ');
   }
+  res = res.replace(/Pate Bơ Ú/gi, 'Pate trứng bơ');
+  res = res.replace(/Nước sốt bơ Ú/gi, 'Nước sốt bơ trứng');
 
-  // Loại bỏ hậu tố thương hiệu ở cuối
+  // Loại bỏ hậu tố thương hiệu ở cuối hoặc giữa
   res = res.replace(/\s+RUBY\s*$/i, '');
   res = res.replace(/Lẩu xiên que KTX/gi, 'Lẩu xiên que');
   res = res.replace(/\s*\(122 Trường Chinh\)/gi, '');
   res = res.replace(/\s+16 Kim Ngọc/gi, '');
   res = res.replace(/Trà Dủ Dẻ đặc biệt/gi, 'Trà đặc biệt');
+  res = res.replace(/\s+82\s*$/g, '');
+  res = res.replace(/\s+68\s*$/g, '');
+  res = res.replace(/\s+1975(?=\s|$)/g, '');
 
   // Loại bỏ từng tên quán
   for (const shop of SHOP_NAMES_TO_STRIP) {

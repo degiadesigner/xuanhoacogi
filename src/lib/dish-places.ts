@@ -1861,11 +1861,82 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
       'Trà chanh / Trà quất uống kèm: 10.000đ/cốc',
       'Gọi thêm: Giòn thêm 5k | Nem thêm 5k | Nem lụi thêm 6k/que'
     ]
+  },
+
+  // 50. Cháo Lòng Chị Hồng (Đầu Ngõ Kim Ngọc - Xuân Hòa)
+  chao_long_chi_hong: {
+    name: 'Cháo Lòng Chị Hồng',
+    address: 'Đầu Ngõ Kim Ngọc - Xuân Hòa - Phú Thọ',
+    phone: '0332 958 277',
+    mapsQuery: 'Cháo Lòng Chị Hồng Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'dine_in_only',
+    deliveryNote: '🥢 Phục vụ trực tiếp tại quán sáng sớm (06:00 - 10:00) · Đầu Ngõ Kim Ngọc, Xuân Hòa · Hotline: 0332 958 277',
+    notes: 'Cháo Lòng Chị Hồng · Đầu Ngõ Kim Ngọc - Xuân Hòa - Phú Thọ · Mở cửa 06:00 - 10:00 · SĐT: 0332 958 277 · Quán cháo lòng ngon bổ rẻ chuyên Cháo lòng thập cẩm 30k và Bún lòng thập cẩm nóng hổi 30k.',
+    menuHighlights: [
+      'Cháo lòng thập cẩm nóng hổi: 30.000đ (Bán chạy)',
+      'Bún lòng thập cẩm nóng hổi: 30.000đ (Món chính)',
+      'Lòng dồi thập cẩm gọi thêm: 25.000đ - 65.000đ'
+    ]
+  },
+
+  // 51. Quán Bắp 1991 (Đường Lê Quang Đạo - gần KĐT Điện Nước Xuân Hoà)
+  quan_bap_1991: {
+    name: 'Quán Bắp 1991 - Mỳ Cay, Kem Dừa Mã Lai & Trà Sữa',
+    address: 'Đường Lê Quang Đạo - Xuân Hoà - Phú Thọ (gần khu đô thị Điện Nước XH)',
+    phone: '0961 898 991',
+    mapsQuery: 'Đường Lê Quang Đạo Xuân Hòa Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Mở cửa 10:00 - 22:30 · Phục vụ tại quán & Nhận ship tận nơi quanh Xuân Hoà · Hotline: 0961 898 991',
+    notes: 'Quán Bắp 1991 · Đường Lê Quang Đạo - Xuân Hoà - Phú Thọ (gần khu đô thị Điện Nước XH) · Mở cửa 10h - 22h30 · SĐT: 0961 898 991 · Chuyên Mỳ cay 40k-65k, Tokbokki 50k, Kem dừa Mã Lai 35k, Set kem dừa 80k-140k, Trà sữa & Đồ ăn vặt.',
+    menuHighlights: [
+      'Mỳ cay thập cẩm / Mỳ cay hải sản: 55.000đ - 65.000đ (Best Seller)',
+      'Mỳ cay đặc biệt: 65.000đ - 75.000đ | Mỳ cay sườn sụn: 50.000đ',
+      'Mỳ cay bò kim chi: 45.000đ | Mỳ cay xúc xích: 40.000đ',
+      'Tokbokki Hàn Quốc: 50.000đ',
+      'Kem dừa Mã Lai / Kem sầu / Kem bơ xôi: 35.000đ | Kem bơ: 30.000đ',
+      'Kem xôi / Kem matcha / Kem socola / Kem dâu / Kem việt quất / Kem trân châu đường đen: 25.000đ',
+      'Set kem dừa 2 người: 80k | 3 người: 110k | 4 người: 140k',
+      'Khoai tây chiên lắc phô mai / Nem chua phô mai: 40.000đ',
+      'Khoai lang chiên / Khoai lang kén / Khoai tây chiên / Cá viên chiên / Nem chua rán: 30.000đ',
+      'Lạp xưởng Hà Khẩu: 15.000đ | Xúc xích: 10.000đ | Phô mai que: 9.000đ/c',
+      'Trà sữa kem trứng dừa nướng: 30k (M) / 35k (L)',
+      'Trà sữa trân châu đường đen / Socola / Việt quất / Bạc hà / Matcha: 25k (M) / 30k (L)',
+      'Hồng trà sữa: 20k (M) / 25k (L) | Trà quất lắc sữa: 15k (M) / 20k (L) | Trà quất: 10k (M) / 15k (L)'
+    ]
   }
 };
 
 export function getSpotForDish(dishName: string): SpotInfo {
   const name = dishName.toLowerCase();
+
+  // Cháo Lòng Chị Hồng (Đầu Ngõ Kim Ngọc)
+  if (
+    name.includes('chị hồng') ||
+    name.includes('chi hong') ||
+    name.includes('cháo lòng') ||
+    name.includes('chao long') ||
+    name.includes('bún lòng') ||
+    name.includes('bun long') ||
+    name.includes('0332958277')
+  ) {
+    return xuanHoaSpots.chao_long_chi_hong;
+  }
+
+  // Quán Bắp 1991 (Lê Quang Đạo - KĐT Điện Nước)
+  if (
+    name.includes('bắp 1991') ||
+    name.includes('bap 1991') ||
+    name.includes('bắp1991') ||
+    name.includes('kem dừa mã lai') ||
+    name.includes('set kem dừa') ||
+    name.includes('kem bơ xôi') ||
+    name.includes('0961898991') ||
+    name.includes('0961 898 991')
+  ) {
+    return xuanHoaSpots.quan_bap_1991;
+  }
 
   // Nem Nướng Nhà Mơ & Tiệm Nhà Chou Chou (Cổng ABC Xuân Hoà)
   if (
@@ -2895,6 +2966,29 @@ export function getSpotsForDish(dishInput: Food | string): SpotInfo[] {
     name = dishInput.name.toLowerCase();
     customId = (dishInput.customId || '').toLowerCase();
     sub = (dishInput.sub || '').toLowerCase();
+  }
+
+  if (
+    customId.includes('clch') ||
+    customId.includes('chao_long_chi_hong') ||
+    sub.includes('chị hồng') ||
+    name.includes('chị hồng') ||
+    name.includes('cháo lòng') ||
+    name.includes('bún lòng')
+  ) {
+    return [xuanHoaSpots.chao_long_chi_hong, xuanHoaSpots.bun_anh_toan];
+  }
+
+  if (
+    customId.includes('bap1991') ||
+    customId.includes('bap_1991') ||
+    sub.includes('bắp 1991') ||
+    name.includes('bắp 1991') ||
+    name.includes('kem dừa mã lai') ||
+    name.includes('set kem dừa') ||
+    name.includes('kem bơ xôi')
+  ) {
+    return [xuanHoaSpots.quan_bap_1991, xuanHoaSpots.ruby_quan, xuanHoaSpots.my_cay_seoul];
   }
 
   if (

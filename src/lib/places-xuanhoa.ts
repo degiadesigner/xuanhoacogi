@@ -11,7 +11,7 @@ export function getPlaceStyleGroup(place: Place): PlaceStyleGroup {
   ) {
     return 'nhau-lau';
   }
-  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea', 'quan-co-loan', 'banh-trang-nha-boom', 'bep-nha-cun', 'nem-nuong-88', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou'].includes(place.id)) {
+  if (['nhungs-corner', 'ruby-quan', 'gamitra-xuan-hoa', 'xoai-corner', 'my-cay-seoul', 'thuy-beo', 'tao-pho-chi-beo', 'bep-thanh', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'bm-nuong-muoi-ot-ngoc-quy', 'thi-lan-tea', 'che-xuan-mai', 'nhat-ha', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'banh-trang-55-nguyen-van-linh', 'quan-dua-kha-do', 'zun-food-tea', 'quan-co-loan', 'banh-trang-nha-boom', 'bep-nha-cun', 'nem-nuong-88', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991'].includes(place.id)) {
     return 'an-vat';
   }
   if (
@@ -289,6 +289,9 @@ export interface PlaceSignboardLines {
 }
 
 const SIGNBOARD_CUSTOM_LINES: Record<string, PlaceSignboardLines> = {
+  'quan-bap-1991': { line1: 'QUÁN BẮP 1991', line2: 'MỲ CAY • KEM DỪA MÃ LAI' },
+  'chao-long-chi-hong': { line1: 'CHÁO LÒNG CHỊ HỒNG', line2: 'BÚN LÒNG • ĐẦU NGÕ KIM NGỌC' },
+  'xh_custom_1792229707991': { line1: 'CHÁO LÒNG CHỊ HỒNG', line2: 'BÚN LÒNG • ĐẦU NGÕ KIM NGỌC' },
   'nem-nuong-nha-mo-chou-chou': { line1: 'NEM NƯỚNG NHÀ MƠ', line2: 'TIỆM NHÀ CHOU CHOU • CỔNG ABC' },
   'lau-thai-ha-tinh': { line1: 'LẨU THÁI HÀ TĨNH', line2: '13 TRƯNG NHỊ • PHÚC YÊN' },
   'hi-tea': { line1: 'HI TEA & MỲ CAY', line2: 'MỲ CAY 7 CẤP ĐỘ • TRÀ SỮA' },
@@ -379,6 +382,13 @@ const SIGNBOARD_CUSTOM_LINES: Record<string, PlaceSignboardLines> = {
 export function getPlaceSignboardLines(place: Place): PlaceSignboardLines {
   if (SIGNBOARD_CUSTOM_LINES[place.id]) {
     return SIGNBOARD_CUSTOM_LINES[place.id];
+  }
+  const lowerName = place.name.toLowerCase();
+  if (lowerName.includes('cháo lòng chị hồng')) {
+    return { line1: 'CHÁO LÒNG CHỊ HỒNG', line2: 'BÚN LÒNG • ĐẦU NGÕ KIM NGỌC' };
+  }
+  if (lowerName.includes('bắp 1991')) {
+    return { line1: 'QUÁN BẮP 1991', line2: 'MỲ CAY • KEM DỪA MÃ LAI' };
   }
   const raw = place.name.trim();
   if (raw.includes(' - ')) {
@@ -487,28 +497,28 @@ export function isPlaceMatchKeo(place: Place, keo: PlaceKeoType): boolean {
 
   if (keo === 'hen-ho') {
     return (
-      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-thanh-thanh', 'ruby-quan', 'xoai-corner', 'sui-cao-tieu-lau-quan', 'my-cay-seoul', 'com-tam-xuan-hoa', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-88', 'zino-cafe', 'hi-tea', 'lau-thai-ha-tinh', 'nem-nuong-nha-mo-chou-chou'].includes(place.id) ||
+      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-thanh-thanh', 'ruby-quan', 'xoai-corner', 'sui-cao-tieu-lau-quan', 'my-cay-seoul', 'com-tam-xuan-hoa', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-88', 'zino-cafe', 'hi-tea', 'lau-thai-ha-tinh', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991'].includes(place.id) ||
       place.category === 'cafe'
     );
   }
 
   if (keo === 'an-nhanh') {
     return (
-      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'thanh-hang-gateaux', 'tiem-banh-a-salty-name', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'bm-nuong-muoi-ot-ngoc-quy', 'com-rang-nguyen-van-linh', 'oc-2000-xuan-hoa', 'bun-cha-xuan-hoa', 'bun-rieu-ba-mai', 'bun-anh-toan', 'com-tam-xuan-hoa', 'pho-bo-xuan-hoa', 'banh-cuon-ngoc-anh', 'banh-mi-bo-u', 'thuy-beo', 'xoi-com-185', 'sui-cao-tieu-lau-quan', 'tiem-nha-me-beo', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'nem-nuong-88', 'an-vat-nha-phuong', 'hi-tea', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou'].includes(place.id) ||
+      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'thanh-hang-gateaux', 'tiem-banh-a-salty-name', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'bm-nuong-muoi-ot-ngoc-quy', 'com-rang-nguyen-van-linh', 'oc-2000-xuan-hoa', 'bun-cha-xuan-hoa', 'bun-rieu-ba-mai', 'bun-anh-toan', 'com-tam-xuan-hoa', 'pho-bo-xuan-hoa', 'banh-cuon-ngoc-anh', 'banh-mi-bo-u', 'thuy-beo', 'xoi-com-185', 'sui-cao-tieu-lau-quan', 'tiem-nha-me-beo', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'nem-nuong-88', 'an-vat-nha-phuong', 'hi-tea', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991', 'chao-long-chi-hong'].includes(place.id) ||
       place.category === 'fast_food'
     );
   }
 
   if (keo === 'nhom-dong') {
     return (
-      ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'nhat-ha', 'xien-nuong-trung-hoa', 'lau-nuong-1968', 'xuho-bistro', 'lau-nuong-ba-muoi', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'trang-hai-san', 'lau-cuong-duong', 'quan-chim-lan-anh', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'nha-hang-binh-nam', 'nha-hang-khanh-huong', 'nha-hang-468', 'tho-coii', 'ruby-quan', 'nem-nuong-88', 'lau-thai-ha-tinh', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou'].includes(place.id) ||
+      ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'nhat-ha', 'xien-nuong-trung-hoa', 'lau-nuong-1968', 'xuho-bistro', 'lau-nuong-ba-muoi', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'trang-hai-san', 'lau-cuong-duong', 'quan-chim-lan-anh', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'nha-hang-binh-nam', 'nha-hang-khanh-huong', 'nha-hang-468', 'tho-coii', 'ruby-quan', 'nem-nuong-88', 'lau-thai-ha-tinh', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991'].includes(place.id) ||
       place.category === 'pub'
     );
   }
 
   if (keo === 'ship') {
     return (
-      ['vanh-dai-quan', 'nhungs-corner', 'san-bia-247', 'banh-trang-55-nguyen-van-linh', 'bia-sai-gon-tuan-hien', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'xien-nuong-trung-hoa', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'bm-nuong-muoi-ot-ngoc-quy', 'oc-2000-xuan-hoa', 'tiem-nha-me-beo', 'gamitra-xuan-hoa', 'thuy-beo', 'banh-mi-bo-u', 'ruby-quan', 'xoai-corner', 'tiem-tra-sua-tocotoco', 'soh-tea', 'tiem-tra-thanh-thanh', 'com-rang-nguyen-van-linh', 'com-tam-xuan-hoa', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-nha-mo-chou-chou'].includes(place.id) ||
+      ['vanh-dai-quan', 'nhungs-corner', 'san-bia-247', 'banh-trang-55-nguyen-van-linh', 'bia-sai-gon-tuan-hien', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'xien-nuong-trung-hoa', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'bm-nuong-muoi-ot-ngoc-quy', 'oc-2000-xuan-hoa', 'tiem-nha-me-beo', 'gamitra-xuan-hoa', 'thuy-beo', 'banh-mi-bo-u', 'ruby-quan', 'xoai-corner', 'tiem-tra-sua-tocotoco', 'soh-tea', 'tiem-tra-thanh-thanh', 'com-rang-nguyen-van-linh', 'com-tam-xuan-hoa', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991'].includes(place.id) ||
       place.serviceMode === 'both'
     );
   }
@@ -6698,6 +6708,130 @@ export const xuanHoaPlaces: Place[] = [
     rarity: 1,
     quip: 'Mẹt Nem nướng Nhà Mơ 30k-35k, Nem lụi 30k kết hợp Trà sữa Chou Chou 700ml (25k-30k), Trà Full Topping 700ml đồng giá 15k & Nước ép tươi M 15k / L 20k ngay Cổng ABC Xuân Hoà! Hotline 0960 371 110 - 0969 371 110.',
     mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'chao-long-chi-hong',
+    name: 'Cháo Lòng Chị Hồng',
+    tagline: 'Cháo lòng thập cẩm 30k • Bún lòng thập cẩm nóng hổi 30k • Quán cháo lòng ngon bổ rẻ Đầu Ngõ Kim Ngọc',
+    category: 'fast_food',
+    zone: 'dhsp2',
+    distance: 'Cách ĐHSP2 350m (Đầu Ngõ Kim Ngọc)',
+    address: 'Đầu Ngõ Kim Ngọc - Xuân Hòa - Phú Thọ',
+    priceRange: '25k - 65k',
+    minPrice: 25,
+    maxPrice: 65,
+    rating: 4.92,
+    reviewCount: 112,
+    imageUrl: 'ai_studio_dish_chao_long_chi_hong.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: '🥢 Phục vụ trực tiếp tại quán buổi sáng (06:00 - 10:00) · Đầu Ngõ Kim Ngọc, Xuân Hòa · Hotline: 0332 958 277',
+    signatureDish: {
+      id: 'clch-chao-long',
+      name: 'Cháo lòng',
+      price: 30,
+      tag: 'Bán chạy',
+      serviceTag: 'dine_in',
+      description: 'Món cháo thập cẩm nóng hổi sánh mịn, đầy đặn dồi tiết, lòng non giòn ngọt, dạ dày, gan bùi béo thơm phức hành răm tiêu bắc.',
+      rarity: 1,
+    },
+    menu: [
+      { id: 'clch-chao-long', name: 'Cháo lòng', price: 30, tag: 'Bán chạy', serviceTag: 'dine_in', rarity: 1, description: 'Món cháo thập cẩm nóng hổi sánh mịn, đầy đặn dồi tiết, lòng non, gan, dạ dày ăn kèm quẩy giòn và rau thơm.' },
+      { id: 'clch-bun-long', name: 'Bún lòng', price: 30, tag: 'Món chính', serviceTag: 'dine_in', rarity: 1, description: 'Bún lòng thập cẩm nóng hổi nước dùng ngọt thanh, đầy đặn lòng non, dồi tiết, tim gan trần tươi ngon.' }
+    ],
+    tags: ['Cháo Lòng Chị Hồng', 'Cháo lòng', 'Bún lòng', 'Đầu Ngõ Kim Ngọc', 'Kim Ngọc', 'Ăn sáng Xuân Hòa', '0332958277'],
+    mapsQuery: 'Cháo Lòng Chị Hồng Xuân Hòa Phúc Yên',
+    mapsUrl: 'https://maps.app.goo.gl/9FJ9U1JDij8FDgV17',
+    phone: '0332 958 277',
+    openHours: '06:00 - 10:00',
+    rarity: 1,
+    quip: 'Quán cháo lòng ngon bổ rẻ tại Đầu Ngõ Kim Ngọc - Xuân Hòa - Phú Thọ! Cháo lòng thập cẩm 30k và Bún lòng thập cẩm nóng hổi 30k mở cửa từ 06:00 - 10:00 sáng. SĐT: 0332 958 277.',
+    mealSessions: ['morning', 'lunch']
+  },
+  {
+    id: 'quan-bap-1991',
+    name: 'Quán Bắp 1991 - Mỳ Cay, Kem Dừa Mã Lai & Trà Sữa',
+    tagline: 'Mỳ cay 40k-75k • Tokbokki 50k • Kem dừa Mã Lai 35k & Set kem dừa • Trà sữa & Ăn vặt • Lê Quang Đạo',
+    category: 'cafe',
+    zone: 'center',
+    distance: 'Đường Lê Quang Đạo (gần khu đô thị Điện Nước XH)',
+    address: 'Đường Lê Quang Đạo - Xuân Hoà - Phú Thọ (gần khu đô thị Điện Nước XH)',
+    priceRange: '9k - 140k',
+    minPrice: 9,
+    maxPrice: 140,
+    rating: 4.94,
+    reviewCount: 168,
+    imageUrl: 'ai_studio_dish_bap1991_my_cay.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Mở cửa 10:00 - 22:30 · Phục vụ tại quán & Nhận ship tận nơi Mỳ cay, Kem dừa Mã Lai, Trà sữa, Ăn vặt quanh Xuân Hoà · Hotline: 0961 898 991',
+    signatureDish: {
+      id: 'bap1991-my-cay-thap-cam',
+      name: 'Mỳ cay thập cẩm & Kem dừa Mã Lai',
+      price: 55,
+      tag: 'Best Seller',
+      serviceTag: 'both',
+      description: 'Thố mỳ cay thập cẩm 55k sôi sùng sục đậm đà kết hợp Kem dừa Mã Lai 35k béo ngậy mát lạnh cùng thiên đường đồ ăn vặt và trà sữa.',
+      rarity: 2,
+    },
+    menu: [
+      // === MỲ CAY & TOKBOKKI ===
+      { id: 'bap1991-my-cay-xuc-xich', name: 'Mỳ cay xúc xích', price: 40, tag: 'Mỳ cay', serviceTag: 'both', rarity: 1, description: 'Thố mỳ cay xúc xích nóng hổi nước dùng kim chi chua cay đậm đà.' },
+      { id: 'bap1991-my-cay-bo-kim-chi', name: 'Mỳ cay bò kim chi', price: 45, tag: 'Bán chạy', serviceTag: 'both', rarity: 1, description: 'Mỳ cay bò kim chi thịt bò mềm ngọt quyện nấm kim châm và nước dùng cay nồng.' },
+      { id: 'bap1991-my-cay-suon-sun', name: 'Mỳ cay sườn sụn', price: 50, tag: 'Mỳ cay', serviceTag: 'both', rarity: 1, description: 'Mỳ cay sườn sụn non hầm mềm giòn sần sật cực cuốn.' },
+      { id: 'bap1991-my-cay-hai-san', name: 'Mỳ cay hải sản (55k - 65k)', price: 55, tag: 'Bán chạy', serviceTag: 'both', rarity: 2, description: 'Mỳ cay hải sản tươi ngon đầy đặn tôm, mực, chả cá Hàn Quốc (55k - 65k).' },
+      { id: 'bap1991-my-cay-thap-cam', name: 'Mỳ cay thập cẩm', price: 55, tag: 'Best Seller', serviceTag: 'both', rarity: 2, description: 'Thố mỳ cay thập cẩm đầy đủ bò, tôm, mực, xúc xích, viên thả lẩu và rau nấm.' },
+      { id: 'bap1991-my-cay-dac-biet', name: 'Mỳ cay đặc biệt (65k - 75k)', price: 65, tag: 'Đặc biệt', serviceTag: 'both', rarity: 2, description: 'Thố mỳ cay đặc biệt siêu đầy đặn full topping hải sản, bò, sườn sụn (65k - 75k).' },
+      { id: 'bap1991-tokbokki', name: 'Tokbokki Hàn Quốc', price: 50, tag: 'Món Hàn', serviceTag: 'both', rarity: 1, description: 'Bánh gạo Tokbokki dẻo dai nấu sốt cay ngọt Hàn Quốc đậm đà nóng hổi.' },
+
+      // === KEM DỪA MÃ LAI & SET KEM DỪA ===
+      { id: 'bap1991-kem-dua-ma-lai', name: 'Kem dừa Mã Lai', price: 35, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Kem dừa Mã Lai béo ngậy mát lạnh phục vụ trong gáo dừa tươi kèm cùi dừa non, xôi vò, dừa khô và bánh quế.' },
+      { id: 'bap1991-kem-bo-xoi', name: 'Kem bơ xôi', price: 35, tag: 'Kem dừa', serviceTag: 'both', rarity: 1, description: 'Kem dừa kết hợp bơ sáp dẻo mịn và xôi vò thơm bùi béo ngậy.' },
+      { id: 'bap1991-kem-sau', name: 'Kem sầu riêng', price: 35, tag: 'Kem dừa', serviceTag: 'both', rarity: 1, description: 'Kem mát lạnh quyện sầu riêng thơm nức mũi béo ngậy.' },
+      { id: 'bap1991-kem-bo', name: 'Kem bơ', price: 30, tag: 'Kem dừa', serviceTag: 'both', rarity: 1, description: 'Kem tươi mát lạnh hòa quyện sốt bơ sáp sánh mịn.' },
+      { id: 'bap1991-kem-xoi', name: 'Kem xôi', price: 25, tag: 'Kem dừa', serviceTag: 'both', rarity: 0, description: 'Kem tươi ăn kèm xôi vò dẻo thơm và dừa khô giòn rụm.' },
+      { id: 'bap1991-kem-matcha', name: 'Kem matcha', price: 25, tag: 'Kem tươi', serviceTag: 'both', rarity: 0, description: 'Kem vị trà xanh Matcha thanh mát thơm dịu.' },
+      { id: 'bap1991-kem-socola', name: 'Kem socola', price: 25, tag: 'Kem tươi', serviceTag: 'both', rarity: 0, description: 'Kem socola ngọt đắng quyến rũ mát lạnh.' },
+      { id: 'bap1991-kem-dau', name: 'Kem dâu', price: 25, tag: 'Kem tươi', serviceTag: 'both', rarity: 0, description: 'Kem hương dâu tây chua ngọt dịu mát.' },
+      { id: 'bap1991-kem-viet-quat', name: 'Kem việt quất', price: 25, tag: 'Kem tươi', serviceTag: 'both', rarity: 0, description: 'Kem việt quất thơm lừng mát lạnh.' },
+      { id: 'bap1991-kem-tcdd', name: 'Kem trân châu đường đen', price: 25, tag: 'Kem tươi', serviceTag: 'both', rarity: 0, description: 'Kem béo mịn rưới sốt đường đen sóng sánh cùng trân châu dẻo dai.' },
+      { id: 'bap1991-set-kem-dua-2', name: 'Set kem dừa 2 người', price: 80, tag: 'Set Kem Dừa', serviceTag: 'both', rarity: 2, description: 'Mẹt set kem dừa Mã Lai đầy đặn nhiều khay topping dành cho 2 người thưởng thức.' },
+      { id: 'bap1991-set-kem-dua-3', name: 'Set kem dừa 3 người', price: 110, tag: 'Set Kem Dừa', serviceTag: 'both', rarity: 2, description: 'Set kem dừa Mã Lai lớn kèm full các khay topping đa dạng cho nhóm 3 người.' },
+      { id: 'bap1991-set-kem-dua-4', name: 'Set kem dừa 4 người', price: 140, tag: 'Set Kem Dừa', serviceTag: 'both', rarity: 3, description: 'Đại tiệc Set kem dừa Mã Lai khổng lồ cho nhóm 4 người ngập tràn kem và topping.' },
+
+      // === ĂN VẶT ===
+      { id: 'bap1991-khoai-tay-lac-phomai', name: 'Khoai tây chiên lắc phô mai', price: 40, tag: 'Ăn vặt', serviceTag: 'both', rarity: 1, description: 'Khoai tây chiên vàng giòn rụm lắc ngập bột phô mai béo mặn.' },
+      { id: 'bap1991-nem-chua-phomai', name: 'Nem chua phô mai', price: 40, tag: 'Ăn vặt', serviceTag: 'both', rarity: 1, description: 'Nem chua bọc phô mai kéo sợi chiên xù nóng giòn chấm tương ớt.' },
+      { id: 'bap1991-nem-chua-ran', name: 'Nem chua rán', price: 30, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Đĩa nem chua rán phố cổ vàng giòn nóng hổi.' },
+      { id: 'bap1991-khoai-lang-chien', name: 'Khoai lang chiên', price: 30, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Khoai lang chiên giòn ngọt bùi thơm phức.' },
+      { id: 'bap1991-khoai-lang-ken', name: 'Khoai lang kén', price: 30, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Khoai lang kén cốt dừa chiên vàng ruộm giòn ngoài mềm trong.' },
+      { id: 'bap1991-khoai-tay-chien', name: 'Khoai tây chiên', price: 30, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Khoai tây cọng chiên vàng giòn rụm chấm tương ớt.' },
+      { id: 'bap1991-ca-vien-chien', name: 'Cá viên chiên', price: 30, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Đĩa cá viên chiên giòn dai nóng hổi.' },
+      { id: 'bap1991-lap-xuong-ha-khau', name: 'Lạp xưởng Hà Khẩu', price: 15, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Lạp xưởng tươi Hà Khẩu nướng/chiên thơm lừng rắc bột ớt tê cay.' },
+      { id: 'bap1991-xuc-xich', name: 'Xúc xích rán', price: 10, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Xúc xích khía hoa chiên vàng thơm phức.' },
+      { id: 'bap1991-pho-mai-que', name: 'Phô mai que (9k/chiếc)', price: 9, tag: 'Ăn vặt', serviceTag: 'both', rarity: 0, description: 'Phô mai que tẩm bột xù chiên giòn kéo sợi béo ngậy 9k/chiếc.' },
+
+      // === ĐỒ UỐNG (SIZE M / L) ===
+      { id: 'bap1991-ts-kem-trung-dua-nuong', name: 'Trà sữa kem trứng dừa nướng (M 30k / L 35k)', price: 30, tag: 'Đồ uống Hot', serviceTag: 'both', rarity: 1, description: 'Trà sữa phủ lớp kem trứng béo mịn và dừa nướng giòn thơm (Size M 30k / Size L 35k).' },
+      { id: 'bap1991-ts-tcdd', name: 'Trà sữa trân châu đường đen (M 25k / L 30k)', price: 25, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Trà sữa quyện trân châu đen nấu đường đen ngọt thơm dẻo dai (Size M 25k / Size L 30k).' },
+      { id: 'bap1991-ts-socola', name: 'Trà sữa Socola (M 25k / L 30k)', price: 25, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Trà sữa vị Socola đậm đà béo ngậy (Size M 25k / Size L 30k).' },
+      { id: 'bap1991-ts-viet-quat', name: 'Trà sữa Việt Quất (M 25k / L 30k)', price: 25, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Trà sữa hương việt quất thơm dịu mát lạnh (Size M 25k / Size L 30k).' },
+      { id: 'bap1991-ts-bac-ha', name: 'Trà sữa Bạc Hà (M 25k / L 30k)', price: 25, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Trà sữa bạc hà the mát sảng khoái (Size M 25k / Size L 30k).' },
+      { id: 'bap1991-ts-matcha', name: 'Trà sữa Matcha (M 25k / L 30k)', price: 25, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Trà sữa Matcha trà xanh thơm mát béo dịu (Size M 25k / Size L 30k).' },
+      { id: 'bap1991-hong-tra-sua', name: 'Hồng trà sữa (M 20k / L 25k)', price: 20, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Hồng trà sữa truyền thống đậm vị trà thơm béo (Size M 20k / Size L 25k).' },
+      { id: 'bap1991-tra-quat-lac-sua', name: 'Trà quất lắc sữa (M 15k / L 20k)', price: 15, tag: 'Đồ uống', serviceTag: 'both', rarity: 0, description: 'Trà quất lắc sữa chua ngọt thơm béo dễ uống (Size M 15k / Size L 20k).' },
+      { id: 'bap1991-tra-quat', name: 'Trà quất tươi mát (M 10k / L 15k)', price: 10, tag: 'Giải khát', serviceTag: 'both', rarity: 0, description: 'Trà quất tươi mát lạnh giải nhiệt ăn kèm mỳ cay cực hợp (Size M 10k / Size L 15k).' },
+
+      // === ĐỒ GỌI THÊM & TOPPING ===
+      { id: 'bap1991-them-bo-sun-tom-muc', name: 'Gọi thêm Mỳ: Thêm bò / sụn / tôm / mực (15k)', price: 15, tag: 'Đồ gọi thêm', serviceTag: 'both', rarity: 0, description: 'Gọi thêm thả mỳ cay: Thêm bò 15k, Thêm sụn 15k, Thêm tôm 15k, Thêm mực 15k.' },
+      { id: 'bap1991-them-my-xx-tuoc-rau', name: 'Gọi thêm Mỳ: Thêm mỳ / xúc xích / tuộc kẽm (10k) • Rau nấm (5k)', price: 10, tag: 'Đồ gọi thêm', serviceTag: 'both', rarity: 0, description: 'Thêm mỳ 10k, Thêm xúc xích 10k, Thêm tuộc kẽm 10k, Thêm rau nấm 5k.' },
+      { id: 'bap1991-topping-kem-dua', name: 'Topping Kem Dừa: Xôi vò, Sơri, Dừa khô, Chuối sấy, Dừa nạo, Bánh quế, Trân châu (5k)', price: 5, tag: 'Topping Kem', serviceTag: 'both', rarity: 0, description: 'Topping 5k: Xôi vò, Sơri, Dừa khô, Chuối sấy dẻo, Dừa nạo, Bánh quế, Trân châu (Thêm bơ 10k, Thêm sầu 20k).' }
+    ],
+    tags: ['Quán Bắp 1991', 'Bắp 1991', 'Lê Quang Đạo', 'KĐT Điện Nước', 'Mỳ cay', 'Tokbokki', 'Kem dừa Mã Lai', 'Set kem dừa', 'Kem bơ xôi', 'Trà sữa kem trứng dừa nướng', '0961898991'],
+    mapsQuery: 'Đường Lê Quang Đạo Xuân Hòa Phúc Yên',
+    phone: '0961 898 991',
+    openHours: '10:00 - 22:30',
+    rarity: 2,
+    quip: 'Quán Bắp 1991 tại đường Lê Quang Đạo (gần KĐT Điện Nước Xuân Hoà) mở cửa 10h - 22h30! Nổi tiếng với Mỳ cay 40k-65k, Tokbokki 50k, Kem dừa Mã Lai 35k, Set kem dừa 2-4 người (80k-140k), Trà sữa & đồ ăn vặt. SĐT: 0961 898 991.',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late', 'drink']
   }
 ];
 
@@ -7738,6 +7872,42 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       date: 'Hôm qua',
       role: 'Dân bản địa Cổng ABC Xuân Hòa',
       content: 'Đồ uống Tiệm Nhà Chou Chou size 700ml siêu to mà giá hạt dẻ! Kem trứng dừa nướng 25k, Trà sữa khoai môn tươi 30k và Trà nho đỏ Full Topping 15k uống mê ly. Nước ép tươi M 15k / L 20k cũng nguyên chất mát lạnh, gọi ship 0960 371 110 giao siêu nhanh!',
+    }
+  ],
+  'chao-long-chi-hong': [
+    {
+      id: 'r_clch_1',
+      author: 'Hoàng Văn Tuấn',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Dân bản địa Kim Ngọc',
+      content: 'Cháo lòng chị Hồng ở đầu ngõ Kim Ngọc ngon bổ rẻ đúng nghĩa! Bát cháo lòng thập cẩm 30k sánh mịn nóng hổi, lòng non trắng giòn không hề đắng, dồi tiết bùi béo thơm phức. Sáng nào đi làm qua cũng phải ghé làm một bát ấm bụng!',
+    },
+    {
+      id: 'r_clch_2',
+      author: 'Lê Thu Trang K48',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Bún lòng thập cẩm 30k ở quán chị Hồng cực kỳ đầy đặn, nước dùng ngọt thanh, lòng dồi tươi sạch ăn kèm rau húng quế chấm mắm ớt cay xuýt xoa. Quán mở từ 6h đến 10h sáng rất đông khách!',
+    }
+  ],
+  'quan-bap-1991': [
+    {
+      id: 'r_bap1991_1',
+      author: 'Trần Ngọc Ánh K49',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Sinh viên ĐHSP2',
+      content: 'Quán Bắp 1991 trên đường Lê Quang Đạo gần KĐT Điện Nước đồ ăn siêu đa dạng! Mỳ cay thập cẩm 55k với Tokbokki 50k nóng hổi cay đậm đà, ăn xong tráng miệng quả Kem dừa Mã Lai 35k hay Set kem dừa 80k béo ngậy mát lạnh thì hết nước chấm!',
+    },
+    {
+      id: 'r_bap1991_2',
+      author: 'Nguyễn Minh Đức',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Cư dân KĐT Điện Nước Xuân Hoà',
+      content: 'Tụ tập bạn bè ở Bắp 1991 gọi mẹt khoai tây chiên lắc phô mai, nem chua phô mai, lạp xưởng Hà Khẩu 15k và Trà sữa kem trứng dừa nướng uống cực cuốn. Mở cửa từ 10h sáng đến 22h30 tối, gọi ship 0961 898 991 giao rất nhanh!',
     }
   ]
 };

@@ -8127,7 +8127,190 @@ export const chouChouDrinkDishes: Food[] = [
   },
 ];
 
+// ============================================================================
+// 7. CHÁO LÒNG CHỊ HỒNG (ĐẦU NGÕ KIM NGỌC - XUÂN HÒA)
+// Hotline: 0332 958 277 • Mở cửa: 06:00 - 10:00
+// ============================================================================
+export const chaoLongChiHongDishes: Food[] = [
+  {
+    name: 'Cháo lòng Chị Hồng',
+    sub: 'Món cháo thập cẩm nóng hổi sánh mịn, đầy đặn dồi tiết, lòng non, gan, dạ dày giòn thơm 30k • Cháo Lòng Chị Hồng Đầu Ngõ Kim Ngọc',
+    price: 30,
+    image: -3670,
+    customId: 'dish_clch_chao_long',
+    customImage: 'ai_studio_dish_chao_long_chi_hong.jpg',
+    rarity: 1,
+    quip: 'Bát cháo lòng thập cẩm Chị Hồng 30k sánh mịn bốc khói nghi ngút, đầy đặn dồi tiết bùi béo, lòng non trắng giòn ăn kèm quẩy và rau húng quế tại Đầu Ngõ Kim Ngọc.',
+  },
+  {
+    name: 'Bún lòng Chị Hồng',
+    sub: 'Bún lòng thập cẩm nóng hổi nước dùng ngọt thanh ngập tràn lòng dồi tươi ngon 30k • Cháo Lòng Chị Hồng Đầu Ngõ Kim Ngọc',
+    price: 30,
+    image: -3671,
+    customId: 'dish_clch_bun_long',
+    customImage: 'ai_studio_dish_bun_long_chi_hong.jpg',
+    rarity: 1,
+    quip: 'Tô bún lòng thập cẩm nóng hổi 30k tại quán Chị Hồng Đầu Ngõ Kim Ngọc: sợi bún trắng mềm chan nước dùng xương ngọt thanh, phủ ngập lòng non, dồi tiết, tim gan trần tươi rói.',
+  },
+];
+
+// ============================================================================
+// 8. QUÁN BẮP 1991 - MỲ CAY, KEM DỪA MÃ LAI, TRÀ SỮA & ĂN VẶT
+// Đường Lê Quang Đạo - Xuân Hoà - Phú Thọ (gần KĐT Điện Nước XH) • SĐT: 0961 898 991 (10h - 22h30)
+// ============================================================================
+export const bap1991FoodDishes: Food[] = [
+  {
+    name: 'Mỳ cay thập cẩm Bắp 1991',
+    sub: 'Thố mỳ cay thập cẩm sôi sùng sục đầy đặn tôm, mực, bò, xúc xích, viên thả lẩu & nấm 55k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 55,
+    image: -3672,
+    customId: 'dish_bap1991_my_cay_thap_cam',
+    customImage: 'ai_studio_dish_bap1991_my_cay.jpg',
+    rarity: 2,
+    quip: 'Thố mỳ cay thập cẩm 55k tại Quán Bắp 1991 Lê Quang Đạo sôi sùng sục cay nồng chuẩn vị, ngập tràn tôm sú, mực vòng, bò Mỹ và nấm kim châm.',
+  },
+  {
+    name: 'Mỳ cay bò kim chi Bắp 1991',
+    sub: 'Mỳ cay bò kim chi thịt bò mềm ngọt quyện nấm kim châm cay nồng 45k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 45,
+    image: -3673,
+    customId: 'dish_bap1991_my_cay_bo',
+    customImage: 'ai_studio_dish_coloan_mi_cay_bo.jpg',
+    rarity: 1,
+    quip: 'Thố mỳ cay bò kim chi 45k nóng hổi thơm nức tại Quán Bắp 1991 (gần KĐT Điện Nước Xuân Hoà).',
+  },
+  {
+    name: 'Mỳ cay sườn sụn Bắp 1991',
+    sub: 'Mỳ cay sườn sụn non giòn sần sật nước dùng kim chi đậm đà 50k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 50,
+    image: -3674,
+    customId: 'dish_bap1991_my_cay_suon_sun',
+    customImage: 'ai_studio_dish_nhung_mi_sun.jpg',
+    rarity: 1,
+    quip: 'Mỳ cay sườn sụn 50k giòn sần sật ăn cực cuốn tại Quán Bắp 1991 Lê Quang Đạo.',
+  },
+  {
+    name: 'Mỳ cay hải sản Bắp 1991',
+    sub: 'Mỳ cay hải sản tươi ngọt tôm mực chả cá Hàn Quốc 55k-65k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 55,
+    image: -3675,
+    customId: 'dish_bap1991_my_cay_hai_san',
+    customImage: 'ai_studio_dish_nhung_mi_haisan.jpg',
+    rarity: 2,
+    quip: 'Thố mỳ cay hải sản 55k-65k đầy ắp tôm tươi, mực giòn tại Quán Bắp 1991.',
+  },
+  {
+    name: 'Mỳ cay đặc biệt Bắp 1991',
+    sub: 'Siêu phẩm mỳ cay đặc biệt full topping hải sản, bò, sườn sụn 65k-75k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 65,
+    image: -3676,
+    customId: 'dish_bap1991_my_cay_dac_biet',
+    customImage: 'ai_studio_dish_nhung_mi_thapcam.jpg',
+    rarity: 2,
+    quip: 'Thố mỳ cay đặc biệt 65k-75k siêu to khổng lồ full topping tại Quán Bắp 1991 Lê Quang Đạo.',
+  },
+  {
+    name: 'Mỳ cay xúc xích Bắp 1991',
+    sub: 'Mỳ cay xúc xích nóng hổi chuẩn gu sinh viên 40k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 40,
+    image: -3677,
+    customId: 'dish_bap1991_my_cay_xuc_xich',
+    customImage: 'ai_studio_dish_ruby_micay_1.jpg',
+    rarity: 1,
+    quip: 'Mỳ cay xúc xích 40k nóng hổi đậm vị kim chi tại Quán Bắp 1991.',
+  },
+  {
+    name: 'Tokbokki Hàn Quốc Bắp 1991',
+    sub: 'Bánh gạo Tokbokki dẻo dai sốt tương ớt Hàn Quốc cay ngọt đậm đà 50k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 50,
+    image: -3678,
+    customId: 'dish_bap1991_tokbokki',
+    customImage: 'ai_studio_dish_nhung_tokbokki.jpg',
+    rarity: 1,
+    quip: 'Đĩa bánh gạo Tokbokki 50k sốt cay ngọt sánh quyện nóng hổi tại Quán Bắp 1991.',
+  },
+  {
+    name: 'Kem dừa Mã Lai Bắp 1991',
+    sub: 'Kem dừa Mã Lai béo ngậy trong gáo dừa tươi kèm xôi vò, dừa khô, bánh quế 35k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 35,
+    image: -3679,
+    customId: 'dish_bap1991_kem_dua_ma_lai',
+    customImage: 'ai_studio_dish_bap1991_kem_dua_ma_lai.jpg',
+    rarity: 1,
+    quip: 'Kem dừa Mã Lai 35k mát lạnh béo ngậy đựng trong gáo dừa tươi kèm cùi dừa non, xôi vò, lạc rang và bánh quế giòn tan tại Quán Bắp 1991!',
+  },
+  {
+    name: 'Set kem dừa Mã Lai (2 - 4 người) Bắp 1991',
+    sub: 'Mẹt Set kem dừa Mã Lai đầy ắp các khay topping (2 người 80k / 3 người 110k / 4 người 140k) • Quán Bắp 1991 Lê Quang Đạo',
+    price: 80,
+    image: -3680,
+    customId: 'dish_bap1991_set_kem_dua',
+    customImage: 'ai_studio_dish_bap1991_kem_dua_ma_lai.jpg',
+    rarity: 2,
+    quip: 'Mẹt Set kem dừa Mã Lai 80k - 140k kèm đủ các khay topping xôi vò, sơri, dừa khô, chuối sấy, trân châu cho hội bạn thân giải nhiệt cực đã!',
+  },
+  {
+    name: 'Kem bơ xôi / Kem sầu Bắp 1991',
+    sub: 'Kem dừa kết hợp bơ sáp dẻo mịn xôi vò hoặc sầu riêng thơm béo 35k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 35,
+    image: -3681,
+    customId: 'dish_bap1991_kem_bo_xoi',
+    customImage: 'ai_studio_dish_xc_bo_dua.jpg',
+    rarity: 1,
+    quip: 'Kem bơ xôi và Kem sầu 35k béo ngậy thơm lừng tại Quán Bắp 1991 Lê Quang Đạo.',
+  },
+  {
+    name: 'Khoai tây chiên lắc phô mai & Nem chua phô mai Bắp 1991',
+    sub: 'Khoai tây lắc phô mai 40k, Nem chua phô mai 40k, Nem chua rán 30k, Lạp xưởng Hà Khẩu 15k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 40,
+    image: -3682,
+    customId: 'dish_bap1991_an_vat_phomai',
+    customImage: 'ai_studio_dish_gamitra_nem_phomai.jpg',
+    rarity: 1,
+    quip: 'Thiên đường ăn vặt Quán Bắp 1991: Khoai tây lắc phô mai 40k, Nem chua phô mai 40k, Khoai lang kén 30k, Lạp xưởng Hà Khẩu 15k, Phô mai que 9k.',
+  },
+];
+
+export const bap1991DrinkDishes: Food[] = [
+  {
+    name: 'Trà sữa kem trứng dừa nướng Bắp 1991',
+    sub: 'Trà sữa phủ kem trứng sánh mịn và dừa nướng giòn thơm (Size M 30k / Size L 35k) • Quán Bắp 1991 Lê Quang Đạo',
+    price: 30,
+    image: -3683,
+    customId: 'dish_bap1991_ts_kem_trung_dua_nuong',
+    customImage: 'ai_studio_dish_cattien_ts_kem_trung_dua.jpg',
+    rarity: 1,
+    quip: 'Ly Trà sữa kem trứng dừa nướng béo ngậy thơm lừng (M 30k / L 35k) tại Quán Bắp 1991 Lê Quang Đạo.',
+  },
+  {
+    name: 'Trà sữa trân châu đường đen / Matcha / Socola Bắp 1991',
+    sub: 'Trà sữa trân châu đường đen, Socola, Việt Quất, Bạc Hà, Matcha đồng giá M 25k / L 30k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 25,
+    image: -3684,
+    customId: 'dish_bap1991_ts_tcdd',
+    customImage: 'ai_studio_dish_cattien_ts_duong_den.jpg',
+    rarity: 0,
+    quip: 'Đủ vị Trà sữa trân châu đường đen, Matcha, Socola, Việt Quất, Bạc Hà mát lạnh (M 25k / L 30k) tại Quán Bắp 1991.',
+  },
+  {
+    name: 'Trà quất lắc sữa & Hồng trà sữa Bắp 1991',
+    sub: 'Trà quất lắc sữa M 15k / L 20k, Hồng trà sữa M 20k / L 25k, Trà quất M 10k / L 15k • Quán Bắp 1991 Lê Quang Đạo',
+    price: 15,
+    image: -3685,
+    customId: 'dish_bap1991_tra_quat_lac_sua',
+    customImage: 'ai_studio_dish_bt55_tra_tac.jpg',
+    rarity: 0,
+    quip: 'Giải nhiệt cực đã cùng Trà quất lắc sữa 15k, Trà quất 10k và Hồng trà sữa 20k tại Quán Bắp 1991 Lê Quang Đạo.',
+  },
+];
+
 export const anGiFoods: Food[] = [
+  chaoLongChiHongDishes[0],   // MÓN MỚI CHỊ HỒNG: Cháo lòng thập cẩm 30k (Đầu Ngõ Kim Ngọc)
+  chaoLongChiHongDishes[1],   // MÓN MỚI CHỊ HỒNG: Bún lòng thập cẩm 30k (Đầu Ngõ Kim Ngọc)
+  bap1991FoodDishes[0],       // BESTSELLER BẮP 1991: Mỳ cay thập cẩm 55k (Lê Quang Đạo)
+  bap1991FoodDishes[7],       // BESTSELLER BẮP 1991: Kem dừa Mã Lai 35k (Lê Quang Đạo)
+  bap1991FoodDishes[8],       // SET ĐẶC BIỆT BẮP 1991: Set kem dừa Mã Lai 80k (Lê Quang Đạo)
+  ...bap1991FoodDishes.filter((_, idx) => ![0, 7, 8].includes(idx)),
   nhaMoChouChouFoodDishes[0], // BESTSELLER NHÀ MƠ: Nem nướng Nhà Mơ 30k (Cổng ABC Xuân Hoà)
   nhaMoChouChouFoodDishes[1], // ĐẶC BIỆT NHÀ MƠ: Nem nướng Nhà Mơ suất đặc biệt 35k
   nhaMoChouChouFoodDishes[2], // MÓN TỦ NHÀ MƠ: Nem lụi nướng Nhà Mơ 30k
@@ -9321,6 +9504,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
 export const cocokanaDishes = cocokanaFruitTeaDishes;
 
 export const uongGiItems: Food[] = [
+  ...bap1991DrinkDishes,      // ĐỒ UỐNG QUÁN BẮP 1991 (Lê Quang Đạo): Trà sữa kem trứng dừa nướng, Trà sữa trân châu đường đen, Trà quất lắc sữa
   ...chouChouDrinkDishes,     // BESTSELLER TIỆM NHÀ CHOU CHOU (Cổng ABC Xuân Hoà): Size 700ml 25k-30k, Trà Full Topping 15k & Nước ép M 15k / L 20k
   bepNhaCunDrinkDishes[0],    // BESTSELLER BẾP NHÀ CÚN: Trà chanh 12k
   bepNhaCunDrinkDishes[1],    // BESTSELLER BẾP NHÀ CÚN: Trà tắc 12k,
@@ -9750,6 +9934,14 @@ export function getDishConceptKey(food: Food): string {
   if (name.includes('cút lộn xào me')) return 'umee-cut-lon-xao-me';
   if (name.includes('oolong phong lan') || name.includes('phong lan')) return 'umee-oolong-phong-lan';
   if (name.includes('trà sữa gạo rang') || name.includes('gạo rang')) return 'umee-tra-sua-gao-rang';
+  if (name.includes('cháo lòng')) return 'clch-chao-long';
+  if (name.includes('bún lòng')) return 'clch-bun-long';
+  if (name.includes('kem dừa mã lai') && name.includes('set')) return 'bap1991-set-kem-dua';
+  if (name.includes('kem dừa mã lai')) return 'bap1991-kem-dua-ma-lai';
+  if (name.includes('kem bơ xôi')) return 'bap1991-kem-bo-xoi';
+  if ((food.customId && food.customId.includes('bap1991')) || (food.sub && food.sub.includes('Bắp 1991'))) {
+    if (food.customId) return food.customId;
+  }
   if (name.includes('nem nướng') && (name.includes('nhà mơ') || (food.sub && food.sub.includes('Nhà Mơ')))) {
     if (name.includes('35k') || name.includes('đặc biệt')) return 'nhamo-nem-nuong-35';
     return 'nhamo-nem-nuong-30';

@@ -3,10 +3,10 @@ import {
   getFirestore,
   doc,
   setDoc,
-  getDoc,
   onSnapshot,
 } from 'firebase/firestore';
-import { firebaseConfig } from './firebase';
+import { set } from 'firebase/database';
+import { firebaseConfig, getRealtimeDb, ref, onValue } from './firebase';
 import { Food } from './foods';
 import { Place, xuanHoaPlaces, getPlaceStyleGroup } from './places-xuanhoa';
 import { MainCategoryKey, getCategoryItems } from './xuanhoa-catalog';
@@ -225,14 +225,42 @@ export function getAdminState(): AdminState {
       return init;
     }
     const parsed: AdminState = JSON.parse(raw);
-    return {
+    const places = parsed.places || {};
+
+    // Tự động hợp nhất quán Cháo Lòng Chị Hồng (xh_custom_1792229707991) đã tạo trong Admin sang mã chính thức có biển quán & ảnh món
+    let migrated = false;
+    if (places['xh_custom_1792229707991']) {
+      const customHong = places['xh_custom_1792229707991'];
+      places['chao-long-chi-hong'] = {
+        ...customHong,
+        id: 'chao-long-chi-hong',
+        isCustom: false,
+        customPlaceData: undefined,
+        imageUrl: 'ai_studio_dish_chao_long_chi_hong.jpg',
+        updatedAt: Date.now(),
+      };
+      delete places['xh_custom_1792229707991'];
+      migrated = true;
+    }
+    if (places['chao-long-chi-hong'] && !places['chao-long-chi-hong'].imageUrl) {
+      places['chao-long-chi-hong'].imageUrl = 'ai_studio_dish_chao_long_chi_hong.jpg';
+      migrated = true;
+    }
+
+    const resultState: AdminState = {
       ...createInitialAdminState(),
       ...parsed,
-      places: parsed.places || {},
+      places,
       dishes: parsed.dishes || {},
       members: parsed.members || {},
       auditLogs: parsed.auditLogs || [],
     };
+
+    if (migrated) {
+      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(resultState));
+    }
+
+    return resultState;
   } catch {
     return createInitialAdminState();
   }
@@ -260,9 +288,17 @@ export function saveAdminState(next: AdminState, syncCloud = true): void {
           updatedAt: next.updatedAt,
         })
       );
-      const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-      setDoc(doc(db, 'xuanhoa_admin', 'global_state'), cleanPayload).catch(() => {});
+      // 1. Đồng bộ qua Firebase Realtime Database (chính thức)
+      const rtdb = getRealtimeDb();
+      if (rtdb) {
+        set(ref(rtdb, 'xuanhoa_admin/global_state'), cleanPayload).catch(() => {});
+      }
+      // 2. Dự phòng Cloud Firestore
+      try {
+        const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        setDoc(doc(db, 'xuanhoa_admin', 'global_state'), cleanPayload).catch(() => {});
+      } catch {}
     }
   } catch (err) {
     console.warn('Failed to save admin state:', err);
@@ -285,7 +321,7 @@ export function addAdminAuditLog(
   return [entry, ...(state.auditLogs || [])].slice(0, 100);
 }
 
-// Khởi tạo lắng nghe đồng bộ Realtime giữa các Tab trình duyệt (storage) & Đa thiết bị qua Cloud Firestore (onSnapshot)
+// Khởi tạo lắng nghe đồng bộ Realtime giữa các Tab trình duyệt (storage) & Đa thiết bị qua Firebase Realtime Database + Firestore
 let cloudListenerStarted = false;
 export function initAdminCloudSync(): void {
   if (typeof window === 'undefined' || cloudListenerStarted) return;
@@ -298,38 +334,58 @@ export function initAdminCloudSync(): void {
     }
   });
 
-  // 2. Đồng bộ Realtime đa thiết bị (Điện thoại <-> Máy tính) qua Cloud Firestore
   if (!firebaseConfig.apiKey) return;
+
+  const applyCloudData = (cloudData: Partial<AdminState> | null | undefined) => {
+    if (!cloudData) return;
+    const local = getAdminState();
+    if (cloudData.updatedAt && cloudData.updatedAt > (local.updatedAt || 0)) {
+      const merged: AdminState = {
+        ...local,
+        places: cloudData.places || {},
+        dishes: cloudData.dishes || {},
+        members: { ...local.members, ...(cloudData.members || {}) },
+        auditLogs: cloudData.auditLogs || local.auditLogs,
+        adminEmails: cloudData.adminEmails || local.adminEmails,
+        adminAccounts: cloudData.adminAccounts || local.adminAccounts,
+        sectorTags: cloudData.sectorTags || local.sectorTags,
+        fontScale: cloudData.fontScale || local.fontScale,
+        updatedAt: cloudData.updatedAt,
+      };
+      saveAdminState(merged, false);
+    }
+  };
+
+  // 2. Đồng bộ Realtime đa thiết bị qua Firebase Realtime Database
+  try {
+    const rtdb = getRealtimeDb();
+    if (rtdb) {
+      const rtdbRef = ref(rtdb, 'xuanhoa_admin/global_state');
+      onValue(
+        rtdbRef,
+        snapshot => {
+          if (snapshot.exists()) {
+            applyCloudData(snapshot.val() as Partial<AdminState>);
+          }
+        },
+        () => {}
+      );
+    }
+  } catch {}
+
+  // 3. Dự phòng qua Cloud Firestore
   try {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const ref = doc(db, 'xuanhoa_admin', 'global_state');
+    const fsRef = doc(db, 'xuanhoa_admin', 'global_state');
 
     onSnapshot(
-      ref,
+      fsRef,
       snap => {
         if (!snap.exists()) return;
-        const cloudData = snap.data() as Partial<AdminState>;
-        const local = getAdminState();
-        if (cloudData.updatedAt && cloudData.updatedAt > (local.updatedAt || 0)) {
-          const merged: AdminState = {
-            ...local,
-            places: cloudData.places || {},
-            dishes: cloudData.dishes || {},
-            members: { ...local.members, ...(cloudData.members || {}) },
-            auditLogs: cloudData.auditLogs || local.auditLogs,
-            adminEmails: cloudData.adminEmails || local.adminEmails,
-            adminAccounts: cloudData.adminAccounts || local.adminAccounts,
-            sectorTags: cloudData.sectorTags || local.sectorTags,
-            fontScale: cloudData.fontScale || local.fontScale,
-            updatedAt: cloudData.updatedAt,
-          };
-          saveAdminState(merged, false);
-        }
+        applyCloudData(snap.data() as Partial<AdminState>);
       },
-      () => {
-        // Ignore permission/offline errors gracefully
-      }
+      () => {}
     );
   } catch {}
 }
@@ -952,6 +1008,8 @@ export function getAllManagedDishes(): AdminDishItem[] {
       };
 
       seenNormalizedNames.add(finalName.toLowerCase().trim());
+      if (baseFood.customId === 'dish_clch_chao_long') seenNormalizedNames.add('cháo lòng');
+      if (baseFood.customId === 'dish_clch_bun_long') seenNormalizedNames.add('bún lòng');
 
       result.push({
         food: mergedFood,
@@ -1046,13 +1104,24 @@ export function getAllManagedDishes(): AdminDishItem[] {
       const dishStatus: DishStatus =
         placeItem.status !== 'active' || m.isLocked ? 'locked' : 'active';
 
+      let resolvedDishImage = placeItem.place.imageUrl || 'ai_studio_dish_com_68_suon.jpg';
+      if (normName.includes('bún lòng')) {
+        resolvedDishImage = 'ai_studio_dish_bun_long_chi_hong.jpg';
+      } else if (normName.includes('cháo lòng')) {
+        resolvedDishImage = 'ai_studio_dish_chao_long_chi_hong.jpg';
+      } else if (normName.includes('kem dừa')) {
+        resolvedDishImage = 'ai_studio_dish_bap1991_kem_dua_ma_lai.jpg';
+      } else if (normName.includes('mỳ cay') || normName.includes('mì cay')) {
+        resolvedDishImage = 'ai_studio_dish_bap1991_my_cay.jpg';
+      }
+
       const generatedFood: Food = {
         name: m.name,
         sub: `${m.category || 'Đặc sản'} • ${placeItem.place.name}`,
         price: m.price,
         image: -101,
         customId,
-        customImage: placeItem.place.imageUrl || 'ai_studio_dish_com_68_suon.jpg',
+        customImage: resolvedDishImage,
         rarity,
         quip:
           m.description ||

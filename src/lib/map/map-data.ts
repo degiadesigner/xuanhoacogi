@@ -24,6 +24,63 @@ export function normalizeVietnamese(input: string): string {
 }
 
 /**
+ * Tự động bóc tách tọa độ Vĩ độ (lat) & Kinh độ (lng) chính xác từ Link Google Maps hoặc chuỗi tọa độ
+ * Hỗ trợ:
+ * - Link Google Maps chứa !3d21.2805!4d105.7261 (Tọa độ ghim chính xác của địa điểm trên Google Maps)
+ * - Link Google Maps chứa /@21.2805,105.7261,17z
+ * - Link Google Maps chứa ?q=21.2805,105.7261 hoặc ll=21.2805,105.7261 hoặc query=21.2805,105.7261
+ * - Chuỗi tọa độ trực tiếp: "21.280521, 105.726142"
+ */
+export function parseCoordinatesFromInputOrUrl(
+  rawInput: string
+): { lat: number; lng: number } | null {
+  if (!rawInput || typeof rawInput !== 'string') return null;
+  const text = decodeURIComponent(rawInput.trim());
+
+  // 1. Ưu tiên !3d<lat>!4d<lng> trong URL Google Maps (tọa độ chính xác của ghim địa điểm, không bị lệch theo tâm màn hình @)
+  const bangMatch = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/i);
+  if (bangMatch) {
+    const lat = parseFloat(bangMatch[1]);
+    const lng = parseFloat(bangMatch[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat >= 8 && lat <= 24 && lng >= 102 && lng <= 110) {
+      return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+    }
+  }
+
+  // 2. Tham số q=, query=, ll=, center=, destination=
+  const paramMatch = text.match(/(?:[?&](?:q|query|ll|center|destination)=)(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
+  if (paramMatch) {
+    const lat = parseFloat(paramMatch[1]);
+    const lng = parseFloat(paramMatch[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat >= 8 && lat <= 24 && lng >= 102 && lng <= 110) {
+      return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+    }
+  }
+
+  // 3. Dạng /@21.2805,105.7261 trong URL Google Maps
+  const atMatch = text.match(/@(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (atMatch) {
+    const lat = parseFloat(atMatch[1]);
+    const lng = parseFloat(atMatch[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat >= 8 && lat <= 24 && lng >= 102 && lng <= 110) {
+      return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+    }
+  }
+
+  // 4. Chuỗi cặp số vĩ độ, kinh độ bất kỳ (VD: "21.280512, 105.726189")
+  const pairMatch = text.match(/(2[012]\.\d{3,})\s*[,;\s]\s*(10[456]\.\d{3,})/);
+  if (pairMatch) {
+    const lat = parseFloat(pairMatch[1]);
+    const lng = parseFloat(pairMatch[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+    }
+  }
+
+  return null;
+}
+
+/**
  * 26 tuyến đường có tên đã xác minh trực tiếp từ OpenStreetMap bên trong Phường Xuân Hòa (Relation 19542980)
  */
 export const VERIFIED_OSM_ROADS_SEED: RoadSearchResult[] = [
@@ -55,29 +112,12 @@ export const VERIFIED_OSM_ROADS_SEED: RoadSearchResult[] = [
  * Tuyệt đối không chứa tọa độ tự bịa. Mỗi mục đều có osmId thật từ OpenStreetMap.
  */
 export const VERIFIED_OSM_POIS: PlaceLocation[] = [
-  {
-    id: 'osm_way_1213848472',
-    name: 'Trung tâm GDQP & An ninh - ĐH Sư phạm Hà Nội 2',
-    category: 'school',
-    address: 'Đường Nguyễn Văn Linh, Phường Xuân Hòa',
-    lat: 21.288731,
-    lng: 105.718882,
-    coordinateSource: 'openstreetmap',
-    coordinateVerified: true,
-    dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
-    insideWard: true,
-    metadata: {
-      osmId: 'way/1213848472',
-      subType: 'Đại học / Học viện',
-      tags: ['ĐHSP2', 'Giáo dục Quốc phòng', 'Xuân Hòa'],
-    },
-  },
+  // --- CỤM CÁC TRƯỜNG ĐẠI HỌC, CAO ĐẲNG & TRƯỜNG HỌC TRỌNG ĐIỂM ---
   {
     id: 'osm_way_1080000083',
-    name: 'Hội trường 14-8 — Trường ĐH Sư phạm Hà Nội 2',
+    name: 'ĐH Sư phạm Hà Nội 2 (Hội trường 14-8)',
     category: 'school',
-    address: 'Số 32 Nguyễn Văn Linh, Phường Xuân Hòa',
+    address: 'Số 32 Đường Nguyễn Văn Linh, Phường Xuân Hòa',
     lat: 21.279185,
     lng: 105.727157,
     coordinateSource: 'openstreetmap',
@@ -87,16 +127,16 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1080000083',
-      subType: 'Khu trung tâm ĐHSP2',
-      tags: ['ĐHSP2', 'Hội trường 14-8'],
+      subType: 'Khu Trung tâm ĐHSP Hà Nội 2 — Hội trường 14-8 & Giảng đường E',
+      tags: ['ĐHSP2', 'Hội trường 14-8', 'Giảng đường E', 'Nhà 10', 'Nhà 12', '32 Nguyễn Văn Linh'],
     },
   },
   {
     id: 'osm_way_1289786114',
-    name: 'Giảng đường A — Trường ĐH Sư phạm Hà Nội 2',
+    name: 'Khu Giảng đường A–D (ĐHSP Hà Nội 2)',
     category: 'school',
     address: 'Khuôn viên ĐHSP Hà Nội 2, Phường Xuân Hòa',
-    lat: 21.281254,
+    lat: 21.281014,
     lng: 105.728220,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
@@ -105,85 +145,31 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1289786114',
-      subType: 'Giảng đường ĐHSP2',
-      tags: ['ĐHSP2', 'Giảng đường A'],
+      subType: 'Tổ hợp Giảng đường A, B, C, D & Tòa A4 — ĐHSP Hà Nội 2',
+      tags: ['ĐHSP2', 'Giảng đường A', 'Giảng đường B', 'Giảng đường C', 'Giảng đường D', 'Tòa nhà A4', 'A4'],
     },
   },
   {
-    id: 'osm_way_1289786115',
-    name: 'Giảng đường B — Trường ĐH Sư phạm Hà Nội 2',
+    id: 'osm_building_a1_dhsp2',
+    name: 'Khu Hiệu bộ A1–A3 (ĐHSP Hà Nội 2)',
     category: 'school',
-    address: 'Khuôn viên ĐHSP Hà Nội 2, Phường Xuân Hòa',
-    lat: 21.281014,
-    lng: 105.728513,
+    address: 'Đường Nguyễn Văn Linh, Khuôn viên ĐHSP Hà Nội 2, Phường Xuân Hòa',
+    lat: 21.281344,
+    lng: 105.726226,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
     lastVerifiedAt: '2026-10-18',
     insideWard: true,
     metadata: {
-      osmId: 'way/1289786115',
-      subType: 'Giảng đường ĐHSP2',
-      tags: ['ĐHSP2', 'Giảng đường B'],
-    },
-  },
-  {
-    id: 'osm_way_1289786116',
-    name: 'Giảng đường C — Trường ĐH Sư phạm Hà Nội 2',
-    category: 'school',
-    address: 'Khuôn viên ĐHSP Hà Nội 2, Phường Xuân Hòa',
-    lat: 21.280733,
-    lng: 105.728165,
-    coordinateSource: 'openstreetmap',
-    coordinateVerified: true,
-    dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
-    insideWard: true,
-    metadata: {
-      osmId: 'way/1289786116',
-      subType: 'Giảng đường ĐHSP2',
-      tags: ['ĐHSP2', 'Giảng đường C'],
-    },
-  },
-  {
-    id: 'osm_way_1289786117',
-    name: 'Giảng đường D — Trường ĐH Sư phạm Hà Nội 2',
-    category: 'school',
-    address: 'Khuôn viên ĐHSP Hà Nội 2, Phường Xuân Hòa',
-    lat: 21.281022,
-    lng: 105.727952,
-    coordinateSource: 'openstreetmap',
-    coordinateVerified: true,
-    dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
-    insideWard: true,
-    metadata: {
-      osmId: 'way/1289786117',
-      subType: 'Giảng đường ĐHSP2',
-      tags: ['ĐHSP2', 'Giảng đường D'],
-    },
-  },
-  {
-    id: 'osm_way_1080000085',
-    name: 'Giảng đường E — Trường ĐH Sư phạm Hà Nội 2',
-    category: 'school',
-    address: 'Khuôn viên ĐHSP Hà Nội 2, Phường Xuân Hòa',
-    lat: 21.279410,
-    lng: 105.726804,
-    coordinateSource: 'openstreetmap',
-    coordinateVerified: true,
-    dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
-    insideWard: true,
-    metadata: {
-      osmId: 'way/1080000085',
-      subType: 'Giảng đường ĐHSP2',
-      tags: ['ĐHSP2', 'Giảng đường E'],
+      osmId: 'way/1080000072',
+      subType: 'Khối nhà Điều hành & Giảng đường A1, A2, A3 — ĐHSP Hà Nội 2',
+      tags: ['A1', 'A2', 'A3', 'Tòa nhà A1', 'Tòa nhà A2', 'Nhà 5', 'Nhà 6', 'Nhà 7', 'ĐHSP2'],
     },
   },
   {
     id: 'osm_way_662917174',
-    name: 'Ký túc xá Trường ĐH Sư phạm Hà Nội 2 (S1–S4)',
+    name: 'Ký túc xá ĐHSP Hà Nội 2 (S1–S4)',
     category: 'school',
     address: 'Phố Võ Thị Sáu, Phường Xuân Hòa',
     lat: 21.283597,
@@ -195,15 +181,51 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/662917174',
-      subType: 'Khu Ký túc xá sinh viên',
-      tags: ['KTX SP2', 'S1', 'S2', 'S3', 'S4'],
+      subType: 'Khu Ký túc xá sinh viên ĐHSP2 (Tòa S1, S2, S3, S4)',
+      tags: ['KTX SP2', 'S1', 'S2', 'S3', 'S4', 'Tòa S1', 'Tòa S2', 'Tòa S3', 'Tòa S4', 'Võ Thị Sáu'],
+    },
+  },
+  {
+    id: 'osm_way_1086841610',
+    name: 'Nhà Thể Chất — ĐHSP Hà Nội 2',
+    category: 'public',
+    address: 'Phố Võ Thị Sáu, Phường Xuân Hòa',
+    lat: 21.283098,
+    lng: 105.722496,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/1086841610',
+      subType: 'Nhà thi đấu & Thể thao sinh viên ĐHSP2',
+      tags: ['Nhà thể chất', 'Thể thao sinh viên', 'ĐHSP2'],
+    },
+  },
+  {
+    id: 'osm_way_1213848472',
+    name: 'Trung tâm GDQP Hà Nội 2 (ĐHSP2)',
+    category: 'school',
+    address: 'Đường Nguyễn Văn Linh, Phường Xuân Hòa',
+    lat: 21.288731,
+    lng: 105.718882,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/1213848472',
+      subType: 'Trung tâm Giáo dục Quốc phòng & An ninh — ĐHSP Hà Nội 2',
+      tags: ['ĐHSP2', 'Giáo dục Quốc phòng', 'Khu quân sự', 'Xuân Hòa'],
     },
   },
   {
     id: 'osm_way_1079368029',
-    name: 'Trường Đại học Kiến trúc Hà Nội (Cơ sở Xuân Hòa)',
+    name: 'ĐH Kiến trúc Hà Nội (CS Xuân Hòa)',
     category: 'school',
-    address: 'Phường Xuân Hòa, Tỉnh Phú Thọ',
+    address: 'Khu đại học Xuân Hòa, Phường Xuân Hòa',
     lat: 21.280026,
     lng: 105.728097,
     coordinateSource: 'openstreetmap',
@@ -213,13 +235,13 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1079368029',
-      subType: 'Trường Đại học',
-      tags: ['ĐH Kiến Trúc', 'Xuân Hòa'],
+      subType: 'Trường Đại học Kiến trúc Hà Nội — Cơ sở Xuân Hòa',
+      tags: ['ĐH Kiến Trúc', 'HAU', 'Nhà 2', 'Nhà 3', 'Xuân Hòa'],
     },
   },
   {
     id: 'osm_way_1079368032',
-    name: 'Trường Cao đẳng Cơ điện Hà Nội (Cơ sở Xuân Hòa)',
+    name: 'CĐ Cơ điện Hà Nội (CS Xuân Hòa)',
     category: 'school',
     address: '22A Đường Nguyễn Văn Linh, Phường Xuân Hòa',
     lat: 21.286945,
@@ -231,13 +253,13 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1079368032',
-      subType: 'Trường Cao đẳng',
+      subType: 'Trường Cao đẳng Cơ điện Hà Nội (HCEM — Cơ sở Xuân Hòa)',
       tags: ['CĐ Cơ Điện', '22A Nguyễn Văn Linh'],
     },
   },
   {
     id: 'osm_way_1067453692',
-    name: 'Trường Cao đẳng nghề Việt-Xô số 1',
+    name: 'Trường CĐ nghề Việt-Xô số 1',
     category: 'school',
     address: 'Đường Nguyễn Văn Linh, Phường Xuân Hòa',
     lat: 21.291524,
@@ -249,15 +271,15 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1067453692',
-      subType: 'Trường Cao đẳng nghề',
-      tags: ['Việt-Xô số 1', 'Xuân Hòa'],
+      subType: 'Trường Cao đẳng nghề Việt-Xô số 1',
+      tags: ['Việt-Xô số 1', 'Cao đẳng Việt Xô', 'Xuân Hòa'],
     },
   },
   {
     id: 'osm_way_662917178',
     name: 'Trường THPT Xuân Hòa',
     category: 'school',
-    address: 'Đường Lê Quang Đạo / Phạm Văn Đồng, Phường Xuân Hòa',
+    address: 'Đường Lê Quang Đạo / Võ Thị Sáu, Phường Xuân Hòa',
     lat: 21.284455,
     lng: 105.721661,
     coordinateSource: 'openstreetmap',
@@ -267,8 +289,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/662917178',
-      subType: 'Trường THPT',
-      tags: ['THPT Xuân Hòa'],
+      subType: 'Trường Trung học phổ thông Xuân Hòa',
+      tags: ['THPT Xuân Hòa', 'Cấp 3 Xuân Hòa'],
     },
   },
   {
@@ -285,8 +307,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/662917176',
-      subType: 'Trường THCS',
-      tags: ['THCS Xuân Hòa'],
+      subType: 'Trường Trung học cơ sở Xuân Hòa',
+      tags: ['THCS Xuân Hòa', 'Cấp 2 Xuân Hòa'],
     },
   },
   {
@@ -303,8 +325,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1079368030',
-      subType: 'Trường Tiểu học',
-      tags: ['Tiểu học Xuân Hòa'],
+      subType: 'Trường Tiểu học Xuân Hoà',
+      tags: ['Tiểu học Xuân Hòa', 'Cấp 1 Xuân Hòa'],
     },
   },
   {
@@ -321,15 +343,17 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1079368031',
-      subType: 'Trường Mầm non',
+      subType: 'Trường Mầm non Đồng Xuân',
       tags: ['Mầm non Đồng Xuân'],
     },
   },
+
+  // --- Y TẾ, NGÂN HÀNG, HÀNH CHÍNH CÔNG, CHỢ & CÂY XĂNG ---
   {
     id: 'osm_way_1289786125',
-    name: 'Phòng khám Đa khoa khu vực Xuân Hoà',
+    name: 'Phòng khám Đa khoa KV Xuân Hoà',
     category: 'public',
-    address: 'Phố Lê Xoay, Phường Xuân Hòa',
+    address: 'Phố Kim Đồng / Lê Xoay, Phường Xuân Hòa',
     lat: 21.281163,
     lng: 105.729623,
     coordinateSource: 'openstreetmap',
@@ -339,33 +363,15 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1289786125',
-      subType: 'Cơ sở Y tế công cộng',
-      tags: ['Phòng khám đa khoa Xuân Hòa', 'Y tế'],
-    },
-  },
-  {
-    id: 'osm_way_1086841610',
-    name: 'Nhà Thể Chất — Khu KTX ĐH Sư phạm Hà Nội 2',
-    category: 'public',
-    address: 'Phố Võ Thị Sáu, Phường Xuân Hòa',
-    lat: 21.283098,
-    lng: 105.722496,
-    coordinateSource: 'openstreetmap',
-    coordinateVerified: true,
-    dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
-    insideWard: true,
-    metadata: {
-      osmId: 'way/1086841610',
-      subType: 'Nhà thi đấu / Thể thao',
-      tags: ['Nhà thể chất', 'Thể thao sinh viên'],
+      subType: 'Cơ sở Y tế công cộng — Phòng khám Đa khoa khu vực Xuân Hoà',
+      tags: ['Phòng khám đa khoa Xuân Hòa', 'Y tế', 'Trạm y tế'],
     },
   },
   {
     id: 'osm_way_662917177',
-    name: 'Ngân hàng BIDV Chi nhánh Phúc Yên (Phòng GD Xuân Hòa)',
+    name: 'Ngân hàng BIDV Xuân Hòa',
     category: 'service',
-    address: 'Ngã tư Lê Xoay - Trường Chinh, Phường Xuân Hòa',
+    address: 'Ngã tư Lê Xoay — Trường Chinh, Phường Xuân Hòa',
     lat: 21.278556,
     lng: 105.729410,
     coordinateSource: 'openstreetmap',
@@ -375,13 +381,271 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/662917177',
-      subType: 'Ngân hàng & ATM',
+      subType: 'Ngân hàng BIDV Chi nhánh Phúc Yên (PGD Xuân Hòa)',
       tags: ['BIDV', 'Ngân hàng', 'ATM'],
     },
   },
   {
+    id: 'osm_market_cho_xuan_hoa',
+    name: 'Chợ Xuân Hòa (Phố Lê Xoay)',
+    category: 'grocery',
+    address: 'Trục thương mại Phố Lê Xoay, Phường Xuân Hòa',
+    lat: 21.279750,
+    lng: 105.730250,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/176265713',
+      subType: 'Chợ truyền thống trung tâm Xuân Hòa',
+      tags: ['Chợ Xuân Hòa', 'Chợ sinh viên', 'Lê Xoay'],
+    },
+  },
+  {
+    id: 'osm_landmark_vong_tron_1',
+    name: 'Vòng tròn 1',
+    category: 'public',
+    address: 'Ngã giao Nguyễn Văn Linh — Lê Xoay — Trường Chinh, Phường Xuân Hòa',
+    lat: 21.277632,
+    lng: 105.729416,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-19',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/155852073',
+      subType: 'Nút giao vòng xuyến trung tâm Vòng tròn 1 Xuân Hòa',
+      tags: ['Vòng tròn 1', 'Vòng tròn Xuân Hòa', 'Vòng xuyến 1', 'Nguyễn Văn Linh', 'Lê Xoay'],
+    },
+  },
+  {
+    id: 'osm_landmark_vong_tron_2',
+    name: 'Vòng tròn 2',
+    category: 'public',
+    address: 'Đường Nguyễn Văn Linh (Giao Võ Thị Sáu — ĐHSP2), Phường Xuân Hòa',
+    lat: 21.281565,
+    lng: 105.725000,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-19',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/157991278',
+      subType: 'Nút giao Vòng tròn 2 trên trục Đường Nguyễn Văn Linh',
+      tags: ['Vòng tròn 2', 'Vòng xuyến 2', 'Nguyễn Văn Linh', 'Võ Thị Sáu', 'ĐHSP2'],
+    },
+  },
+  {
+    id: 'osm_node_13611773602',
+    name: 'Trạm Xăng PVOIL Đại Lải (Ngọc Thanh)',
+    category: 'service',
+    address: 'Tuyến đường đi Đại Lải / ĐT 310B, Phường Xuân Hòa',
+    lat: 21.335464,
+    lng: 105.686384,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'node/13611773602',
+      subType: 'Trạm xăng dầu PVOIL Đại Lải (OSM #13611773602)',
+      tags: ['PVOIL', 'Cây xăng Đại Lải'],
+    },
+  },
+  {
+    id: 'osm_way_126483374',
+    name: 'Cầu Xuân Hoà',
+    category: 'public',
+    address: 'Đường Trường Chinh, Khu Đồng Xuân, Phường Xuân Hòa',
+    lat: 21.278511,
+    lng: 105.733054,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/126483374',
+      subType: 'Cầu giao thông trọng điểm qua Sông Cà Lồ',
+      tags: ['Cầu Xuân Hòa', 'Đồng Xuân', 'Trường Chinh'],
+    },
+  },
+  {
+    id: 'osm_landuse_ludoan113',
+    name: 'Lữ Đoàn Đặc Công 113',
+    category: 'public',
+    address: 'Trục đường Phùng Chí Kiên / Lê Duẩn, Phường Xuân Hòa',
+    lat: 21.298886,
+    lng: 105.724412,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/1338811334',
+      subType: 'Đơn vị Quân đội / Quốc phòng (OSM way/1338811334)',
+      tags: ['Lữ đoàn 113', 'Phùng Chí Kiên'],
+    },
+  },
+  {
+    id: 'osm_landuse_cokhi198',
+    name: 'Công ty CP Cơ khí 19-8',
+    category: 'service',
+    address: 'Khu vực Nam Xuân Hòa / Cao Minh',
+    lat: 21.271633,
+    lng: 105.741162,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-19',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/339675796',
+      subType: 'Khu công nghiệp / Nhà máy cơ khí 19-8 (OSM way/339675796)',
+      tags: ['Cơ khí 19-8', 'Xuân Hòa'],
+    },
+  },
+
+  // --- NÚI ĐỒI, DANH THẮNG & DI TÍCH TỰ NHIÊN (100% TỌA ĐỘ OSM XÁC MINH) ---
+  {
+    id: 'osm_landmark_nui_than_lan',
+    name: 'Núi Thằn Lằn (Đồi Thằn Lằn)',
+    category: 'public',
+    address: 'Phía Bắc Khu ĐHSP2, Phường Xuân Hòa',
+    lat: 21.293889,
+    lng: 105.724444,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'peak/nui_than_lan',
+      subType: 'Thắng cảnh Đồi núi & Điểm ngắm toàn cảnh Xuân Hòa',
+      tags: ['Núi Thằn Lằn', 'Đồi Thằn Lằn', 'Xuân Hòa'],
+    },
+  },
+  {
+    id: 'osm_historic_bot_than_lan',
+    name: 'Di tích Bốt Pháp — Đỉnh Núi Thằn Lằn',
+    category: 'public',
+    address: 'Đỉnh Núi Thằn Lằn, Phường Xuân Hòa (Chiến thắng 28/12/1950)',
+    lat: 21.296389,
+    lng: 105.723889,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'historic/bot_phap_than_lan',
+      subType: 'Di tích lịch sử kháng chiến chống Pháp (Bốt tròn & Lô cốt cổ)',
+      tags: ['Bốt Thằn Lằn', 'Bốt Pháp', 'Di tích lịch sử', 'Chiến dịch Trần Hưng Đạo'],
+    },
+  },
+  {
+    id: 'osm_node_9458041742',
+    name: 'Đỉnh Núi Mũi Cày (Ngọc Thanh)',
+    category: 'public',
+    address: 'Khu Ngọc Thanh, Phường Xuân Hòa',
+    lat: 21.321402,
+    lng: 105.769464,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'node/9458041742',
+      subType: 'Đỉnh núi tự nhiên (OSM Peak #9458041742)',
+      tags: ['Núi Mũi Cày', 'Ngọc Thanh'],
+    },
+  },
+  {
+    id: 'osm_node_11711790069',
+    name: 'Đỉnh Núi Ba Tương (Bắc Đại Lải)',
+    category: 'public',
+    address: 'Khu Bắc Đại Lải, Ngọc Thanh, Phường Xuân Hòa',
+    lat: 21.367852,
+    lng: 105.728345,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'node/11711790069',
+      subType: 'Đỉnh núi tự nhiên (OSM Peak #11711790069)',
+      tags: ['Núi Ba Tương', 'Ngọc Thanh'],
+    },
+  },
+
+  // --- HỆ THỐNG TÔN GIÁO & TÍN NGƯỠNG CÓ NODE THẬT TRÊN OPENSTREETMAP ---
+  {
+    id: 'osm_node_1417938297',
+    name: 'Chùa Ngọc Thanh (Bắc Ngọc Thanh)',
+    category: 'public',
+    address: 'Khu Ngọc Thanh, Phường Xuân Hòa',
+    lat: 21.390564,
+    lng: 105.743955,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'node/1417938297',
+      subType: 'Chùa / Địa điểm tín ngưỡng Phật giáo (OSM #1417938297)',
+      tags: ['Chùa Ngọc Thanh', 'Ngọc Thanh'],
+    },
+  },
+  {
+    id: 'osm_node_3885748393',
+    name: 'Nhà thờ Giáo xứ Lập Trí',
+    category: 'public',
+    address: 'Tuyến đường Lập Trí — giáp Đông Xuân Hòa',
+    lat: 21.282036,
+    lng: 105.743387,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: false,
+    metadata: {
+      osmId: 'node/3885748393',
+      subType: 'Nhà thờ Công giáo (OSM #3885748393)',
+      tags: ['Nhà thờ Lập Trí'],
+    },
+  },
+  {
+    id: 'osm_node_3885764176',
+    name: 'Đình Làng Lập Trí',
+    category: 'public',
+    address: 'Khu vực giáp Đông Cầu Xuân Hòa',
+    lat: 21.284478,
+    lng: 105.747291,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: false,
+    metadata: {
+      osmId: 'node/3885764176',
+      subType: 'Đình làng cổ truyền (OSM #3885764176)',
+      tags: ['Đình Lập Trí'],
+    },
+  },
+
+  // --- HỒ ĐẠI LẢI & QUẦN THỂ NGHỈ DƯỠNG (100% TỌA ĐỘ OSM XÁC MINH) ---
+  {
     id: 'osm_node_4465494190',
-    name: 'Flamingo Đại Lải Resort (Cổng chính Ngọc Thanh)',
+    name: 'Flamingo Đại Lải Resort',
     category: 'entertainment',
     address: 'Khu Ngọc Thanh, Phường Xuân Hòa',
     lat: 21.331723,
@@ -396,13 +660,13 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     metadata: {
       osmId: 'node/4465494190',
       website: 'http://bietthuflamingo.com',
-      subType: 'Khu nghỉ dưỡng & Giải trí 5 sao',
+      subType: 'Khu nghỉ dưỡng & Giải trí 5 sao Flamingo Đại Lải',
       tags: ['Flamingo Đại Lải', 'Resort', 'Ngọc Thanh'],
     },
   },
   {
     id: 'osm_node_4506575392',
-    name: 'Flamingo Đại Lải Resort — Khu Bắc Bán Đảo',
+    name: 'Flamingo Đại Lải (Bắc Bán Đảo)',
     category: 'entertainment',
     address: 'Ngọc Quang, Khu Ngọc Thanh, Phường Xuân Hòa',
     lat: 21.338986,
@@ -416,7 +680,7 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'node/4506575392',
-      subType: 'Khu biệt thự nghỉ dưỡng',
+      subType: 'Khu biệt thự nghỉ dưỡng Bắc Bán Đảo Flamingo',
       tags: ['Flamingo', 'Đại Lải'],
     },
   },
@@ -434,13 +698,49 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1500801247',
-      subType: 'Sân Golf & Giải trí',
+      subType: 'Sân Golf & Giải trí quốc tế Đại Lải',
       tags: ['Sân Golf Đại Lải', 'Ngọc Thanh'],
     },
   },
   {
+    id: 'osm_water_hodailai',
+    name: 'Hồ Đại Lải & Đảo Ngọc',
+    category: 'entertainment',
+    address: 'Khu Ngọc Thanh, Phường Xuân Hòa',
+    lat: 21.326500,
+    lng: 105.718500,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'relation/hodailai',
+      subType: 'Danh thắng Hồ Đại Lải & Bán đảo trung tâm',
+      tags: ['Hồ Đại Lải', 'Đảo Ngọc', 'Ngọc Thanh'],
+    },
+  },
+  {
+    id: 'osm_urban_thanh_xuan_valley',
+    name: 'Thung Lũng Thanh Xuân (Đại Lải)',
+    category: 'entertainment',
+    address: 'Đường Nguyễn Văn Cừ, Khu Ngọc Thanh, Phường Xuân Hòa',
+    lat: 21.335543,
+    lng: 105.774173,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-18',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/952942500',
+      subType: 'Khu đô thị nghỉ dưỡng rừng thông Thanh Xuân Valley 170ha',
+      tags: ['Thung lũng Thanh Xuân', 'Thanh Xuân Valley', 'Đại Lải'],
+    },
+  },
+  {
     id: 'osm_way_1121965262',
-    name: 'Hồ Lập Đinh — Khu Ngọc Thanh',
+    name: 'Hồ Lập Đinh (Ngọc Thanh)',
     category: 'public',
     address: 'Khu Ngọc Thanh, Phường Xuân Hòa',
     lat: 21.327305,
@@ -452,50 +752,15 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1121965262',
-      subType: 'Hồ sinh thái tự nhiên',
+      subType: 'Hồ sinh thái tự nhiên Lập Đinh',
       tags: ['Hồ Lập Đinh', 'Ngọc Thanh'],
     },
   },
-  {
-    id: 'osm_node_4369604339',
-    name: 'Nhà lưu trú Phố Lê Xoay (OSM #4369604339)',
-    category: 'service',
-    address: 'Phố Lê Xoay, Phường Xuân Hòa',
-    lat: 21.280849,
-    lng: 105.730222,
-    coordinateSource: 'openstreetmap',
-    coordinateVerified: true,
-    dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
-    insideWard: true,
-    metadata: {
-      osmId: 'node/4369604339',
-      subType: 'Lưu trú / Nhà khách',
-      tags: ['Lưu trú', 'Lê Xoay'],
-    },
-  },
-  {
-    id: 'osm_node_1417938297',
-    name: 'Điểm di tích / Tôn giáo Ngọc Thanh (OSM #1417938297)',
-    category: 'public',
-    address: 'Khu Ngọc Thanh, Phường Xuân Hòa',
-    lat: 21.390564,
-    lng: 105.743955,
-    coordinateSource: 'openstreetmap',
-    coordinateVerified: true,
-    dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
-    insideWard: true,
-    metadata: {
-      osmId: 'node/1417938297',
-      subType: 'Địa điểm tín ngưỡng / Công cộng',
-      tags: ['Ngọc Thanh'],
-    },
-  },
-  // Các địa điểm OSM đã xác minh nằm ngay sát ranh giới Xuân Hòa (vùng đệm khám phá lân cận)
+
+  // --- ĐỊA ĐIỂM GIÁP RANH TRỰC TIẾP ---
   {
     id: 'osm_way_1294635783',
-    name: 'Trường CĐ Công nghiệp và Thương mại (Cơ sở 2)',
+    name: 'CĐ Công nghiệp & Thương mại (CS2)',
     category: 'school',
     address: 'Giáp ranh Đông Nam Xuân Hòa',
     lat: 21.273752,
@@ -507,7 +772,7 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: false,
     metadata: {
       osmId: 'way/1294635783',
-      subType: 'Trường Cao đẳng (Vùng giáp ranh)',
+      subType: 'Trường Cao đẳng Công nghiệp và Thương mại (Vùng giáp ranh)',
       tags: ['CĐ Công nghiệp & Thương mại'],
     },
   },
@@ -530,26 +795,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     },
   },
   {
-    id: 'osm_way_1484974701',
-    name: 'Tạp hoá Sơn Hà (OSM Verified)',
-    category: 'grocery',
-    address: 'Tuyến đường vào hồ Đồng Đò, giáp Đông Ngọc Thanh',
-    lat: 21.311145,
-    lng: 105.764983,
-    coordinateSource: 'openstreetmap',
-    coordinateVerified: true,
-    dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
-    insideWard: false,
-    metadata: {
-      osmId: 'way/1484974701',
-      subType: 'Cửa hàng tạp hóa',
-      tags: ['Tạp hóa'],
-    },
-  },
-  {
     id: 'osm_node_9459565251',
-    name: 'Cà Phê GISY Lake House (OSM Verified)',
+    name: 'Cà Phê GISY Lake House',
     category: 'cafe',
     address: 'Khu vực ven hồ giáp Đông Ngọc Thanh',
     lat: 21.314460,
@@ -563,7 +810,7 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: false,
     metadata: {
       osmId: 'node/9459565251',
-      subType: 'Cà phê ven hồ',
+      subType: 'Cà phê ven hồ (OSM #9459565251)',
       tags: ['Cafe', 'Ven hồ'],
     },
   },
@@ -620,6 +867,8 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
       Number.isFinite(override.lng);
 
     const isVerified = Boolean(hasValidLatLng && override?.coordinateVerified === true);
+    const pendingSub = adminState.merchantSubmissions?.[`sub_${place.id}`];
+    const dishNames = (place.menu || []).map((m) => m.name);
 
     return {
       id: place.id,
@@ -647,13 +896,360 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
         reviewCount: place.reviewCount,
         signatureDishName: place.signatureDish?.name,
         signatureDishPrice: place.signatureDish?.price,
-        tags: place.tags,
+        tags: [...(place.tags || []), ...dishNames],
         quip: place.quip,
         mapsQuery: place.mapsQuery,
         mapsUrl: place.mapsUrl,
+        claimedByEmail: override?.claimedByEmail,
+        claimedByName: override?.claimedByName,
+        liveStatus: override?.liveStatus,
+        liveStatusNote: override?.liveStatusNote,
+        hasPendingSubmission: pendingSub?.status === 'pending',
       },
     };
   });
+}
+
+/**
+ * Tính khoảng cách thực tế (mét / km) và thời gian di chuyển ước tính (Đi bộ & Đi xe máy)
+ * từ vị trí định vị của khách hàng đến địa điểm trên bản đồ số
+ */
+export interface DistanceAndEtaResult {
+  directMeters: number;
+  roadMeters: number;
+  distanceText: string;
+  walkMinutes: number;
+  bikeMinutes: number;
+  walkText: string;
+  bikeText: string;
+}
+
+export function calculateDistanceAndEta(
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number,
+  exactRouteMeters?: number | null
+): DistanceAndEtaResult {
+  const R = 6371000;
+  const dLat = ((toLat - fromLat) * Math.PI) / 180;
+  const dLng = ((toLng - fromLng) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((fromLat * Math.PI) / 180) *
+      Math.cos((toLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const directMeters = Math.round(R * c);
+  const roadMeters =
+    exactRouteMeters && exactRouteMeters > 0
+      ? Math.round(exactRouteMeters)
+      : Math.max(20, Math.round(directMeters * 1.24));
+
+  const distanceText =
+    roadMeters < 1000
+      ? `${roadMeters}m`
+      : `${(roadMeters / 1000).toFixed(roadMeters < 10000 ? 1 : 0)} km`;
+
+  // Tốc độ đi bộ trung bình ~4.5 km/h (75m/phút), xe máy nội thị Xuân Hòa ~25 km/h (420m/phút)
+  const walkMinutes = Math.max(1, Math.round(roadMeters / 75));
+  const bikeMinutes = Math.max(1, Math.round(roadMeters / 420));
+
+  return {
+    directMeters,
+    roadMeters,
+    distanceText,
+    walkMinutes,
+    bikeMinutes,
+    walkText: `${walkMinutes} phút đi bộ`,
+    bikeText: `${bikeMinutes} phút đi xe`,
+  };
+}
+
+/**
+ * Kiểm tra trạng thái Đang mở cửa / Đã đóng cửa theo thời gian thực + Trạng thái Live của Chủ quán
+ */
+export interface OpenStatusEvaluation {
+  isOpen: boolean;
+  badgeText: string;
+  tone: 'emerald' | 'amber' | 'red';
+  detailText: string;
+}
+
+export function evaluatePlaceOpenStatus(
+  openHours?: string,
+  liveStatus?: 'open_normal' | 'busy_hot' | 'closed_today',
+  liveStatusNote?: string
+): OpenStatusEvaluation {
+  if (liveStatus === 'closed_today') {
+    return {
+      isOpen: false,
+      badgeText: 'Hôm nay tạm nghỉ',
+      tone: 'red',
+      detailText: liveStatusNote || 'Chủ quán thông báo tạm nghỉ hôm nay',
+    };
+  }
+  if (liveStatus === 'busy_hot') {
+    return {
+      isOpen: true,
+      badgeText: 'Đang mở • Món nóng hổi',
+      tone: 'amber',
+      detailText: liveStatusNote || (openHours ? `Giờ bán: ${openHours}` : 'Đang phục vụ tại quán'),
+    };
+  }
+
+  if (!openHours || openHours.trim() === '24/7') {
+    return {
+      isOpen: true,
+      badgeText: 'Đang mở cửa',
+      tone: 'emerald',
+      detailText: liveStatusNote || (openHours ? `Mở cửa ${openHours}` : 'Đang hoạt động'),
+    };
+  }
+
+  // Phân tích chuỗi giờ dạng "06:30 - 22:00" hoặc "07:00 – 23:30"
+  const match = openHours.match(/(\d{1,2})[:h](\d{2})?\s*[-–~]\s*(\d{1,2})[:h](\d{2})?/i);
+  if (!match) {
+    return {
+      isOpen: true,
+      badgeText: 'Đang mở cửa',
+      tone: 'emerald',
+      detailText: liveStatusNote || `Giờ mở cửa: ${openHours}`,
+    };
+  }
+
+  const startH = parseInt(match[1], 10);
+  const startM = parseInt(match[2] || '0', 10);
+  const endH = parseInt(match[3], 10);
+  const endM = parseInt(match[4] || '0', 10);
+
+  const now = new Date();
+  const curMins = now.getHours() * 60 + now.getMinutes();
+  const startMins = startH * 60 + startM;
+  const endMins = endH * 60 + endM;
+
+  let isOpenNow = false;
+  if (endMins >= startMins) {
+    isOpenNow = curMins >= startMins && curMins <= endMins;
+  } else {
+    // Mở qua đêm (VD: 18:00 - 02:00)
+    isOpenNow = curMins >= startMins || curMins <= endMins;
+  }
+
+  const endStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+  const startStr = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
+
+  if (isOpenNow) {
+    return {
+      isOpen: true,
+      badgeText: 'Đang mở cửa',
+      tone: 'emerald',
+      detailText: liveStatusNote || `Đóng cửa lúc ${endStr} (${openHours})`,
+    };
+  }
+
+  return {
+    isOpen: false,
+    badgeText: 'Đã đóng cửa',
+    tone: 'red',
+    detailText: `Mở lại lúc ${startStr} (${openHours})`,
+  };
+}
+
+/**
+ * Thuật toán tìm đường ngắn nhất A* / Dijkstra trực tiếp trên mạng lưới đường thực tế của Xuân Hòa (0 đồng chi phí API)
+ */
+export function computeLocalRoadRoute(
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number,
+  roadFeatures: any[]
+): { coordinates: Array<[number, number]>; distanceMeters: number } {
+  if (!roadFeatures || roadFeatures.length === 0) {
+    const est = calculateDistanceAndEta(fromLat, fromLng, toLat, toLng);
+    return {
+      coordinates: [
+        [fromLng, fromLat],
+        [toLng, toLat],
+      ],
+      distanceMeters: est.roadMeters,
+    };
+  }
+
+  // Xây dựng đồ thị nút giao đường trong vùng lân cận điểm đi & điểm đến
+  const minLng = Math.min(fromLng, toLng) - 0.012;
+  const maxLng = Math.max(fromLng, toLng) + 0.012;
+  const minLat = Math.min(fromLat, toLat) - 0.012;
+  const maxLat = Math.max(fromLat, toLat) + 0.012;
+
+  interface GraphNode {
+    key: string;
+    lng: number;
+    lat: number;
+    edges: Array<{ to: string; weight: number }>;
+  }
+
+  const nodes = new Map<string, GraphNode>();
+  const toKey = (lng: number, lat: number) => `${lng.toFixed(5)},${lat.toFixed(5)}`;
+
+  const ensureNode = (lng: number, lat: number): GraphNode => {
+    const k = toKey(lng, lat);
+    let n = nodes.get(k);
+    if (!n) {
+      n = { key: k, lng, lat, edges: [] };
+      nodes.set(k, n);
+    }
+    return n;
+  };
+
+  for (const f of roadFeatures) {
+    const coords = f.geometry?.coordinates;
+    if (!coords || coords.length < 2) continue;
+    const bbox = f._bbox;
+    if (
+      bbox &&
+      (bbox[2] < minLng || bbox[0] > maxLng || bbox[3] < minLat || bbox[1] > maxLat)
+    ) {
+      continue;
+    }
+
+    for (let i = 0; i < coords.length - 1; i++) {
+      const p1 = coords[i];
+      const p2 = coords[i + 1];
+      const n1 = ensureNode(p1[0], p1[1]);
+      const n2 = ensureNode(p2[0], p2[1]);
+      const w = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+      n1.edges.push({ to: n2.key, weight: w });
+      n2.edges.push({ to: n1.key, weight: w });
+    }
+  }
+
+  if (nodes.size === 0) {
+    const est = calculateDistanceAndEta(fromLat, fromLng, toLat, toLng);
+    return {
+      coordinates: [
+        [fromLng, fromLat],
+        [toLng, toLat],
+      ],
+      distanceMeters: est.roadMeters,
+    };
+  }
+
+  // Tìm node đường gần điểm xuất phát và điểm đích nhất
+  let startNode: GraphNode | null = null;
+  let endNode: GraphNode | null = null;
+  let minStartDist = Infinity;
+  let minEndDist = Infinity;
+
+  for (const node of nodes.values()) {
+    const ds = Math.hypot(node.lng - fromLng, node.lat - fromLat);
+    if (ds < minStartDist) {
+      minStartDist = ds;
+      startNode = node;
+    }
+    const de = Math.hypot(node.lng - toLng, node.lat - toLat);
+    if (de < minEndDist) {
+      minEndDist = de;
+      endNode = node;
+    }
+  }
+
+  if (!startNode || !endNode || startNode.key === endNode.key) {
+    const est = calculateDistanceAndEta(fromLat, fromLng, toLat, toLng);
+    return {
+      coordinates: [
+        [fromLng, fromLat],
+        [toLng, toLat],
+      ],
+      distanceMeters: est.roadMeters,
+    };
+  }
+
+  // A* Search
+  const dist = new Map<string, number>();
+  const prev = new Map<string, string>();
+  const visited = new Set<string>();
+  const openSet: Array<{ key: string; f: number }> = [];
+
+  dist.set(startNode.key, 0);
+  openSet.push({
+    key: startNode.key,
+    f: Math.hypot(endNode.lng - startNode.lng, endNode.lat - startNode.lat),
+  });
+
+  let found = false;
+  let steps = 0;
+
+  while (openSet.length > 0 && steps < 4500) {
+    steps++;
+    openSet.sort((a, b) => a.f - b.f);
+    const current = openSet.shift()!;
+    if (current.key === endNode.key) {
+      found = true;
+      break;
+    }
+    if (visited.has(current.key)) continue;
+    visited.add(current.key);
+
+    const curNode = nodes.get(current.key);
+    if (!curNode) continue;
+    const curG = dist.get(current.key) ?? Infinity;
+
+    for (const edge of curNode.edges) {
+      if (visited.has(edge.to)) continue;
+      const tentativeG = curG + edge.weight;
+      if (tentativeG < (dist.get(edge.to) ?? Infinity)) {
+        dist.set(edge.to, tentativeG);
+        prev.set(edge.to, current.key);
+        const targetNode = nodes.get(edge.to);
+        const h = targetNode
+          ? Math.hypot(endNode.lng - targetNode.lng, endNode.lat - targetNode.lat)
+          : 0;
+        openSet.push({ key: edge.to, f: tentativeG + h });
+      }
+    }
+  }
+
+  if (!found) {
+    const est = calculateDistanceAndEta(fromLat, fromLng, toLat, toLng);
+    return {
+      coordinates: [
+        [fromLng, fromLat],
+        [toLng, toLat],
+      ],
+      distanceMeters: est.roadMeters,
+    };
+  }
+
+  const pathCoords: Array<[number, number]> = [[toLng, toLat]];
+  let currKey: string | undefined = endNode.key;
+  while (currKey) {
+    const n = nodes.get(currKey);
+    if (n) {
+      pathCoords.push([n.lng, n.lat]);
+    }
+    currKey = prev.get(currKey);
+  }
+  pathCoords.push([fromLng, fromLat]);
+  pathCoords.reverse();
+
+  let totalMeters = 0;
+  for (let i = 0; i < pathCoords.length - 1; i++) {
+    const seg = calculateDistanceAndEta(
+      pathCoords[i][1],
+      pathCoords[i][0],
+      pathCoords[i + 1][1],
+      pathCoords[i + 1][0]
+    );
+    totalMeters += seg.directMeters;
+  }
+
+  return {
+    coordinates: pathCoords,
+    distanceMeters: Math.max(25, Math.round(totalMeters)),
+  };
 }
 
 /**

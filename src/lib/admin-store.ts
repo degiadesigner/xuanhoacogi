@@ -10,7 +10,7 @@ import { firebaseConfig, getRealtimeDb, ref, onValue } from './firebase';
 import { Food } from './foods';
 import { Place, xuanHoaPlaces, getPlaceStyleGroup } from './places-xuanhoa';
 import { MainCategoryKey, getCategoryItems } from './xuanhoa-catalog';
-import { UserAuthProfile } from './auth';
+import { UserAuthProfile, saveAuthUser, getStoredAuthUser } from './auth';
 import { cleanDishDisplayTitle } from './utils';
 
 export type AdminThemeMode = 'ivory-gold' | 'platinum-royal' | 'emerald- pearl';
@@ -59,12 +59,58 @@ export interface PlaceOverride {
   lat?: number;
   lng?: number;
   coordinateVerified?: boolean;
-  coordinateSource?: 'openstreetmap' | 'admin_verified' | 'nominatim_geocoded' | 'unverified';
+  coordinateSource?: 'openstreetmap' | 'admin_verified' | 'merchant_verified' | 'nominatim_geocoded' | 'unverified';
   lastVerifiedAt?: string;
   mapCategory?: string;
+  merchantClaimCode?: string; // Mã code duy nhất do Admin cấp cho chủ quán
+  claimedByEmail?: string; // Gmail của chủ quán đã kích hoạt mã
+  claimedByUid?: string;
+  claimedByName?: string;
+  claimedAt?: number;
+  liveStatus?: 'open_normal' | 'busy_hot' | 'closed_today'; // Trạng thái mở bán trực tiếp trong ngày của chủ quán
+  liveStatusNote?: string;
   updatedAt: number;
   isCustom?: boolean;
   customPlaceData?: Place;
+}
+
+export interface MerchantPendingSubmission {
+  id: string;
+  placeId: string;
+  placeOriginalName: string;
+  merchantEmail: string;
+  merchantName: string;
+  claimCodeUsed: string;
+  submittedAt: number;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedAt?: number;
+  reviewNote?: string;
+  proposed: {
+    name: string;
+    phone: string;
+    openHours: string;
+    address: string;
+    tagline?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    serviceMode?: Place['serviceMode'];
+    deliveryNote?: string;
+    signatureDishName?: string;
+    signatureDishPrice?: number;
+    customMenu?: CustomMenuEntry[];
+    lat: number | null;
+    lng: number | null;
+    gpsDistanceMeters?: number | null;
+  };
+  previous: {
+    name: string;
+    phone: string;
+    openHours: string;
+    address: string;
+    lat: number | null;
+    lng: number | null;
+    menuCount: number;
+  };
 }
 
 export interface AdminAccount {
@@ -162,6 +208,7 @@ export interface AdminState {
   places: Record<string, PlaceOverride>;
   dishes: Record<string, DishOverride>;
   members: Record<string, ManagedMember>;
+  merchantSubmissions?: Record<string, MerchantPendingSubmission>;
   knownPlaceIds: string[];
   knownDishKeys: string[];
   auditLogs: AdminAuditLog[];
@@ -171,6 +218,7 @@ export interface AdminState {
   sectorTags?: SectorCategoryTag[];
   fontScale?: 'normal' | 'large';
   requirePinOnOpen?: boolean;
+  mapAccessMode?: 'merchants_and_admin_only' | 'public_open'; // Chế độ mở Bản đồ số: Chỉ Chủ Quán + Admin hoặc Mở công khai cho mọi Khách
   updatedAt: number;
 }
 
@@ -201,6 +249,7 @@ function createInitialAdminState(): AdminState {
     places: {},
     dishes: {},
     members: {},
+    merchantSubmissions: {},
     knownPlaceIds: initialPlaceIds,
     knownDishKeys: initialDishKeys,
     auditLogs: [
@@ -218,6 +267,7 @@ function createInitialAdminState(): AdminState {
     sectorTags: DEFAULT_SECTOR_TAGS,
     fontScale: 'normal',
     requirePinOnOpen: false,
+    mapAccessMode: 'merchants_and_admin_only',
     updatedAt: Date.now(),
   };
 }
@@ -260,7 +310,9 @@ export function getAdminState(): AdminState {
       places,
       dishes: parsed.dishes || {},
       members: parsed.members || {},
+      merchantSubmissions: parsed.merchantSubmissions || {},
       auditLogs: parsed.auditLogs || [],
+      mapAccessMode: parsed.mapAccessMode || 'merchants_and_admin_only',
     };
 
     if (migrated) {
@@ -287,11 +339,13 @@ export function saveAdminState(next: AdminState, syncCloud = true): void {
           places: next.places || {},
           dishes: next.dishes || {},
           members: next.members || {},
+          merchantSubmissions: next.merchantSubmissions || {},
           auditLogs: (next.auditLogs || []).slice(0, 80),
           adminEmails: next.adminEmails || DEFAULT_ADMIN_EMAILS,
           adminAccounts: next.adminAccounts || DEFAULT_ADMIN_ACCOUNTS,
           sectorTags: next.sectorTags || DEFAULT_SECTOR_TAGS,
           fontScale: next.fontScale || 'normal',
+          mapAccessMode: next.mapAccessMode || 'merchants_and_admin_only',
           updatedAt: next.updatedAt,
         })
       );
@@ -352,11 +406,13 @@ export function initAdminCloudSync(): void {
         places: cloudData.places || {},
         dishes: cloudData.dishes || {},
         members: { ...local.members, ...(cloudData.members || {}) },
+        merchantSubmissions: cloudData.merchantSubmissions || local.merchantSubmissions || {},
         auditLogs: cloudData.auditLogs || local.auditLogs,
         adminEmails: cloudData.adminEmails || local.adminEmails,
         adminAccounts: cloudData.adminAccounts || local.adminAccounts,
         sectorTags: cloudData.sectorTags || local.sectorTags,
         fontScale: cloudData.fontScale || local.fontScale,
+        mapAccessMode: cloudData.mapAccessMode || local.mapAccessMode || 'merchants_and_admin_only',
         updatedAt: cloudData.updatedAt,
       };
       saveAdminState(merged, false);
@@ -404,6 +460,49 @@ export function syncUserToAdminRegistry(user: UserAuthProfile, spinsCount = 0, l
   const state = getAdminState();
   const key = (user.email || user.uid || 'guest').trim().toLowerCase();
   const existing = state.members[key];
+
+  // Đồng bộ 2 chiều quyền Chủ Quán & Mã Code đi theo Gmail mãi mãi
+  if (user.email) {
+    const cleanEmail = user.email.trim().toLowerCase();
+    // Chiều 1: Nếu tài khoản đã lưu sẵn mã code & quán trong hồ sơ/cookie, đảm bảo state.places vẫn giữ liên kết
+    if (user.isMerchantAccount && user.merchantPlaceId && user.merchantVerifiedCode) {
+      const pid = user.merchantPlaceId;
+      const ov = state.places[pid];
+      if (!ov?.claimedByEmail || ov.claimedByEmail.trim().toLowerCase() === cleanEmail) {
+        state.places[pid] = {
+          ...(ov || { id: pid }),
+          id: pid,
+          merchantClaimCode: ov?.merchantClaimCode || user.merchantVerifiedCode,
+          claimedByEmail: cleanEmail,
+          claimedByUid: user.uid || ov?.claimedByUid || '',
+          claimedByName: user.displayName || user.nickname || cleanEmail,
+          claimedAt: ov?.claimedAt || Date.now(),
+          updatedAt: Date.now(),
+        };
+      }
+    } else {
+      // Chiều 2: Nếu Gmail này đã từng nhập mã code (hoặc được Admin gán) trong state.places, tự động khôi phục Nick Quán 🏪 & Mã Code vào hồ sơ người dùng
+      const matchedEntry = Object.values(state.places).find(
+        p => p.claimedByEmail && p.claimedByEmail.trim().toLowerCase() === cleanEmail
+      );
+      if (matchedEntry) {
+        const basePlace = xuanHoaPlaces.find(bp => bp.id === matchedEntry.id);
+        const placeName = matchedEntry.name || basePlace?.name || 'Quán của bạn';
+        const code = matchedEntry.merchantClaimCode || getOrGenerateMerchantCode(matchedEntry.id, false);
+        try {
+          saveAuthUser({
+            ...user,
+            isMerchantAccount: true,
+            merchantPlaceId: matchedEntry.id,
+            merchantPlaceName: placeName,
+            merchantVerifiedCode: code,
+            nickname: placeName,
+            avatar: '🏪',
+          });
+        } catch {}
+      }
+    }
+  }
 
   const member: ManagedMember = {
     uid: user.uid || existing?.uid || `uid_${Date.now()}`,
@@ -1507,7 +1606,7 @@ export function updatePlaceCoordinates(
     lat: number;
     lng: number;
     coordinateVerified: boolean;
-    coordinateSource: 'openstreetmap' | 'admin_verified' | 'nominatim_geocoded';
+    coordinateSource: 'openstreetmap' | 'admin_verified' | 'merchant_verified' | 'nominatim_geocoded';
     mapCategory?: string;
     placeName?: string;
   }
@@ -1576,5 +1675,1151 @@ export function clearPlaceCoordinates(placeId: string, placeName?: string): Admi
   return state;
 }
 
+// ============================================================================
+// 6. HỆ THỐNG MÃ CODE CHỦ QUÁN (MERCHANT CLAIM CODE) & DUYỆT THAY ĐỔI ĐỊNH VỊ
+// ============================================================================
+
+/**
+ * Sinh mã code mặc định duy nhất cho mỗi quán (chỉ hiển thị trong trang Admin)
+ */
+export function buildDefaultMerchantCode(placeId: string): string {
+  const clean = placeId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const prefix = (clean.slice(0, 5) || 'QUAN').padEnd(4, 'X');
+  let hash = 2166136261;
+  for (let i = 0; i < placeId.length; i++) {
+    hash ^= placeId.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let suffix = '';
+  let h = Math.abs(hash);
+  for (let i = 0; i < 4; i++) {
+    suffix += chars[h % chars.length];
+    h = Math.floor(h / chars.length) ^ (i + 17);
+  }
+  return `XH-${prefix}-${suffix}`;
+}
+
+/**
+ * Lấy mã code hiện tại của quán (hoặc cấp lại mã mới nếu forceRegenerate = true)
+ */
+export function getOrGenerateMerchantCode(
+  placeId: string,
+  forceRegenerate = false,
+  placeName?: string
+): string {
+  const state = getAdminState();
+  const ov = state.places[placeId];
+  if (!forceRegenerate && ov?.merchantClaimCode) {
+    return ov.merchantClaimCode;
+  }
+  if (!forceRegenerate) {
+    return buildDefaultMerchantCode(placeId);
+  }
+
+  const clean = placeId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const prefix = (clean.slice(0, 5) || 'QUAN').padEnd(4, 'X');
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let rand = '';
+  for (let i = 0; i < 4; i++) {
+    rand += chars[Math.floor(Math.random() * chars.length)];
+  }
+  const newCode = `XH-${prefix}-${rand}`;
+
+  state.places[placeId] = {
+    ...(ov || { id: placeId }),
+    id: placeId,
+    merchantClaimCode: newCode,
+    claimedByEmail: undefined,
+    claimedByUid: undefined,
+    claimedByName: undefined,
+    claimedAt: undefined,
+    updatedAt: Date.now(),
+  };
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    'Cấp lại Mã Code Chủ Quán mới & Thu hồi quyền cũ',
+    `${placeName || placeId} -> Mã mới: ${newCode}`,
+    'place'
+  );
+  saveAdminState(state);
+  return newCode;
+}
+
+/**
+ * Mã chuyên biệt dành cho Cộng tác viên / Quản lý Maps (không có quyền xóa quán hay khóa hệ thống như Admin tối cao,
+ * nhưng được phép vào Bản đồ số, chỉnh định vị mọi quán và Tạo Địa Điểm Mới theo danh mục)
+ */
+export const MAP_MANAGER_MASTER_CODE = 'XH-MAPS-8899';
+
+export function isMapManagerAuthenticated(authUser?: UserAuthProfile | null): boolean {
+  if (isAdminAuthenticated(authUser)) return true;
+  if (authUser?.isMapManager) return true;
+  const stored = getStoredAuthUser();
+  if (stored?.isMapManager) return true;
+  if (typeof window !== 'undefined') {
+    try {
+      return localStorage.getItem('xuanhoa_map_manager_active_v1') === 'true';
+    } catch {}
+  }
+  return false;
+}
+
+/**
+ * Chủ quán hoặc Quản lý Maps nhập Mã Code trên Bản đồ số
+ */
+export function verifyAndClaimPlaceWithCode(
+  rawCodeInput: string,
+  authUser: UserAuthProfile | null | undefined
+): {
+  ok: boolean;
+  placeItem?: AdminPlaceItem;
+  isMapManager?: boolean;
+  message: string;
+} {
+  const cleanCode = rawCodeInput.trim().toUpperCase();
+  if (!cleanCode) {
+    return {
+      ok: false,
+      message: 'Vui lòng nhập mã định danh được cấp.',
+    };
+  }
+
+  const state = getAdminState();
+  const allManaged = getAllManagedPlaces();
+
+  // Kiểm tra nếu nhập Mã Quản Lý Maps (XH-MAPS-8899 hoặc XH-MAPS-6868)
+  if (cleanCode === MAP_MANAGER_MASTER_CODE || cleanCode === 'XH-MAPS-6868') {
+    const effectiveEmail = (authUser?.email || 'quanlymaps@xuanhoacogi.vn').trim().toLowerCase();
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('xuanhoa_map_manager_active_v1', 'true');
+      }
+      const baseUser: UserAuthProfile =
+        authUser && authUser.isLoggedIn
+          ? authUser
+          : {
+              isLoggedIn: true,
+              uid: `map_mgr_${Date.now()}`,
+              email: effectiveEmail,
+              displayName: 'Quản lý Maps Xuân Hòa',
+              nickname: 'Quản lý Maps',
+              gender: 'male',
+              avatar: '🗺️',
+              avatarId: 'm_ty',
+              hasCompletedProfile: true,
+              isFirstTimeSetupDone: true,
+              createdAt: Date.now(),
+            };
+      saveAuthUser({
+        ...baseUser,
+        isLoggedIn: true,
+        isMapManager: true,
+        merchantVerifiedCode: MAP_MANAGER_MASTER_CODE,
+        avatar: baseUser.avatar === '🐭' ? '🗺️' : baseUser.avatar,
+      });
+    } catch {}
+
+    state.auditLogs = addAdminAuditLog(
+      state,
+      '🗺️ Kích hoạt tài khoản Quản lý Maps & Định vị',
+      `Tài khoản: ${effectiveEmail} (Mã: ${cleanCode})`,
+      'system'
+    );
+    saveAdminState(state);
+
+    return {
+      ok: true,
+      isMapManager: true,
+      placeItem: allManaged[0],
+      message:
+        '🗺️ Đã kích hoạt quyền Quản lý Maps! Bạn có thể cập nhật định vị các quán và thêm địa điểm mới theo danh mục.',
+    };
+  }
+
+  let matchedItem: AdminPlaceItem | undefined;
+  for (const item of allManaged) {
+    const activeCode = getOrGenerateMerchantCode(item.place.id, false).toUpperCase();
+    if (activeCode === cleanCode) {
+      matchedItem = item;
+      break;
+    }
+  }
+
+  if (!matchedItem) {
+    return {
+      ok: false,
+      message: 'Mã định danh không chính xác. Vui lòng kiểm tra lại!',
+    };
+  }
+
+  const placeId = matchedItem.place.id;
+  const ov = state.places[placeId];
+
+  // Nếu người dùng đã đăng nhập Gmail thì lấy Gmail đó; nếu chưa đăng nhập thì tự động tạo/khôi phục phiên Nick Quán Chính Chủ theo Mã Code
+  const effectiveEmail = (
+    authUser?.email ||
+    ov?.claimedByEmail ||
+    `${placeId.replace(/[^a-z0-9]/gi, '').toLowerCase()}@chuquan.xuanhoa`
+  )
+    .trim()
+    .toLowerCase();
+
+  // Kiểm tra nếu mã đã được gắn với 1 Gmail thật khác (và người dùng hiện tại đang đăng nhập bằng 1 Gmail khác, không phải Admin)
+  if (
+    authUser?.email &&
+    ov?.claimedByEmail &&
+    !ov.claimedByEmail.endsWith('@chuquan.xuanhoa') &&
+    ov.claimedByEmail.trim().toLowerCase() !== effectiveEmail &&
+    !isAdminAuthenticated(authUser) &&
+    !isMapManagerAuthenticated(authUser)
+  ) {
+    return {
+      ok: false,
+      message: `Mã quán "${matchedItem.place.name}" đã được liên kết với Gmail (${ov.claimedByEmail}). Nếu bạn là chủ quán mới, hãy báo Admin cấp lại mã.`,
+    };
+  }
+
+  // Khóa mã code này vào tài khoản của chủ quán
+  state.places[placeId] = {
+    ...(ov || { id: placeId }),
+    id: placeId,
+    merchantClaimCode: cleanCode,
+    claimedByEmail: effectiveEmail,
+    claimedByUid: authUser?.uid || ov?.claimedByUid || `merchant_${placeId}`,
+    claimedByName: authUser?.displayName || matchedItem.place.name,
+    claimedAt: ov?.claimedAt || Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    'Chủ quán kích hoạt Mã Code & Nhận quyền quản lý quán vĩnh viễn',
+    `${matchedItem.place.name} (Mã: ${cleanCode}) — Tài khoản: ${effectiveEmail}`,
+    'place'
+  );
+  saveAdminState(state);
+
+  const refreshed = getAllManagedPlaces().find((p) => p.place.id === placeId) || matchedItem;
+
+  // Tự động biến tài khoản đang dùng thành "Nick Quán Chính Chủ" vĩnh viễn (biểu tượng 🏪 + Tên Quán + Mã Code đi theo mãi)
+  try {
+    const baseUser: UserAuthProfile = authUser && authUser.isLoggedIn
+      ? authUser
+      : {
+          isLoggedIn: true,
+          uid: `merchant_${placeId}`,
+          email: effectiveEmail,
+          displayName: refreshed.place.name,
+          nickname: refreshed.place.name,
+          gender: 'male',
+          avatar: '🏪',
+          avatarId: 'm_ty',
+          hasCompletedProfile: true,
+          isFirstTimeSetupDone: true,
+          createdAt: Date.now(),
+        };
+
+    const updatedUser: UserAuthProfile = {
+      ...baseUser,
+      isLoggedIn: true,
+      email: effectiveEmail,
+      isMerchantAccount: true,
+      merchantPlaceId: refreshed.place.id,
+      merchantPlaceName: refreshed.place.name,
+      merchantVerifiedCode: cleanCode,
+      displayName: refreshed.place.name,
+      nickname: refreshed.place.name,
+      avatar: '🏪',
+    };
+    saveAuthUser(updatedUser);
+  } catch (err) {
+    console.warn('Merchant profile upgrade warning:', err);
+  }
+
+  return {
+    ok: true,
+    placeItem: refreshed,
+    message: `🎉 Xác thực thành công! Đã kết nối vĩnh viễn quán "${refreshed.place.name}" 🏪`,
+  };
+}
+
+/**
+ * Lấy danh sách các quán mà Gmail hiện tại đã được cấp quyền quản lý
+ */
+export function getClaimedPlacesForUser(email?: string | null): AdminPlaceItem[] {
+  if (!email) return [];
+  const cleanEmail = email.trim().toLowerCase();
+  const state = getAdminState();
+  const allManaged = getAllManagedPlaces();
+  return allManaged.filter((item) => {
+    const ov = state.places[item.place.id];
+    return ov?.claimedByEmail?.trim().toLowerCase() === cleanEmail;
+  });
+}
+
+/**
+ * Lấy quán chính chủ đại diện cho tài khoản hiện tại (dùng để hiển thị biểu tượng Nick Quán 🏪 trên toàn hệ thống)
+ */
+export function getPrimaryClaimedPlaceForUser(
+  authUser?: UserAuthProfile | null
+): AdminPlaceItem | null {
+  if (!authUser || !authUser.isLoggedIn || !authUser.email) return null;
+  const claimed = getClaimedPlacesForUser(authUser.email);
+  if (claimed.length === 0) return null;
+  if (authUser.merchantPlaceId) {
+    const matched = claimed.find((c) => c.place.id === authUser.merchantPlaceId);
+    if (matched) return matched;
+  }
+  return claimed[0];
+}
+
+/**
+ * Chủ quán cập nhật tức thì Trạng thái Mở bán Hôm nay (Live Status)
+ */
+export function updateMerchantLiveStatus(
+  placeId: string,
+  authUser: UserAuthProfile | null | undefined,
+  liveStatus: 'open_normal' | 'busy_hot' | 'closed_today',
+  liveStatusNote?: string
+): void {
+  const effectiveUser = authUser?.email ? authUser : getStoredAuthUser();
+  const state = getAdminState();
+  const ov = state.places[placeId];
+  const userEmail = (
+    effectiveUser?.email ||
+    ov?.claimedByEmail ||
+    'merchant@xuanhoacogi.vn'
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    ov?.claimedByEmail &&
+    ov.claimedByEmail.trim().toLowerCase() !== userEmail &&
+    !isAdminAuthenticated(effectiveUser) &&
+    !isMapManagerAuthenticated(effectiveUser)
+  ) {
+    throw new Error('Tài khoản Gmail này chưa được cấp quyền quản lý quán này.');
+  }
+
+  state.places[placeId] = {
+    ...(ov || { id: placeId }),
+    id: placeId,
+    liveStatus,
+    liveStatusNote: (liveStatusNote || '').trim().slice(0, 80),
+    updatedAt: Date.now(),
+  };
+
+  const statusLabel =
+    liveStatus === 'closed_today'
+      ? 'Hôm nay tạm nghỉ'
+      : liveStatus === 'busy_hot'
+      ? 'Đang đông / Món mới nóng hổi'
+      : 'Đang mở bán bình thường';
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    `Chủ quán cập nhật trạng thái hôm nay (${statusLabel})`,
+    `${ov?.name || placeId} — bởi ${userEmail}`,
+    'place'
+  );
+  saveAdminState(state);
+}
+
+/**
+ * Chủ quán hoặc Quản lý Maps gửi bản cập nhật (Định vị tọa độ, Tên quán, Giờ bán, SĐT, Menu...)
+ * Chủ quán và Quản lý Maps hoàn toàn KHÔNG có quyền xóa quán.
+ */
+export function submitMerchantPlaceUpdate(
+  placeId: string,
+  authUser: UserAuthProfile | null | undefined,
+  proposed: MerchantPendingSubmission['proposed']
+): MerchantPendingSubmission {
+  const effectiveUser = authUser?.email ? authUser : getStoredAuthUser();
+  const state = getAdminState();
+  const allManaged = getAllManagedPlaces();
+  const currentItem = allManaged.find((p) => p.place.id === placeId);
+  if (!currentItem) {
+    throw new Error('Không tìm thấy thông tin quán trong hệ thống.');
+  }
+
+  const ov = state.places[placeId];
+  const userEmail = (
+    effectiveUser?.email ||
+    ov?.claimedByEmail ||
+    'merchant@xuanhoacogi.vn'
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    ov?.claimedByEmail &&
+    ov.claimedByEmail.trim().toLowerCase() !== userEmail &&
+    !isAdminAuthenticated(effectiveUser) &&
+    !isMapManagerAuthenticated(effectiveUser)
+  ) {
+    throw new Error('Gmail của bạn chưa kích hoạt Mã Code của quán này.');
+  }
+
+  if (proposed.lat !== null && proposed.lng !== null) {
+    const lat = Number(proposed.lat);
+    const lng = Number(proposed.lng);
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < 20.0 ||
+      lat > 23.0 ||
+      lng < 104.0 ||
+      lng > 107.0
+    ) {
+      throw new Error('Tọa độ cắm ghim không hợp lệ (ngoài phạm vi Xuân Hòa - Phú Thọ).');
+    }
+  }
+
+  const submissionId = `sub_${placeId}`;
+  const submission: MerchantPendingSubmission = {
+    id: submissionId,
+    placeId,
+    placeOriginalName: currentItem.place.name,
+    merchantEmail: userEmail,
+    merchantName: effectiveUser?.displayName || effectiveUser?.nickname || userEmail,
+    claimCodeUsed: getOrGenerateMerchantCode(placeId, false),
+    submittedAt: Date.now(),
+    status: 'pending',
+    proposed: {
+      name: proposed.name.trim() || currentItem.place.name,
+      phone: proposed.phone.trim(),
+      openHours: proposed.openHours.trim() || currentItem.place.openHours || '07:00 - 22:00',
+      address: proposed.address.trim() || currentItem.place.address,
+      tagline: proposed.tagline?.trim() ?? currentItem.place.tagline,
+      minPrice: proposed.minPrice ?? currentItem.place.minPrice,
+      maxPrice: proposed.maxPrice ?? currentItem.place.maxPrice,
+      serviceMode: proposed.serviceMode ?? currentItem.place.serviceMode,
+      deliveryNote: proposed.deliveryNote?.trim() ?? currentItem.place.deliveryNote,
+      signatureDishName:
+        proposed.signatureDishName?.trim() ?? currentItem.place.signatureDish?.name,
+      signatureDishPrice:
+        proposed.signatureDishPrice ?? currentItem.place.signatureDish?.price,
+      customMenu: proposed.customMenu ?? currentItem.fullMenu,
+      lat: proposed.lat !== null ? Number(Number(proposed.lat).toFixed(6)) : null,
+      lng: proposed.lng !== null ? Number(Number(proposed.lng).toFixed(6)) : null,
+      gpsDistanceMeters: proposed.gpsDistanceMeters ?? null,
+    },
+    previous: {
+      name: currentItem.place.name,
+      phone: currentItem.place.phone || '',
+      openHours: currentItem.place.openHours || '',
+      address: currentItem.place.address || '',
+      lat: typeof ov?.lat === 'number' ? ov.lat : null,
+      lng: typeof ov?.lng === 'number' ? ov.lng : null,
+      menuCount: currentItem.fullMenu.length,
+    },
+  };
+
+  if (!state.merchantSubmissions) {
+    state.merchantSubmissions = {};
+  }
+  state.merchantSubmissions[submissionId] = submission;
+
+  // Áp dụng ngay tọa độ & thông tin đã lưu lên Bản đồ số để hiển thị tức thì (Admin vẫn kiểm soát tại mục Duyệt Quán)
+  const p = submission.proposed;
+  const nextOv: PlaceOverride = {
+    ...(ov || { id: placeId }),
+    id: placeId,
+    name: p.name,
+    phone: p.phone,
+    openHours: p.openHours,
+    address: p.address,
+    tagline: p.tagline,
+    minPrice: p.minPrice,
+    maxPrice: p.maxPrice,
+    serviceMode: p.serviceMode,
+    deliveryNote: p.deliveryNote,
+    signatureDishName: p.signatureDishName,
+    signatureDishPrice: p.signatureDishPrice,
+    customMenu: p.customMenu,
+    updatedAt: Date.now(),
+  };
+
+  if (p.lat !== null && p.lng !== null) {
+    nextOv.lat = p.lat;
+    nextOv.lng = p.lng;
+    nextOv.coordinateVerified = true;
+    nextOv.coordinateSource = 'admin_verified';
+    nextOv.lastVerifiedAt = new Date().toISOString().slice(0, 10);
+  }
+
+  state.places[placeId] = nextOv;
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    '🏪 Lưu cập nhật Vị trí & Thông tin quán lên Bản đồ số',
+    `${submission.proposed.name} (${userEmail}) — Tọa độ: ${
+      submission.proposed.lat !== null
+        ? `${submission.proposed.lat}, ${submission.proposed.lng}`
+        : 'Giữ nguyên'
+    }`,
+    'place'
+  );
+
+  saveAdminState(state);
+  return submission;
+}
+
+/**
+ * 🗺️ QUẢN LÝ MAPS / ADMIN TẠO ĐỊA ĐIỂM MỚI TRỰC TIẾP TRÊN BẢN ĐỒ SỐ THEO DANH MỤC (TAG)
+ * Hỗ trợ đầy đủ 13 danh mục: Quán ăn, Cà phê, Ăn vặt, Nhậu, Bi-a, Game, Giải trí, Điện thoại,
+ * Tạp hóa, Siêu thị, Dịch vụ, Trường học, Công cộng / Đơn vị hành chính (UBND, Công an, Y tế...)
+ */
+export function createNewPlaceFromMap(
+  authUser: UserAuthProfile | null | undefined,
+  payload: {
+    name: string;
+    mapCategory: string;
+    address: string;
+    phone?: string;
+    openHours?: string;
+    tagline?: string;
+    lat: number;
+    lng: number;
+    mapsUrl?: string;
+    signatureDishName?: string;
+    signatureDishPrice?: number;
+  }
+): AdminPlaceItem {
+  const effectiveUser = authUser?.email ? authUser : getStoredAuthUser();
+  if (!isAdminAuthenticated(effectiveUser) && !isMapManagerAuthenticated(effectiveUser)) {
+    throw new Error('Chỉ Quản trị viên hoặc Quản lý Maps mới có quyền tạo địa điểm mới trên bản đồ.');
+  }
+
+  const cleanName = payload.name.trim();
+  if (!cleanName) {
+    throw new Error('Vui lòng nhập tên quán hoặc tên địa điểm / đơn vị hành chính.');
+  }
+
+  const lat = Number(Number(payload.lat).toFixed(6));
+  const lng = Number(Number(payload.lng).toFixed(6));
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < 20.0 ||
+    lat > 23.0 ||
+    lng < 104.0 ||
+    lng > 107.0
+  ) {
+    throw new Error('Tọa độ định vị chưa hợp lệ. Hãy dán Link Google Maps hoặc chấm trực tiếp trên bản đồ.');
+  }
+
+  const mapCat = payload.mapCategory || 'food';
+  const sectorMap: Record<string, { category: Place['category']; sectorTag: string }> = {
+    food: { category: 'restaurant', sectorTag: 'an-chinh' },
+    pub: { category: 'pub', sectorTag: 'nhau-lau' },
+    cafe: { category: 'cafe', sectorTag: 'uong' },
+    snack: { category: 'fast_food', sectorTag: 'an-vat' },
+    billiards: { category: 'pub', sectorTag: 'bia-game' },
+    game: { category: 'pub', sectorTag: 'bia-game' },
+    entertainment: { category: 'pub', sectorTag: 'an-choi' },
+    phone: { category: 'cafe', sectorTag: 'dien-thoai' },
+    grocery: { category: 'fast_food', sectorTag: 'dich-vu' },
+    supermarket: { category: 'fast_food', sectorTag: 'dich-vu' },
+    service: { category: 'cafe', sectorTag: 'dich-vu' },
+    school: { category: 'cafe', sectorTag: 'dich-vu' },
+    public: { category: 'cafe', sectorTag: 'dich-vu' },
+  };
+  const mapped = sectorMap[mapCat] || sectorMap.food;
+
+  const newPlaceId = `xh_map_${Date.now()}`;
+  const sigName =
+    payload.signatureDishName?.trim() ||
+    (mapCat === 'public'
+      ? 'Cơ quan hành chính / Điểm công cộng'
+      : mapCat === 'school'
+      ? 'Cơ sở Giáo dục & Đào tạo'
+      : `Đặc trưng tại ${cleanName}`);
+  const sigPrice = Number(payload.signatureDishPrice) || 35;
+
+  const newPlace: Place = {
+    id: newPlaceId,
+    name: cleanName,
+    tagline:
+      payload.tagline?.trim() ||
+      (mapCat === 'public'
+        ? 'Đơn vị hành chính & Điểm dịch vụ công Phường Xuân Hòa'
+        : `Địa điểm tiêu biểu tại Phường Xuân Hòa`),
+    category: mapped.category,
+    address: payload.address.trim() || 'Phường Xuân Hòa, Tỉnh Phú Thọ',
+    zone: 'center',
+    distance: 'Trung tâm Xuân Hòa',
+    openHours: payload.openHours?.trim() || '07:00 - 22:00',
+    phone: payload.phone?.trim() || '',
+    priceRange: `${sigPrice}k - ${sigPrice + 35}k`,
+    minPrice: sigPrice,
+    maxPrice: sigPrice + 35,
+    rating: 4.9,
+    reviewCount: 12,
+    imageUrl: '',
+    tags: [mapCat, 'Xuân Hòa'],
+    signatureDish: {
+      id: `${newPlaceId}_sig`,
+      name: sigName,
+      price: sigPrice,
+      tag: 'Món tủ',
+    },
+    menu: [
+      {
+        id: `${newPlaceId}_m1`,
+        name: sigName,
+        price: sigPrice,
+        tag: 'Bán chạy',
+      },
+    ],
+    serviceMode: 'both',
+    mapsQuery: `${cleanName} Xuân Hòa Phú Thọ`,
+    mapsUrl:
+      payload.mapsUrl?.trim() ||
+      `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+    rarity: 2,
+    quip: `Địa điểm đã xác minh tọa độ trên Bản đồ số Xuân Hòa!`,
+  };
+
+  const state = getAdminState();
+  const creatorEmail = (effectiveUser?.email || 'quanlymaps@xuanhoacogi.vn').trim().toLowerCase();
+  const claimCode = getOrGenerateMerchantCode(newPlaceId, false, cleanName);
+
+  state.places[newPlaceId] = {
+    id: newPlaceId,
+    status: 'active',
+    name: newPlace.name,
+    tagline: newPlace.tagline,
+    address: newPlace.address,
+    zone: newPlace.zone,
+    distance: newPlace.distance,
+    phone: newPlace.phone,
+    openHours: newPlace.openHours,
+    minPrice: newPlace.minPrice,
+    maxPrice: newPlace.maxPrice,
+    category: newPlace.category,
+    sectorTag: mapped.sectorTag,
+    mapCategory: mapCat,
+    tags: newPlace.tags,
+    serviceMode: newPlace.serviceMode,
+    mapsQuery: newPlace.mapsQuery,
+    mapsUrl: newPlace.mapsUrl,
+    quip: newPlace.quip,
+    verified: true,
+    signatureDishName: sigName,
+    signatureDishPrice: sigPrice,
+    customMenu: newPlace.menu,
+    lat,
+    lng,
+    coordinateVerified: true,
+    coordinateSource: 'admin_verified',
+    lastVerifiedAt: new Date().toISOString().slice(0, 10),
+    merchantClaimCode: claimCode,
+    updatedAt: Date.now(),
+    isCustom: true,
+    customPlaceData: newPlace,
+  };
+
+  // Lưu đồng thời vào danh sách Duyệt Quán để Admin dễ dàng kiểm soát và nâng cấp hình ảnh / menu bằng AI
+  if (!state.merchantSubmissions) state.merchantSubmissions = {};
+  const subId = `sub_${newPlaceId}`;
+  state.merchantSubmissions[subId] = {
+    id: subId,
+    placeId: newPlaceId,
+    placeOriginalName: cleanName,
+    merchantEmail: creatorEmail,
+    merchantName: effectiveUser?.displayName || '🗺️ Quản lý Maps',
+    claimCodeUsed: claimCode,
+    submittedAt: Date.now(),
+    status: 'pending',
+    proposed: {
+      name: cleanName,
+      phone: newPlace.phone || '',
+      openHours: newPlace.openHours || '07:00 - 22:00',
+      address: newPlace.address,
+      tagline: newPlace.tagline,
+      minPrice: newPlace.minPrice,
+      maxPrice: newPlace.maxPrice,
+      serviceMode: newPlace.serviceMode,
+      signatureDishName: sigName,
+      signatureDishPrice: sigPrice,
+      customMenu: newPlace.menu,
+      lat,
+      lng,
+      gpsDistanceMeters: 0,
+    },
+    previous: {
+      name: cleanName,
+      phone: '',
+      openHours: '',
+      address: newPlace.address,
+      lat: null,
+      lng: null,
+      menuCount: 0,
+    },
+  };
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    `🗺️ Tạo địa điểm mới trên Bản đồ (${mapCat})`,
+    `${cleanName} — Tọa độ: ${lat}, ${lng} (Mã quán: ${claimCode})`,
+    'place'
+  );
+
+  saveAdminState(state);
+
+  const created = getAllManagedPlaces().find((p) => p.place.id === newPlaceId);
+  if (!created) {
+    throw new Error('Không thể khởi tạo địa điểm mới.');
+  }
+  return created;
+}
+
+/**
+ * Lấy danh sách tất cả yêu cầu cập nhật từ Chủ quán (Ưu tiên trạng thái 'pending' lên đầu)
+ */
+export function getAllMerchantSubmissions(): MerchantPendingSubmission[] {
+  const state = getAdminState();
+  const map = state.merchantSubmissions || {};
+  return Object.values(map).sort((a, b) => {
+    if (a.status === 'pending' && b.status !== 'pending') return -1;
+    if (a.status !== 'pending' && b.status === 'pending') return 1;
+    return b.submittedAt - a.submittedAt;
+  });
+}
+
+/**
+ * Admin nhấn OK / Duyệt phương án thay đổi của Chủ quán
+ */
+export function approveMerchantSubmission(submissionId: string, reviewNote?: string): void {
+  const state = getAdminState();
+  const sub = state.merchantSubmissions?.[submissionId];
+  if (!sub) {
+    throw new Error('Không tìm thấy yêu cầu cần duyệt.');
+  }
+
+  const placeId = sub.placeId;
+  const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
+  const p = sub.proposed;
+  const hasValidCoord =
+    typeof p.lat === 'number' &&
+    typeof p.lng === 'number' &&
+    Number.isFinite(p.lat) &&
+    Number.isFinite(p.lng);
+
+  state.places[placeId] = {
+    ...prev,
+    id: placeId,
+    name: p.name,
+    phone: p.phone,
+    openHours: p.openHours,
+    address: p.address,
+    ...(p.tagline !== undefined ? { tagline: p.tagline } : {}),
+    ...(p.minPrice !== undefined ? { minPrice: p.minPrice } : {}),
+    ...(p.maxPrice !== undefined ? { maxPrice: p.maxPrice } : {}),
+    ...(p.serviceMode !== undefined ? { serviceMode: p.serviceMode } : {}),
+    ...(p.deliveryNote !== undefined ? { deliveryNote: p.deliveryNote } : {}),
+    ...(p.signatureDishName !== undefined ? { signatureDishName: p.signatureDishName } : {}),
+    ...(p.signatureDishPrice !== undefined ? { signatureDishPrice: p.signatureDishPrice } : {}),
+    ...(p.customMenu !== undefined ? { customMenu: p.customMenu } : {}),
+    ...(hasValidCoord
+      ? {
+          lat: Number(p.lat!.toFixed(6)),
+          lng: Number(p.lng!.toFixed(6)),
+          coordinateVerified: true,
+          coordinateSource: 'merchant_verified',
+          lastVerifiedAt: new Date().toISOString(),
+        }
+      : {}),
+    updatedAt: Date.now(),
+  };
+
+  sub.status = 'approved';
+  sub.reviewedAt = Date.now();
+  sub.reviewNote = reviewNote || 'Đã được Admin phê duyệt và cập nhật lên Bản đồ số.';
+  state.merchantSubmissions![submissionId] = sub;
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    '✅ Admin ĐÃ DUYỆT cập nhật định vị & thông tin từ Chủ quán',
+    `${p.name} (Chủ quán: ${sub.merchantEmail})`,
+    'place'
+  );
+
+  saveAdminState(state);
+}
+
+/**
+ * Admin từ chối phương án thay đổi của Chủ quán
+ */
+export function rejectMerchantSubmission(submissionId: string, reviewNote?: string): void {
+  const state = getAdminState();
+  const sub = state.merchantSubmissions?.[submissionId];
+  if (!sub) return;
+
+  sub.status = 'rejected';
+  sub.reviewedAt = Date.now();
+  sub.reviewNote = reviewNote || 'Thông tin hoặc vị trí ghim chưa chính xác, vui lòng kiểm tra lại.';
+  state.merchantSubmissions![submissionId] = sub;
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    '❌ Admin từ chối yêu cầu cập nhật của Chủ quán',
+    `${sub.placeOriginalName} (${sub.merchantEmail}) — Lý do: ${sub.reviewNote}`,
+    'place'
+  );
+
+  saveAdminState(state);
+}
+
+/**
+ * ĐẤNG TỐI CAO (SUPER ADMIN): Gán trực tiếp quyền Chủ Quán cho 1 địa chỉ Gmail bất kỳ (1 chạm, không cần nhập mã)
+ * Hoặc truyền email rỗng '' để thu hồi quyền Chủ Quán.
+ */
+export function assignMerchantOwnerByEmail(
+  placeId: string,
+  ownerEmail: string,
+  ownerName?: string
+): void {
+  const state = getAdminState();
+  const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
+  const cleanEmail = ownerEmail.trim().toLowerCase();
+  const activeCode = getOrGenerateMerchantCode(placeId, false);
+
+  if (!cleanEmail) {
+    state.places[placeId] = {
+      ...prev,
+      id: placeId,
+      claimedByEmail: '',
+      claimedByUid: '',
+      claimedByName: '',
+      updatedAt: Date.now(),
+    };
+    state.auditLogs = addAdminAuditLog(
+      state,
+      '🔓 Admin thu hồi quyền Chủ Quán',
+      `Quán ID: ${placeId}`,
+      'place'
+    );
+  } else {
+    state.places[placeId] = {
+      ...prev,
+      id: placeId,
+      merchantClaimCode: activeCode,
+      claimedByEmail: cleanEmail,
+      claimedByName: (ownerName || cleanEmail).trim(),
+      claimedAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    state.auditLogs = addAdminAuditLog(
+      state,
+      '👑 Admin gán thẳng quyền Chủ Quán cho Gmail',
+      `Quán ID: ${placeId} → Gmail: ${cleanEmail}`,
+      'place'
+    );
+  }
+
+  saveAdminState(state);
+
+  // Nếu Gmail được gán trùng với tài khoản đang đăng nhập trên trình duyệt hiện tại, đồng bộ ngay biểu tượng Nick Quán 🏪
+  try {
+    const currentStored = getStoredAuthUser();
+    if (currentStored?.email && currentStored.email.trim().toLowerCase() === cleanEmail) {
+      const targetPlace = getAllManagedPlaces().find((p) => p.place.id === placeId);
+      if (targetPlace) {
+        saveAuthUser({
+          ...currentStored,
+          isMerchantAccount: true,
+          merchantPlaceId: targetPlace.place.id,
+          merchantPlaceName: targetPlace.place.name,
+          merchantVerifiedCode: activeCode,
+          nickname: targetPlace.place.name,
+          avatar: '🏪',
+        });
+      }
+    }
+  } catch {}
+}
+
+/**
+ * ĐẤNG TỐI CAO (SUPER ADMIN): Duyệt tất cả yêu cầu chờ duyệt chỉ với 1 chạm
+ */
+export function approveAllPendingMerchantSubmissions(): number {
+  const state = getAdminState();
+  const map = state.merchantSubmissions || {};
+  let count = 0;
+
+  for (const sub of Object.values(map)) {
+    if (sub.status !== 'pending') continue;
+    const placeId = sub.placeId;
+    const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
+    const p = sub.proposed;
+    const hasValidCoord =
+      typeof p.lat === 'number' &&
+      typeof p.lng === 'number' &&
+      Number.isFinite(p.lat) &&
+      Number.isFinite(p.lng);
+
+    state.places[placeId] = {
+      ...prev,
+      id: placeId,
+      name: p.name,
+      phone: p.phone,
+      openHours: p.openHours,
+      address: p.address,
+      ...(p.tagline !== undefined ? { tagline: p.tagline } : {}),
+      ...(p.minPrice !== undefined ? { minPrice: p.minPrice } : {}),
+      ...(p.maxPrice !== undefined ? { maxPrice: p.maxPrice } : {}),
+      ...(p.serviceMode !== undefined ? { serviceMode: p.serviceMode } : {}),
+      ...(p.deliveryNote !== undefined ? { deliveryNote: p.deliveryNote } : {}),
+      ...(p.signatureDishName !== undefined ? { signatureDishName: p.signatureDishName } : {}),
+      ...(p.signatureDishPrice !== undefined ? { signatureDishPrice: p.signatureDishPrice } : {}),
+      ...(p.customMenu !== undefined ? { customMenu: p.customMenu } : {}),
+      ...(hasValidCoord
+        ? {
+            lat: Number(p.lat!.toFixed(6)),
+            lng: Number(p.lng!.toFixed(6)),
+            coordinateVerified: true,
+            coordinateSource: 'merchant_verified',
+            lastVerifiedAt: new Date().toISOString(),
+          }
+        : {}),
+      updatedAt: Date.now(),
+    };
+
+    sub.status = 'approved';
+    sub.reviewedAt = Date.now();
+    sub.reviewNote = 'Đã được Admin duyệt nhanh (Duyệt tất cả 1 chạm).';
+    map[sub.id] = sub;
+    count++;
+  }
+
+  if (count > 0) {
+    state.auditLogs = addAdminAuditLog(
+      state,
+      `⚡ Admin duyệt hàng loạt ${count} yêu cầu từ Chủ quán`,
+      `Tổng số: ${count} quán`,
+      'place'
+    );
+    saveAdminState(state);
+  }
+  return count;
+}
+
+/**
+ * Giả lập cập nhật định vị dành cho kiểm thử nội bộ
+ */
+export function simulateMerchantDemoSubmission(
+  targetPlaceId?: string,
+  currentUser?: UserAuthProfile | null
+): MerchantPendingSubmission | null {
+  const allManaged = getAllManagedPlaces();
+  const item =
+    (targetPlaceId ? allManaged.find((p) => p.place.id === targetPlaceId) : null) ||
+    allManaged[0];
+  if (!item) return null;
+
+  const placeId = item.place.id;
+  const code = getOrGenerateMerchantCode(placeId, false, item.place.name);
+  const demoEmail = (currentUser?.email || 'chuquan.xuanhoa@gmail.com').trim().toLowerCase();
+
+  assignMerchantOwnerByEmail(placeId, demoEmail, item.place.name);
+
+  if (currentUser) {
+    saveAuthUser({
+      ...currentUser,
+      isLoggedIn: true,
+      email: demoEmail,
+      isMerchantAccount: true,
+      merchantPlaceId: placeId,
+      merchantPlaceName: item.place.name,
+      merchantVerifiedCode: code,
+      nickname: item.place.name,
+      avatar: '🏪',
+    });
+  } else {
+    const stored = getStoredAuthUser();
+    if (stored) {
+      saveAuthUser({
+        ...stored,
+        isLoggedIn: true,
+        email: stored.email || demoEmail,
+        isMerchantAccount: true,
+        merchantPlaceId: placeId,
+        merchantPlaceName: item.place.name,
+        merchantVerifiedCode: code,
+        nickname: item.place.name,
+        avatar: '🏪',
+      });
+    }
+  }
+
+  const state = getAdminState();
+  const ov = state.places[placeId];
+  const hashNum = placeId.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  const demoLat = Number((21.2808 + (hashNum % 25) * 0.00018).toFixed(6));
+  const demoLng = Number((105.7248 + (hashNum % 25) * 0.00022).toFixed(6));
+
+  const updatedMenu: CustomMenuEntry[] = item.fullMenu.map((m, idx) =>
+    idx === 0 ? { ...m, price: m.price + 5 } : { ...m }
+  );
+
+  const submissionId = `sub_${placeId}`;
+  const submission: MerchantPendingSubmission = {
+    id: submissionId,
+    placeId,
+    placeOriginalName: item.place.name,
+    merchantEmail: demoEmail,
+    merchantName: `🏪 ${item.place.name}`,
+    claimCodeUsed: code,
+    submittedAt: Date.now(),
+    status: 'pending',
+    proposed: {
+      name: item.place.name,
+      phone: item.place.phone || '0988 686 868',
+      openHours: '07:00 - 22:30 (Mở cả tuần)',
+      address: item.place.address,
+      tagline: item.place.tagline,
+      minPrice: item.place.minPrice,
+      maxPrice: item.place.maxPrice,
+      serviceMode: 'both',
+      deliveryNote: item.place.deliveryNote,
+      signatureDishName: item.place.signatureDish?.name,
+      signatureDishPrice: item.place.signatureDish?.price,
+      customMenu: updatedMenu,
+      lat: demoLat,
+      lng: demoLng,
+      gpsDistanceMeters: 0,
+    },
+    previous: {
+      name: item.place.name,
+      phone: item.place.phone || '',
+      openHours: item.place.openHours || '',
+      address: item.place.address,
+      lat: typeof ov?.lat === 'number' ? ov.lat : null,
+      lng: typeof ov?.lng === 'number' ? ov.lng : null,
+      menuCount: item.fullMenu.length,
+    },
+  };
+
+  if (!state.merchantSubmissions) state.merchantSubmissions = {};
+  state.merchantSubmissions[submissionId] = submission;
+  saveAdminState(state);
+  return submission;
+}
+
+/**
+ * Lấy chế độ mở cửa của Bản đồ số (Mặc định: 'merchants_and_admin_only' — Chỉ mở cho Chủ Quán đã có Mã Code & Admin)
+ */
+export function getMapAccessMode(): 'merchants_and_admin_only' | 'public_open' {
+  const state = getAdminState();
+  return state.mapAccessMode || 'merchants_and_admin_only';
+}
+
+/**
+ * Admin bật/tắt công tắc Mở cửa Bản đồ số cho toàn bộ khách hoặc Chỉ Chủ Quán & Admin
+ */
+export function setMapAccessMode(mode: 'merchants_and_admin_only' | 'public_open'): void {
+  const state = getAdminState();
+  state.mapAccessMode = mode;
+  state.auditLogs = addAdminAuditLog(
+    state,
+    mode === 'public_open'
+      ? '🌍 Admin MỞ CỬA Bản Đồ Số công khai cho toàn bộ Khách'
+      : '🔒 Admin bật chế độ Bản Đồ Số: Chỉ Chủ Quán (có Mã Code) & Admin',
+    mode === 'public_open' ? 'Công khai toàn bộ' : 'Chỉ Chủ Quán & Admin',
+    'system'
+  );
+  saveAdminState(state);
+}
+
+/**
+ * Kiểm tra quyền vào Bản đồ số của tài khoản hiện tại:
+ * - Admin: Auto vào thẳng 100%
+ * - Quản lý Maps (đã kích hoạt mã XH-MAPS-8899): Auto vào thẳng 100% + Quyền tạo mới & chỉnh định vị
+ * - Chủ Quán đã kích hoạt Mã Code (đi theo Gmail mãi mãi): Auto vào thẳng Bản đồ + Quản lý quán
+ * - Khách thường: Nếu đang ở chế độ 'merchants_and_admin_only' -> Hiện màn hình "Đang phát triển • Nhập Mã Code Chủ Quán"
+ */
+export function getDigitalMapAccessStatus(authUser?: UserAuthProfile | null): {
+  canAccess: boolean;
+  accessReason: 'admin' | 'map_manager' | 'merchant' | 'public_open' | 'locked_for_guest';
+  mode: 'merchants_and_admin_only' | 'public_open';
+  claimedPlace: AdminPlaceItem | null;
+  verifiedCount: number;
+  totalCount: number;
+} {
+  const state = getAdminState();
+  const mode = state.mapAccessMode || 'merchants_and_admin_only';
+  const allManaged = getAllManagedPlaces();
+  const totalCount = allManaged.length;
+  const verifiedCount = allManaged.filter((item) => {
+    const ov = state.places[item.place.id];
+    return (
+      Boolean(ov?.coordinateVerified) &&
+      typeof ov?.lat === 'number' &&
+      typeof ov?.lng === 'number'
+    );
+  }).length;
+
+  let claimedPlace = getPrimaryClaimedPlaceForUser(authUser);
+  if (!claimedPlace && authUser?.isLoggedIn && authUser?.isMerchantAccount && authUser?.merchantPlaceId) {
+    claimedPlace = allManaged.find((p) => p.place.id === authUser.merchantPlaceId) || null;
+  }
+
+  if (isAdminAuthenticated(authUser)) {
+    return {
+      canAccess: true,
+      accessReason: 'admin',
+      mode,
+      claimedPlace,
+      verifiedCount,
+      totalCount,
+    };
+  }
+
+  if (isMapManagerAuthenticated(authUser)) {
+    return {
+      canAccess: true,
+      accessReason: 'map_manager',
+      mode,
+      claimedPlace,
+      verifiedCount,
+      totalCount,
+    };
+  }
+
+  if (claimedPlace) {
+    return {
+      canAccess: true,
+      accessReason: 'merchant',
+      mode,
+      claimedPlace,
+      verifiedCount,
+      totalCount,
+    };
+  }
+
+  if (mode === 'public_open') {
+    return {
+      canAccess: true,
+      accessReason: 'public_open',
+      mode,
+      claimedPlace: null,
+      verifiedCount,
+      totalCount,
+    };
+  }
+
+  return {
+    canAccess: false,
+    accessReason: 'locked_for_guest',
+    mode,
+    claimedPlace: null,
+    verifiedCount,
+    totalCount,
+  };
+}
 
 

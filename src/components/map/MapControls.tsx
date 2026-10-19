@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Plus,
   Minus,
@@ -8,6 +8,10 @@ import {
   Castle,
   ShieldCheck,
   Loader2,
+  ChevronDown,
+  Box,
+  MapPin,
+  Check,
 } from 'lucide-react';
 import type { MapAreaPreset, MapLayerVisibility } from '@/lib/map/map-types';
 import { MAP_AREA_PRESETS } from '@/lib/map/map-config';
@@ -23,6 +27,8 @@ interface MapControlsProps {
   onSelectPreset: (preset: MapAreaPreset) => void;
   activePresetId: string;
   onOpenDataQualityModal: () => void;
+  is3DMode?: boolean;
+  onToggle3DMode?: () => void;
 }
 
 export const MapControls: React.FC<MapControlsProps> = ({
@@ -36,156 +42,192 @@ export const MapControls: React.FC<MapControlsProps> = ({
   onSelectPreset,
   activePresetId,
   onOpenDataQualityModal,
+  is3DMode = true,
+  onToggle3DMode,
 }) => {
   const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
+  const [isPresetRollOpen, setIsPresetRollOpen] = useState(false);
+  const dropdownContainerRef = useRef<HTMLDivElement | null>(null);
+  const rollListRef = useRef<HTMLDivElement | null>(null);
+
+  const activeIdx = Math.max(
+    0,
+    MAP_AREA_PRESETS.findIndex((p) => p.id === activePresetId)
+  );
+  const activePreset = MAP_AREA_PRESETS[activeIdx] || MAP_AREA_PRESETS[0];
+
+  // Đóng menu roll kéo xuống khi click ra ngoài
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownContainerRef.current &&
+        !dropdownContainerRef.current.contains(e.target as Node)
+      ) {
+        setIsPresetRollOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Tự động cuộn tới khu vực đang chọn khi mở thanh roll dọc
+  useEffect(() => {
+    if (isPresetRollOpen && rollListRef.current) {
+      const activeEl = rollListRef.current.children[activeIdx] as HTMLElement | undefined;
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [isPresetRollOpen, activeIdx]);
 
   return (
-    <>
-      {/* Thanh nhảy nhanh các phân khu thực tế của Phường Xuân Hòa mới */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 max-w-full">
-        {MAP_AREA_PRESETS.map((preset) => {
-          const isActive = activePresetId === preset.id;
-          return (
+    <div
+      ref={dropdownContainerRef}
+      className="fixed right-2.5 sm:right-3.5 bottom-20 md:bottom-6 z-30 flex flex-col items-end gap-2 pointer-events-auto"
+      style={{
+        fontFamily:
+          "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      }}
+    >
+      {/* Popover chọn nhanh Khu vực & Bật/Tắt các lớp bản đồ */}
+      {isLayerMenuOpen && (
+        <div className="mb-1 w-68 rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_12px_30px_rgba(64,48,100,0.22)] p-3 text-xs text-[#2D2246] space-y-2.5">
+          <div className="font-extrabold text-[#403064] pb-2 border-b border-[#E5DEC9] flex items-center justify-between leading-snug">
+            <span>Lớp bản đồ & Khu vực</span>
             <button
-              key={preset.id}
               type="button"
-              onClick={() => onSelectPreset(preset)}
-              className="px-3 py-1.5 rounded-full text-[11.5px] font-bold border-2 transition-all whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
-              style={{
-                backgroundColor: isActive ? '#403064' : '#FFFDF9',
-                borderColor: '#403064',
-                color: isActive ? '#FFFFFF' : '#2D2246',
-              }}
-              title={preset.sublabel}
+              onClick={() => setIsLayerMenuOpen(false)}
+              className="text-[11px] text-[#65587F] hover:text-[#2D2246] cursor-pointer"
             >
-              {preset.label}
+              Đóng
             </button>
-          );
-        })}
-      </div>
-
-      {/* Cụm nút điều khiển bản đồ bên phải */}
-      <div className="fixed right-3.5 bottom-24 md:bottom-8 z-30 flex flex-col items-end gap-2">
-        {/* Popover bật/tắt 5 lớp độc lập (Phần 4) */}
-        {isLayerMenuOpen && (
-          <div className="mb-1 w-64 rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_12px_30px_rgba(64,48,100,0.2)] p-3 text-xs text-[#2D2246]">
-            <div className="font-extrabold text-[#403064] pb-2 mb-2 border-b border-[#E5DEC9] flex items-center justify-between">
-              <span>Lớp hiển thị Bản đồ (Layers)</span>
-              <button
-                type="button"
-                onClick={() => setIsLayerMenuOpen(false)}
-                className="text-[11px] text-[#65587F] hover:text-[#2D2246] cursor-pointer"
-              >
-                Đóng
-              </button>
-            </div>
-            <div className="space-y-2">
-              {(
-                [
-                  { key: 'baseGeography', label: '1. Đường phố & Ngõ (OSM)' },
-                  { key: 'buildings', label: '2. Công trình & Khối nhà (5.083)' },
-                  { key: 'waterAndParks', label: '3. Hồ Đại Lải, Sông & Cây xanh' },
-                  { key: 'wardBoundary', label: '4. Ranh giới Phường Xuân Hòa' },
-                  { key: 'realPois', label: '5. Địa điểm thực tế (Verified POIs)' },
-                  { key: 'gameAssets', label: '6. Lớp Tài sản Game (Demo)' },
-                  { key: 'userLocation', label: '7. Vị trí của tôi (GPS)' },
-                ] as Array<{ key: keyof MapLayerVisibility; label: string }>
-              ).map((item) => (
-                <label
-                  key={item.key}
-                  className="flex items-center justify-between gap-2 cursor-pointer select-none py-0.5"
-                >
-                  <span className="font-semibold text-[11.5px]">{item.label}</span>
-                  <input
-                    type="checkbox"
-                    checked={layerVisibility[item.key]}
-                    onChange={() => onToggleLayer(item.key)}
-                    className="w-4 h-4 accent-[#39B980] rounded cursor-pointer"
-                  />
-                </label>
-              ))}
-            </div>
           </div>
+
+          {/* Chọn nhanh 11 Khu vực Xuân Hòa */}
+          <div>
+            <label className="block text-[10.5px] font-extrabold text-[#65587F] mb-1">
+              📍 Bay nhanh tới Khu vực ({activeIdx + 1}/{MAP_AREA_PRESETS.length}):
+            </label>
+            <select
+              value={activePreset.id}
+              onChange={(e) => {
+                const found = MAP_AREA_PRESETS.find((p) => p.id === e.target.value);
+                if (found) {
+                  onSelectPreset(found);
+                  setIsLayerMenuOpen(false);
+                }
+              }}
+              className="w-full px-2.5 py-1.5 rounded-xl bg-[#F8F5EE] border border-[#403064] font-extrabold text-xs text-[#2D2246] cursor-pointer"
+            >
+              {MAP_AREA_PRESETS.map((p, idx) => (
+                <option key={p.id} value={p.id}>
+                  #{idx + 1} • {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5 pt-1 border-t border-[#E5DEC9]">
+            {(
+              [
+                { key: 'realPois', label: '📍 Hiện Icon Địa điểm & Quán' },
+                { key: 'buildings', label: '🏢 Công trình & Khối nhà 3D' },
+                { key: 'baseGeography', label: '🛣️ Đường phố & Ngõ (OSM)' },
+                { key: 'waterAndParks', label: '🌳 Núi Thằn Lằn & Hồ Đại Lải' },
+                { key: 'wardBoundary', label: '🗺️ Ranh giới Phường Xuân Hòa' },
+                { key: 'userLocation', label: '🟢 Chấm xanh Vị trí của tôi' },
+                { key: 'gameAssets', label: '🏰 Lớp Tài sản Game (Demo)' },
+              ] as Array<{ key: keyof MapLayerVisibility; label: string }>
+            ).map((item) => (
+              <label
+                key={item.key}
+                className="flex items-center justify-between gap-2 cursor-pointer select-none py-0.5"
+              >
+                <span className="font-semibold text-[11.5px] leading-snug">
+                  {item.label}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={layerVisibility[item.key]}
+                  onChange={() => onToggleLayer(item.key)}
+                  className="w-4 h-4 accent-[#39B980] rounded cursor-pointer"
+                />
+              </label>
+            ))}
+          </div>
+
+          <div className="pt-1.5 border-t border-[#E5DEC9]">
+            <button
+              type="button"
+              onClick={() => {
+                setIsLayerMenuOpen(false);
+                onOpenDataQualityModal();
+              }}
+              className="w-full px-2.5 py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] text-[#1D7A52] font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <ShieldCheck size={13} />
+              <span>Thông tin dữ liệu bản đồ OSM</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Cột nút tròn gọn chuẩn Google Maps ở góc phải dưới (GPS, 3D/2D, Lớp bản đồ, Về trung tâm) */}
+      <div className="flex flex-col rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-sm border-2 border-[#403064] shadow-[0_6px_20px_rgba(64,48,100,0.16)] overflow-hidden">
+        <button
+          type="button"
+          onClick={onLocateUser}
+          aria-label="Định vị vị trí hiện tại của tôi"
+          title="Định vị vị trí hiện tại của bạn (GPS)"
+          className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#1D7A52] hover:bg-[#E6F7EF] transition-colors border-b border-[#E5DEC9] cursor-pointer"
+        >
+          {isLocatingUser ? (
+            <Loader2 size={16} className="animate-spin text-[#39B980]" />
+          ) : (
+            <LocateFixed size={16} className="text-[#39B980]" />
+          )}
+        </button>
+
+        {onToggle3DMode && (
+          <button
+            type="button"
+            onClick={onToggle3DMode}
+            aria-label="Chuyển đổi góc nhìn 3D / 2D"
+            title="Chuyển đổi góc nhìn 3D / 2D"
+            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center font-extrabold text-[11px] transition-colors border-b border-[#E5DEC9] cursor-pointer"
+            style={{
+              backgroundColor: is3DMode ? '#39B980' : 'transparent',
+              color: is3DMode ? '#FFFFFF' : '#403064',
+            }}
+          >
+            {is3DMode ? '3D' : '2D'}
+          </button>
         )}
 
-        <div className="flex flex-col rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_8px_24px_rgba(64,48,100,0.16)] overflow-hidden">
-          <button
-            type="button"
-            onClick={onZoomIn}
-            aria-label="Phóng to bản đồ"
-            title="Phóng to (+)"
-            className="w-10 h-10 flex items-center justify-center text-[#403064] hover:bg-[#E6F7EF] transition-colors border-b border-[#E5DEC9] cursor-pointer"
-          >
-            <Plus size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={onZoomOut}
-            aria-label="Thu nhỏ bản đồ"
-            title="Thu nhỏ (-)"
-            className="w-10 h-10 flex items-center justify-center text-[#403064] hover:bg-[#E6F7EF] transition-colors border-b border-[#E5DEC9] cursor-pointer"
-          >
-            <Minus size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={onLocateUser}
-            aria-label="Định vị vị trí hiện tại của tôi"
-            title="Vị trí của tôi (GPS)"
-            className="w-10 h-10 flex items-center justify-center text-[#403064] hover:bg-[#E6F7EF] transition-colors border-b border-[#E5DEC9] cursor-pointer"
-          >
-            {isLocatingUser ? (
-              <Loader2 size={17} className="animate-spin text-[#39B980]" />
-            ) : (
-              <LocateFixed size={17} />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={onResetCenter}
-            aria-label="Trở về vị trí trung tâm Xuân Hòa"
-            title="Trở về trung tâm Xuân Hòa"
-            className="w-10 h-10 flex items-center justify-center text-[#403064] hover:bg-[#E6F7EF] transition-colors border-b border-[#E5DEC9] cursor-pointer"
-          >
-            <Home size={17} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleLayer('gameAssets')}
-            aria-label="Bật hoặc tắt lớp tài sản game demo"
-            title="Bật/Tắt Lớp Tài sản Game (Demo)"
-            className="w-10 h-10 flex items-center justify-center transition-colors border-b border-[#E5DEC9] cursor-pointer"
-            style={{
-              backgroundColor: layerVisibility.gameAssets ? '#403064' : 'transparent',
-              color: layerVisibility.gameAssets ? '#FFFFFF' : '#403064',
-            }}
-          >
-            <Castle size={17} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsLayerMenuOpen((v) => !v)}
-            aria-label="Tùy chỉnh các lớp bản đồ"
-            title="Bật/Tắt các lớp bản đồ"
-            className="w-10 h-10 flex items-center justify-center transition-colors border-b border-[#E5DEC9] cursor-pointer"
-            style={{
-              backgroundColor: isLayerMenuOpen ? '#E6F7EF' : 'transparent',
-              color: '#403064',
-            }}
-          >
-            <Layers size={17} />
-          </button>
-          <button
-            type="button"
-            onClick={onOpenDataQualityModal}
-            aria-label="Xem báo cáo nguồn dữ liệu địa lý"
-            title="Nguồn & Chất lượng dữ liệu địa lý"
-            className="w-10 h-10 flex items-center justify-center text-[#1D7A52] hover:bg-[#E6F7EF] transition-colors cursor-pointer"
-          >
-            <ShieldCheck size={17} />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setIsLayerMenuOpen((v) => !v)}
+          aria-label="Tùy chỉnh lớp bản đồ & khu vực"
+          title="Chọn Khu vực & Bật/Tắt các lớp bản đồ"
+          className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center transition-colors border-b border-[#E5DEC9] cursor-pointer"
+          style={{
+            backgroundColor: isLayerMenuOpen ? '#E6F7EF' : 'transparent',
+            color: '#403064',
+          }}
+        >
+          <Layers size={16} />
+        </button>
+
+        <button
+          type="button"
+          onClick={onResetCenter}
+          aria-label="Trở về vị trí trung tâm Xuân Hòa"
+          title="Trở về trung tâm Xuân Hòa"
+          className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#403064] hover:bg-[#E6F7EF] transition-colors cursor-pointer"
+        >
+          <Home size={16} />
+        </button>
       </div>
-    </>
+    </div>
   );
 };

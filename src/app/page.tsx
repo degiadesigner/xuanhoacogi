@@ -73,6 +73,7 @@ import {
   syncUserToAdminRegistry,
   getMemberRestrictionStatus,
   initAdminCloudSync,
+  getPrimaryClaimedPlaceForUser,
 } from '@/lib/admin-store';
 
 export type AppView = 'spin' | 'dishes' | 'places' | 'map' | 'guide' | 'about' | 'coming-soon' | 'admin';
@@ -81,23 +82,27 @@ function parseHashToView(): AppView {
   if (typeof window === 'undefined') return 'spin';
   const hash = window.location.hash.toLowerCase();
   const pathname = (window.location.pathname || '').toLowerCase();
+
+  // 1. Ưu tiên kiểm tra hash tường minh trước để khi từ /quanly nhảy sang #/ban-do luôn chuyển trang tức thì
+  if (
+    hash.includes('demo-ban-do') ||
+    hash.includes('ban-do') ||
+    hash.includes('map') ||
+    hash.includes('chu-quan') ||
+    hash.includes('merchant') ||
+    hash.includes('claim=') ||
+    hash.includes('pick=') ||
+    hash.includes('flylat=')
+  ) {
+    return 'map';
+  }
   if (
     hash.includes('quanly') ||
     hash.includes('quan-ly') ||
     hash.includes('admin') ||
-    hash.includes('quan-tri') ||
-    pathname === '/quanly' ||
-    pathname === '/quanly/' ||
-    pathname === '/admin' ||
-    pathname === '/admin/'
+    hash.includes('quan-tri')
   ) {
     return 'admin';
-  }
-  const isLocalHost =
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1';
-  if (isLocalHost && hash.includes('demo-ban-do')) {
-    return 'map';
   }
   if (hash.includes('coming-soon') || hash.includes('sap-ra-mat') || hash.includes('teaser')) {
     return 'coming-soon';
@@ -113,6 +118,19 @@ function parseHashToView(): AppView {
   }
   if (hash.includes('gioi-thieu') || hash.includes('about')) {
     return 'about';
+  }
+  if (hash === '#/' || hash === '#spin') {
+    return 'spin';
+  }
+
+  // 2. Nếu không có hash cụ thể thì kiểm tra pathname (/quanly, /admin)
+  if (
+    pathname === '/quanly' ||
+    pathname === '/quanly/' ||
+    pathname === '/admin' ||
+    pathname === '/admin/'
+  ) {
+    return 'admin';
   }
   return 'spin';
 }
@@ -261,10 +279,7 @@ export default function Home() {
   const [mapToast, setMapToast] = useState(false);
 
   const handleOpenMap = useCallback(() => {
-    setMapToast(true);
-    setTimeout(() => {
-      setMapToast(false);
-    }, 2800);
+    navigateTo('map');
   }, []);
 
   const toggleSound = useCallback(() => {
@@ -1016,7 +1031,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Header (Clean, Professional, No Emojis) */}
+      {/* Header (Clean, Professional, No Emojis — Ẩn khi mở Bản đồ số full-screen để tối ưu 100% không gian) */}
+      {currentView !== 'map' && (
       <header className="site-header">
         <div className="header-inner">
           <a 
@@ -1046,26 +1062,77 @@ export default function Home() {
           </a>
 
           <div className="header-right">
-            {/* 🎯 CỘT CÂN ĐỐI: CẤP ĐỘ + THANH KÉO ĐIỂM Ở TRÊN, TỔNG LƯỢT QUAY Ở DƯỚI */}
+            {/* 🎯 CỘT CÂN ĐỐI: CẤP ĐỘ + ĐĂNG NHẬP GỘP CHUNG Ở TRÊN, TỔNG LƯỢT QUAY Ở DƯỚI */}
             <div className="header-auth-counter-col">
-              {/* Hàng 1: Cấp độ + Thanh kéo điểm (EXP Progress) */}
-              <button
-                type="button"
-                className="header-level-progress-pill"
-                onClick={() => setIsScoreboardOpen(true)}
-                title={`${profile.badge || '🥉'} ${t('header_level')} ${profile.level}: ${profile.title} · ${profile.dishesCount}/${profile.nextLevelDishes} ${t('dishes_unit')} (${expPercentage}%)`}
-              >
-                <span className="header-level-pill-badge">{profile.badge || '🥉'} {t('header_level')} {profile.level}</span>
-                <div className="header-level-mini-progress" title={`${expPercentage}%`}>
-                  <div 
-                    className="header-level-mini-fill" 
-                    style={{ width: `${expPercentage}%` }} 
-                  />
-                </div>
-                <span className="header-level-pill-points">
-                  {profile.dishesCount}/{profile.nextLevelDishes} <span className="font-normal text-[10px] text-slate-400">{t('dishes_unit')}</span>
-                </span>
-              </button>
+              {/* Hàng 1: Gộp Cấp độ + Thanh tiến trình + Đăng nhập / Tài khoản */}
+              <div className="header-level-progress-pill header-level-auth-merged">
+                <button
+                  type="button"
+                  className="header-level-merged-left"
+                  onClick={() => setIsScoreboardOpen(true)}
+                  title={`${profile.badge || '🥉'} ${t('header_level')} ${profile.level}: ${profile.title} · ${profile.dishesCount}/${profile.nextLevelDishes} ${t('dishes_unit')} (${expPercentage}%)`}
+                >
+                  <span className="header-level-pill-badge">{profile.badge || '🥉'} {t('header_level')} {profile.level}</span>
+                  <div className="header-level-mini-progress" title={`${expPercentage}%`}>
+                    <div 
+                      className="header-level-mini-fill" 
+                      style={{ width: `${expPercentage}%` }} 
+                    />
+                  </div>
+                  <span className="header-level-pill-points">
+                    {profile.dishesCount}/{profile.nextLevelDishes} <span className="header-level-unit font-normal text-[10px] text-slate-400">{t('dishes_unit')}</span>
+                  </span>
+                </button>
+
+                <span className="header-level-auth-divider" aria-hidden="true" />
+
+                {!authUser || !authUser.isLoggedIn ? (
+                  <button
+                    type="button"
+                    className="header-auth-merged-btn guest"
+                    onClick={() => {
+                      setAuthNotice('');
+                      setAuthModalStep(1);
+                      setIsAuthModalOpen(true);
+                    }}
+                    title={t('login')}
+                    aria-label={t('login')}
+                  >
+                    <User size={12} className="text-amber-400 shrink-0" />
+                    <span>{t('login')}</span>
+                  </button>
+                ) : (() => {
+                  const merchantShop = getPrimaryClaimedPlaceForUser(authUser);
+                  const isShopAcc = Boolean(merchantShop || authUser.isMerchantAccount);
+                  const displayTitle = merchantShop?.place.name || authUser.merchantPlaceName || authUser.nickname;
+                  return (
+                    <button
+                      type="button"
+                      className="header-auth-merged-btn logged-in"
+                      onClick={() => setIsUserProfileModalOpen(true)}
+                      title={
+                        isShopAcc
+                          ? `🏪 Nick Quán Chính Chủ: ${displayTitle}`
+                          : `${authUser.nickname} · ${t('dock_profile')}`
+                      }
+                      aria-label={t('dock_profile')}
+                    >
+                      <span className="header-auth-merged-avatar">
+                        {isShopAcc ? '🏪' : authUser.avatar || '🐱'}
+                      </span>
+                      <span className="header-auth-merged-name">{displayTitle}</span>
+                      {isShopAcc && (
+                        <span
+                          className="ml-0.5 px-1 py-0.2 rounded bg-emerald-500 text-white text-[9px] font-black leading-none"
+                          title="Đã xác thực Mã Code Quán"
+                        >
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  );
+                })()}
+              </div>
 
               {/* Hàng 2: Tổng Lượt Quay (Cân đối thẳng hàng bên dưới) */}
               <div className="header-sub-spin-counter" title={t('header_total_spins')}>
@@ -1074,47 +1141,20 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 🎯 CÁC NÚT ICON GỌN GÀNG Ở CẠNH (ĐĂNG NHẬP, BẢN ĐỒ, CÀI ĐẶT) */}
+            {/* 🎯 CÁC NÚT ICON GỌN GÀNG Ở CẠNH TRÊN PC (BẢN ĐỒ SỐ, CÀI ĐẶT) */}
             <div className="header-action-icons-wrap header-btn-desktop-only">
-              {/* 1. Nút Đăng Nhập / Hồ Sơ Gọn Gàng */}
-              {!authUser || !authUser.isLoggedIn ? (
-                <button 
-                  type="button"
-                  className="header-icon-action-btn header-auth-icon-btn"
-                  onClick={() => {
-                    setAuthNotice('');
-                    setAuthModalStep(1);
-                    setIsAuthModalOpen(true);
-                  }}
-                  title={t('login')}
-                  aria-label={t('login')}
-                >
-                  <User size={24} className="text-amber-400" />
-                </button>
-              ) : (
-                <button 
-                  type="button"
-                  className="header-icon-action-btn header-user-avatar-btn"
-                  onClick={() => setIsUserProfileModalOpen(true)}
-                  title={`${authUser.nickname} · ${t('dock_profile')}`}
-                  aria-label={t('dock_profile')}
-                >
-                  <span className="text-2xl leading-none">{authUser.avatar || '🐱'}</span>
-                </button>
-              )}
-
-              {/* 3. Nút Bản Đồ Số */}
+              {/* Nút Bản Đồ Số */}
               <button 
                 type="button"
                 className="header-icon-action-btn"
                 onClick={handleOpenMap}
-                title={t('map_coming_soon')}
-                aria-label={t('map_coming_soon')}
+                title={t('dock_map')}
+                aria-label={t('dock_map')}
               >
                 <Map size={24} />
               </button>
 
-              {/* 4. Nút Menu Cài đặt (Grid) */}
+              {/* Nút Menu Cài đặt (Grid) */}
               <button 
                 type="button"
                 className="header-icon-action-btn header-menu-trigger-btn"
@@ -1128,6 +1168,7 @@ export default function Home() {
           </div>
         </div>
       </header>
+      )}
 
       {/* Main Container */}
       <main
@@ -1575,29 +1616,6 @@ export default function Home() {
               <span>{t('mobile_mode_places')}</span>
             </button>
           </div>
-
-          {/* Taste Filter Button on Mobile: Balanced, Luxury & One-touch */}
-          {mainMode === 'dish' && (
-            <button
-              type="button"
-              className={`mobile-taste-filter-btn ${authUser?.isLoggedIn && authUser.filterByTaste !== false ? 'active' : ''}`}
-              onClick={handleToggleTasteFilter}
-              disabled={spinning}
-              title={authUser?.isLoggedIn 
-                ? (authUser.filterByTaste !== false 
-                    ? (lang === 'en' ? 'Taste Filter: Active' : 'Lọc theo gu: Đang BẬT') 
-                    : (lang === 'en' ? 'Taste Filter: Off' : 'Lọc theo gu: Đang TẮT'))
-                : (lang === 'en' ? 'Sign in to filter by taste' : 'Đăng nhập để lọc theo gu')}
-            >
-              <span className="mobile-taste-icon">🎯</span>
-              <span className="mobile-taste-label">
-                {authUser?.isLoggedIn 
-                  ? (authUser.filterByTaste !== false ? t('taste_mobile_on') : t('taste_mobile_off'))
-                  : t('taste_mobile_guest')}
-              </span>
-              <span className={`mobile-taste-dot ${authUser?.isLoggedIn && authUser.filterByTaste !== false ? 'active' : ''}`} />
-            </button>
-          )}
         </div>
 
         {/* ========================================================
@@ -2353,32 +2371,50 @@ export default function Home() {
     </div>
   )}
 
-  {/* Footer: Trên Web PC vẫn có Khám phá món & Quán ăn để tìm kiếm; trên Mobile (đã có thanh tab dưới) tự động ẩn gọn */}
+  {/* Footer: Cân đối 2 bên Trái (Thương hiệu + Tất tần tật về Xuân Hòa) & Phải (Món Ngon - Quán Xá nổi nhẹ + Bản quyền) */}
+  {currentView !== 'map' && (
   <footer className="site-footer">
     <div className="site-footer-identity">
-      <a 
-        className="site-footer-brand" 
-        href="#/" 
-        onClick={(e) => { 
-          e.preventDefault(); 
-          navigateTo('spin'); 
-        }} 
-        title="Xuân Hòa Có Gì"
-      >
-        {t('brand_domain')}<span>{t('brand_suffix')}</span>
-      </a>
-      <p className="header-btn-desktop-only">{t('brand_tagline')}</p>
+      <div className="site-footer-brand-row">
+        <a 
+          className="site-footer-brand" 
+          href="#/" 
+          onClick={(e) => { 
+            e.preventDefault(); 
+            navigateTo('spin'); 
+          }} 
+          title="Xuân Hòa Có Gì"
+        >
+          {t('brand_domain')}<span>{t('brand_suffix')}</span>
+        </a>
+      </div>
+      <p className="site-footer-tagline">Tất tần tật về Xuân Hòa</p>
     </div>
     <div className="site-footer-links">
-      <nav className="header-btn-desktop-only" aria-label="Liên kết cuối trang">
-        <button className={`footer-link-btn ${currentView === 'dishes' ? 'active' : ''}`} onClick={() => navigateTo('dishes')}>{t('footer_dishes')}</button>
-        <button className={`footer-link-btn ${currentView === 'places' ? 'active' : ''}`} onClick={() => navigateTo('places')}>{t('footer_places')}</button>
+      <nav className="site-footer-quick-nav" aria-label="Liên kết cuối trang">
+        <button
+          type="button"
+          className={`footer-link-btn ${currentView === 'dishes' ? 'active' : ''}`}
+          onClick={() => navigateTo('dishes')}
+        >
+          <UtensilsCrossed size={13} />
+          <span>{t('dock_dishes')}</span>
+        </button>
+        <button
+          type="button"
+          className={`footer-link-btn ${currentView === 'places' ? 'active' : ''}`}
+          onClick={() => navigateTo('places')}
+        >
+          <Store size={13} />
+          <span>{t('dock_places')}</span>
+        </button>
       </nav>
       <div className="site-footer-contact">
-        <span>Crafted &amp; Curated by MinhTT © 2026</span>
+        <span>© 2026 MinhTT. All Rights Reserved.</span>
       </div>
     </div>
   </footer>
+  )}
 
   {/* Thanh điều hướng cố định đáy chuẩn Mobile App (Chỉ hiển thị trên điện thoại) */}
   <MobileBottomNav

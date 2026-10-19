@@ -7,19 +7,27 @@ import {
   Route,
   AlertCircle,
   Castle,
-  Loader2,
   CheckCircle2,
   ExternalLink,
   Compass,
+  Sparkles,
+  Store,
+  Navigation,
 } from 'lucide-react';
 import type {
   GameAsset,
+  MapAreaPreset,
   MapCategoryKey,
   PlaceLocation,
   RoadSearchResult,
 } from '@/lib/map/map-types';
 import { MAP_CATEGORY_BY_ID } from '@/lib/map/map-categories';
-import { normalizeVietnamese } from '@/lib/map/map-data';
+import { MAP_AREA_PRESETS, XUANHOA_DEFAULT_CENTER } from '@/lib/map/map-config';
+import {
+  normalizeVietnamese,
+  calculateDistanceAndEta,
+  evaluatePlaceOpenStatus,
+} from '@/lib/map/map-data';
 
 interface MapSearchBarProps {
   verifiedPlaces: PlaceLocation[];
@@ -33,11 +41,40 @@ interface MapSearchBarProps {
   onSelectUnverifiedPlace: (place: PlaceLocation) => void;
   onSelectRoad: (road: RoadSearchResult) => void;
   onSelectGameAsset: (asset: GameAsset) => void;
+  onSelectPreset?: (preset: MapAreaPreset) => void;
   isGameLayerEnabled: boolean;
   onToggleGameLayer: () => void;
   isAdminUser: boolean;
   onOpenAdminCoordTool: (place?: PlaceLocation) => void;
+  userCoords?: { lat: number; lng: number } | null;
+  onDrawRouteToPlace?: (place: PlaceLocation) => void;
+  onOpenMerchantPortal?: (tab?: 'merchant' | 'admin_approvals' | 'admin_codes') => void;
+  pendingApprovalCount?: number;
+  activePresetId?: string;
+  hasClaimedPlaces?: boolean;
+  claimedPlaceName?: string | null;
 }
+
+type QuickTopicId =
+  | 'zones'
+  | 'food_verified'
+  | 'school'
+  | 'kdt'
+  | 'heritage'
+  | 'fuel_market'
+  | 'resort'
+  | 'roads';
+
+const QUICK_TOPICS: Array<{ id: QuickTopicId; label: string }> = [
+  { id: 'food_verified', label: '🍜 Quán & Điểm nóng' },
+  { id: 'zones', label: '📍 11 Khu vực' },
+  { id: 'school', label: '🎓 Trường & KTX' },
+  { id: 'kdt', label: '🏙️ 6 Khu Đô Thị' },
+  { id: 'heritage', label: '⛩️ Di tích & Chùa' },
+  { id: 'fuel_market', label: '⛽ Cây xăng & Chợ' },
+  { id: 'resort', label: '🦢 Đại Lải & Resort' },
+  { id: 'roads', label: '🛣️ Đường & Ngõ' },
+];
 
 export const MapSearchBar: React.FC<MapSearchBarProps> = ({
   verifiedPlaces,
@@ -51,31 +88,27 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
   onSelectUnverifiedPlace,
   onSelectRoad,
   onSelectGameAsset,
+  onSelectPreset,
   isGameLayerEnabled,
   onToggleGameLayer,
   isAdminUser,
   onOpenAdminCoordTool,
+  userCoords,
+  onDrawRouteToPlace,
+  onOpenMerchantPortal,
+  pendingApprovalCount = 0,
+  activePresetId = 'dhsp2',
+  hasClaimedPlaces = false,
+  claimedPlaceName = null,
 }) => {
   const [rawQuery, setRawQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [activeQuickTopic, setActiveQuickTopic] = useState<QuickTopicId>('food_verified');
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Debounce 200ms theo Phần 8
-  useEffect(() => {
-    if (!rawQuery.trim()) {
-      setDebouncedQuery('');
-      setIsSearching(false);
-      return;
-    }
-    setIsSearching(true);
-    const timer = setTimeout(() => {
-      setDebouncedQuery(rawQuery.trim());
-      setIsSearching(false);
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [rawQuery]);
+  const originLat = userCoords ? userCoords.lat : XUANHOA_DEFAULT_CENTER.lat;
+  const originLng = userCoords ? userCoords.lng : XUANHOA_DEFAULT_CENTER.lng;
 
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -88,10 +121,12 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Tìm kiếm tức thì 0ms ngay trên Client (Ưu tiên sắp xếp quán gần vị trí định vị của khách nhất!)
   const results = useMemo(() => {
-    const q = normalizeVietnamese(debouncedQuery);
+    const q = normalizeVietnamese(rawQuery);
     if (!q) {
       return {
+        matchedPresets: [] as MapAreaPreset[],
         matchedVerified: [] as PlaceLocation[],
         matchedRoads: [] as RoadSearchResult[],
         matchedUnverified: [] as PlaceLocation[],
@@ -100,54 +135,169 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
       };
     }
 
-    const matchLocation = (loc: PlaceLocation) => {
-      const catLabel = MAP_CATEGORY_BY_ID[loc.category]?.label || '';
-      const haystack = normalizeVietnamese(
-        `${loc.name} ${loc.address} ${catLabel} ${loc.metadata.signatureDishName || ''} ${(loc.metadata.tags || []).join(' ')}`
-      );
-      return haystack.includes(q);
+    const terms = q.split(' ').filter(Boolean);
+    const matchesAllTerms = (haystack: string) => {
+      const norm = normalizeVietnamese(haystack);
+      return terms.every((t) => norm.includes(t));
     };
 
-    const matchedVerified = verifiedPlaces.filter(matchLocation).slice(0, 8);
+    const matchedPresets = MAP_AREA_PRESETS.filter((p) =>
+      matchesAllTerms(`${p.label} ${p.sublabel}`)
+    ).slice(0, 4);
+
+    const matchLocation = (loc: PlaceLocation) => {
+      const catLabel = MAP_CATEGORY_BY_ID[loc.category]?.label || '';
+      const haystack = `${loc.name} ${loc.address} ${catLabel} ${loc.metadata.subType || ''} ${loc.metadata.signatureDishName || ''} ${(loc.metadata.tags || []).join(' ')}`;
+      return matchesAllTerms(haystack);
+    };
+
+    // Sắp xếp kết quả đã có tọa độ theo khoảng cách gần khách hàng nhất (như Google Maps)
+    const matchedVerified = verifiedPlaces
+      .filter(matchLocation)
+      .sort((a, b) => {
+        if (a.lat === null || a.lng === null) return 1;
+        if (b.lat === null || b.lng === null) return -1;
+        const da = Math.hypot(a.lat - originLat, a.lng - originLng);
+        const db = Math.hypot(b.lat - originLat, b.lng - originLng);
+        return da - db;
+      })
+      .slice(0, 12);
+
     const matchedRoads = roads
-      .filter((r) => normalizeVietnamese(r.name).includes(q))
-      .slice(0, 6);
+      .filter((r) => matchesAllTerms(r.name))
+      .slice(0, 10);
     const matchedUnverified = unverifiedPlaces.filter(matchLocation).slice(0, 8);
     const matchedGame = gameAssets
-      .filter((g) => normalizeVietnamese(`${g.name} ${g.districtLabel}`).includes(q))
-      .slice(0, 4);
+      .filter((g) => matchesAllTerms(`${g.name} ${g.districtLabel}`))
+      .slice(0, 3);
 
     return {
+      matchedPresets,
       matchedVerified,
       matchedRoads,
       matchedUnverified,
       matchedGame,
       totalCount:
+        matchedPresets.length +
         matchedVerified.length +
         matchedRoads.length +
         matchedUnverified.length +
         matchedGame.length,
     };
-  }, [debouncedQuery, verifiedPlaces, unverifiedPlaces, roads, gameAssets]);
+  }, [rawQuery, verifiedPlaces, unverifiedPlaces, roads, gameAssets, originLat, originLng]);
+
+  // Danh sách gợi ý nhanh khi người dùng chạm vào ô tìm kiếm nhưng chưa gõ chữ
+  const quickTopicItems = useMemo(() => {
+    if (activeQuickTopic === 'food_verified') {
+      const foodAndCommercial = verifiedPlaces.filter(
+        (p) =>
+          p.dataSource !== 'openstreetmap' ||
+          ['food', 'cafe', 'snack', 'pub', 'billiards', 'game', 'supermarket'].includes(
+            p.category
+          )
+      );
+      return {
+        places: (foodAndCommercial.length > 0 ? foodAndCommercial : verifiedPlaces)
+          .slice()
+          .sort((a, b) => {
+            if (a.dataSource !== 'openstreetmap' && b.dataSource === 'openstreetmap') return -1;
+            if (a.dataSource === 'openstreetmap' && b.dataSource !== 'openstreetmap') return 1;
+            return (
+              Math.hypot((a.lat || 0) - originLat, (a.lng || 0) - originLng) -
+              Math.hypot((b.lat || 0) - originLat, (b.lng || 0) - originLng)
+            );
+          })
+          .slice(0, 10),
+        roads: [] as RoadSearchResult[],
+      };
+    }
+    if (activeQuickTopic === 'school') {
+      return {
+        places: verifiedPlaces.filter((p) => p.category === 'school').slice(0, 8),
+        roads: [] as RoadSearchResult[],
+      };
+    }
+    if (activeQuickTopic === 'kdt') {
+      return {
+        places: verifiedPlaces.filter((p) => p.id.includes('_urban_kdt_')).slice(0, 8),
+        roads: [] as RoadSearchResult[],
+      };
+    }
+    if (activeQuickTopic === 'heritage') {
+      return {
+        places: verifiedPlaces
+          .filter(
+            (p) =>
+              p.id.includes('_historic_') ||
+              p.id.includes('_worship_') ||
+              p.id.includes('_landmark_')
+          )
+          .slice(0, 8),
+        roads: [] as RoadSearchResult[],
+      };
+    }
+    if (activeQuickTopic === 'fuel_market') {
+      return {
+        places: verifiedPlaces
+          .filter(
+            (p) =>
+              p.id.includes('_fuel_') ||
+              p.id.includes('13611773602') ||
+              p.id.includes('_market_') ||
+              p.id.includes('_civic_') ||
+              p.category === 'service'
+          )
+          .slice(0, 8),
+        roads: [] as RoadSearchResult[],
+      };
+    }
+    if (activeQuickTopic === 'resort') {
+      return {
+        places: verifiedPlaces
+          .filter(
+            (p) =>
+              p.category === 'entertainment' ||
+              p.id.includes('dailai') ||
+              p.id.includes('lap_dinh') ||
+              p.id.includes('9459565251')
+          )
+          .slice(0, 8),
+        roads: [] as RoadSearchResult[],
+      };
+    }
+    return {
+      places: [] as PlaceLocation[],
+      roads: roads.slice(0, 12),
+    };
+  }, [activeQuickTopic, verifiedPlaces, roads, originLat, originLng]);
 
   const activeFilterCount = selectedCategories.includes('all')
     ? 0
     : selectedCategories.length;
 
-  const showDropdown = isFocused && rawQuery.trim().length > 0;
+  const hasQuery = rawQuery.trim().length > 0;
+  const showDropdown = isFocused;
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-2xl">
-      {/* Thanh tìm kiếm & Nút danh mục */}
-      <div className="flex items-center gap-2">
+    <div
+      ref={containerRef}
+      className="relative flex-1 min-w-0 max-w-full lg:max-w-2xl"
+      style={{
+        fontFamily:
+          "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      }}
+    >
+      {/* Thanh tìm kiếm & Nút danh mục + Nút Chủ Quán */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <div
-          className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-md border-2 transition-all shadow-[0_6px_20px_rgba(64,48,100,0.10)]"
+          className="flex-1 min-w-0 flex items-center gap-2 px-3 h-10 rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-md border-2 transition-all shadow-[0_4px_14px_rgba(64,48,100,0.10)]"
           style={{
             borderColor: isFocused ? '#39B980' : '#403064',
           }}
         >
-          <Search size={18} className="shrink-0 text-[#403064]" />
+          <Search size={16} className="shrink-0 text-[#403064]" />
           <input
+            ref={inputRef}
             type="text"
             value={rawQuery}
             onFocus={() => setIsFocused(true)}
@@ -155,24 +305,21 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
               setRawQuery(e.target.value);
               setIsFocused(true);
             }}
-            placeholder="Tìm quán, trường học, tên đường (Nguyễn Văn Linh, Đại Lải...)"
-            aria-label="Tìm kiếm địa điểm hoặc tên đường trên bản đồ Xuân Hòa"
-            className="w-full bg-transparent text-[13.5px] font-semibold text-[#2D2246] placeholder:text-[#7B6F95] focus:outline-none"
+            placeholder="Tìm quán cơm, bún, trà sữa, đường, trường học..."
+            aria-label="Tìm kiếm quán ăn, địa điểm hoặc tên đường trên bản đồ Xuân Hòa"
+            className="w-full min-w-0 bg-transparent text-[13px] leading-snug font-semibold text-[#2D2246] placeholder:text-[#7B6F95] focus:outline-none"
           />
-          {isSearching && (
-            <Loader2 size={16} className="shrink-0 animate-spin text-[#39B980]" />
-          )}
           {rawQuery && (
             <button
               type="button"
               onClick={() => {
                 setRawQuery('');
-                setDebouncedQuery('');
+                inputRef.current?.focus();
               }}
               aria-label="Xóa từ khóa tìm kiếm"
-              className="p-1 rounded-full hover:bg-[#F1ECE1] text-[#65587F] transition-colors"
+              className="p-1 rounded-full hover:bg-[#F1ECE1] text-[#65587F] transition-colors shrink-0 cursor-pointer"
             >
-              <X size={15} />
+              <X size={14} />
             </button>
           )}
         </div>
@@ -181,133 +328,460 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
         <button
           type="button"
           onClick={onToggleCategoryDrawer}
-          className="relative flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border-2 font-bold text-xs transition-all shrink-0 shadow-[0_6px_18px_rgba(64,48,100,0.10)] cursor-pointer"
+          className="relative flex items-center justify-center gap-1.5 px-2.5 sm:px-3 h-10 rounded-2xl border-2 font-bold text-xs leading-snug transition-all shrink-0 shadow-[0_4px_14px_rgba(64,48,100,0.10)] cursor-pointer"
           style={{
-            backgroundColor: isCategoryDrawerOpen || activeFilterCount > 0 ? '#39B980' : '#FFFDF9',
+            backgroundColor:
+              isCategoryDrawerOpen || activeFilterCount > 0 ? '#39B980' : '#FFFDF9',
             borderColor: '#403064',
-            color: isCategoryDrawerOpen || activeFilterCount > 0 ? '#FFFFFF' : '#403064',
+            color:
+              isCategoryDrawerOpen || activeFilterCount > 0 ? '#FFFFFF' : '#403064',
           }}
           aria-expanded={isCategoryDrawerOpen}
           aria-label="Mở bộ lọc danh mục địa điểm"
+          title="Lọc theo danh mục địa điểm"
         >
-          <SlidersHorizontal size={16} />
+          <SlidersHorizontal size={15} />
           <span className="hidden sm:inline">Danh mục</span>
           {activeFilterCount > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[#403064] text-white text-[10px] font-extrabold">
+            <span className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 rounded-full bg-[#403064] text-white text-[10px] font-extrabold">
               {activeFilterCount}
             </span>
           )}
         </button>
 
-        {/* Nút bật/tắt Lớp Tài sản Game Demo */}
-        <button
-          type="button"
-          onClick={onToggleGameLayer}
-          className="hidden md:flex items-center gap-1.5 px-3 py-2.5 rounded-2xl border-2 font-bold text-xs transition-all shrink-0 shadow-[0_6px_18px_rgba(64,48,100,0.10)] cursor-pointer"
-          style={{
-            backgroundColor: isGameLayerEnabled ? '#403064' : '#FFFDF9',
-            borderColor: '#403064',
-            color: isGameLayerEnabled ? '#FFFFFF' : '#403064',
-          }}
-          title="Bật/Tắt lớp Tài sản Game XUHO CITY (Dữ liệu Demo)"
-        >
-          <Castle size={15} className={isGameLayerEnabled ? 'text-[#39B980]' : 'text-[#403064]'} />
-          <span>Game Layer</span>
-          <span
-            className="text-[9px] px-1.5 py-0.5 rounded-full font-extrabold"
+        {/* Nút Cổng Chủ Quán / Biểu tượng Nick Quán Chính Chủ trên cùng 1 hàng duy nhất */}
+        {onOpenMerchantPortal && (
+          <button
+            type="button"
+            onClick={() =>
+              onOpenMerchantPortal(
+                isAdminUser && pendingApprovalCount > 0 ? 'admin_approvals' : 'merchant'
+              )
+            }
+            className="relative flex items-center justify-center gap-1.5 px-2.5 sm:px-3 h-10 rounded-2xl border-2 font-extrabold text-xs leading-snug transition-all shrink-0 shadow-[0_4px_14px_rgba(64,48,100,0.10)] cursor-pointer"
             style={{
-              backgroundColor: isGameLayerEnabled ? '#39B980' : '#E5F0DF',
-              color: isGameLayerEnabled ? '#FFFFFF' : '#1D7A52',
+              backgroundColor:
+                isAdminUser && pendingApprovalCount > 0
+                  ? '#FEF3C7'
+                  : hasClaimedPlaces
+                  ? '#E6F7EF'
+                  : '#FFFDF9',
+              borderColor: '#403064',
+              color:
+                isAdminUser && pendingApprovalCount > 0
+                  ? '#92400E'
+                  : hasClaimedPlaces
+                  ? '#1D7A52'
+                  : '#403064',
             }}
+            title={
+              claimedPlaceName
+                ? `Nick Quán Chính Chủ: ${claimedPlaceName}`
+                : 'Nhập mã code Chủ quán / Quản lý quán của bạn'
+            }
           >
-            {isGameLayerEnabled ? 'ON' : 'OFF'}
-          </span>
-        </button>
+            <div className="relative flex items-center justify-center">
+              <Store size={15} className="text-[#39B980]" />
+              {hasClaimedPlaces && (
+                <span className=" -top-1 -right-1.5 w-3.5 h-3.5 rounded-full bg-[#39B980] border border-[#403064] text-white text-[8px] font-black flex items-center justify-center">
+                  ✓
+                </span>
+              )}
+            </div>
+            <span className="hidden md:inline max-w-[140px] truncate">
+              {isAdminUser && pendingApprovalCount > 0
+                ? 'Duyệt Quán'
+                : claimedPlaceName
+                ? claimedPlaceName
+                : isAdminUser
+                ? 'Quản lý Quán'
+                : 'Chủ quán'}
+            </span>
+            {isAdminUser && pendingApprovalCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[#EF4444] text-white text-[10px] font-black animate-pulse">
+                {pendingApprovalCount}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
-      {/* Bảng kết quả tìm kiếm */}
+      {/* Bảng kết quả tìm kiếm hoặc Khám phá nhanh (Chuẩn 100% Mobile & PC không tràn viền) */}
       {showDropdown && (
         <div
-          className="absolute left-0 right-0 mt-2 rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_14px_36px_rgba(64,48,100,0.18)] max-h-[70vh] overflow-y-auto z-50 p-2"
+          className="fixed left-2.5 right-2.5 top-[56px] md:absolute md:left-0 md:right-0 md:top-full md:mt-2 rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_16px_40px_rgba(64,48,100,0.22)] max-h-[72vh] overflow-y-auto z-50 p-2.5"
           role="listbox"
         >
-          {isSearching ? (
-            <div className="flex items-center justify-center gap-2 py-8 text-xs font-semibold text-[#65587F]">
-              <Loader2 size={16} className="animate-spin text-[#39B980]" />
-              <span>Đang tìm kiếm địa điểm & tuyến đường tại Xuân Hòa...</span>
-            </div>
-          ) : results.totalCount === 0 ? (
-            <div className="py-7 px-4 text-center">
-              <Compass size={26} className="mx-auto mb-2 text-[#65587F] opacity-60" />
-              <p className="text-xs font-bold text-[#2D2246]">
-                Không tìm thấy kết quả khớp với “{debouncedQuery}”
-              </p>
-              <p className="text-[11px] text-[#65587F] mt-1">
-                Thử tìm theo tên đường (Nguyễn Văn Linh, Lê Quang Đạo, Kim Ngọc), trường học (ĐHSP2, Cơ Điện) hoặc tên quán.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {/* 1. Địa điểm đã xác minh tọa độ trên bản đồ */}
-              {results.matchedVerified.length > 0 && (
-                <div>
-                  <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#1D7A52] bg-[#E6F7EF] rounded-lg">
-                    <span className="flex items-center gap-1">
-                      <CheckCircle2 size={12} /> Địa điểm đã xác minh tọa độ ({results.matchedVerified.length})
-                    </span>
-                    <span>Bay tới vị trí</span>
-                  </div>
-                  <div className="mt-1 divide-y divide-[#F0EAE0]">
-                    {results.matchedVerified.map((loc) => {
-                      const cat = MAP_CATEGORY_BY_ID[loc.category];
+          {!hasQuery ? (
+            /* CHẾ ĐỘ KHÁM PHÁ NHANH KHI CHƯA GÕ TỪ KHÓA */
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[11px] font-extrabold text-[#403064] flex items-center gap-1.5 leading-snug">
+                  <Sparkles size={13} className="text-[#39B980]" />
+                  <span>
+                    {userCoords
+                      ? 'Khám phá gần vị trí định vị của bạn'
+                      : 'Khám phá nhanh Xuân Hòa (Chạm để bay tới ngay)'}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsFocused(false)}
+                  className="text-[11px] font-bold text-[#65587F] hover:text-[#2D2246] px-1.5 py-0.5 rounded-lg bg-[#F1ECE1] cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+
+              {/* Chip chủ đề nhanh */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {QUICK_TOPICS.map((topic) => {
+                  const active = activeQuickTopic === topic.id;
+                  return (
+                    <button
+                      key={topic.id}
+                      type="button"
+                      onClick={() => setActiveQuickTopic(topic.id)}
+                      className="px-2.5 py-1.5 rounded-xl text-[11.5px] font-bold leading-snug transition-all cursor-pointer border"
+                      style={{
+                        backgroundColor: active ? '#403064' : '#F6F2E9',
+                        borderColor: active ? '#403064' : '#E2DAC9',
+                        color: active ? '#FFFFFF' : '#2D2246',
+                      }}
+                    >
+                      {topic.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Danh sách Khu vực trọng điểm hoặc Địa điểm / Đường phố thuộc chủ đề đang chọn */}
+              <div className="divide-y divide-[#F0EAE0] max-h-[44vh] overflow-y-auto pr-0.5">
+                {activeQuickTopic === 'zones' && onSelectPreset
+                  ? MAP_AREA_PRESETS.map((preset, idx) => {
+                      const isActive = preset.id === activePresetId;
                       return (
                         <button
-                          key={loc.id}
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            onSelectPreset(preset);
+                            setIsFocused(false);
+                          }}
+                          className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-[#E6F7EF]/60 transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-[#F1ECE1] text-[#403064]">
+                                #{idx + 1}
+                              </span>
+                              <span className="text-xs font-extrabold text-[#2D2246] truncate">
+                                {preset.label}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-[#65587F] truncate mt-0.5">
+                              {preset.sublabel}
+                            </p>
+                          </div>
+                          <span
+                            className="text-[10.5px] font-extrabold px-2 py-1 rounded-lg shrink-0"
+                            style={{
+                              backgroundColor: isActive ? '#403064' : '#E6F7EF',
+                              color: isActive ? '#FFFFFF' : '#1D7A52',
+                            }}
+                          >
+                            {isActive ? 'Đang xem' : 'Bay tới →'}
+                          </span>
+                        </button>
+                      );
+                    })
+                  : null}
+
+                {activeQuickTopic !== 'zones' &&
+                  quickTopicItems.places.map((loc) => {
+                    const cat = MAP_CATEGORY_BY_ID[loc.category];
+                    const eta =
+                      loc.lat !== null && loc.lng !== null
+                        ? calculateDistanceAndEta(originLat, originLng, loc.lat, loc.lng)
+                        : null;
+                    const openInfo = evaluatePlaceOpenStatus(
+                      loc.openHours,
+                      loc.metadata.liveStatus,
+                      loc.metadata.liveStatusNote
+                    );
+
+                    return (
+                      <div
+                        key={loc.id}
+                        className="w-full px-2.5 py-2 rounded-xl hover:bg-[#E6F7EF]/60 transition-colors flex items-center justify-between gap-2"
+                      >
+                        <button
                           type="button"
                           onClick={() => {
                             onSelectVerifiedPlace(loc);
                             setIsFocused(false);
                           }}
-                          className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-[#F5F1E6] transition-colors flex items-start gap-2.5 cursor-pointer"
+                          className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
                         >
                           <span
-                            className="mt-0.5 w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border border-[#403064] text-white"
+                            className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border border-[#403064] text-white"
                             style={{ backgroundColor: cat?.markerBg || '#39B980' }}
                           >
-                            <MapPin size={14} />
+                            <MapPin size={13} />
                           </span>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-xs font-bold text-[#2D2246] truncate">
+                              <p className="text-xs font-bold text-[#2D2246] leading-snug truncate">
                                 {loc.name}
-                              </span>
-                              <span
-                                className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
-                                style={{
-                                  backgroundColor: cat?.badgeBg || '#E6F7EF',
-                                  color: cat?.badgeText || '#1D7A52',
-                                }}
-                              >
-                                {cat?.shortLabel}
-                              </span>
+                              </p>
+                              {eta && (
+                                <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-[#E6F7EF] text-[#1D7A52]">
+                                  {eta.distanceText} • 🛵 {eta.bikeMinutes}p
+                                </span>
+                              )}
                             </div>
-                            <p className="text-[11px] text-[#65587F] truncate mt-0.5">
-                              {loc.address}
+                            <p className="text-[11px] text-[#65587F] leading-snug truncate">
+                              {loc.address}{' '}
+                              {loc.openHours ? `• ${openInfo.badgeText}` : ''}
                             </p>
                           </div>
                         </button>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {onDrawRouteToPlace && loc.lat !== null && loc.lng !== null && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onDrawRouteToPlace(loc);
+                                setIsFocused(false);
+                              }}
+                              className="text-[10.5px] font-extrabold text-white px-2 py-1 rounded-lg bg-[#39B980] hover:bg-[#2FA36E] flex items-center gap-1 cursor-pointer"
+                              title="Chỉ đường từ vị trí của bạn tới địa điểm này"
+                            >
+                              <Navigation size={11} />
+                              <span>Chỉ đường</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                {activeQuickTopic !== 'zones' &&
+                  quickTopicItems.roads.map((road) => (
+                    <button
+                      key={road.id}
+                      type="button"
+                      onClick={() => {
+                        onSelectRoad(road);
+                        setIsFocused(false);
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-[#F5F1E6] transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-6 h-6 rounded-lg bg-[#FFF5D6] border border-[#403064] flex items-center justify-center text-[#403064] shrink-0">
+                          <Route size={13} />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[#2D2246] leading-snug truncate">
+                            {road.name}
+                          </p>
+                          <p className="text-[10.5px] text-[#65587F] leading-snug">
+                            Tuyến phố thực tế tại Phường Xuân Hòa
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10.5px] font-extrabold text-[#1D7A52] px-2 py-1 rounded-lg bg-[#E6F7EF] shrink-0">
+                        Xem đường →
+                      </span>
+                    </button>
+                  ))}
+              </div>
+
+              {/* Dòng truy cập nhanh Cổng Chủ Quán gọn gàng ở đáy menu tìm kiếm */}
+              {onOpenMerchantPortal && (
+                <div className="pt-1.5 border-t border-[#E5DEC9] flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsFocused(false);
+                      onOpenMerchantPortal(
+                        isAdminUser && pendingApprovalCount > 0 ? 'admin_approvals' : 'merchant'
+                      );
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#EDE9FE] border border-[#D8CFC0] text-[11px] font-bold text-[#403064] flex items-center justify-between gap-2 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-1.5 truncate">
+                      <Store size={13} className="text-[#39B980] shrink-0" />
+                      <span className="truncate">
+                        {isAdminUser
+                          ? `Quản trị Chủ Quán & Mã Code (${pendingApprovalCount} chờ duyệt)`
+                          : hasClaimedPlaces
+                          ? 'Mở bảng quản lý & ghim vị trí quán của bạn'
+                          : 'Bạn là Chủ Quán? Nhập mã hoặc nhận quyền quản lý quán'}
+                      </span>
+                    </span>
+                    <span className="text-[10.5px] font-extrabold text-[#1D7A52] shrink-0">
+                      Mở ngay →
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : results.totalCount === 0 ? (
+            <div className="py-6 px-4 text-center">
+              <Compass size={26} className="mx-auto mb-2 text-[#65587F] opacity-60" />
+              <p className="text-xs font-bold text-[#2D2246] leading-snug">
+                Không tìm thấy kết quả khớp với “{rawQuery.trim()}”
+              </p>
+              <p className="text-[11px] text-[#65587F] mt-1 leading-relaxed">
+                Thử gõ không dấu hoặc có dấu: <strong>com</strong>, <strong>bun</strong>,{' '}
+                <strong>tra sua</strong>, <strong>sp2</strong>, <strong>le quang dao</strong>...
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {/* 0. Khu vực trọng điểm khớp từ khóa */}
+              {results.matchedPresets.length > 0 && onSelectPreset && (
+                <div>
+                  <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#403064] bg-[#EDE9FE] rounded-lg leading-snug">
+                    <span>📍 Phân khu trọng điểm ({results.matchedPresets.length})</span>
+                    <span>Bay tới ngay</span>
+                  </div>
+                  <div className="mt-1 divide-y divide-[#F0EAE0]">
+                    {results.matchedPresets.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectPreset(preset);
+                          setIsFocused(false);
+                        }}
+                        className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-[#F5F1E6] transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-extrabold text-[#2D2246] leading-snug truncate">
+                            {preset.label}
+                          </p>
+                          <p className="text-[11px] text-[#65587F] leading-snug truncate">
+                            {preset.sublabel}
+                          </p>
+                        </div>
+                        <span className="text-[10.5px] font-extrabold text-[#FFFFFF] px-2 py-1 rounded-lg bg-[#39B980] shrink-0">
+                          Bay tới →
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 1. Địa điểm & Quán đã có định vị chuẩn trên bản đồ (Kèm khoảng cách + Thời gian di chuyển + Giờ mở cửa như Google Maps) */}
+              {results.matchedVerified.length > 0 && (
+                <div>
+                  <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#1D7A52] bg-[#E6F7EF] rounded-lg leading-snug">
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 size={12} /> Quán & Địa điểm đã định vị (
+                      {results.matchedVerified.length})
+                    </span>
+                    <span>Xếp theo khoảng cách gần nhất</span>
+                  </div>
+                  <div className="mt-1 divide-y divide-[#F0EAE0]">
+                    {results.matchedVerified.map((loc) => {
+                      const cat = MAP_CATEGORY_BY_ID[loc.category];
+                      const eta =
+                        loc.lat !== null && loc.lng !== null
+                          ? calculateDistanceAndEta(originLat, originLng, loc.lat, loc.lng)
+                          : null;
+                      const openStatus = evaluatePlaceOpenStatus(
+                        loc.openHours,
+                        loc.metadata.liveStatus,
+                        loc.metadata.liveStatusNote
+                      );
+
+                      return (
+                        <div
+                          key={loc.id}
+                          className="w-full px-2.5 py-2 rounded-xl hover:bg-[#F5F1E6] transition-colors flex items-center justify-between gap-2"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onSelectVerifiedPlace(loc);
+                              setIsFocused(false);
+                            }}
+                            className="flex items-start gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+                          >
+                            <span
+                              className="mt-0.5 w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border border-[#403064] text-white"
+                              style={{ backgroundColor: cat?.markerBg || '#39B980' }}
+                            >
+                              <MapPin size={14} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-extrabold text-[#2D2246] leading-snug truncate">
+                                  {loc.name}
+                                </span>
+                                <span
+                                  className="text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md leading-snug"
+                                  style={{
+                                    backgroundColor:
+                                      openStatus.tone === 'emerald'
+                                        ? '#E6F7EF'
+                                        : openStatus.tone === 'amber'
+                                        ? '#FEF3C7'
+                                        : '#FEE2E2',
+                                    color:
+                                      openStatus.tone === 'emerald'
+                                        ? '#1D7A52'
+                                        : openStatus.tone === 'amber'
+                                        ? '#92400E'
+                                        : '#991B1B',
+                                  }}
+                                >
+                                  {openStatus.badgeText}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-[#65587F] leading-snug truncate mt-0.5">
+                                {loc.address}{' '}
+                                {loc.openHours ? `• 🕒 ${loc.openHours}` : ''}
+                              </p>
+                              {eta && (
+                                <p className="text-[11px] font-bold text-[#1D7A52] mt-0.5">
+                                  📍 Cách {eta.distanceText} • 🛵 {eta.bikeText} • 🚶{' '}
+                                  {eta.walkText}
+                                </p>
+                              )}
+                            </div>
+                          </button>
+
+                          {onDrawRouteToPlace && loc.lat !== null && loc.lng !== null && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onDrawRouteToPlace(loc);
+                                setIsFocused(false);
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-[#39B980] hover:bg-[#2FA36E] text-white border border-[#403064] text-[10.5px] font-extrabold flex items-center gap-1 shrink-0 cursor-pointer"
+                            >
+                              <Navigation size={11} />
+                              <span>Chỉ đường</span>
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
                 </div>
               )}
 
-              {/* 2. Tuyến đường thực tế từ OpenStreetMap */}
+              {/* 2. Tuyến đường & Ngõ thực tế từ OpenStreetMap */}
               {results.matchedRoads.length > 0 && (
                 <div>
-                  <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#403064] bg-[#F1ECE1] rounded-lg">
+                  <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#403064] bg-[#F1ECE1] rounded-lg leading-snug">
                     <span className="flex items-center gap-1">
-                      <Route size={12} /> Tuyến đường & Phố thực tế ({results.matchedRoads.length})
+                      <Route size={12} /> Đường phố & Ngõ ({results.matchedRoads.length})
                     </span>
                     <span>OpenStreetMap</span>
                   </div>
@@ -327,15 +801,17 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                             <Route size={13} />
                           </span>
                           <div className="min-w-0">
-                            <p className="text-xs font-bold text-[#2D2246] truncate">
+                            <p className="text-xs font-bold text-[#2D2246] leading-snug truncate">
                               {road.name}
                             </p>
-                            <p className="text-[10px] text-[#65587F]">
-                              {road.insideWard ? 'Trong ranh giới Phường Xuân Hòa' : 'Tuyến đường kết nối lân cận'} · {road.osmId}
+                            <p className="text-[10.5px] text-[#65587F] leading-snug">
+                              {road.insideWard
+                                ? 'Phường Xuân Hòa'
+                                : 'Tuyến đường kết nối lân cận'}
                             </p>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold text-[#1D7A52] shrink-0">
+                        <span className="text-[10.5px] font-bold text-[#1D7A52] shrink-0">
                           Xem đường →
                         </span>
                       </button>
@@ -344,69 +820,95 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                 </div>
               )}
 
-              {/* 3. Quán trong danh mục chưa xác minh tọa độ (Phần 7: hiển thị trong danh sách, không đặt marker giả) */}
+              {/* 3. Quán trong danh mục chưa xác minh tọa độ (Chờ Chủ quán nhập mã hoặc Admin cắm ghim) */}
               {results.matchedUnverified.length > 0 && (
                 <div>
-                  <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#92400E] bg-[#FEF3C7] rounded-lg">
+                  <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#92400E] bg-[#FEF3C7] rounded-lg leading-snug">
                     <span className="flex items-center gap-1">
-                      <AlertCircle size={12} /> Quán trong danh mục — Chưa xác minh tọa độ ({results.matchedUnverified.length})
+                      <AlertCircle size={12} /> Quán chờ Chủ quán cắm định vị (
+                      {results.matchedUnverified.length})
                     </span>
-                    <span>Xem thực đơn</span>
+                    <span>Có thể xem Menu hoặc Nhập mã chủ quán</span>
                   </div>
                   <div className="mt-1 divide-y divide-[#F0EAE0]">
-                    {results.matchedUnverified.map((loc) => (
-                      <div
-                        key={loc.id}
-                        className="px-2.5 py-2 rounded-xl hover:bg-[#F5F1E6] transition-colors flex items-center justify-between gap-2"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onSelectUnverifiedPlace(loc);
-                            setIsFocused(false);
-                          }}
-                          className="flex-1 text-left min-w-0 cursor-pointer"
+                    {results.matchedUnverified.map((loc) => {
+                      const openStatus = evaluatePlaceOpenStatus(
+                        loc.openHours,
+                        loc.metadata.liveStatus,
+                        loc.metadata.liveStatusNote
+                      );
+                      return (
+                        <div
+                          key={loc.id}
+                          className="px-2.5 py-2 rounded-xl hover:bg-[#F5F1E6] transition-colors flex items-center justify-between gap-2"
                         >
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-xs font-bold text-[#2D2246] truncate">
-                              {loc.name}
-                            </span>
-                            <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-[#FEF3C7] text-[#92400E] border border-[#F59E0B]/40">
-                              Chờ xác minh tọa độ
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-[#65587F] truncate mt-0.5">
-                            {loc.address} {loc.metadata.priceRange ? `· ${loc.metadata.priceRange}` : ''}
-                          </p>
-                        </button>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {isAdminUser && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onOpenAdminCoordTool(loc);
-                                setIsFocused(false);
-                              }}
-                              className="px-2 py-1 rounded-lg bg-[#39B980] text-white text-[10px] font-bold hover:bg-[#2FA36E] cursor-pointer"
-                            >
-                              Gắn tọa độ
-                            </button>
-                          )}
                           <button
                             type="button"
                             onClick={() => {
                               onSelectUnverifiedPlace(loc);
                               setIsFocused(false);
                             }}
-                            className="px-2 py-1 rounded-lg bg-[#F1ECE1] text-[#403064] text-[10px] font-bold hover:bg-[#E5DEC9] flex items-center gap-1 cursor-pointer"
+                            className="flex-1 text-left min-w-0 cursor-pointer"
                           >
-                            <span>Menu</span>
-                            <ExternalLink size={10} />
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-bold text-[#2D2246] leading-snug truncate">
+                                {loc.name}
+                              </span>
+                              <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-[#FEF3C7] text-[#92400E] border border-[#F59E0B]/40 leading-snug">
+                                Chờ chủ quán ghim
+                              </span>
+                              <span className="text-[9.5px] font-bold text-[#1D7A52]">
+                                • {openStatus.badgeText}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-[#65587F] leading-snug truncate mt-0.5">
+                              {loc.address}{' '}
+                              {loc.openHours ? `· 🕒 ${loc.openHours}` : ''}{' '}
+                              {loc.metadata.priceRange ? `· ${loc.metadata.priceRange}` : ''}
+                            </p>
                           </button>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {onOpenMerchantPortal && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onOpenMerchantPortal('merchant');
+                                  setIsFocused(false);
+                                }}
+                                className="px-2 py-1 rounded-lg bg-[#EDE9FE] text-[#403064] border border-[#403064]/30 text-[10px] font-extrabold hover:bg-[#DDD6FE] cursor-pointer"
+                                title="Chủ quán nhập mã code để tự cắm định vị"
+                              >
+                                🏪 Chủ quán ghim
+                              </button>
+                            )}
+                            {isAdminUser && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onOpenAdminCoordTool(loc);
+                                  setIsFocused(false);
+                                }}
+                                className="px-2 py-1 rounded-lg bg-[#39B980] text-white text-[10px] font-bold hover:bg-[#2FA36E] cursor-pointer"
+                              >
+                                Admin ghim
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onSelectUnverifiedPlace(loc);
+                                setIsFocused(false);
+                              }}
+                              className="px-2 py-1 rounded-lg bg-[#F1ECE1] text-[#403064] text-[10px] font-bold hover:bg-[#E5DEC9] flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>Menu</span>
+                              <ExternalLink size={10} />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -414,9 +916,10 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
               {/* 4. Tài sản Game Demo */}
               {results.matchedGame.length > 0 && (
                 <div>
-                  <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#403064] bg-[#EDE9FE] rounded-lg">
+                  <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#403064] bg-[#EDE9FE] rounded-lg leading-snug">
                     <span className="flex items-center gap-1">
-                      <Castle size={12} /> Tài sản Game XUHO CITY — Dữ liệu Demo ({results.matchedGame.length})
+                      <Castle size={12} /> Lô đất Game XUHO CITY — Demo (
+                      {results.matchedGame.length})
                     </span>
                     <span>Mô phỏng</span>
                   </div>
@@ -432,11 +935,12 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                         className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-[#F5F1E6] transition-colors flex items-center justify-between gap-2 cursor-pointer"
                       >
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-[#403064] truncate">
+                          <p className="text-xs font-bold text-[#403064] leading-snug truncate">
                             {asset.name}
                           </p>
-                          <p className="text-[10px] text-[#65587F]">
-                            {asset.districtLabel} · Giá ảo: {asset.virtualBuyPriceXu.toLocaleString('vi-VN')} XU
+                          <p className="text-[10.5px] text-[#65587F] leading-snug">
+                            {asset.districtLabel} · Giá ảo:{' '}
+                            {asset.virtualBuyPriceXu.toLocaleString('vi-VN')} XU
                           </p>
                         </div>
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#403064] text-white shrink-0">

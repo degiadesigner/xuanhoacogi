@@ -50,6 +50,11 @@ export interface UserAuthProfile {
   photoURL?: string;
   hasCompletedProfile: boolean;
   isFirstTimeSetupDone?: boolean;
+  isMerchantAccount?: boolean; // Đã xác thực Mã Code Quán -> Trở thành Nick Quán Chính Chủ
+  isMapManager?: boolean; // Đã xác thực Mã Quản lý Maps (XH-MAPS-8899) -> Cấp quyền CTV Quản lý Định vị & Tạo Địa điểm mới
+  merchantPlaceId?: string;
+  merchantPlaceName?: string;
+  merchantVerifiedCode?: string;
   createdAt: number;
 }
 
@@ -299,9 +304,9 @@ export function createOrUpdateAuthUserFromGoogle(googleData: {
     uid: googleData.uid || baseProfile?.uid || 'google_' + Date.now(),
     email: googleData.email || baseProfile?.email || 'thuckhach@gmail.com',
     displayName: cleanDisplayName,
-    nickname: baseProfile?.nickname || cleanDisplayName,
+    nickname: baseProfile?.merchantPlaceName || baseProfile?.nickname || cleanDisplayName,
     gender: baseProfile?.gender || 'male',
-    avatar: baseProfile?.avatar || '🐭',
+    avatar: baseProfile?.isMerchantAccount ? '🏪' : baseProfile?.avatar || '🐭',
     avatarId: baseProfile?.avatarId || 'm_ty',
     phone: baseProfile?.phone || '',
     residentType: baseProfile?.residentType || 'student_sp2',
@@ -310,6 +315,10 @@ export function createOrUpdateAuthUserFromGoogle(googleData: {
     photoURL: googleData.photoURL || baseProfile?.photoURL,
     hasCompletedProfile: true,
     isFirstTimeSetupDone: baseProfile?.isFirstTimeSetupDone || false,
+    isMerchantAccount: baseProfile?.isMerchantAccount,
+    merchantPlaceId: baseProfile?.merchantPlaceId,
+    merchantPlaceName: baseProfile?.merchantPlaceName,
+    merchantVerifiedCode: baseProfile?.merchantVerifiedCode,
     createdAt: baseProfile?.createdAt || Date.now(),
   };
 

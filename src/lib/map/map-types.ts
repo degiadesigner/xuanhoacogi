@@ -26,6 +26,7 @@ export type MapCategoryKey =
 export type CoordinateSource =
   | 'openstreetmap'
   | 'admin_verified'
+  | 'merchant_verified'
   | 'nominatim_geocoded'
   | 'unverified';
 
@@ -71,6 +72,12 @@ export interface PlaceLocation {
     quip?: string;
     mapsQuery?: string;
     mapsUrl?: string;
+    merchantClaimCode?: string;
+    claimedByEmail?: string;
+    claimedByName?: string;
+    liveStatus?: 'open_normal' | 'busy_hot' | 'closed_today';
+    liveStatusNote?: string;
+    hasPendingSubmission?: boolean;
   };
 }
 

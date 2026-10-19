@@ -76,14 +76,31 @@ export function UserProfileModal({
           {/* Avatar tròn 3D nổi bật */}
           <div 
             className="user-profile-avatar-large"
-            style={{ background: currentMascot.bgGradient }}
+            style={{
+              background: user.isMerchantAccount
+                ? 'linear-gradient(135deg, #10b981, #047857)'
+                : currentMascot.bgGradient,
+            }}
           >
-            <span className="user-profile-avatar-emoji">{user.avatar || '🐱'}</span>
-            <div className="user-profile-gender-badge">{genderLabel.split(' ')[0]}</div>
+            <span className="user-profile-avatar-emoji">
+              {user.isMerchantAccount ? '🏪' : user.avatar || '🐱'}
+            </span>
+            <div className="user-profile-gender-badge">
+              {user.isMerchantAccount ? '✓' : genderLabel.split(' ')[0]}
+            </div>
           </div>
 
           <div className="user-profile-title-col">
-            <h3 className="user-profile-nickname">{user.nickname}</h3>
+            {user.isMerchantAccount && (
+              <div className="mb-1">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 text-[10px] font-extrabold">
+                  🏪 NICK QUÁN CHÍNH CHỦ ĐÃ XÁC THỰC
+                </span>
+              </div>
+            )}
+            <h3 className="user-profile-nickname">
+              {user.merchantPlaceName || user.nickname}
+            </h3>
             <div className="user-profile-email-row">
               <Mail size={12} className="text-slate-400" />
               <span className="user-profile-email-text">{user.email || 'thuckhach.xuanhoa@gmail.com'}</span>
@@ -95,10 +112,18 @@ export function UserProfileModal({
               </div>
             )}
             <div className="flex items-center gap-1.5 flex-wrap mt-1">
-              <span className="user-profile-gender-tag">{genderLabel}</span>
-              <span className="user-profile-gender-tag text-amber-300 border-amber-500/40 bg-amber-500/10">
-                {currentMascot.name}
-              </span>
+              {user.isMerchantAccount ? (
+                <span className="user-profile-gender-tag text-emerald-300 border-emerald-500/40 bg-emerald-500/10">
+                  🔑 Mã Quán: {user.merchantVerifiedCode || 'Đã xác thực'}
+                </span>
+              ) : (
+                <>
+                  <span className="user-profile-gender-tag">{genderLabel}</span>
+                  <span className="user-profile-gender-tag text-amber-300 border-amber-500/40 bg-amber-500/10">
+                    {currentMascot.name}
+                  </span>
+                </>
+              )}
               <span className="user-profile-gender-tag text-sky-300 border-sky-500/40 bg-sky-500/10">
                 {getResidentTypeInfo(user.residentType).label}
               </span>

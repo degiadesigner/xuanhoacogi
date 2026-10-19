@@ -13,6 +13,7 @@ import {
   Trash2,
   RotateCcw,
   CheckCircle2,
+  Check,
   ArrowLeft,
   Save,
   Ban,
@@ -38,6 +39,7 @@ import {
   UtensilsCrossed,
   Sparkles,
   UserPlus,
+  Bell,
 } from 'lucide-react';
 import {
   AdminThemeMode,
@@ -65,9 +67,16 @@ import {
   logoutAdminSession,
   upsertAdminAccount,
   deleteAdminAccount,
+  getOrGenerateMerchantCode,
+  getAllMerchantSubmissions,
+  simulateMerchantDemoSubmission,
+  assignMerchantOwnerByEmail,
+  setMapAccessMode,
 } from '@/lib/admin-store';
-import { UserAuthProfile } from '@/lib/auth';
+import { UserAuthProfile, saveAuthUser } from '@/lib/auth';
 import { Place } from '@/lib/places-xuanhoa';
+import { MerchantPortalModal } from '@/components/map/MerchantPortalModal';
+import { triggerFeedback, FeedbackSoundType } from '@/lib/ui-feedback';
 
 interface AdminDashboardViewProps {
   authUser: UserAuthProfile | null;
@@ -278,9 +287,33 @@ export function AdminDashboardView({
     role: 'manager' as 'superadmin' | 'manager',
   });
 
-  const showToast = (msg: string) => {
+  const [isMerchantModalOpen, setIsMerchantModalOpen] = useState(false);
+  const [merchantModalTab, setMerchantModalTab] = useState<
+    'merchant' | 'admin_approvals' | 'admin_codes'
+  >('admin_approvals');
+  const [justSavedPlace, setJustSavedPlace] = useState(false);
+  const [copiedBtnKey, setCopiedBtnKey] = useState<string | null>(null);
+
+  const showToast = (msg: string, sound: FeedbackSoundType = 'success') => {
+    triggerFeedback(sound);
     setToast(msg);
-    setTimeout(() => setToast(''), 3200);
+    setTimeout(() => setToast(''), 3400);
+  };
+
+  const jumpToMapUrl = (hashRoute: string) => {
+    triggerFeedback('pin');
+    if (typeof window !== 'undefined') {
+      if (
+        window.location.pathname === '/quanly' ||
+        window.location.pathname === '/quanly/' ||
+        window.location.pathname === '/admin' ||
+        window.location.pathname === '/admin/'
+      ) {
+        window.history.replaceState(null, '', `/${hashRoute}`);
+      }
+      window.location.hash = hashRoute;
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    }
   };
 
   useEffect(() => {
@@ -295,6 +328,10 @@ export function AdminDashboardView({
   const allPlaces = useMemo(() => getAllManagedPlaces(), [refreshTick]);
   const allDishes = useMemo(() => getAllManagedDishes(), [refreshTick]);
   const allReviews = useMemo(() => getAllSystemReviews(), [refreshTick]);
+  const pendingMerchantSubmissions = useMemo(
+    () => getAllMerchantSubmissions().filter(s => s.status === 'pending'),
+    [refreshTick]
+  );
   const allMembers = useMemo(() => {
     return Object.values(adminState.members || {}).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
   }, [adminState]);
@@ -485,7 +522,9 @@ export function AdminDashboardView({
       toastLabel || `Cập nhật quán "${editPlaceName}"`
     );
     setRefreshTick(t => t + 1);
-    showToast(toastLabel || `Đã lưu cập nhật quán "${editPlaceName}"`);
+    setJustSavedPlace(true);
+    setTimeout(() => setJustSavedPlace(false), 2000);
+    showToast(toastLabel || `✅ Đã lưu cập nhật quán "${editPlaceName}"!`, 'approve');
   };
 
   const handleChangePriorityBoost = (nextBoost: 1 | 2 | 3) => {
@@ -505,7 +544,8 @@ export function AdminDashboardView({
     showToast(
       nextBoost === 1
         ? 'Đã chuyển về tần suất xuất hiện bình thường'
-        : `Đã bật Ưu tiên x${nextBoost} (Quán & Món sẽ xuất hiện nhiều hơn gấp ${nextBoost} lần)`
+        : `⚡ Đã bật Ưu tiên x${nextBoost} (Quán & Món sẽ xuất hiện nhiều hơn gấp ${nextBoost} lần)`,
+      'approve'
     );
   };
 
@@ -529,7 +569,7 @@ export function AdminDashboardView({
 
   const handleAddMenuDishToPlace = () => {
     if (!newMenuDishName.trim()) {
-      showToast('Vui lòng nhập tên món mới');
+      showToast('Vui lòng nhập tên món mới', 'warn');
       return;
     }
     const priceNum = Number(newMenuDishPrice) || 30;
@@ -547,7 +587,7 @@ export function AdminDashboardView({
     setNewMenuDishName('');
     setNewMenuDishDesc('');
     setIsAddingDishRow(false);
-    handleSavePlaceAndMenu(nextMenu, `Đã thêm món "${newEntry.name}" (${priceNum}k)`);
+    handleSavePlaceAndMenu(nextMenu, `✅ Đã thêm món "${newEntry.name}" (${priceNum}k)`);
   };
 
   const handleToggleLockDishInPlace = (idx: number) => {
@@ -556,7 +596,7 @@ export function AdminDashboardView({
     setEditPlaceMenu(next);
     handleSavePlaceAndMenu(
       next,
-      `${next[idx].isLocked ? 'Tạm hết món' : 'Mở bán lại'}: "${next[idx].name}"`
+      `${next[idx].isLocked ? '⏳ Tạm hết món' : '✓ Mở bán lại'}: "${next[idx].name}"`
     );
   };
 
@@ -618,12 +658,12 @@ export function AdminDashboardView({
     setIsNewPlaceModalOpen(false);
     setRefreshTick(t => t + 1);
     setSelectedPlaceId(newId);
-    showToast(`Đã thêm quán mới: ${created.name}`);
+    showToast(`✅ Đã thêm quán mới: ${created.name}`, 'approve');
   };
 
   const handleSaveAdminAccount = () => {
     if (!adminAccForm.username.trim() || !adminAccForm.password.trim()) {
-      showToast('Vui lòng nhập đầy đủ Tên đăng nhập (Nick) và Mật khẩu');
+      showToast('Vui lòng nhập đầy đủ Tên đăng nhập (Nick) và Mật khẩu', 'warn');
       return;
     }
     upsertAdminAccount({
@@ -636,7 +676,7 @@ export function AdminDashboardView({
     setIsAdminAccModalOpen(false);
     setAdminAccForm({ id: '', username: '', password: '', displayName: '', role: 'manager' });
     setRefreshTick(t => t + 1);
-    showToast(`Đã lưu tài khoản quản lý @${adminAccForm.username}`);
+    showToast(`✅ Đã lưu tài khoản quản lý @${adminAccForm.username}`, 'approve');
   };
 
   const handleCreateSeederAccount = () => {
@@ -668,7 +708,7 @@ export function AdminDashboardView({
     setIsAddSeederModalOpen(false);
     setSeederForm({ nickname: '', email: '', residentType: 'student_sp2' });
     setRefreshTick(t => t + 1);
-    showToast(`Đã tạo nick đánh giá: ${seederForm.nickname}`);
+    showToast(`✅ Đã tạo nick đánh giá: ${seederForm.nickname}`, 'approve');
   };
 
   const handleExportBackupJson = () => {
@@ -693,12 +733,12 @@ export function AdminDashboardView({
         if (parsed && typeof parsed === 'object' && parsed.places) {
           saveAdminState(parsed, true);
           setRefreshTick(t => t + 1);
-          showToast('Đã khôi phục dữ liệu thành công!');
+          showToast('Đã khôi phục dữ liệu thành công!', 'approve');
         } else {
-          showToast('File không đúng định dạng sao lưu');
+          showToast('File không đúng định dạng sao lưu', 'warn');
         }
       } catch {
-        showToast('Không thể đọc file sao lưu');
+        showToast('Không thể đọc file sao lưu', 'warn');
       }
     };
     reader.readAsText(file);
@@ -880,25 +920,27 @@ export function AdminDashboardView({
         fontFamily: "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-      {/* TOAST THÔNG BÁO */}
+      {/* TOAST THÔNG BÁO NỔI GIỮA ĐỈNH MÀN HÌNH — LUÔN NHÌN THẤY RÕ RÀNG */}
       {toast && (
         <div
           style={{
             position: 'fixed',
-            bottom: '20px',
-            right: '20px',
-            zIndex: 99999,
+            top: '14px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 100005,
             background: '#18181B',
             color: '#FFFFFF',
             padding: '10px 18px',
-            borderRadius: '10px',
-            boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+            borderRadius: '999px',
+            boxShadow: '0 14px 36px rgba(0,0,0,0.28)',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            fontSize: '13px',
-            fontWeight: 600,
-            borderLeft: `4px solid ${theme.accent}`,
+            fontSize: '12.5px',
+            fontWeight: 800,
+            border: '2px solid #10B981',
+            maxWidth: '92vw',
           }}
         >
           <CheckCircle2 size={16} style={{ color: '#10B981', flexShrink: 0 }} />
@@ -906,7 +948,7 @@ export function AdminDashboardView({
         </div>
       )}
 
-      {/* TOPBAR TRÊN CÙNG */}
+      {/* TOPBAR TRÊN CÙNG — GỌN 1 HÀNG TRÊN CẢ MOBILE & PC */}
       <header
         className="xh-admin-topbar"
         style={{
@@ -914,43 +956,183 @@ export function AdminDashboardView({
           borderBottom: `1px solid ${theme.border}`,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <div
+            style={{
+              width: '30px',
+              height: '30px',
+              borderRadius: '8px',
+              background: theme.accentSoft,
+              color: theme.accent,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Shield size={16} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <span className="xh-topbar-title" style={{ fontSize: '14px', fontWeight: 800, whiteSpace: 'nowrap' }}>
+              QUẢN TRỊ <span className="xh-hide-mobile">XUÂN HÒA CÓ GÌ</span>
+            </span>
+            <span
+              className="xh-hide-mobile"
               style={{
-                width: '30px',
-                height: '30px',
-                borderRadius: '8px',
+                fontSize: '11px',
+                fontWeight: 700,
+                padding: '2px 7px',
+                borderRadius: '6px',
                 background: theme.accentSoft,
                 color: theme.accent,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
               }}
             >
-              <Shield size={16} />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '14.5px', fontWeight: 800 }}>QUẢN TRỊ XUÂN HÒA CÓ GÌ</span>
-              <span
-                className="xh-hide-mobile"
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '2px 7px',
-                  borderRadius: '6px',
-                  background: theme.accentSoft,
-                  color: theme.accent,
-                }}
-              >
-                Hệ thống Quản lý Độc lập
-              </span>
-            </div>
+              Hệ thống Quản lý Độc lập
+            </span>
           </div>
         </div>
 
-        {/* GÓC PHẢI: NICK ĐANG ĐĂNG NHẬP + NÚT ĐĂNG XUẤT + NÚT CÀI ĐẶT */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* GÓC PHẢI: BẢN ĐỒ SỐ + DUYỆT CHỦ QUÁN + MÃ CODE + NICK ĐANG ĐĂNG NHẬP + CÀI ĐẶT + THOÁT (GỌN 1 HÀNG) */}
+        <div className="xh-topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => jumpToMapUrl('#/ban-do')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '6px 10px',
+              borderRadius: '8px',
+              border: '1px solid #10B981',
+              background: '#E6F7EF',
+              color: '#047857',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            title="Mở Bản Đồ Số Xuân Hòa"
+          >
+            <MapPin size={14} />
+            <span className="xh-hide-mobile">Bản đồ</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerFeedback('tap');
+              setMerchantModalTab('admin_approvals');
+              setIsMerchantModalOpen(true);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '6px 10px',
+              borderRadius: '8px',
+              border:
+                pendingMerchantSubmissions.length > 0
+                  ? '1.5px solid #EF4444'
+                  : `1px solid ${theme.border}`,
+              background:
+                pendingMerchantSubmissions.length > 0
+                  ? 'rgba(239, 68, 68, 0.1)'
+                  : theme.bgElevated,
+              color: pendingMerchantSubmissions.length > 0 ? '#B91C1C' : theme.textPrimary,
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            title="Duyệt thay đổi định vị & thông tin do Chủ quán gửi lên"
+          >
+            <Bell
+              size={14}
+              style={{
+                color: pendingMerchantSubmissions.length > 0 ? '#EF4444' : theme.accent,
+              }}
+            />
+            <span>
+              Duyệt
+              <span className="xh-hide-mobile"> Chủ Quán</span> ({pendingMerchantSubmissions.length})
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerFeedback('tap');
+              setMerchantModalTab('admin_codes');
+              setIsMerchantModalOpen(true);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '6px 10px',
+              borderRadius: '8px',
+              border: `1px solid ${theme.accentBorder}`,
+              background: theme.accentSoft,
+              color: theme.accent,
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            title="Danh sách Mã Code duy nhất cấp cho từng Chủ quán"
+          >
+            <KeyRound size={14} />
+            <span className="xh-hide-mobile">Mã Code Quán</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const currentMode = adminState.mapAccessMode || 'merchants_and_admin_only';
+              const nextMode =
+                currentMode === 'public_open' ? 'merchants_and_admin_only' : 'public_open';
+              setMapAccessMode(nextMode);
+              setRefreshTick((t) => t + 1);
+              showToast(
+                nextMode === 'public_open'
+                  ? '🌍 Đã MỞ CỬA Bản Đồ Số công khai cho toàn bộ Khách!'
+                  : '🔒 Đã bật chế độ: Chỉ Chủ Quán (có Mã Code) & Admin mới vào được Bản Đồ Số!',
+                'approve'
+              );
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '6px 10px',
+              borderRadius: '8px',
+              border: `1px solid ${
+                adminState.mapAccessMode === 'public_open' ? '#10B981' : '#F59E0B'
+              }`,
+              background:
+                adminState.mapAccessMode === 'public_open' ? '#E6F7EF' : '#FEF3C7',
+              color:
+                adminState.mapAccessMode === 'public_open' ? '#047857' : '#92400E',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            title="Công tắc Mở/Khóa Bản Đồ Số cho khách thường (Chủ quán có Mã Code & Admin luôn vào thẳng)"
+          >
+            {adminState.mapAccessMode === 'public_open' ? (
+              <>
+                <Unlock size={14} />
+                <span className="xh-hide-mobile">Maps: Đang mở Khách</span>
+              </>
+            ) : (
+              <>
+                <Lock size={14} />
+                <span className="xh-hide-mobile">Maps: Chỉ Quán & Admin</span>
+              </>
+            )}
+          </button>
+
           <div
             className="xh-hide-mobile"
             style={{
@@ -972,26 +1154,28 @@ export function AdminDashboardView({
 
           <button
             onClick={() => setIsSettingsModalOpen(true)}
+            title="Cài đặt giao diện & sao lưu"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '7px 12px',
+              gap: '5px',
+              padding: '6px 10px',
               borderRadius: '8px',
               border: `1px solid ${theme.border}`,
               background: theme.bgElevated,
               color: theme.textPrimary,
-              fontSize: '12.5px',
+              fontSize: '12px',
               fontWeight: 700,
               cursor: 'pointer',
+              whiteSpace: 'nowrap',
             }}
           >
-            <Settings size={15} style={{ color: theme.accent }} />
-            <span>Cài đặt</span>
+            <Settings size={14} style={{ color: theme.accent }} />
+            <span className="xh-hide-mobile">Cài đặt</span>
             <span
               style={{
-                width: '8px',
-                height: '8px',
+                width: '7px',
+                height: '7px',
                 borderRadius: '50%',
                 background: theme.dotColor,
               }}
@@ -1005,7 +1189,7 @@ export function AdminDashboardView({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '5px',
-              padding: '7px 10px',
+              padding: '6px 9px',
               borderRadius: '8px',
               border: `1px solid ${theme.border}`,
               background: theme.bgElevated,
@@ -1597,15 +1781,18 @@ export function AdminDashboardView({
                             padding: '7px 14px',
                             borderRadius: '8px',
                             border: 'none',
-                            background: theme.accent,
+                            background: justSavedPlace ? '#059669' : theme.accent,
                             color: '#FFFFFF',
                             fontSize: '12.5px',
                             fontWeight: 800,
                             cursor: 'pointer',
+                            boxShadow: justSavedPlace
+                              ? '0 4px 12px rgba(5,150,105,0.35)'
+                              : '0 2px 6px rgba(200,75,49,0.25)',
                           }}
                         >
-                          <Save size={14} />
-                          <span>Lưu Thay Đổi</span>
+                          {justSavedPlace ? <Check size={14} /> : <Save size={14} />}
+                          <span>{justSavedPlace ? '✓ Đã Lưu!' : 'Lưu Thay Đổi'}</span>
                         </button>
                       </div>
                     </div>
@@ -1712,6 +1899,245 @@ export function AdminDashboardView({
                           </a>
                         </div>
                       </div>
+
+                      {/* MÃ CODE CHỦ QUÁN TỰ ĐÁNH DẤU ĐỊNH VỊ BẢN ĐỒ SỐ (CHỈ ADMIN CẤP) */}
+                      {(() => {
+                        const code = getOrGenerateMerchantCode(selectedPlaceItem.place.id);
+                        const ov = adminState.places?.[selectedPlaceItem.place.id];
+                        const claimedEmail = ov?.claimedByEmail;
+                        const claimedName = ov?.claimedByName;
+                        const hasVerifiedCoords =
+                          Boolean(ov?.coordinateVerified) &&
+                          typeof ov?.lat === 'number' &&
+                          typeof ov?.lng === 'number';
+                        return (
+                          <div
+                            className="xh-col-span-2"
+                            style={{
+                              padding: '11px 14px',
+                              borderRadius: '10px',
+                              background: theme.accentSoft,
+                              border: `1.5px dashed ${theme.accentBorder}`,
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '10px',
+                            }}
+                          >
+                            <div>
+                              <div
+                                style={{
+                                  fontSize: '12px',
+                                  fontWeight: 800,
+                                  color: theme.accent,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                }}
+                              >
+                                <KeyRound size={13} />
+                                <span>
+                                  Mã Code Chủ Quán tự cắm định vị Bản đồ số (Chỉ Admin cấp):
+                                </span>
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: '11.5px',
+                                  color: theme.textSecondary,
+                                  marginTop: '3px',
+                                }}
+                              >
+                                {claimedEmail ? (
+                                  <span>
+                                    Đã liên kết Gmail:{' '}
+                                    <strong>
+                                      {claimedName ? `${claimedName} (${claimedEmail})` : claimedEmail}
+                                    </strong>
+                                  </span>
+                                ) : (
+                                  <span>
+                                    Chưa có chủ quán nhận mã • Chủ quán cần đăng nhập Gmail và dán mã này vào Bản đồ số
+                                  </span>
+                                )}
+                                {' • '}
+                                {hasVerifiedCoords ? (
+                                  <span style={{ color: '#047857', fontWeight: 700 }}>
+                                    📍 Đã có ghim trên Bản đồ ({ov?.lat}, {ov?.lng})
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#B45309', fontWeight: 700 }}>
+                                    ⏳ Chưa có tọa độ trên Bản đồ số
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  padding: '5px 11px',
+                                  borderRadius: '8px',
+                                  background: '#18181B',
+                                  color: '#FBBF24',
+                                  fontFamily: 'monospace',
+                                  fontSize: '13px',
+                                  fontWeight: 900,
+                                  letterSpacing: '0.06em',
+                                }}
+                              >
+                                {code}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (navigator.clipboard) {
+                                    navigator.clipboard.writeText(code);
+                                    setCopiedBtnKey('code');
+                                    window.setTimeout(() => setCopiedBtnKey(null), 1600);
+                                    showToast(`Đã copy mã "${code}" của quán ${selectedPlaceItem.place.name}`);
+                                  }
+                                }}
+                                style={{
+                                  ...smallRowBtnStyle(theme),
+                                  ...(copiedBtnKey === 'code'
+                                    ? { background: '#059669', color: '#FFFFFF', borderColor: '#059669' }
+                                    : {}),
+                                }}
+                              >
+                                {copiedBtnKey === 'code' ? <Check size={12} /> : <Copy size={12} />}
+                                {copiedBtnKey === 'code' ? '✓ Đã Copy!' : 'Copy Mã'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const msg = `Chào chủ quán "${selectedPlaceItem.place.name}", Admin Xuân Hòa Có Gì gửi bạn Mã Code định danh duy nhất của quán: ${code}\nBạn hãy đăng nhập bằng Gmail tại Bản Đồ Số Xuân Hòa (mục "Chủ quán"), dán mã này vào để tự ghim định vị chuẩn mặt tiền quán và cập nhật giờ mở cửa/menu nhé!`;
+                                  if (navigator.clipboard) {
+                                    navigator.clipboard.writeText(msg);
+                                    setCopiedBtnKey('zalo');
+                                    window.setTimeout(() => setCopiedBtnKey(null), 1600);
+                                    showToast('Đã copy tin nhắn hướng dẫn kèm Mã Code để gửi Zalo cho chủ quán!');
+                                  }
+                                }}
+                                style={{
+                                  ...smallRowBtnStyle(theme),
+                                  background: copiedBtnKey === 'zalo' ? '#059669' : theme.accent,
+                                  color: '#FFFFFF',
+                                  borderColor: copiedBtnKey === 'zalo' ? '#059669' : theme.accent,
+                                }}
+                              >
+                                {copiedBtnKey === 'zalo' ? <Check size={12} /> : <Copy size={12} />}
+                                {copiedBtnKey === 'zalo' ? '✓ Đã Copy Zalo!' : 'Copy gửi Zalo'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextCode = getOrGenerateMerchantCode(selectedPlaceItem.place.id, true);
+                                  setRefreshTick(t => t + 1);
+                                  showToast(`Đã cấp mã mới "${nextCode}" và thu hồi mã cũ!`);
+                                }}
+                                style={smallRowBtnStyle(theme)}
+                                title="Đổi sang mã code mới và gỡ liên kết Gmail cũ"
+                              >
+                                <RotateCcw size={12} /> Đổi mã
+                              </button>
+                            </div>
+
+                            {/* KHUNG TEST NHANH CHO ADMIN: ĐÓNG VAI NICK QUÁN HOẶC GIẢ LẬP GỬI DUYỆT 1 CHẠM */}
+                            <div
+                              style={{
+                                width: '100%',
+                                marginTop: '6px',
+                                paddingTop: '8px',
+                                borderTop: `1px dashed ${theme.accentBorder}`,
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                alignItems: 'center',
+                                gap: '6px',
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 800,
+                                  color: theme.textSecondary,
+                                  marginRight: '2px',
+                                }}
+                              >
+                                🧪 Test nhanh luồng Chủ Quán:
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const demoEmail =
+                                    authUser?.email || 'chuquan.xuanhoa@gmail.com';
+                                  assignMerchantOwnerByEmail(
+                                    selectedPlaceItem.place.id,
+                                    demoEmail,
+                                    selectedPlaceItem.place.name
+                                  );
+                                  saveAuthUser({
+                                    isLoggedIn: true,
+                                    uid: authUser?.uid || 'merchant_demo',
+                                    email: demoEmail,
+                                    displayName: selectedPlaceItem.place.name,
+                                    nickname: selectedPlaceItem.place.name,
+                                    gender: authUser?.gender || 'male',
+                                    avatar: '🏪',
+                                    avatarId: authUser?.avatarId || 'm_ty',
+                                    hasCompletedProfile: true,
+                                    isFirstTimeSetupDone: true,
+                                    isMerchantAccount: true,
+                                    merchantPlaceId: selectedPlaceItem.place.id,
+                                    merchantPlaceName: selectedPlaceItem.place.name,
+                                    merchantVerifiedCode: code,
+                                    createdAt: authUser?.createdAt || Date.now(),
+                                  });
+                                  jumpToMapUrl(
+                                    `#/ban-do?claim=${encodeURIComponent(code)}`
+                                  );
+                                }}
+                                style={{
+                                  ...smallRowBtnStyle(theme),
+                                  background: '#E6F7EF',
+                                  color: '#047857',
+                                  borderColor: '#10B981',
+                                }}
+                                title="Tự động đăng nhập Nick Quán này (🏪) và mở Bản Đồ Số để bạn bấm thử chấm định vị & sửa giá món"
+                              >
+                                <Store size={12} /> 🏪 Vào thử bằng Nick Quán này trên Bản Đồ
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sub = simulateMerchantDemoSubmission(
+                                    selectedPlaceItem.place.id,
+                                    authUser
+                                  );
+                                  if (sub) {
+                                    setRefreshTick(t => t + 1);
+                                    setMerchantModalTab('admin_approvals');
+                                    setIsMerchantModalOpen(true);
+                                    showToast(
+                                      `🧪 Đã giả lập "${selectedPlaceItem.place.name}" cắm GPS & gửi duyệt! Hãy bấm Duyệt ngay trên bảng.`
+                                    );
+                                  }
+                                }}
+                                style={{
+                                  ...smallRowBtnStyle(theme),
+                                  background: '#EDE9FE',
+                                  color: '#403064',
+                                  borderColor: '#8B5CF6',
+                                }}
+                                title="Giả lập quán này vừa cắm định vị GPS và gửi yêu cầu thay đổi về cho Admin duyệt"
+                              >
+                                <Sparkles size={12} /> ⚡ Giả lập Quán gửi Định vị & Test Duyệt
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* PHÂN KHU NGÀNH NGHỀ (Ô SỔ RA GỌN GÀNG + NÚT THÊM NGÀNH MỚI NGAY TẠI QUÁN) */}
                       <div>
@@ -3115,12 +3541,37 @@ export function AdminDashboardView({
         </div>
       )}
 
+      <MerchantPortalModal
+        isOpen={isMerchantModalOpen}
+        onClose={() => setIsMerchantModalOpen(false)}
+        authUser={authUser}
+        isAdminUser={true}
+        initialTab={merchantModalTab}
+        onStartPickOnMap={(placeId, placeName) => {
+          jumpToMapUrl(
+            `#/ban-do?pick=${encodeURIComponent(placeId)}&pickName=${encodeURIComponent(placeName)}`
+          );
+        }}
+        onFlyToCoordinates={(lat, lng, label) => {
+          jumpToMapUrl(
+            `#/ban-do?flyLat=${lat}&flyLng=${lng}&flyLabel=${encodeURIComponent(label || '')}`
+          );
+        }}
+        onDataChanged={() => setRefreshTick(t => t + 1)}
+      />
+
       {/* CSS CHUẨN LIGHT MODE, CỘT 2 VÀ CỘT 3 CAO BẰNG NHAU CÂN ĐỐI 100% */}
       <style>{`
         .xh-admin-shell {
           min-height: 100vh;
           display: flex;
           flex-direction: column;
+        }
+        .xh-admin-shell button {
+          transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .xh-admin-shell button:active {
+          transform: scale(0.95) !important;
         }
         .xh-admin-shell input,
         .xh-admin-shell select,
@@ -3226,6 +3677,10 @@ export function AdminDashboardView({
           .xh-show-mobile-only {
             display: inline-flex !important;
           }
+          .xh-admin-topbar {
+            padding: 8px 10px;
+            gap: 6px;
+          }
           .xh-admin-body {
             flex-direction: column;
           }
@@ -3239,9 +3694,14 @@ export function AdminDashboardView({
             flex-direction: row;
             overflow-x: auto;
             gap: 6px;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+          .xh-sidebar-nav::-webkit-scrollbar {
+            display: none;
           }
           .xh-sidebar-btn {
-            padding: 8px 11px;
+            padding: 7px 11px;
             font-size: 12px;
             flex-shrink: 0;
             gap: 6px;

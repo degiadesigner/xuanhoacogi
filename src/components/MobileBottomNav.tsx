@@ -56,7 +56,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       aria-label="Thanh điều hướng di động"
     >
       <div className="mobile-dock-inner">
-        {/* 1. Nút Vòng Quay (Home/Spin) */}
+        {/* 1. Nút Vòng Quay (Quay Món) */}
         <button
           type="button"
           className={`mobile-dock-tab ${currentView === 'spin' ? 'active' : ''}`}
@@ -72,74 +72,23 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="mobile-dock-label">{t.dock_spin}</span>
         </button>
 
-        {/* 2. Nút Danh Mục Món Ăn */}
+        {/* 2. Nút Bản Đồ Số */}
         <button
           type="button"
-          className={`mobile-dock-tab ${currentView === 'dishes' ? 'active' : ''}`}
+          className={`mobile-dock-tab ${currentView === 'map' ? 'active' : ''}`}
           onClick={() => {
             triggerHaptic();
-            onNavigate('dishes');
+            onNavigate('map');
           }}
-          aria-label={t.dock_dishes}
+          aria-label={lang === 'en' ? 'Digital Map' : 'Bản Đồ Số'}
         >
           <div className="mobile-dock-icon-wrap">
-            <UtensilsCrossed size={20} className={currentView === 'dishes' ? 'text-amber-400' : 'text-slate-400'} />
+            <Map size={20} className={currentView === 'map' ? 'text-amber-400' : 'text-slate-400'} />
           </div>
-          <span className="mobile-dock-label">{t.dock_dishes}</span>
+          <span className="mobile-dock-label">{lang === 'en' ? 'Digital Map' : 'Bản Đồ Số'}</span>
         </button>
 
-        {/* 3. Nút Quán Ăn */}
-        <button
-          type="button"
-          className={`mobile-dock-tab ${currentView === 'places' ? 'active' : ''}`}
-          onClick={() => {
-            triggerHaptic();
-            onNavigate('places');
-          }}
-          aria-label={t.dock_places}
-        >
-          <div className="mobile-dock-icon-wrap">
-            <Store size={20} className={currentView === 'places' ? 'text-amber-400' : 'text-slate-400'} />
-          </div>
-          <span className="mobile-dock-label">{t.dock_places}</span>
-        </button>
-
-        {/* 4. Nút Đăng Nhập / Tài Khoản (Thay thế vào vị trí bảng điểm) */}
-        {!isLoggedIn ? (
-          <button
-            type="button"
-            className="mobile-dock-tab"
-            onClick={() => {
-              triggerHaptic();
-              onOpenLogin();
-            }}
-            aria-label={t.dock_login}
-          >
-            <div className="mobile-dock-icon-wrap">
-              <User size={20} className="text-amber-400" />
-            </div>
-            <span className="mobile-dock-label text-amber-300 font-extrabold">{t.dock_login}</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="mobile-dock-tab"
-            onClick={() => {
-              triggerHaptic();
-              onOpenProfile();
-            }}
-            aria-label={t.dock_profile}
-          >
-            <div className="mobile-dock-icon-wrap">
-              <span className="text-lg leading-none">{authUser.avatar || '🐱'}</span>
-            </div>
-            <span className="mobile-dock-label truncate max-w-[56px] text-amber-300 font-extrabold">
-              {authUser.nickname || t.dock_profile}
-            </span>
-          </button>
-        )}
-
-        {/* 5. Nút Cài Đặt (Trả lại vị trí góc phải cho cài đặt) */}
+        {/* 3. Nút Cài Đặt */}
         <button
           type="button"
           className="mobile-dock-tab"

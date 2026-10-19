@@ -24,6 +24,7 @@ import {
   XCircle,
   Eye,
   Lock,
+  Download,
 } from 'lucide-react';
 import type { UserAuthProfile } from '@/lib/auth';
 import type { Place } from '@/lib/places-xuanhoa';
@@ -1891,6 +1892,15 @@ export const MerchantPortalModal: React.FC<MerchantPortalModalProps> = ({
                     <Copy size={12} />
                     <span>Sao chép toàn bộ danh sách</span>
                   </button>
+                  <a
+                    href="/Danh_Sach_86_Quan_Va_Ma_Code_XuanHoaCoGi.xlsx"
+                    download="Danh_Sach_Quan_Va_Ma_Code_XuanHoaCoGi.xlsx"
+                    onClick={() => triggerFeedback('success')}
+                    className="px-2.5 py-1.5 rounded-xl bg-[#047857] hover:bg-[#065F46] active:scale-95 transition-transform text-white border border-[#047857] font-extrabold text-[11px] flex items-center gap-1 cursor-pointer no-underline"
+                  >
+                    <Download size={12} />
+                    <span>Xuất file Excel (.xlsx)</span>
+                  </a>
                 </div>
                 <input
                   type="text"

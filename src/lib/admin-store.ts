@@ -183,6 +183,7 @@ export const DEFAULT_SECTOR_TAGS: SectorCategoryTag[] = [
   { id: 'an-choi', label: 'Giải Trí / Karaoke / Ăn Chơi' },
   { id: 'dien-thoai', label: 'Cửa Hàng Điện Thoại / Công Nghệ' },
   { id: 'dich-vu', label: 'Thời Trang / Làm Đẹp / Dịch Vụ' },
+  { id: 'dia-danh', label: '🏛️ Địa Danh / Cơ Quan / Trường Học / Y Tế' },
 ];
 
 export const DEFAULT_ADMIN_ACCOUNTS: AdminAccount[] = [
@@ -994,7 +995,16 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
 // Dành cho giao diện người dùng (Vòng quay & Danh bạ Quán):
 // Quán đang Ưu tiên (priorityBoost > 1) sẽ xuất hiện lên đầu và có tần suất xuất hiện trên vòng quay cao hơn
 export function getActivePublicPlaces(): Place[] {
-  const activeItems = getAllManagedPlaces().filter(item => item.status === 'active');
+  const state = getAdminState();
+  const activeItems = getAllManagedPlaces().filter(item => {
+    if (item.status !== 'active') return false;
+    if (item.sectorTag === 'dia-danh') return false;
+    const ov = state.places[item.place.id];
+    if (ov?.mapCategory === 'public' || ov?.mapCategory === 'school' || ov?.mapCategory === 'medical') {
+      return false;
+    }
+    return true;
+  });
   const sorted = [...activeItems].sort((a, b) => {
     if (b.priorityBoost !== a.priorityBoost) return b.priorityBoost - a.priorityBoost;
     return a.place.name.localeCompare(b.place.name, 'vi');
@@ -2224,8 +2234,9 @@ export function createNewPlaceFromMap(
     grocery: { category: 'fast_food', sectorTag: 'dich-vu' },
     supermarket: { category: 'fast_food', sectorTag: 'dich-vu' },
     service: { category: 'cafe', sectorTag: 'dich-vu' },
-    school: { category: 'cafe', sectorTag: 'dich-vu' },
-    public: { category: 'cafe', sectorTag: 'dich-vu' },
+    school: { category: 'cafe', sectorTag: 'dia-danh' },
+    public: { category: 'cafe', sectorTag: 'dia-danh' },
+    medical: { category: 'cafe', sectorTag: 'dia-danh' },
   };
   const mapped = sectorMap[mapCat] || sectorMap.food;
 
@@ -2801,7 +2812,15 @@ export function getDigitalMapAccessStatus(authUser?: UserAuthProfile | null): {
     };
   }
 
-  if (mode === 'public_open') {
+  const isDirectDemoUrl =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hash.includes('demo') ||
+      window.location.hash.includes('map'));
+
+  if (mode === 'public_open' || isDirectDemoUrl) {
     return {
       canAccess: true,
       accessReason: 'public_open',

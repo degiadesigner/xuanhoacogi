@@ -77,6 +77,21 @@ import { UserAuthProfile, saveAuthUser } from '@/lib/auth';
 import { Place } from '@/lib/places-xuanhoa';
 import { MerchantPortalModal } from '@/components/map/MerchantPortalModal';
 import { triggerFeedback, FeedbackSoundType } from '@/lib/ui-feedback';
+import {
+  getAllAdminPlaceAndLandmarkItems,
+  getManagedOsmLandmarks,
+  parseCoordinatesFromInputOrUrl,
+  geocodeAddressWithNominatim,
+  findSuggestedRoadForAddress,
+  VERIFIED_OSM_ROADS_SEED,
+} from '@/lib/map/map-data';
+import { MAP_CATEGORIES } from '@/lib/map/map-categories';
+import type { MapCategoryKey } from '@/lib/map/map-types';
+
+type EditableMapCategory = Exclude<MapCategoryKey, 'all' | 'game_asset'>;
+const EDITABLE_MAP_CATEGORIES = MAP_CATEGORIES.filter(
+  (c): c is typeof c & { id: EditableMapCategory } => c.id !== 'all' && c.id !== 'game_asset'
+);
 
 interface AdminDashboardViewProps {
   authUser: UserAuthProfile | null;
@@ -219,7 +234,7 @@ export function AdminDashboardView({
   // Thu gọn / Mở rộng phần thông tin phụ của quán
   const [showAdvancedPlaceFields, setShowAdvancedPlaceFields] = useState(false);
 
-  // Thông tin chính của Quán
+  // Thông tin chính của Quán / Địa Danh
   const [editPlaceName, setEditPlaceName] = useState('');
   const [editPlacePhone, setEditPlacePhone] = useState('');
   const [editPlaceHours, setEditPlaceHours] = useState('');
@@ -227,6 +242,13 @@ export function AdminDashboardView({
   const [editPlaceMapsUrl, setEditPlaceMapsUrl] = useState('');
   const [editPlaceMapsQuery, setEditPlaceMapsQuery] = useState('');
   const [editPlaceSectorTag, setEditPlaceSectorTag] = useState('an-chinh');
+  const [editPlaceMapCategory, setEditPlaceMapCategory] = useState<EditableMapCategory>('food');
+  const [editPlaceLat, setEditPlaceLat] = useState('');
+  const [editPlaceLng, setEditPlaceLng] = useState('');
+  const [isAdminGeocoding, setIsAdminGeocoding] = useState(false);
+  const [adminGeoSuggestions, setAdminGeoSuggestions] = useState<
+    Array<{ displayName: string; lat: number; lng: number }>
+  >([]);
   const [editPlaceServiceMode, setEditPlaceServiceMode] = useState<Place['serviceMode']>('both');
   const [editPlacePriorityBoost, setEditPlacePriorityBoost] = useState<1 | 2 | 3>(1);
 
@@ -254,15 +276,18 @@ export function AdminDashboardView({
   const [newMenuDishCat, setNewMenuDishCat] = useState('Món chính');
   const [newMenuDishDesc, setNewMenuDishDesc] = useState('');
 
-  // Modal tạo Quán mới
+  // Modal tạo Quán / Địa danh mới
   const [isNewPlaceModalOpen, setIsNewPlaceModalOpen] = useState(false);
   const [newPlaceForm, setNewPlaceForm] = useState({
     name: '',
     sectorTag: 'an-chinh',
+    mapCategory: 'food' as EditableMapCategory,
     phone: '',
     openHours: '07:00 - 22:00',
     address: 'P. Xuân Hòa, Phúc Yên, Vĩnh Phúc',
     mapsUrl: '',
+    lat: '',
+    lng: '',
     sigDishName: 'Món đặc trưng',
     sigDishPrice: 35,
   });
@@ -325,7 +350,8 @@ export function AdminDashboardView({
 
   const adminState = useMemo(() => getAdminState(), [refreshTick]);
   const adminAccounts = useMemo(() => getAdminAccounts(), [refreshTick]);
-  const allPlaces = useMemo(() => getAllManagedPlaces(), [refreshTick]);
+  const allPlaces = useMemo(() => getAllAdminPlaceAndLandmarkItems(), [refreshTick]);
+  const managedOsmLandmarks = useMemo(() => getManagedOsmLandmarks(true), [refreshTick]);
   const allDishes = useMemo(() => getAllManagedDishes(), [refreshTick]);
   const allReviews = useMemo(() => getAllSystemReviews(), [refreshTick]);
   const pendingMerchantSubmissions = useMemo(
@@ -382,6 +408,28 @@ export function AdminDashboardView({
     setEditPlaceSigPrice(item.place.signatureDish.price);
     setEditPlaceQuip(item.place.quip || '');
     setEditPlaceImageUrl(item.place.imageUrl || '');
+
+    const ov = adminState.places?.[item.place.id];
+    const osmItem = managedOsmLandmarks.find(l => l.id === item.place.id);
+    const resolvedLat = typeof ov?.lat === 'number' ? ov.lat : osmItem?.lat;
+    const resolvedLng = typeof ov?.lng === 'number' ? ov.lng : osmItem?.lng;
+    setEditPlaceLat(typeof resolvedLat === 'number' ? String(resolvedLat) : '');
+    setEditPlaceLng(typeof resolvedLng === 'number' ? String(resolvedLng) : '');
+
+    const resolvedMapCat = (ov?.mapCategory ||
+      osmItem?.category ||
+      (item.sectorTag === 'dia-danh'
+        ? 'public'
+        : item.sectorTag === 'nhau-lau'
+        ? 'pub'
+        : item.sectorTag === 'uong'
+        ? 'cafe'
+        : item.sectorTag === 'an-vat'
+        ? 'snack'
+        : 'food')) as EditableMapCategory;
+    setEditPlaceMapCategory(resolvedMapCat);
+    setAdminGeoSuggestions([]);
+
     setEditPlaceMenu(
       (item.fullMenu || []).map(m => ({
         id: m.id,
@@ -492,12 +540,27 @@ export function AdminDashboardView({
     else if (editPlaceSectorTag === 'an-vat') mappedCategory = 'fast_food';
     else if (editPlaceSectorTag === 'an-chinh') mappedCategory = 'restaurant';
 
+    // Tự động trích xuất tọa độ từ link Google Maps / Plus Code nếu có
+    const parsedFromUrl = parseCoordinatesFromInputOrUrl(editPlaceMapsUrl || editPlaceMapsQuery);
+    const numLat = editPlaceLat.trim() !== '' ? Number(editPlaceLat) : parsedFromUrl?.lat;
+    const numLng = editPlaceLng.trim() !== '' ? Number(editPlaceLng) : parsedFromUrl?.lng;
+    const hasValidCoords =
+      typeof numLat === 'number' &&
+      typeof numLng === 'number' &&
+      !Number.isNaN(numLat) &&
+      !Number.isNaN(numLng) &&
+      numLat >= 20.5 &&
+      numLat <= 22.0 &&
+      numLng >= 105.0 &&
+      numLng <= 106.5;
+
     savePlaceAdminOverride(
       selectedPlaceItem.place.id,
       {
         name: editPlaceName.trim() || selectedPlaceItem.place.name,
         tagline: editPlaceTagline.trim(),
         sectorTag: editPlaceSectorTag,
+        mapCategory: editPlaceMapCategory,
         category: mappedCategory,
         tags: parsedTags,
         address: editPlaceAddress.trim(),
@@ -518,8 +581,16 @@ export function AdminDashboardView({
         quip: editPlaceQuip.trim(),
         imageUrl: editPlaceImageUrl.trim() || undefined,
         customMenu: menuToSave,
+        ...(hasValidCoords
+          ? {
+              lat: Number(numLat!.toFixed(6)),
+              lng: Number(numLng!.toFixed(6)),
+              coordinateVerified: true,
+              coordinateSource: 'admin_verified',
+            }
+          : {}),
       },
-      toastLabel || `Cập nhật quán "${editPlaceName}"`
+      toastLabel || `Cập nhật "${editPlaceName}"`
     );
     setRefreshTick(t => t + 1);
     setJustSavedPlace(true);
@@ -654,11 +725,36 @@ export function AdminDashboardView({
       quip: 'Địa điểm mới tại Xuân Hòa Có Gì.',
     };
     createNewCustomPlace(created);
-    savePlaceAdminOverride(newId, { sectorTag: newPlaceForm.sectorTag });
+    const parsedFromUrl = parseCoordinatesFromInputOrUrl(newPlaceForm.mapsUrl || newPlaceForm.address);
+    const numLat = newPlaceForm.lat.trim() !== '' ? Number(newPlaceForm.lat) : parsedFromUrl?.lat;
+    const numLng = newPlaceForm.lng.trim() !== '' ? Number(newPlaceForm.lng) : parsedFromUrl?.lng;
+    const hasCoords =
+      typeof numLat === 'number' &&
+      typeof numLng === 'number' &&
+      !Number.isNaN(numLat) &&
+      !Number.isNaN(numLng);
+
+    savePlaceAdminOverride(newId, {
+      sectorTag: newPlaceForm.sectorTag,
+      mapCategory: newPlaceForm.mapCategory,
+      ...(hasCoords
+        ? {
+            lat: Number(numLat!.toFixed(6)),
+            lng: Number(numLng!.toFixed(6)),
+            coordinateVerified: true,
+            coordinateSource: 'admin_verified',
+          }
+        : {}),
+    });
     setIsNewPlaceModalOpen(false);
     setRefreshTick(t => t + 1);
     setSelectedPlaceId(newId);
-    showToast(`✅ Đã thêm quán mới: ${created.name}`, 'approve');
+    showToast(
+      hasCoords
+        ? `✅ Đã tạo & cắm ghim lên Bản đồ: ${created.name}`
+        : `✅ Đã thêm địa điểm mới: ${created.name}`,
+      'approve'
+    );
   };
 
   const handleSaveAdminAccount = () => {
@@ -1850,12 +1946,12 @@ export function AdminDashboardView({
                         />
                       </div>
 
-                      {/* ĐỊNH VỊ GOOGLE MAPS */}
+                      {/* ĐỊNH VỊ GOOGLE MAPS / PLUS CODE / ĐỊA CHỈ & ICON BẢN ĐỒ 2D/3D */}
                       <div className="xh-col-span-2">
                         <label style={compactLabelStyle(theme)}>
-                          Định vị Google Maps (Dán link Maps hoặc địa chỉ tìm kiếm)
+                          Định vị Bản đồ 2D & Sa Bàn 3D (Dán link Google Maps, Plus Code VD: 7PQ6+VFP, tọa độ hoặc tìm theo địa chỉ)
                         </label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           <input
                             type="text"
                             value={editPlaceMapsUrl || editPlaceMapsQuery}
@@ -1867,10 +1963,74 @@ export function AdminDashboardView({
                                 setEditPlaceMapsUrl('');
                                 setEditPlaceMapsQuery(val);
                               }
+                              const parsed = parseCoordinatesFromInputOrUrl(val);
+                              if (parsed) {
+                                setEditPlaceLat(String(parsed.lat));
+                                setEditPlaceLng(String(parsed.lng));
+                              }
                             }}
-                            placeholder="Dán link Google Maps hoặc nhập tên + địa chỉ quán..."
-                            style={{ ...compactInputStyle(theme), flex: 1 }}
+                            placeholder="Dán link Google Maps, Plus Code (7PQ6+VFP), tọa độ 21.289, 105.711 hoặc địa chỉ..."
+                            style={{ ...compactInputStyle(theme), flex: 1, minWidth: '210px' }}
                           />
+                          <button
+                            type="button"
+                            disabled={isAdminGeocoding}
+                            onClick={async () => {
+                              const rawQ = (
+                                editPlaceMapsUrl ||
+                                editPlaceMapsQuery ||
+                                editPlaceAddress ||
+                                editPlaceName
+                              ).trim();
+                              const direct = parseCoordinatesFromInputOrUrl(rawQ);
+                              if (direct) {
+                                setEditPlaceLat(String(direct.lat));
+                                setEditPlaceLng(String(direct.lng));
+                                showToast(`📍 Đã trích xuất tọa độ: ${direct.lat}, ${direct.lng}`);
+                                return;
+                              }
+                              setIsAdminGeocoding(true);
+                              setAdminGeoSuggestions([]);
+                              try {
+                                const results = await geocodeAddressWithNominatim(
+                                  `${editPlaceAddress || editPlaceName}, Xuân Hòa, Phúc Yên`
+                                );
+                                if (results.length > 0) {
+                                  setAdminGeoSuggestions(results);
+                                  setEditPlaceLat(String(results[0].lat));
+                                  setEditPlaceLng(String(results[0].lng));
+                                  showToast(`📍 Đã tìm thấy tọa độ: ${results[0].lat}, ${results[0].lng}`);
+                                } else {
+                                  const road = findSuggestedRoadForAddress(
+                                    `${editPlaceAddress} ${editPlaceName}`,
+                                    VERIFIED_OSM_ROADS_SEED
+                                  );
+                                  if (road) {
+                                    const rLat = Number(road.lat.toFixed(6));
+                                    const rLng = Number(road.lng.toFixed(6));
+                                    setEditPlaceLat(String(rLat));
+                                    setEditPlaceLng(String(rLng));
+                                    showToast(`📍 Đã định vị theo tuyến đường ${road.name}: ${rLat}, ${rLng}`);
+                                  } else {
+                                    showToast('Chưa tìm thấy tự động — bạn có thể dán Plus Code hoặc chấm trên bản đồ', 'warn');
+                                  }
+                                }
+                              } finally {
+                                setIsAdminGeocoding(false);
+                              }
+                            }}
+                            style={{
+                              ...smallRowBtnStyle(theme),
+                              background: theme.accent,
+                              color: '#FFFFFF',
+                              borderColor: theme.accent,
+                              padding: '0 12px',
+                              height: '36px',
+                            }}
+                          >
+                            <MapPin size={13} />
+                            <span>{isAdminGeocoding ? 'Đang tìm...' : 'Tìm tọa độ từ Địa chỉ'}</span>
+                          </button>
                           <a
                             href={
                               editPlaceMapsUrl.trim() ||
@@ -1884,7 +2044,8 @@ export function AdminDashboardView({
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '5px',
-                              padding: '0 13px',
+                              padding: '0 11px',
+                              height: '36px',
                               borderRadius: '8px',
                               border: `1px solid ${theme.accentBorder}`,
                               background: theme.accentSoft,
@@ -1895,8 +2056,129 @@ export function AdminDashboardView({
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            <ExternalLink size={13} /> Xem Maps
+                            <ExternalLink size={13} /> Google Maps
                           </a>
+                        </div>
+
+                        {adminGeoSuggestions.length > 1 && (
+                          <div
+                            style={{
+                              marginTop: '6px',
+                              padding: '6px 8px',
+                              borderRadius: '8px',
+                              background: theme.bgElevated,
+                              border: `1px solid ${theme.border}`,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '4px',
+                            }}
+                          >
+                            {adminGeoSuggestions.slice(0, 3).map((sug, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setEditPlaceLat(String(sug.lat));
+                                  setEditPlaceLng(String(sug.lng));
+                                  setAdminGeoSuggestions([]);
+                                  showToast(`Đã chọn tọa độ: ${sug.lat}, ${sug.lng}`);
+                                }}
+                                style={{
+                                  textAlign: 'left',
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${theme.border}`,
+                                  background: theme.bgCard,
+                                  color: theme.textPrimary,
+                                  fontSize: '11.5px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                📍 {sug.displayName} ({sug.lat}, {sug.lng})
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* HÀNG CHỌN ICON BẢN ĐỒ + TỌA ĐỘ LAT/LNG + NÚT MỞ BẢN ĐỒ */}
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '1.3fr 0.85fr 0.85fr auto',
+                            gap: '8px',
+                            marginTop: '8px',
+                            alignItems: 'end',
+                          }}
+                        >
+                          <div>
+                            <label style={compactLabelStyle(theme)}>Biểu tượng & Nhóm trên Bản đồ</label>
+                            <select
+                              value={editPlaceMapCategory}
+                              onChange={e => {
+                                const nextCat = e.target.value as EditableMapCategory;
+                                setEditPlaceMapCategory(nextCat);
+                                if (nextCat === 'public' || nextCat === 'school') {
+                                  setEditPlaceSectorTag('dia-danh');
+                                }
+                              }}
+                              style={{ ...lightSelectStyle(theme), height: '35px', fontWeight: 700 }}
+                            >
+                              {EDITABLE_MAP_CATEGORIES.map(c => (
+                                <option key={c.id} value={c.id}>
+                                  {c.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={compactLabelStyle(theme)}>Vĩ độ (Lat)</label>
+                            <input
+                              type="text"
+                              value={editPlaceLat}
+                              onChange={e => setEditPlaceLat(e.target.value)}
+                              placeholder="21.2897..."
+                              style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={compactLabelStyle(theme)}>Kinh độ (Lng)</label>
+                            <input
+                              type="text"
+                              value={editPlaceLng}
+                              onChange={e => setEditPlaceLng(e.target.value)}
+                              placeholder="105.7112..."
+                              style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (editPlaceLat && editPlaceLng) {
+                                jumpToMapUrl(
+                                  `#/ban-do?flyLat=${editPlaceLat}&flyLng=${editPlaceLng}&flyLabel=${encodeURIComponent(
+                                    editPlaceName
+                                  )}`
+                                );
+                              } else {
+                                jumpToMapUrl(
+                                  `#/ban-do?pick=${encodeURIComponent(
+                                    selectedPlaceItem.place.id
+                                  )}&pickName=${encodeURIComponent(editPlaceName)}`
+                                );
+                              }
+                            }}
+                            style={{
+                              ...smallRowBtnStyle(theme),
+                              height: '35px',
+                              padding: '0 11px',
+                              fontWeight: 700,
+                            }}
+                            title="Mở Bản đồ để xem vị trí hoặc chấm ghim trực tiếp"
+                          >
+                            <MapPin size={13} />
+                            <span>{editPlaceLat && editPlaceLng ? 'Xem trên Bản đồ' : 'Chấm trên Bản đồ'}</span>
+                          </button>
                         </div>
                       </div>
 
@@ -3398,19 +3680,45 @@ export function AdminDashboardView({
                   style={compactInputStyle(theme)}
                 />
               </div>
-              <div>
-                <label style={compactLabelStyle(theme)}>Phân khu ngành nghề</label>
-                <select
-                  value={newPlaceForm.sectorTag}
-                  onChange={e => setNewPlaceForm({ ...newPlaceForm, sectorTag: e.target.value })}
-                  style={{ ...lightSelectStyle(theme), padding: '8px 11px' }}
-                >
-                  {sectorTags.map(sec => (
-                    <option key={sec.id} value={sec.id}>
-                      {sec.label}
-                    </option>
-                  ))}
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
+                  <label style={compactLabelStyle(theme)}>Phân khu quản lý</label>
+                  <select
+                    value={newPlaceForm.sectorTag}
+                    onChange={e => setNewPlaceForm({ ...newPlaceForm, sectorTag: e.target.value })}
+                    style={{ ...lightSelectStyle(theme), padding: '8px 11px' }}
+                  >
+                    {sectorTags.map(sec => (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={compactLabelStyle(theme)}>Biểu tượng Bản đồ (Icon)</label>
+                  <select
+                    value={newPlaceForm.mapCategory}
+                    onChange={e => {
+                      const nextCat = e.target.value as EditableMapCategory;
+                      setNewPlaceForm({
+                        ...newPlaceForm,
+                        mapCategory: nextCat,
+                        sectorTag:
+                          nextCat === 'public' || nextCat === 'school'
+                            ? 'dia-danh'
+                            : newPlaceForm.sectorTag,
+                      });
+                    }}
+                    style={{ ...lightSelectStyle(theme), padding: '8px 11px' }}
+                  >
+                    {EDITABLE_MAP_CATEGORIES.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div>
@@ -3442,14 +3750,94 @@ export function AdminDashboardView({
                 />
               </div>
               <div>
-                <label style={compactLabelStyle(theme)}>Link Google Maps (nếu có)</label>
-                <input
-                  type="text"
-                  value={newPlaceForm.mapsUrl}
-                  onChange={e => setNewPlaceForm({ ...newPlaceForm, mapsUrl: e.target.value })}
-                  placeholder="https://maps.app.goo.gl/..."
-                  style={compactInputStyle(theme)}
-                />
+                <label style={compactLabelStyle(theme)}>
+                  Link Google Maps / Plus Code (VD: 7PQ6+VFP) / Tọa độ
+                </label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    value={newPlaceForm.mapsUrl}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const parsed = parseCoordinatesFromInputOrUrl(val);
+                      setNewPlaceForm({
+                        ...newPlaceForm,
+                        mapsUrl: val,
+                        lat: parsed ? String(parsed.lat) : newPlaceForm.lat,
+                        lng: parsed ? String(parsed.lng) : newPlaceForm.lng,
+                      });
+                    }}
+                    placeholder="Dán link Maps, Plus Code (7PQ6+VFP) hoặc 21.289, 105.711..."
+                    style={{ ...compactInputStyle(theme), flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const q = (newPlaceForm.mapsUrl || newPlaceForm.address || newPlaceForm.name).trim();
+                      const direct = parseCoordinatesFromInputOrUrl(q);
+                      if (direct) {
+                        setNewPlaceForm({
+                          ...newPlaceForm,
+                          lat: String(direct.lat),
+                          lng: String(direct.lng),
+                        });
+                        showToast(`📍 Đã lấy tọa độ: ${direct.lat}, ${direct.lng}`);
+                        return;
+                      }
+                      const res = await geocodeAddressWithNominatim(`${q}, Xuân Hòa, Phúc Yên`);
+                      if (res.length > 0) {
+                        setNewPlaceForm({
+                          ...newPlaceForm,
+                          lat: String(res[0].lat),
+                          lng: String(res[0].lng),
+                        });
+                        showToast(`📍 Đã tìm thấy tọa độ: ${res[0].lat}, ${res[0].lng}`);
+                      } else {
+                        const road = findSuggestedRoadForAddress(q, VERIFIED_OSM_ROADS_SEED);
+                        if (road) {
+                          setNewPlaceForm({
+                            ...newPlaceForm,
+                            lat: String(Number(road.lat.toFixed(6))),
+                            lng: String(Number(road.lng.toFixed(6))),
+                          });
+                          showToast(`📍 Định vị theo đường ${road.name}`);
+                        } else {
+                          showToast('Không tìm thấy tự động — hãy nhập Plus Code hoặc Vĩ độ/Kinh độ', 'warn');
+                        }
+                      }
+                    }}
+                    style={{
+                      ...smallRowBtnStyle(theme),
+                      background: theme.accent,
+                      color: '#FFF',
+                      borderColor: theme.accent,
+                    }}
+                  >
+                    Tìm tọa độ
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
+                  <label style={compactLabelStyle(theme)}>Vĩ độ (Lat - tự động cắm ghim)</label>
+                  <input
+                    type="text"
+                    value={newPlaceForm.lat}
+                    onChange={e => setNewPlaceForm({ ...newPlaceForm, lat: e.target.value })}
+                    placeholder="21.2897..."
+                    style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                  />
+                </div>
+                <div>
+                  <label style={compactLabelStyle(theme)}>Kinh độ (Lng - tự động cắm ghim)</label>
+                  <input
+                    type="text"
+                    value={newPlaceForm.lng}
+                    onChange={e => setNewPlaceForm({ ...newPlaceForm, lng: e.target.value })}
+                    placeholder="105.7112..."
+                    style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                  />
+                </div>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>

@@ -72,6 +72,7 @@ import { MapSearchBar } from '@/components/map/MapSearchBar';
 import { MapCategoryPanel, renderCategoryIcon } from '@/components/map/MapCategoryPanel';
 import { MapPlacePopup } from '@/components/map/MapPlacePopup';
 import { MapControls } from '@/components/map/MapControls';
+import { City3DView } from '@/components/map/city3d/City3DView';
 import { GameAssetLayer } from '@/components/map/GameAssetLayer';
 import { MerchantPortalModal } from '@/components/map/MerchantPortalModal';
 
@@ -198,6 +199,17 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   const [clusterSelectionList, setClusterSelectionList] = useState<PlaceLocation[] | null>(null);
   const [selectedGameAsset, setSelectedGameAsset] = useState<GameAsset | null>(null);
   const [modalPlace, setModalPlace] = useState<Place | null>(null);
+
+  // Sa Bàn 3D Toàn Phường (37.787 công trình, mái ngói, instanced trees, bóng nắng thời gian thực)
+  const [isCity3DOpen, setIsCity3DOpen] = useState<boolean>(() =>
+    typeof window !== 'undefined' &&
+    (new URLSearchParams(window.location.search).get('3d') === '1' ||
+      window.location.hash.includes('3d=1') ||
+      window.location.hash.includes('map3d') ||
+      window.location.hash.includes('3d'))
+  );
+  // Mặc định ẩn các quán ăn/dịch vụ chưa chuẩn định vị (chỉ hiện Cơ quan hành chính, Công an, Trường học, Y tế, Địa danh chuẩn)
+  const [showCommercialShops, setShowCommercialShops] = useState<boolean>(false);
 
   // Báo cáo chất lượng dữ liệu & Công cụ Admin gắn tọa độ
   const [isDataQualityOpen, setIsDataQualityOpen] = useState<boolean>(false);
@@ -734,10 +746,10 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      // Khi đang kéo bản đồ (isMoving), ẩn tạm ngõ nhỏ nếu zoom < 15.8 để khung hình đạt 60fps tức thì
-      const minAlleyZoom = isMoving ? 15.8 : 15.4;
-      const wAlley = zoom < minAlleyZoom ? 0 : Math.max(1.5, Math.pow(1.4, zoom - 14.2));
-      const wMinor = zoom < 13.7 ? 0 : Math.max(2.2, Math.pow(1.45, zoom - 12.2));
+      // Hiển thị rõ cả đường nhánh và ngõ nhỏ trên toàn phường (kể cả vùng xa trung tâm Cao Minh, Ngọc Thanh, Đồng Xuân)
+      const minAlleyZoom = isMoving ? 14.5 : 13.5;
+      const wAlley = zoom < minAlleyZoom ? 0 : Math.max(1.5, Math.pow(1.4, zoom - 13.6));
+      const wMinor = zoom < 12.5 ? 0 : Math.max(2.3, Math.pow(1.45, zoom - 12.0));
       const wSecondary = Math.max(3.6, Math.pow(1.48, zoom - 10.6));
       const wMajor = Math.max(4.8, Math.pow(1.5, zoom - 10.2));
 
@@ -811,13 +823,13 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
       // 4a. Vẽ viền đường (Casing) gộp theo từng cấp đường bằng Path2D gốc
       if (pathAlley) {
-        ctx.strokeStyle = '#DED7C9';
-        ctx.lineWidth = Math.max(1.6, wAlley) + 1.2;
+        ctx.strokeStyle = '#C9C0B0';
+        ctx.lineWidth = Math.max(1.7, wAlley) + 1.3;
         ctx.stroke(pathAlley);
       }
       if (pathMinor) {
-        ctx.strokeStyle = '#D2CAB9';
-        ctx.lineWidth = Math.max(2.2, wMinor) + 1.8;
+        ctx.strokeStyle = '#C4BBA9';
+        ctx.lineWidth = Math.max(2.3, wMinor) + 1.8;
         ctx.stroke(pathMinor);
       }
       if (pathSecondary) {
@@ -1661,9 +1673,9 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
             // - Zoom 13.5 -> 14.55: hiện thêm trục chính cấp phường (Phạm Văn Đồng, Kim Ngọc, Lê Thái Tổ...)
             // - Zoom 14.55 -> 15.75: hiện thêm các phố nội khu (Võ Thị Sáu, Kim Đồng, Lê Quang Đạo...)
             // - Zoom >= 15.75: mới hiện tên các Ngõ / Ngách nhỏ để bản đồ không bao giờ bị rối
-            if (zoom < 13.5 && tier !== 'major') continue;
-            if (zoom < 14.55 && tier !== 'major' && tier !== 'secondary') continue;
-            if (zoom < (isMoving ? 15.95 : 15.75) && isAlley) continue;
+            if (zoom < 12.8 && tier !== 'major') continue;
+            if (zoom < 13.8 && tier !== 'major' && tier !== 'secondary') continue;
+            if (zoom < (isMoving ? 15.2 : 14.7) && isAlley) continue;
 
             // Kiểm tra chiều dài con đường trên màn hình phải đủ dài hơn chữ thì mới hiện tên
             const roadScreenLenPx = anchor.roadSpanDeg * pxPerDeg;
@@ -1951,21 +1963,18 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
             else roadsAlley.push(f);
           }
 
-          // LỌC SẠCH CÁC TÒA NHÀ NGOÀI PHƯỜNG XUÂN HÒA & TÁCH NHÓM NHÀ CHÍNH / NHÀ DÂN ĐỂ VẼ GỘP SIÊU MƯỢT
+          // LỌC SẠCH CÁC TÒA NHÀ NGOÀI PHƯỜNG XUÂN HÒA & TÁCH NHÓM NHÀ CHÍNH / NHÀ DÂN
           const rawBuildings: any[] = [];
           const landmarkBuildings: any[] = [];
           const regularBuildings: any[] = [];
 
           for (const f of allRawBuildings) {
-            indexRingFeature(f, f.geometry?.coordinates?.[0]);
+            const ring: number[][] = f.geometry?.coordinates?.[0];
+            indexRingFeature(f, ring);
             const mLng = f._midLng;
             const mLat = f._midLat;
-            if (!mLng || !mLat) continue;
+            if (!mLng || !mLat || !ring) continue;
             if (!isPointInsideXuanHoa(mLng, mLat)) continue;
-            if (mLng < 105.7168 && mLat < 21.292) continue;
-            if (mLng > 105.7318 && mLat > 21.2805 && mLat < 21.295 && !f.properties?.name) {
-              continue;
-            }
             const cleanBName = cleanGeoText(f.properties?.name || '');
             f._cleanName = cleanBName;
             rawBuildings.push(f);
@@ -2233,12 +2242,25 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     };
   }, [verifiedMapMarkers.length, unverifiedCatalogPlaces.length, syncTick]);
 
-  // Lọc danh sách marker đã xác minh theo danh mục đang chọn
+  // Lọc danh sách marker đã xác minh theo danh mục đang chọn (mặc định ẩn các quán ăn/dịch vụ chưa chuẩn định vị)
   const filteredVerifiedMarkers = useMemo(() => {
     if (!layerVisibility.realPois) return [];
-    if (selectedCategories.includes('all')) return verifiedMapMarkers;
-    return verifiedMapMarkers.filter((loc) => selectedCategories.includes(loc.category));
-  }, [verifiedMapMarkers, selectedCategories, layerVisibility.realPois]);
+    const baseList = showCommercialShops
+      ? verifiedMapMarkers
+      : verifiedMapMarkers.filter(
+          (loc) =>
+            loc.dataSource === 'openstreetmap' &&
+            loc.category !== 'food' &&
+            loc.category !== 'cafe' &&
+            loc.category !== 'snack' &&
+            loc.category !== 'pub' &&
+            loc.category !== 'billiards' &&
+            loc.category !== 'game' &&
+            loc.category !== 'phone'
+        );
+    if (selectedCategories.includes('all')) return baseList;
+    return baseList.filter((loc) => selectedCategories.includes(loc.category));
+  }, [verifiedMapMarkers, selectedCategories, layerVisibility.realPois, showCommercialShops]);
 
   // Đồng bộ danh sách marker đã lọc vào ref để vòng lặp 60fps khóa tọa độ chính xác tuyệt đối
   useEffect(() => {
@@ -2285,14 +2307,6 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         maxBounds: XUANHOA_MAX_BOUNDS,
         attributionControl: false,
       });
-
-      map.addControl(
-        new maplibregl.AttributionControl({
-          compact: true,
-          customAttribution: MAP_DATA_SOURCE_CONFIG.attributionHtml,
-        }),
-        'bottom-left'
-      );
 
       const handleUserInteractionStart = () => {
         hasUserInteractedRef.current = true;
@@ -2976,48 +2990,114 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         })}
       </div>
 
-      {/* 3. LỚP GIAO DIỆN ĐIỀU KHIỂN TRÊN CÙNG — CHỈ 1 THANH TÌM KIẾM DUY NHẤT GỌN GÀNG NHƯ GOOGLE MAPS */}
-      <div className="absolute top-2.5 left-2.5 right-2.5 z-30 flex flex-col gap-1.5 pointer-events-none">
-        <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
-          {/* Nút Quay lại chỉ hiện trên màn hình PC lớn (trên Mobile đã có thanh Bottom Nav cố định ở đáy) */}
-          <button
-            type="button"
-            onClick={onBackToHome}
-            aria-label="Quay lại trang chủ Xuân Hòa Có Gì"
-            title="Quay lại trang chủ Xuân Hòa Có Gì"
-            className="hidden md:flex px-3 h-10 rounded-2xl bg-[#FFFDF9]/95 border-2 border-[#403064] text-[#403064] hover:bg-[#E6F7EF] font-extrabold text-xs leading-snug items-center justify-center gap-1.5 shadow-[0_4px_14px_rgba(64,48,100,0.10)] shrink-0 cursor-pointer"
-          >
-            <ArrowLeft size={16} />
-            <span>Trang chủ</span>
-          </button>
+      {/* 3. LỚP GIAO DIỆN ĐIỀU KHIỂN TRÊN CÙNG — CÂN ĐỐI CHUẨN GOOGLE MAPS SANG TRỌNG */}
+      <div className="absolute top-3 left-3 right-3 z-30 flex flex-col gap-1.5 pointer-events-none">
+        <div className="flex flex-wrap items-center justify-between gap-2 pointer-events-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-[260px] max-w-2xl">
+            <button
+              type="button"
+              onClick={onBackToHome}
+              aria-label="Quay lại trang chủ Xuân Hòa Có Gì"
+              title="Quay lại trang chủ Xuân Hòa Có Gì"
+              className="hidden md:flex px-3.5 h-10 rounded-full bg-white/95 border border-slate-200/90 text-slate-800 hover:bg-slate-100 font-extrabold text-xs leading-snug items-center justify-center gap-1.5 shadow-[0_6px_20px_rgba(15,23,42,0.10)] backdrop-blur-md shrink-0 cursor-pointer transition"
+            >
+              <ArrowLeft size={15} />
+              <span>Trang chủ</span>
+            </button>
 
-          <MapSearchBar
-            verifiedPlaces={verifiedMapMarkers}
-            unverifiedPlaces={unverifiedCatalogPlaces}
-            roads={osmRoads}
-            gameAssets={DEMO_GAME_ASSETS}
-            selectedCategories={selectedCategories}
-            isCategoryDrawerOpen={isCategoryDrawerOpen}
-            onToggleCategoryDrawer={() => setIsCategoryDrawerOpen((v) => !v)}
-            onSelectVerifiedPlace={handleSelectVerifiedPlace}
-            onSelectUnverifiedPlace={handleSelectUnverifiedPlace}
-            onSelectRoad={handleSelectRoad}
-            onSelectGameAsset={handleSelectGameAsset}
-            onSelectPreset={handleSelectPresetArea}
-            isGameLayerEnabled={layerVisibility.gameAssets}
-            onToggleGameLayer={() =>
-              setLayerVisibility((prev) => ({ ...prev, gameAssets: !prev.gameAssets }))
-            }
-            isAdminUser={isAdminUser}
-            onOpenAdminCoordTool={openAdminCoordinateModal}
-            userCoords={userCoords}
-            onDrawRouteToPlace={handleDrawRouteToPlace}
-            onOpenMerchantPortal={(tab) => handleOpenMerchantPortal(tab)}
-            pendingApprovalCount={pendingApprovalCount}
-            activePresetId={activePresetId}
-            hasClaimedPlaces={hasClaimedPlaces}
-            claimedPlaceName={claimedPlaceName}
-          />
+            <MapSearchBar
+              verifiedPlaces={verifiedMapMarkers}
+              unverifiedPlaces={unverifiedCatalogPlaces}
+              roads={osmRoads}
+              gameAssets={DEMO_GAME_ASSETS}
+              selectedCategories={selectedCategories}
+              isCategoryDrawerOpen={isCategoryDrawerOpen}
+              onToggleCategoryDrawer={() => setIsCategoryDrawerOpen((v) => !v)}
+              onSelectVerifiedPlace={handleSelectVerifiedPlace}
+              onSelectUnverifiedPlace={handleSelectUnverifiedPlace}
+              onSelectRoad={handleSelectRoad}
+              onSelectGameAsset={handleSelectGameAsset}
+              onSelectPreset={handleSelectPresetArea}
+              isGameLayerEnabled={layerVisibility.gameAssets}
+              onToggleGameLayer={() =>
+                setLayerVisibility((prev) => ({ ...prev, gameAssets: !prev.gameAssets }))
+              }
+              isAdminUser={isAdminUser}
+              onOpenAdminCoordTool={openAdminCoordinateModal}
+              userCoords={userCoords}
+              onDrawRouteToPlace={handleDrawRouteToPlace}
+              onOpenMerchantPortal={(tab) => handleOpenMerchantPortal(tab)}
+              pendingApprovalCount={pendingApprovalCount}
+              activePresetId={activePresetId}
+              hasClaimedPlaces={hasClaimedPlaces}
+              claimedPlaceName={claimedPlaceName}
+            />
+          </div>
+
+          {/* Cụm Pill Lựa Chọn Danh Mục Cân Đối Chuẩn Google Maps */}
+          <div className="hidden lg:flex items-center gap-1.5 rounded-full bg-white/92 border border-slate-200/90 p-1 shadow-[0_6px_20px_rgba(15,23,42,0.10)] backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategories(['all']);
+                setShowCommercialShops(true);
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                selectedCategories.includes('all') && showCommercialShops
+                  ? 'bg-[#1E1633] text-white shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              ✨ Tất cả
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategories(['public', 'school']);
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                !selectedCategories.includes('all') &&
+                (selectedCategories.includes('public') || selectedCategories.includes('school'))
+                  ? 'bg-[#059669] text-white shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              🏛️ Cơ quan & Trường
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!showCommercialShops) {
+                  setShowCommercialShops(true);
+                  setSelectedCategories(['food', 'cafe', 'snack', 'pub']);
+                } else {
+                  setShowCommercialShops(false);
+                  setSelectedCategories(['all']);
+                }
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                showCommercialShops
+                  ? 'bg-[#E11D48] text-white shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-100'
+              }`}
+              title="Bật / Tắt hiển thị Quán ăn, Cafe & Dịch vụ trên bản đồ"
+            >
+              🍜 Ẩm thực & Quán
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsCity3DOpen(true)}
+              aria-label="Mở Sa bàn 3D Phường Xuân Hòa"
+              title="Mở Sa bàn 3D Phường Xuân Hòa"
+              className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-[#059669] to-[#047857] hover:from-[#047857] hover:to-[#065F46] text-white font-extrabold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
+            >
+              <span>🏢</span>
+              <span>Sa Bàn 3D</span>
+            </button>
+          </div>
         </div>
 
         {/* THANH QUẢN LÝ NHANH DÀNH CHO CHỦ QUÁN, QUẢN LÝ MAPS & QUẢN TRỊ VIÊN */}
@@ -3194,6 +3274,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           onOpenDataQualityModal={() => setIsDataQualityOpen(true)}
           is3DMode={is3DMode}
           onToggle3DMode={handleToggle3DMode}
+          onOpenCity3D={() => setIsCity3DOpen(true)}
         />
 
         {/* Banner hướng dẫn ở trên khi Chủ quán đang ngắm tâm ghim mặt tiền quán */}
@@ -3411,21 +3492,6 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         </>
       )}
 
-      {/* 3B. HUY HIỆU TIÊU ĐIỂM 3D SIÊU GỌN Ở GÓC DƯỚI TRÁI (Ẩn trên Mobile để màn hình điện thoại thoáng rộng 100%) */}
-      {is3DMode && !merchantPickingForPlace && !selectedPlace && !clusterSelectionList && !selectedGameAsset && (
-        <div className="hidden md:flex absolute left-3 right-16 bottom-6 z-20 pointer-events-none items-center">
-          <div className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#FFFDF9]/90 backdrop-blur-xs border border-[#403064]/35 text-[#403064] text-[11px] leading-snug font-bold shadow-xs max-w-full truncate">
-            <span className="w-2 h-2 rounded-full bg-[#39B980] shrink-0" />
-            <span className="truncate">
-              3D Spotlight: <strong>{focusZoneLabel}</strong>
-            </span>
-            <span className="hidden sm:inline text-[#65587F] font-medium">
-              · Chạm khu phố bất kỳ để nổi 3D
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* 4. POPUP THÔNG TIN ĐỊA ĐIỂM HOẶC DANH SÁCH CỤM GẦN NHAU Ở ĐÁY BẢN ĐỒ */}
       <div className="absolute left-2.5 right-14 sm:left-3 sm:right-16 bottom-20 md:bottom-6 z-30 pointer-events-none flex flex-col items-start gap-2">
         {clusterSelectionList && clusterSelectionList.length > 1 && (
@@ -3498,7 +3564,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               Đang tải Bản đồ Địa lý Phường Xuân Hòa...
             </h2>
             <p className="mt-1 text-xs text-[#65587F]">
-              Đang đồng bộ 6.225 tuyến đường, 5.083 công trình OpenStreetMap (Relation #19542980).
+              Đang đồng bộ hệ thống đường phố, ngõ nhỏ & địa danh Phường Xuân Hòa.
             </p>
           </div>
         </div>
@@ -3621,6 +3687,21 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                 <span>Xác nhận & Kết nối vị trí</span>
               </button>
             </form>
+
+            {/* Khám phá nhanh Sa Bàn 3D (mở tự do cho mọi người trải nghiệm) */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setIsCity3DOpen(true);
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#E6F7EF] to-[#D1FAE5] hover:from-[#D1FAE5] hover:to-[#A7F3D0] text-[#047857] border border-[#39B980]/50 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-xs hover:scale-[1.01]"
+              >
+                <span className="text-base">🏢</span>
+                <span>Khám phá Sa Bàn 3D Toàn Phường</span>
+              </button>
+            </div>
 
             {/* Nút điều hướng phụ */}
             <div className="pt-2 border-t border-[#F1F5F9] flex items-center justify-center gap-2">
@@ -3826,13 +3907,11 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                     ))}
                   </optgroup>
                   <optgroup label={`Đã có trên bản đồ (${verifiedMapMarkers.length})`}>
-                    {verifiedMapMarkers
-                      .filter((p) => p.dataSource !== 'openstreetmap')
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          [Đã có ghim] {p.name} ({p.lat}, {p.lng})
-                        </option>
-                      ))}
+                    {verifiedMapMarkers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        [{p.dataSource === 'openstreetmap' ? 'Địa danh' : 'Quán'}] {p.name} ({p.lat}, {p.lng})
+                      </option>
+                    ))}
                   </optgroup>
                 </select>
               </div>
@@ -3999,6 +4078,37 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         authUser={authUser}
         onOpenLogin={onOpenLogin}
       />
+
+      {/* 10. SA BÀN 3D TOÀN PHƯỜNG XUÂN HÒA (37.787 CÔNG TRÌNH, MÁI NGÓI, INSTANCED TREES, BÓNG NẮNG) */}
+      {isCity3DOpen && (
+        <City3DView
+          initialCenter={
+            mapInstanceRef.current
+              ? {
+                  lng: mapInstanceRef.current.getCenter().lng,
+                  lat: mapInstanceRef.current.getCenter().lat,
+                }
+              : XUANHOA_DEFAULT_CENTER
+          }
+          places={verifiedMapMarkers}
+          isAdminUser={isAdminUser}
+          onDataChanged={() => setSyncTick((t) => t + 1)}
+          onOpenWebAdmin={() => {
+            window.location.hash = '#admin';
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+          }}
+          onClose={() => setIsCity3DOpen(false)}
+          onOpenPlace={(loc) => {
+            if (loc.originalPlace) {
+              setModalPlace(loc.originalPlace);
+            }
+          }}
+          onShowPlaceIn2D={(loc) => {
+            setIsCity3DOpen(false);
+            handleSelectVerifiedPlace(loc);
+          }}
+        />
+      )}
     </div>
   );
 };

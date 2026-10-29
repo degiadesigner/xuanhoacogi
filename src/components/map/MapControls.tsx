@@ -29,6 +29,7 @@ interface MapControlsProps {
   onOpenDataQualityModal: () => void;
   is3DMode?: boolean;
   onToggle3DMode?: () => void;
+  onOpenCity3D?: () => void;
 }
 
 export const MapControls: React.FC<MapControlsProps> = ({
@@ -44,6 +45,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
   onOpenDataQualityModal,
   is3DMode = true,
   onToggle3DMode,
+  onOpenCity3D,
 }) => {
   const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
   const [isPresetRollOpen, setIsPresetRollOpen] = useState(false);
@@ -132,7 +134,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
               [
                 { key: 'realPois', label: '📍 Hiện Icon Địa điểm & Quán' },
                 { key: 'buildings', label: '🏢 Công trình & Khối nhà 3D' },
-                { key: 'baseGeography', label: '🛣️ Đường phố & Ngõ (OSM)' },
+                { key: 'baseGeography', label: '🛣️ Đường phố & Ngõ nhỏ' },
                 { key: 'waterAndParks', label: '🌳 Núi Thằn Lằn & Hồ Đại Lải' },
                 { key: 'wardBoundary', label: '🗺️ Ranh giới Phường Xuân Hòa' },
                 { key: 'userLocation', label: '🟢 Chấm xanh Vị trí của tôi' },
@@ -155,20 +157,6 @@ export const MapControls: React.FC<MapControlsProps> = ({
               </label>
             ))}
           </div>
-
-          <div className="pt-1.5 border-t border-[#E5DEC9]">
-            <button
-              type="button"
-              onClick={() => {
-                setIsLayerMenuOpen(false);
-                onOpenDataQualityModal();
-              }}
-              className="w-full px-2.5 py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] text-[#1D7A52] font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <ShieldCheck size={13} />
-              <span>Thông tin dữ liệu bản đồ OSM</span>
-            </button>
-          </div>
         </div>
       )}
 
@@ -188,7 +176,17 @@ export const MapControls: React.FC<MapControlsProps> = ({
           )}
         </button>
 
-        {onToggle3DMode && (
+        {onOpenCity3D ? (
+          <button
+            type="button"
+            onClick={onOpenCity3D}
+            aria-label="Mở Sa bàn 3D Phường Xuân Hòa"
+            title="Mở Sa bàn 3D Phường Xuân Hòa (37.787 công trình, mái ngói, bóng nắng)"
+            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center font-black text-[11px] transition-all border-b border-[#E5DEC9] cursor-pointer bg-gradient-to-br from-[#FFFDF9] to-[#E6F7EF] hover:from-[#39B980] hover:to-[#227C55] hover:text-white text-[#1D7A52] group"
+          >
+            <span className="group-hover:scale-110 transition-transform">3D</span>
+          </button>
+        ) : onToggle3DMode ? (
           <button
             type="button"
             onClick={onToggle3DMode}
@@ -202,7 +200,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
           >
             {is3DMode ? '3D' : '2D'}
           </button>
-        )}
+        ) : null}
 
         <button
           type="button"

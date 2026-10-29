@@ -37,6 +37,7 @@ interface MapSearchBarProps {
   selectedCategories: MapCategoryKey[];
   isCategoryDrawerOpen: boolean;
   onToggleCategoryDrawer: () => void;
+  activeCategoryLabel?: string;
   onSelectVerifiedPlace: (place: PlaceLocation) => void;
   onSelectUnverifiedPlace: (place: PlaceLocation) => void;
   onSelectRoad: (road: RoadSearchResult) => void;
@@ -53,27 +54,30 @@ interface MapSearchBarProps {
   activePresetId?: string;
   hasClaimedPlaces?: boolean;
   claimedPlaceName?: string | null;
+  savedPlaceIds?: string[];
+  isSavedDrawerOpen?: boolean;
+  onToggleSavedDrawer?: () => void;
 }
 
 type QuickTopicId =
-  | 'zones'
+  | 'all_places'
   | 'food_verified'
+  | 'civic'
   | 'school'
+  | 'roads'
+  | 'zones'
   | 'kdt'
   | 'heritage'
   | 'fuel_market'
-  | 'resort'
-  | 'roads';
+  | 'resort';
 
 const QUICK_TOPICS: Array<{ id: QuickTopicId; label: string }> = [
-  { id: 'food_verified', label: '🍜 Quán & Điểm nóng' },
-  { id: 'zones', label: '📍 11 Khu vực' },
-  { id: 'school', label: '🎓 Trường & KTX' },
-  { id: 'kdt', label: '🏙️ 6 Khu Đô Thị' },
-  { id: 'heritage', label: '⛩️ Di tích & Chùa' },
-  { id: 'fuel_market', label: '⛽ Cây xăng & Chợ' },
-  { id: 'resort', label: '🦢 Đại Lải & Resort' },
-  { id: 'roads', label: '🛣️ Đường & Ngõ' },
+  { id: 'all_places', label: 'Tất cả' },
+  { id: 'food_verified', label: 'Hàng quán' },
+  { id: 'civic', label: 'Cơ quan & Trụ sở' },
+  { id: 'school', label: 'Trường học' },
+  { id: 'roads', label: 'Đường & Ngõ' },
+  { id: 'zones', label: '11 Khu vực' },
 ];
 
 export const MapSearchBar: React.FC<MapSearchBarProps> = ({
@@ -84,6 +88,7 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
   selectedCategories,
   isCategoryDrawerOpen,
   onToggleCategoryDrawer,
+  activeCategoryLabel = 'Danh mục',
   onSelectVerifiedPlace,
   onSelectUnverifiedPlace,
   onSelectRoad,
@@ -100,10 +105,13 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
   activePresetId = 'dhsp2',
   hasClaimedPlaces = false,
   claimedPlaceName = null,
+  savedPlaceIds = [],
+  isSavedDrawerOpen = false,
+  onToggleSavedDrawer,
 }) => {
   const [rawQuery, setRawQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
-  const [activeQuickTopic, setActiveQuickTopic] = useState<QuickTopicId>('food_verified');
+  const [activeQuickTopic, setActiveQuickTopic] = useState<QuickTopicId>('all_places');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -161,12 +169,12 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
         const db = Math.hypot(b.lat - originLat, b.lng - originLng);
         return da - db;
       })
-      .slice(0, 12);
+      .slice(0, 20);
 
     const matchedRoads = roads
       .filter((r) => matchesAllTerms(r.name))
-      .slice(0, 10);
-    const matchedUnverified = unverifiedPlaces.filter(matchLocation).slice(0, 8);
+      .slice(0, 15);
+    const matchedUnverified = unverifiedPlaces.filter(matchLocation).slice(0, 10);
     const matchedGame = gameAssets
       .filter((g) => matchesAllTerms(`${g.name} ${g.districtLabel}`))
       .slice(0, 3);
@@ -188,11 +196,27 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
 
   // Danh sách gợi ý nhanh khi người dùng chạm vào ô tìm kiếm nhưng chưa gõ chữ
   const quickTopicItems = useMemo(() => {
+    if (activeQuickTopic === 'all_places') {
+      return {
+        places: verifiedPlaces
+          .slice()
+          .sort((a, b) => {
+            if (a.dataSource !== 'openstreetmap' && b.dataSource === 'openstreetmap') return -1;
+            if (a.dataSource === 'openstreetmap' && b.dataSource !== 'openstreetmap') return 1;
+            return (
+              Math.hypot((a.lat || 0) - originLat, (a.lng || 0) - originLng) -
+              Math.hypot((b.lat || 0) - originLat, (b.lng || 0) - originLng)
+            );
+          })
+          .slice(0, 40),
+        roads: roads.slice(0, 8),
+      };
+    }
     if (activeQuickTopic === 'food_verified') {
       const foodAndCommercial = verifiedPlaces.filter(
         (p) =>
           p.dataSource !== 'openstreetmap' ||
-          ['food', 'cafe', 'snack', 'pub', 'billiards', 'game', 'supermarket'].includes(
+          ['food', 'cafe', 'snack', 'pub', 'billiards', 'game', 'supermarket', 'phone'].includes(
             p.category
           )
       );
@@ -207,67 +231,27 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
               Math.hypot((b.lat || 0) - originLat, (b.lng || 0) - originLng)
             );
           })
-          .slice(0, 10),
+          .slice(0, 30),
+        roads: [] as RoadSearchResult[],
+      };
+    }
+    if (activeQuickTopic === 'civic') {
+      return {
+        places: verifiedPlaces
+          .filter((p) => p.category === 'public' || p.category === 'service')
+          .slice(0, 30),
         roads: [] as RoadSearchResult[],
       };
     }
     if (activeQuickTopic === 'school') {
       return {
-        places: verifiedPlaces.filter((p) => p.category === 'school').slice(0, 8),
-        roads: [] as RoadSearchResult[],
-      };
-    }
-    if (activeQuickTopic === 'kdt') {
-      return {
-        places: verifiedPlaces.filter((p) => p.id.includes('_urban_kdt_')).slice(0, 8),
-        roads: [] as RoadSearchResult[],
-      };
-    }
-    if (activeQuickTopic === 'heritage') {
-      return {
-        places: verifiedPlaces
-          .filter(
-            (p) =>
-              p.id.includes('_historic_') ||
-              p.id.includes('_worship_') ||
-              p.id.includes('_landmark_')
-          )
-          .slice(0, 8),
-        roads: [] as RoadSearchResult[],
-      };
-    }
-    if (activeQuickTopic === 'fuel_market') {
-      return {
-        places: verifiedPlaces
-          .filter(
-            (p) =>
-              p.id.includes('_fuel_') ||
-              p.id.includes('13611773602') ||
-              p.id.includes('_market_') ||
-              p.id.includes('_civic_') ||
-              p.category === 'service'
-          )
-          .slice(0, 8),
-        roads: [] as RoadSearchResult[],
-      };
-    }
-    if (activeQuickTopic === 'resort') {
-      return {
-        places: verifiedPlaces
-          .filter(
-            (p) =>
-              p.category === 'entertainment' ||
-              p.id.includes('dailai') ||
-              p.id.includes('lap_dinh') ||
-              p.id.includes('9459565251')
-          )
-          .slice(0, 8),
+        places: verifiedPlaces.filter((p) => p.category === 'school').slice(0, 20),
         roads: [] as RoadSearchResult[],
       };
     }
     return {
       places: [] as PlaceLocation[],
-      roads: roads.slice(0, 12),
+      roads: roads.slice(0, 40),
     };
   }, [activeQuickTopic, verifiedPlaces, roads, originLat, originLng]);
 
@@ -281,21 +265,50 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative flex-1 min-w-0 max-w-full lg:max-w-2xl"
+      className="relative flex-1 min-w-0 max-w-full lg:max-w-xl"
       style={{
         fontFamily:
           "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
-      {/* Thanh tìm kiếm & Nút danh mục + Nút Chủ Quán */}
-      <div className="flex items-center gap-1.5 sm:gap-2">
+      {/* Thanh tìm kiếm gọn gàng chuẩn Google Maps */}
+      <div className="flex items-center gap-1.5">
         <div
-          className="flex-1 min-w-0 flex items-center gap-2 px-3 h-10 rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-md border-2 transition-all shadow-[0_4px_14px_rgba(64,48,100,0.10)]"
+          className="flex-1 min-w-0 flex items-center gap-1 pl-1.5 pr-2.5 h-9 sm:h-10 rounded-full bg-white/96 backdrop-blur-md border transition-all shadow-[0_6px_20px_rgba(15,23,42,0.10)]"
           style={{
-            borderColor: isFocused ? '#39B980' : '#403064',
+            borderColor: isFocused ? '#10B981' : 'rgba(203,213,225,0.9)',
           }}
         >
-          <Search size={16} className="shrink-0 text-[#403064]" />
+          <button
+            type="button"
+            onClick={onToggleCategoryDrawer}
+            className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1 rounded-full bg-[#1E1633] hover:bg-[#2D2246] text-white text-[11px] sm:text-[11.5px] font-extrabold transition-all shrink-0 cursor-pointer max-w-[128px] sm:max-w-[180px]"
+            title="Bật/tắt các danh mục trên bản đồ"
+          >
+            <span className="truncate">{activeCategoryLabel}</span>
+            <span className="text-[9px] opacity-80 ml-0.5 shrink-0">{isCategoryDrawerOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {onToggleSavedDrawer && (
+            <button
+              type="button"
+              onClick={onToggleSavedDrawer}
+              title="Địa điểm đã lưu của bạn (★)"
+              className={`flex items-center justify-center gap-0.5 px-2 py-1 rounded-full text-[11px] font-extrabold border transition-all shrink-0 cursor-pointer ${
+                isSavedDrawerOpen || savedPlaceIds.length > 0
+                  ? 'bg-[#FEF3C7] text-[#B45309] border-[#F59E0B] hover:bg-[#FDE68A]'
+                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+              }`}
+            >
+              <span>★</span>
+              {savedPlaceIds.length > 0 && (
+                <span className="text-[10px] font-extrabold">{savedPlaceIds.length}</span>
+              )}
+            </button>
+          )}
+
+          <div className="mx-0.5 h-4 w-[1px] bg-slate-200 shrink-0" />
+
           <input
             ref={inputRef}
             type="text"
@@ -305,9 +318,9 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
               setRawQuery(e.target.value);
               setIsFocused(true);
             }}
-            placeholder="Tìm quán cơm, bún, trà sữa, đường, trường học..."
+            placeholder="Tìm địa chỉ, quán..."
             aria-label="Tìm kiếm quán ăn, địa điểm hoặc tên đường trên bản đồ Xuân Hòa"
-            className="w-full min-w-0 bg-transparent text-[13px] leading-snug font-semibold text-[#2D2246] placeholder:text-[#7B6F95] focus:outline-none"
+            className="w-full min-w-0 bg-transparent text-[12px] sm:text-[12.5px] leading-snug font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none"
           />
           {rawQuery && (
             <button
@@ -317,117 +330,35 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                 inputRef.current?.focus();
               }}
               aria-label="Xóa từ khóa tìm kiếm"
-              className="p-1 rounded-full hover:bg-[#F1ECE1] text-[#65587F] transition-colors shrink-0 cursor-pointer"
+              className="px-1 rounded-full hover:bg-slate-100 text-slate-500 text-xs font-bold transition-colors shrink-0 cursor-pointer"
             >
-              <X size={14} />
+              ×
             </button>
           )}
         </div>
-
-        {/* Nút mở Danh mục ẩn (Drawer / Bottom Sheet) */}
-        <button
-          type="button"
-          onClick={onToggleCategoryDrawer}
-          className="relative flex items-center justify-center gap-1.5 px-2.5 sm:px-3 h-10 rounded-2xl border-2 font-bold text-xs leading-snug transition-all shrink-0 shadow-[0_4px_14px_rgba(64,48,100,0.10)] cursor-pointer"
-          style={{
-            backgroundColor:
-              isCategoryDrawerOpen || activeFilterCount > 0 ? '#39B980' : '#FFFDF9',
-            borderColor: '#403064',
-            color:
-              isCategoryDrawerOpen || activeFilterCount > 0 ? '#FFFFFF' : '#403064',
-          }}
-          aria-expanded={isCategoryDrawerOpen}
-          aria-label="Mở bộ lọc danh mục địa điểm"
-          title="Lọc theo danh mục địa điểm"
-        >
-          <SlidersHorizontal size={15} />
-          <span className="hidden sm:inline">Danh mục</span>
-          {activeFilterCount > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 rounded-full bg-[#403064] text-white text-[10px] font-extrabold">
-              {activeFilterCount}
-            </span>
-          )}
-        </button>
-
-        {/* Nút Cổng Chủ Quán / Biểu tượng Nick Quán Chính Chủ trên cùng 1 hàng duy nhất */}
-        {onOpenMerchantPortal && (
-          <button
-            type="button"
-            onClick={() =>
-              onOpenMerchantPortal(
-                isAdminUser && pendingApprovalCount > 0 ? 'admin_approvals' : 'merchant'
-              )
-            }
-            className="relative flex items-center justify-center gap-1.5 px-2.5 sm:px-3 h-10 rounded-2xl border-2 font-extrabold text-xs leading-snug transition-all shrink-0 shadow-[0_4px_14px_rgba(64,48,100,0.10)] cursor-pointer"
-            style={{
-              backgroundColor:
-                isAdminUser && pendingApprovalCount > 0
-                  ? '#FEF3C7'
-                  : hasClaimedPlaces
-                  ? '#E6F7EF'
-                  : '#FFFDF9',
-              borderColor: '#403064',
-              color:
-                isAdminUser && pendingApprovalCount > 0
-                  ? '#92400E'
-                  : hasClaimedPlaces
-                  ? '#1D7A52'
-                  : '#403064',
-            }}
-            title={
-              claimedPlaceName
-                ? `Nick Quán Chính Chủ: ${claimedPlaceName}`
-                : 'Nhập mã code Chủ quán / Quản lý quán của bạn'
-            }
-          >
-            <div className="relative flex items-center justify-center">
-              <Store size={15} className="text-[#39B980]" />
-              {hasClaimedPlaces && (
-                <span className=" -top-1 -right-1.5 w-3.5 h-3.5 rounded-full bg-[#39B980] border border-[#403064] text-white text-[8px] font-black flex items-center justify-center">
-                  ✓
-                </span>
-              )}
-            </div>
-            <span className="hidden md:inline max-w-[140px] truncate">
-              {isAdminUser && pendingApprovalCount > 0
-                ? 'Duyệt Quán'
-                : claimedPlaceName
-                ? claimedPlaceName
-                : isAdminUser
-                ? 'Quản lý Quán'
-                : 'Chủ quán'}
-            </span>
-            {isAdminUser && pendingApprovalCount > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[#EF4444] text-white text-[10px] font-black animate-pulse">
-                {pendingApprovalCount}
-              </span>
-            )}
-          </button>
-        )}
       </div>
 
       {/* Bảng kết quả tìm kiếm hoặc Khám phá nhanh (Chuẩn 100% Mobile & PC không tràn viền) */}
       {showDropdown && (
         <div
-          className="fixed left-2.5 right-2.5 top-[56px] md:absolute md:left-0 md:right-0 md:top-full md:mt-2 rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_16px_40px_rgba(64,48,100,0.22)] max-h-[72vh] overflow-y-auto z-50 p-2.5"
+          className="fixed left-2.5 right-2.5 top-[52px] md:absolute md:left-0 md:right-0 md:top-full md:mt-2 rounded-2xl bg-[#FFFDF9] border border-[#403064]/85 shadow-[0_16px_40px_rgba(64,48,100,0.22)] max-h-[70vh] overflow-y-auto z-50 p-2.5"
           role="listbox"
         >
           {!hasQuery ? (
             /* CHẾ ĐỘ KHÁM PHÁ NHANH KHI CHƯA GÕ TỪ KHÓA */
             <div className="space-y-2.5">
               <div className="flex items-center justify-between px-1">
-                <span className="text-[11px] font-extrabold text-[#403064] flex items-center gap-1.5 leading-snug">
-                  <Sparkles size={13} className="text-[#39B980]" />
+                <span className="text-[11px] font-extrabold text-[#403064] leading-snug">
                   <span>
                     {userCoords
                       ? 'Khám phá gần vị trí định vị của bạn'
-                      : 'Khám phá nhanh Xuân Hòa (Chạm để bay tới ngay)'}
+                      : 'Khám phá nhanh Xuân Hòa'}
                   </span>
                 </span>
                 <button
                   type="button"
                   onClick={() => setIsFocused(false)}
-                  className="text-[11px] font-bold text-[#65587F] hover:text-[#2D2246] px-1.5 py-0.5 rounded-lg bg-[#F1ECE1] cursor-pointer"
+                  className="text-[11px] font-bold text-[#65587F] hover:text-[#2D2246] px-2 py-0.5 rounded-lg bg-[#F1ECE1] cursor-pointer"
                 >
                   Đóng
                 </button>
@@ -536,7 +467,7 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                               </p>
                               {eta && (
                                 <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-[#E6F7EF] text-[#1D7A52]">
-                                  {eta.distanceText} • 🛵 {eta.bikeMinutes}p
+                                  {eta.distanceText} • {eta.bikeMinutes}p
                                 </span>
                               )}
                             </div>
@@ -555,10 +486,9 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                                 onDrawRouteToPlace(loc);
                                 setIsFocused(false);
                               }}
-                              className="text-[10.5px] font-extrabold text-white px-2 py-1 rounded-lg bg-[#39B980] hover:bg-[#2FA36E] flex items-center gap-1 cursor-pointer"
+                              className="text-[10.5px] font-extrabold text-white px-2.5 py-1 rounded-lg bg-[#39B980] hover:bg-[#2FA36E] flex items-center cursor-pointer"
                               title="Chỉ đường từ vị trí của bạn tới địa điểm này"
                             >
-                              <Navigation size={11} />
                               <span>Chỉ đường</span>
                             </button>
                           )}
@@ -578,21 +508,16 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                       }}
                       className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-[#F5F1E6] transition-colors flex items-center justify-between gap-2 cursor-pointer"
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-6 h-6 rounded-lg bg-[#FFF5D6] border border-[#403064] flex items-center justify-center text-[#403064] shrink-0">
-                          <Route size={13} />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-[#2D2246] leading-snug truncate">
-                            {road.name}
-                          </p>
-                          <p className="text-[10.5px] text-[#65587F] leading-snug">
-                            Tuyến phố thực tế tại Phường Xuân Hòa
-                          </p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-[#2D2246] leading-snug truncate">
+                          {road.name}
+                        </p>
+                        <p className="text-[10.5px] text-[#65587F] leading-snug">
+                          Tuyến phố thực tế tại Phường Xuân Hòa
+                        </p>
                       </div>
                       <span className="text-[10.5px] font-extrabold text-[#1D7A52] px-2 py-1 rounded-lg bg-[#E6F7EF] shrink-0">
-                        Xem đường →
+                        Xem đường
                       </span>
                     </button>
                   ))}
@@ -611,18 +536,15 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                     }}
                     className="w-full px-2.5 py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#EDE9FE] border border-[#D8CFC0] text-[11px] font-bold text-[#403064] flex items-center justify-between gap-2 cursor-pointer"
                   >
-                    <span className="flex items-center gap-1.5 truncate">
-                      <Store size={13} className="text-[#39B980] shrink-0" />
-                      <span className="truncate">
-                        {isAdminUser
-                          ? `Quản trị Chủ Quán & Mã Code (${pendingApprovalCount} chờ duyệt)`
-                          : hasClaimedPlaces
-                          ? 'Mở bảng quản lý & ghim vị trí quán của bạn'
-                          : 'Bạn là Chủ Quán? Nhập mã hoặc nhận quyền quản lý quán'}
-                      </span>
+                    <span className="truncate">
+                      {isAdminUser
+                        ? `Quản trị Chủ Quán & Mã Code (${pendingApprovalCount} chờ duyệt)`
+                        : hasClaimedPlaces
+                        ? 'Mở bảng quản lý & ghim vị trí quán của bạn'
+                        : 'Bạn là Chủ Quán? Nhập mã hoặc nhận quyền quản lý quán'}
                     </span>
                     <span className="text-[10.5px] font-extrabold text-[#1D7A52] shrink-0">
-                      Mở ngay →
+                      Mở ngay
                     </span>
                   </button>
                 </div>
@@ -645,7 +567,7 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
               {results.matchedPresets.length > 0 && onSelectPreset && (
                 <div>
                   <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#403064] bg-[#EDE9FE] rounded-lg leading-snug">
-                    <span>📍 Phân khu trọng điểm ({results.matchedPresets.length})</span>
+                    <span>Phân khu trọng điểm ({results.matchedPresets.length})</span>
                     <span>Bay tới ngay</span>
                   </div>
                   <div className="mt-1 divide-y divide-[#F0EAE0]">
@@ -668,7 +590,7 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                           </p>
                         </div>
                         <span className="text-[10.5px] font-extrabold text-[#FFFFFF] px-2 py-1 rounded-lg bg-[#39B980] shrink-0">
-                          Bay tới →
+                          Bay tới
                         </span>
                       </button>
                     ))}
@@ -676,19 +598,15 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                 </div>
               )}
 
-              {/* 1. Địa điểm & Quán đã có định vị chuẩn trên bản đồ (Kèm khoảng cách + Thời gian di chuyển + Giờ mở cửa như Google Maps) */}
+              {/* 1. Địa điểm & Quán đã có định vị chuẩn trên bản đồ */}
               {results.matchedVerified.length > 0 && (
                 <div>
                   <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#1D7A52] bg-[#E6F7EF] rounded-lg leading-snug">
-                    <span className="flex items-center gap-1">
-                      <CheckCircle2 size={12} /> Quán & Địa điểm đã định vị (
-                      {results.matchedVerified.length})
-                    </span>
-                    <span>Xếp theo khoảng cách gần nhất</span>
+                    <span>Quán & Địa điểm đã định vị ({results.matchedVerified.length})</span>
+                    <span>Gần nhất</span>
                   </div>
                   <div className="mt-1 divide-y divide-[#F0EAE0]">
                     {results.matchedVerified.map((loc) => {
-                      const cat = MAP_CATEGORY_BY_ID[loc.category];
                       const eta =
                         loc.lat !== null && loc.lng !== null
                           ? calculateDistanceAndEta(originLat, originLng, loc.lat, loc.lng)
@@ -712,12 +630,6 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                             }}
                             className="flex items-start gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
                           >
-                            <span
-                              className="mt-0.5 w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border border-[#403064] text-white"
-                              style={{ backgroundColor: cat?.markerBg || '#39B980' }}
-                            >
-                              <MapPin size={14} />
-                            </span>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-xs font-extrabold text-[#2D2246] leading-snug truncate">
@@ -745,12 +657,11 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                               </div>
                               <p className="text-[11px] text-[#65587F] leading-snug truncate mt-0.5">
                                 {loc.address}{' '}
-                                {loc.openHours ? `• 🕒 ${loc.openHours}` : ''}
+                                {loc.openHours ? `• ${loc.openHours}` : ''}
                               </p>
                               {eta && (
                                 <p className="text-[11px] font-bold text-[#1D7A52] mt-0.5">
-                                  📍 Cách {eta.distanceText} • 🛵 {eta.bikeText} • 🚶{' '}
-                                  {eta.walkText}
+                                  Cách {eta.distanceText} • Xe {eta.bikeText} • Bộ {eta.walkText}
                                 </p>
                               )}
                             </div>
@@ -763,10 +674,9 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                                 onDrawRouteToPlace(loc);
                                 setIsFocused(false);
                               }}
-                              className="px-2.5 py-1.5 rounded-xl bg-[#39B980] hover:bg-[#2FA36E] text-white border border-[#403064] text-[10.5px] font-extrabold flex items-center gap-1 shrink-0 cursor-pointer"
+                              className="px-2.5 py-1.5 rounded-xl bg-[#39B980] hover:bg-[#2FA36E] text-white border border-[#403064] text-[10.5px] font-extrabold shrink-0 cursor-pointer"
                             >
-                              <Navigation size={11} />
-                              <span>Chỉ đường</span>
+                              Chỉ đường
                             </button>
                           )}
                         </div>
@@ -780,9 +690,7 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
               {results.matchedRoads.length > 0 && (
                 <div>
                   <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#403064] bg-[#F1ECE1] rounded-lg leading-snug">
-                    <span className="flex items-center gap-1">
-                      <Route size={12} /> Đường phố & Ngõ ({results.matchedRoads.length})
-                    </span>
+                    <span>Đường phố & Ngõ ({results.matchedRoads.length})</span>
                     <span>OpenStreetMap</span>
                   </div>
                   <div className="mt-1 divide-y divide-[#F0EAE0]">
@@ -796,23 +704,18 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                         }}
                         className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-[#F5F1E6] transition-colors flex items-center justify-between gap-2 cursor-pointer"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-[#FFF5D6] border border-[#403064] flex items-center justify-center text-[#403064] shrink-0">
-                            <Route size={13} />
-                          </span>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-[#2D2246] leading-snug truncate">
-                              {road.name}
-                            </p>
-                            <p className="text-[10.5px] text-[#65587F] leading-snug">
-                              {road.insideWard
-                                ? 'Phường Xuân Hòa'
-                                : 'Tuyến đường kết nối lân cận'}
-                            </p>
-                          </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[#2D2246] leading-snug truncate">
+                            {road.name}
+                          </p>
+                          <p className="text-[10.5px] text-[#65587F] leading-snug">
+                            {road.insideWard
+                              ? 'Phường Xuân Hòa'
+                              : 'Tuyến đường kết nối lân cận'}
+                          </p>
                         </div>
                         <span className="text-[10.5px] font-bold text-[#1D7A52] shrink-0">
-                          Xem đường →
+                          Xem đường
                         </span>
                       </button>
                     ))}
@@ -820,15 +723,12 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                 </div>
               )}
 
-              {/* 3. Quán trong danh mục chưa xác minh tọa độ (Chờ Chủ quán nhập mã hoặc Admin cắm ghim) */}
+              {/* 3. Quán trong danh mục chưa xác minh tọa độ */}
               {results.matchedUnverified.length > 0 && (
                 <div>
                   <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#92400E] bg-[#FEF3C7] rounded-lg leading-snug">
-                    <span className="flex items-center gap-1">
-                      <AlertCircle size={12} /> Quán chờ Chủ quán cắm định vị (
-                      {results.matchedUnverified.length})
-                    </span>
-                    <span>Có thể xem Menu hoặc Nhập mã chủ quán</span>
+                    <span>Quán chờ cắm định vị ({results.matchedUnverified.length})</span>
+                    <span>Xem Menu / Ghim</span>
                   </div>
                   <div className="mt-1 divide-y divide-[#F0EAE0]">
                     {results.matchedUnverified.map((loc) => {
@@ -855,7 +755,7 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                                 {loc.name}
                               </span>
                               <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-[#FEF3C7] text-[#92400E] border border-[#F59E0B]/40 leading-snug">
-                                Chờ chủ quán ghim
+                                Chờ ghim
                               </span>
                               <span className="text-[9.5px] font-bold text-[#1D7A52]">
                                 • {openStatus.badgeText}
@@ -863,7 +763,7 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                             </div>
                             <p className="text-[11px] text-[#65587F] leading-snug truncate mt-0.5">
                               {loc.address}{' '}
-                              {loc.openHours ? `· 🕒 ${loc.openHours}` : ''}{' '}
+                              {loc.openHours ? `· ${loc.openHours}` : ''}{' '}
                               {loc.metadata.priceRange ? `· ${loc.metadata.priceRange}` : ''}
                             </p>
                           </button>
@@ -879,7 +779,7 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                                 className="px-2 py-1 rounded-lg bg-[#EDE9FE] text-[#403064] border border-[#403064]/30 text-[10px] font-extrabold hover:bg-[#DDD6FE] cursor-pointer"
                                 title="Chủ quán nhập mã code để tự cắm định vị"
                               >
-                                🏪 Chủ quán ghim
+                                Chủ quán ghim
                               </button>
                             )}
                             {isAdminUser && (
@@ -900,10 +800,9 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
                                 onSelectUnverifiedPlace(loc);
                                 setIsFocused(false);
                               }}
-                              className="px-2 py-1 rounded-lg bg-[#F1ECE1] text-[#403064] text-[10px] font-bold hover:bg-[#E5DEC9] flex items-center gap-1 cursor-pointer"
+                              className="px-2 py-1 rounded-lg bg-[#F1ECE1] text-[#403064] text-[10px] font-bold hover:bg-[#E5DEC9] cursor-pointer"
                             >
-                              <span>Menu</span>
-                              <ExternalLink size={10} />
+                              Menu
                             </button>
                           </div>
                         </div>
@@ -917,10 +816,7 @@ export const MapSearchBar: React.FC<MapSearchBarProps> = ({
               {results.matchedGame.length > 0 && (
                 <div>
                   <div className="px-2.5 py-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-[#403064] bg-[#EDE9FE] rounded-lg leading-snug">
-                    <span className="flex items-center gap-1">
-                      <Castle size={12} /> Lô đất Game XUHO CITY — Demo (
-                      {results.matchedGame.length})
-                    </span>
+                    <span>Lô đất Game XUHO CITY — Demo ({results.matchedGame.length})</span>
                     <span>Mô phỏng</span>
                   </div>
                   <div className="mt-1 divide-y divide-[#F0EAE0]">

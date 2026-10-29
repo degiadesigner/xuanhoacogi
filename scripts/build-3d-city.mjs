@@ -582,7 +582,7 @@ for (const rawB of buildings) {
     for (const segId of segGrid.queryBox(b.box, 9)) {
       const [x1, y1, x2, y2, hw, , isGenerated] = segs[segId];
       if (isGenerated) continue;
-      const clearance = hw + 0.35;
+      const clearance = hw + 0.65;
       if (ringHitsSegment(b.ring, x1, y1, x2, y2, clearance) || ringHitsSegment(rawB.ring, x1, y1, x2, y2, clearance)) {
         onRoad = true;
         break;

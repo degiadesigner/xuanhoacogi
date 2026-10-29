@@ -9,8 +9,11 @@ import {
   Compass,
   Crosshair,
   ExternalLink,
+  Home,
   KeyRound,
+  Layers,
   Loader2,
+  LocateFixed,
   MapPin,
   Maximize2,
   Minimize2,
@@ -29,7 +32,10 @@ import {
 } from 'lucide-react';
 import type { MapCategoryKey, PlaceLocation } from '@/lib/map/map-types';
 import { MAP_CATEGORIES, MAP_CATEGORY_BY_ID } from '@/lib/map/map-categories';
+import { XUANHOA_DEFAULT_CENTER } from '@/lib/map/map-config';
 import {
+  calculateDistanceAndEta,
+  evaluatePlaceOpenStatus,
   findSuggestedRoadForAddress,
   geocodeAddressWithNominatim,
   hideLandmarkOrPlaceFromMap,
@@ -38,6 +44,9 @@ import {
   saveLandmarkOrPlaceFromMap,
   VERIFIED_OSM_POIS,
   VERIFIED_OSM_ROADS_SEED,
+  type DistanceAndEtaResult,
+  type TravelMode,
+  type UserHomeLocation,
 } from '@/lib/map/map-data';
 import {
   isAdminAuthenticated,
@@ -60,6 +69,7 @@ import {
   type WorkerOutMessage,
 } from './city3d-shared';
 import { reverseAreaName } from './city3d-live';
+import { createIconicLandmarksGroup } from './city3d-landmarks';
 import {
   SKY,
   createSkyDome,
@@ -69,10 +79,26 @@ import {
   type FlatKind,
 } from './city3d-materials';
 
+export interface ActiveRouteState3D {
+  targetPlace: PlaceLocation;
+  travelMode: TravelMode;
+  originCoords: { lat: number; lng: number };
+  pathLngLat: [number, number][];
+  totalDistanceMeters: number;
+  remainingDistanceMeters: number;
+  eta: DistanceAndEtaResult;
+  roadNames: string[];
+  originLabel: string;
+  progressIndex: number;
+  currentPos: [number, number];
+  hasArrived: boolean;
+  isInfoExpanded: boolean;
+}
+
 export interface City3DViewProps {
   initialCenter: { lat: number; lng: number };
   places: PlaceLocation[];
-  onClose: () => void;
+  onClose: (currentCenter?: { lat: number; lng: number }) => void;
   /** Mở trang chi tiết quán (PlaceModal) */
   onOpenPlace?: (place: PlaceLocation) => void;
   /** Quay về bản đồ 2D và chọn quán */
@@ -83,6 +109,28 @@ export interface City3DViewProps {
   onDataChanged?: () => void;
   /** Mở thẳng trang Web Admin (#admin) */
   onOpenWebAdmin?: (placeId?: string) => void;
+  /** Đồng bộ định vị GPS & Dẫn đường giữa 2D và 3D */
+  userCoords?: { lat: number; lng: number } | null;
+  isLocatingUser?: boolean;
+  onLocateUser?: () => void;
+  activeRoute?: ActiveRouteState3D | null;
+  onDrawRouteToPlace?: (place: PlaceLocation, mode?: TravelMode) => void;
+  onSwitchRouteMode?: (mode: TravelMode) => void;
+  onClearRoute?: () => void;
+  onArriveRoute?: () => void;
+  onToggleRouteInfo?: () => void;
+  savedPlaceIds?: string[];
+  userAccountLabel?: string;
+  onToggleSavePlace?: (place: PlaceLocation) => void;
+  userHome?: UserHomeLocation | null;
+  onSaveUserHome?: (payload: {
+    label: string;
+    address: string;
+    lat: number;
+    lng: number;
+  }) => void;
+  onClearUserHome?: () => void;
+  onRouteToHome?: (home: UserHomeLocation) => void;
 }
 
 interface Stats {
@@ -158,6 +206,22 @@ export const City3DView: React.FC<City3DViewProps> = ({
   isAdminUser: propIsAdmin,
   onDataChanged,
   onOpenWebAdmin,
+  userCoords = null,
+  isLocatingUser = false,
+  onLocateUser,
+  activeRoute = null,
+  onDrawRouteToPlace,
+  onSwitchRouteMode,
+  onClearRoute,
+  onArriveRoute,
+  onToggleRouteInfo,
+  savedPlaceIds = [],
+  userAccountLabel = 'Tài khoản của bạn',
+  onToggleSavePlace,
+  userHome = null,
+  onSaveUserHome,
+  onClearUserHome,
+  onRouteToHome,
 }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
@@ -166,6 +230,27 @@ export const City3DView: React.FC<City3DViewProps> = ({
   const labelElsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const roadLabelElsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const draftMarkerElRef = useRef<HTMLDivElement | null>(null);
+  const userMarker3DElRef = useRef<HTMLDivElement | null>(null);
+  const homeMarker3DElRef = useRef<HTMLDivElement | null>(null);
+  const routeGroupRef = useRef<THREE.Group | null>(null);
+  const userCoords3DRef = useRef<{ lat: number; lng: number } | null>(userCoords);
+  userCoords3DRef.current = userCoords;
+  const userHome3DRef = useRef<UserHomeLocation | null>(userHome);
+  userHome3DRef.current = userHome;
+  const activeRoute3DRef = useRef<ActiveRouteState3D | null>(activeRoute);
+  activeRoute3DRef.current = activeRoute;
+  const [is3DLayerMenuOpen, setIs3DLayerMenuOpen] = useState(false);
+
+  // Trạng thái Hộp thoại "Chỗ bạn sinh sống (Nhà của bạn)" ngay trên Sa bàn 3D
+  const [home3DModalMode, setHome3DModalMode] = useState<'closed' | 'view' | 'edit' | 'picking'>(
+    'closed'
+  );
+  const [home3DLabelInput, setHome3DLabelInput] = useState('Nhà của bạn');
+  const [home3DAddressInput, setHome3DAddressInput] = useState('');
+  const [home3DMapsInput, setHome3DMapsInput] = useState('');
+  const [home3DLatInput, setHome3DLatInput] = useState('');
+  const [home3DLngInput, setHome3DLngInput] = useState('');
+  const [home3DFeedback, setHome3DFeedback] = useState<string | null>(null);
 
   const [progress, setProgress] = useState<{ label: string; pct: number }>({
     label: 'Đang khởi động bộ dựng 3D…',
@@ -178,9 +263,19 @@ export const City3DView: React.FC<City3DViewProps> = ({
   const [labels, setLabels] = useState<BuildingLabel[]>([]);
   const [roadLabels, setRoadLabels] = useState<RoadLabel3D[]>([]);
   const [areaName, setAreaName] = useState<string>('Phường Xuân Hòa');
-  const [shadowsOn, setShadowsOn] = useState<boolean>(() => !isCoarsePointer());
+  const [shadowsOn, setShadowsOn] = useState<boolean>(false);
+  // Tùy chỉnh hiện ghim định vị (tắt đi thì không hiện gì cả ngoài địa điểm đang chọn)
+  const [showLocationPins, setShowLocationPins] = useState<boolean>(true);
   const [showCivic, setShowCivic] = useState<boolean>(true);
-  const [showShops, setShowShops] = useState<boolean>(false);
+  // Mặc định auto bật Hành chính + Trường học; cho phép bật/tắt độc lập từng danh mục
+  const [selectedCategories3D, setSelectedCategories3D] = useState<MapCategoryKey[]>([
+    'public',
+    'school',
+  ]);
+  const [activeShopGroup, setActiveShopGroup] = useState<
+    'none' | 'food' | 'pub' | 'cafe' | 'snack' | 'service'
+  >('none');
+  const [isSavedMenu3DOpen, setIsSavedMenu3DOpen] = useState(false);
   const [showRoadNames, setShowRoadNames] = useState<boolean>(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [liveState, setLiveState] = useState<{ busy: boolean; message: string | null }>({
@@ -211,6 +306,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
   const [editCategory, setEditCategory] =
     useState<Exclude<MapCategoryKey, 'all' | 'game_asset'>>('public');
   const [editAddress, setEditAddress] = useState('');
+  const [editTagline, setEditTagline] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editHours, setEditHours] = useState('');
   const [editMapsInput, setEditMapsInput] = useState('');
@@ -223,6 +319,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
   >([]);
   const [search3DQuery, setSearch3DQuery] = useState('');
   const [isSearch3DFocused, setIsSearch3DFocused] = useState(false);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
   // Toàn bộ đối tượng three.js giữ trong ref (không gây render lại React)
   const engineRef = useRef<{
@@ -241,24 +338,32 @@ export const City3DView: React.FC<City3DViewProps> = ({
   } | null>(null);
 
   const isCivicLandmark = useCallback((p: PlaceLocation) => {
-    if (p.category === 'school' || p.category === 'public') {
-      return true;
-    }
-    return (
-      p.dataSource === 'openstreetmap' &&
-      p.category !== 'food' &&
-      p.category !== 'cafe' &&
-      p.category !== 'snack' &&
-      p.category !== 'pub' &&
-      p.category !== 'billiards' &&
-      p.category !== 'game' &&
-      p.category !== 'phone'
-    );
+    return p.category === 'school' || p.category === 'public';
   }, []);
 
-  const totalShopsCount = useMemo(
-    () => places.filter((p) => p.lat !== null && p.lng !== null && !isCivicLandmark(p)).length,
-    [places, isCivicLandmark]
+  const getShopGroupOfPlace = useCallback(
+    (p: PlaceLocation): 'food' | 'pub' | 'cafe' | 'snack' | 'service' => {
+      if (p.category === 'food') return 'food';
+      if (p.category === 'pub') return 'pub';
+      if (p.category === 'cafe') return 'cafe';
+      if (p.category === 'snack') return 'snack';
+      return 'service';
+    },
+    []
+  );
+
+  const shopGroupCounts = useMemo(() => {
+    const counts = { food: 0, pub: 0, cafe: 0, snack: 0, service: 0 };
+    for (const p of places) {
+      if (p.lat === null || p.lng === null || isCivicLandmark(p)) continue;
+      counts[getShopGroupOfPlace(p)] += 1;
+    }
+    return counts;
+  }, [places, isCivicLandmark, getShopGroupOfPlace]);
+
+  const savedPlaces3D = useMemo(
+    () => places.filter((p) => p.lat !== null && p.lng !== null && savedPlaceIds.includes(p.id)),
+    [places, savedPlaceIds]
   );
 
   const placesWithCoords = useMemo(
@@ -266,9 +371,21 @@ export const City3DView: React.FC<City3DViewProps> = ({
       places.filter((p) => {
         if (p.lat === null || p.lng === null) return false;
         if (selected?.id === p.id) return true;
-        return isCivicLandmark(p) ? showCivic : showShops;
+        if (!showLocationPins) return false;
+        if (savedPlaceIds.includes(p.id)) return true;
+        if (selectedCategories3D.includes(p.category)) return true;
+        if (activeShopGroup !== 'none' && getShopGroupOfPlace(p) === activeShopGroup) return true;
+        return false;
       }),
-    [places, showCivic, showShops, isCivicLandmark, selected?.id]
+    [
+      places,
+      showLocationPins,
+      selectedCategories3D,
+      savedPlaceIds,
+      activeShopGroup,
+      getShopGroupOfPlace,
+      selected?.id,
+    ]
   );
 
   // Tiền tính toán tọa độ local (lx, lz) và kích thước hộp chữ cho mọi ghim (tránh tính lại mỗi frame)
@@ -294,12 +411,21 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
   const precomputedBuildingLabels = useMemo<PrecomputedBuildingLabel[]>(
     () =>
-      labels.map((lb, index) => ({
-        label: lb,
-        index,
-        halfW: lb.name.length * 3.0 + 10,
-      })),
-    [labels]
+      labels
+        .filter((lb) => {
+          // Ẩn nhãn tĩnh nếu đã có ghim địa danh động (precomputedPins) ở gần hoặc trùng tên để khi Admin đổi tên / ẩn sẽ cập nhật 100% tức thì
+          for (const pin of precomputedPins) {
+            if (Math.hypot(pin.lx - lb.x, pin.lz - lb.z) < 75) return false;
+            if (pin.place.name.toLowerCase() === lb.name.toLowerCase()) return false;
+          }
+          return true;
+        })
+        .map((lb, index) => ({
+          label: lb,
+          index,
+          halfW: lb.name.length * 3.0 + 10,
+        })),
+    [labels, precomputedPins]
   );
 
   const precomputedRoadLabels = useMemo<PrecomputedRoadLabel[]>(
@@ -341,6 +467,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
   const showRoadNamesRef = useRef(showRoadNames);
   showRoadNamesRef.current = showRoadNames;
+  const showLocationPinsRef = useRef(showLocationPins);
+  showLocationPinsRef.current = showLocationPins;
   const showCivicRef = useRef(showCivic);
   showCivicRef.current = showCivic;
   const shadowsRef = useRef(shadowsOn);
@@ -349,6 +477,12 @@ export const City3DView: React.FC<City3DViewProps> = ({
   isReadyRef.current = isReady;
   const isPicking3DRef = useRef(isPicking3DGround);
   isPicking3DRef.current = isPicking3DGround;
+  const isPickingHome3DRef = useRef(home3DModalMode === 'picking');
+  isPickingHome3DRef.current = home3DModalMode === 'picking';
+
+  useEffect(() => {
+    engineRef.current?.requestRender();
+  }, [showLocationPins, showCivic, showRoadNames, shadowsOn, userHome, precomputedPins]);
 
   // Khi danh sách places từ cha cập nhật, đồng bộ lại selected nếu đang mở
   useEffect(() => {
@@ -379,7 +513,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.92;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.4 : 1.75));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.25 : 1.45));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -416,8 +550,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
     scene.add(new THREE.AmbientLight(0xffffff, 0.18));
     scene.add(new THREE.HemisphereLight(0xbcd6ff, 0x7d725c, 1.15));
     const sun = new THREE.DirectionalLight(0xffeccc, 3.6);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(coarse ? 1024 : 2048, coarse ? 1024 : 2048);
+    sun.castShadow = false;
+    sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.bias = -0.0006;
     sun.shadow.normalBias = 0.4;
     sun.shadow.radius = 2.5;
@@ -597,6 +731,49 @@ export const City3DView: React.FC<City3DViewProps> = ({
           }
         } else {
           setElVis(draftEl, false);
+        }
+      }
+
+      // 0b. Ghim Vị trí GPS của bạn ("Bạn đang ở đây") trên mặt đất 3D
+      const userEl = userMarker3DElRef.current;
+      const curRoute = activeRoute3DRef.current;
+      const curUser = curRoute?.currentPos
+        ? { lng: curRoute.currentPos[0], lat: curRoute.currentPos[1] }
+        : userCoords3DRef.current;
+      if (userEl) {
+        if (curUser && o) {
+          const [ux, uy] = lngLatToLocal(o, curUser.lng, curUser.lat);
+          tmpV.set(ux, 2.5, -uy).project(camera);
+          if (tmpV.z <= 1 && Math.abs(tmpV.x) <= 1.15 && Math.abs(tmpV.y) <= 1.15) {
+            const sx = (tmpV.x * 0.5 + 0.5) * w;
+            const sy = (-tmpV.y * 0.5 + 0.5) * h;
+            setElVis(userEl, true);
+            userEl.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) translate(-50%, -50%)`;
+          } else {
+            setElVis(userEl, false);
+          }
+        } else {
+          setElVis(userEl, false);
+        }
+      }
+
+      // 0c. Ghim Chỗ bạn sinh sống ("🏠 Nhà của bạn") trên mặt đất 3D
+      const homeEl = homeMarker3DElRef.current;
+      const curHome = userHome3DRef.current;
+      if (homeEl) {
+        if (curHome && o) {
+          const [hx, hy] = lngLatToLocal(o, curHome.lng, curHome.lat);
+          tmpV.set(hx, 6, -hy).project(camera);
+          if (tmpV.z <= 1 && Math.abs(tmpV.x) <= 1.15 && Math.abs(tmpV.y) <= 1.15) {
+            const sx = (tmpV.x * 0.5 + 0.5) * w;
+            const sy = (-tmpV.y * 0.5 + 0.5) * h;
+            setElVis(homeEl, true);
+            homeEl.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) translate(-50%, -100%)`;
+          } else {
+            setElVis(homeEl, false);
+          }
+        } else {
+          setElVis(homeEl, false);
         }
       }
 
@@ -813,7 +990,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
     };
 
     const onPointerUp = (ev: PointerEvent) => {
-      if (!isPicking3DRef.current || ev.button !== 0) return;
+      if ((!isPicking3DRef.current && !isPickingHome3DRef.current) || ev.button !== 0) return;
       if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > 6) return;
       const o = engineRef.current?.origin;
       if (!o) return;
@@ -825,6 +1002,16 @@ export const City3DView: React.FC<City3DViewProps> = ({
         const [lng, lat] = localToLngLat(o, hitPoint.x, -hitPoint.z);
         const fixedLat = Number(lat.toFixed(6));
         const fixedLng = Number(lng.toFixed(6));
+        if (isPickingHome3DRef.current) {
+          setHome3DLatInput(String(fixedLat));
+          setHome3DLngInput(String(fixedLng));
+          setHome3DModalMode('edit');
+          setHome3DFeedback(
+            `Đã chấm vị trí nhà trên Sa bàn 3D (${fixedLat}, ${fixedLng}). Bấm "Lưu chỗ bạn sống" để hoàn tất!`
+          );
+          requestRender();
+          return;
+        }
         setEditLat(String(fixedLat));
         setEditLng(String(fixedLng));
         setIsPicking3DGround(false);
@@ -958,6 +1145,13 @@ export const City3DView: React.FC<City3DViewProps> = ({
           eng.origin = msg.origin;
           eng.wardBox = msg.wardBox;
           setOriginState(msg.origin);
+          // Dựng 3 công trình biểu tượng 3D chuẩn tạo hình (Quảng trường Con Chim Xanh, Nhà Trắng, ĐH Kiến Trúc)
+          {
+            const prevIconic = scene.getObjectByName('XuanHoaIconicLandmarks');
+            if (prevIconic) scene.remove(prevIconic);
+            const iconicGroup = createIconicLandmarksGroup(msg.origin, disposables);
+            scene.add(iconicGroup);
+          }
           placeInitialCamera(msg.origin);
           break;
         case 'base':
@@ -1065,7 +1259,16 @@ export const City3DView: React.FC<City3DViewProps> = ({
   // Vẽ lại khi danh sách quán / nhãn / tên đường thay đổi
   useEffect(() => {
     engineRef.current?.requestRender();
-  }, [precomputedPins, precomputedBuildingLabels, precomputedRoadLabels, showCivic, showShops, showRoadNames]);
+  }, [
+    precomputedPins,
+    precomputedBuildingLabels,
+    precomputedRoadLabels,
+    showCivic,
+    selectedCategories3D,
+    savedPlaceIds,
+    activeShopGroup,
+    showRoadNames,
+  ]);
 
   // Tên khu vực từ Nominatim (lần đầu)
   useEffect(() => {
@@ -1142,10 +1345,100 @@ export const City3DView: React.FC<City3DViewProps> = ({
     eng.animateTo(new THREE.Vector3(x, 0, -y), off, 700);
   }, []);
 
+  // Vẽ tuyến đường dẫn đường 3D bám sát mặt đường khi activeRoute hoạt động (đồng bộ 100% giữa 2D và 3D)
+  useEffect(() => {
+    const eng = engineRef.current;
+    if (!eng || !originState) return;
+
+    if (routeGroupRef.current) {
+      eng.scene.remove(routeGroupRef.current);
+      routeGroupRef.current.traverse((obj) => {
+        if ((obj as THREE.Mesh).geometry) (obj as THREE.Mesh).geometry.dispose();
+        if ((obj as THREE.Mesh).material) {
+          const mat = (obj as THREE.Mesh).material;
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+          else mat.dispose();
+        }
+      });
+      routeGroupRef.current = null;
+    }
+
+    if (!activeRoute || !activeRoute.pathLngLat || activeRoute.pathLngLat.length < 2) {
+      eng.requestRender();
+      return;
+    }
+
+    const group = new THREE.Group();
+    const pIdx = Math.min(
+      Math.max(0, activeRoute.progressIndex || 0),
+      activeRoute.pathLngLat.length - 1
+    );
+    const activeCoords = activeRoute.pathLngLat.slice(pIdx);
+    const coordsToDraw = activeCoords.length >= 2 ? activeCoords : activeRoute.pathLngLat;
+
+    const pts3D: THREE.Vector3[] = [];
+    for (let i = 0; i < coordsToDraw.length; i++) {
+      const [lng, lat] = coordsToDraw[i];
+      const [lx, ly] = lngLatToLocal(originState, lng, lat);
+      pts3D.push(new THREE.Vector3(lx, 0.65, -ly));
+    }
+
+    if (pts3D.length >= 2) {
+      const curve = new THREE.CatmullRomCurve3(pts3D, false, 'catmullrom', 0.08);
+      const tubeGeo = new THREE.TubeGeometry(
+        curve,
+        Math.min(240, pts3D.length * 4),
+        2.3,
+        6,
+        false
+      );
+      const tubeMat = new THREE.MeshBasicMaterial({
+        color: activeRoute.hasArrived ? 0x10b981 : 0x2563eb,
+      });
+      const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
+      tubeMesh.renderOrder = 25;
+      group.add(tubeMesh);
+
+      // Điểm đích 3D
+      const endPt = pts3D[pts3D.length - 1];
+      const endGeo = new THREE.CylinderGeometry(3.8, 3.8, 1.4, 16);
+      const endMat = new THREE.MeshBasicMaterial({
+        color: activeRoute.hasArrived ? 0x059669 : 0xef4444,
+      });
+      const endMesh = new THREE.Mesh(endGeo, endMat);
+      endMesh.position.set(endPt.x, 1.0, endPt.z);
+      group.add(endMesh);
+    }
+
+    eng.scene.add(group);
+    routeGroupRef.current = group;
+    eng.requestRender();
+  }, [activeRoute, originState]);
+
   const flyToPlace = useCallback(
     (p: PlaceLocation) => {
       if (p.lat === null || p.lng === null) return;
-      flyToCoordinates3D(p.lat, p.lng, 300);
+      const eng = engineRef.current;
+      if (eng?.origin) {
+        const [x, y] = lngLatToLocal(eng.origin, p.lng, p.lat);
+        // Tự động xoay góc nhìn chuẩn trực diện từ mặt đường chính cho 3 công trình biểu tượng
+        if (p.id === 'osm_landmark_quang_truong_chim_xanh') {
+          // Nhìn từ Đường Nguyễn Văn Linh (Đông Bắc) vào thẳng Quảng trường Con Chim Xanh (Tây Nam)
+          eng.animateTo(new THREE.Vector3(x, 0, -y), new THREE.Vector3(44, 46, -46), 720);
+          return;
+        }
+        if (p.id === 'osm_way_1079368029') {
+          // Nhìn từ Đường Nguyễn Văn Linh (Tây Nam) vào thẳng cổng Số 34 & Tòa nhà 7 tầng ĐH Kiến trúc
+          eng.animateTo(new THREE.Vector3(x, 0, -y), new THREE.Vector3(-48, 42, 50), 720);
+          return;
+        }
+        if (p.id === 'osm_landmark_nha_trang_xuan_hoa') {
+          // Nhìn từ ngã giao Vòng tròn 1 vào thẳng mặt tiền Màn hình LED & Mái vòm vàng Nhà Trắng
+          eng.animateTo(new THREE.Vector3(x, 0, -y), new THREE.Vector3(-14, 42, 68), 720);
+          return;
+        }
+      }
+      flyToCoordinates3D(p.lat, p.lng, 175);
     },
     [flyToCoordinates3D]
   );
@@ -1161,6 +1454,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
       setEditName(p.name);
       setEditCategory(p.category);
       setEditAddress(p.address || '');
+      setEditTagline(p.metadata?.subType || p.originalPlace?.tagline || '');
       setEditPhone(p.phone || '');
       setEditHours(p.openHours || '');
       setEditMapsInput(p.metadata?.mapsUrl || '');
@@ -1191,6 +1485,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
     setEditName('');
     setEditCategory('public');
     setEditAddress('Phường Xuân Hòa');
+    setEditTagline('');
     setEditPhone('');
     setEditHours('07:30 - 17:30');
     setEditMapsInput('');
@@ -1211,9 +1506,14 @@ export const City3DView: React.FC<City3DViewProps> = ({
       setEditLat(String(parsed.lat));
       setEditLng(String(parsed.lng));
       setEditNotice({
-        text: `✓ Đã tự động bóc tách tọa độ (${parsed.lat}, ${parsed.lng}) và bay tới vị trí!`,
+        text: `✓ Đã định vị chuẩn 100% tọa độ ghim Google Maps (${parsed.lat}, ${parsed.lng}) và bay tới vị trí!`,
       });
       flyToCoordinates3D(parsed.lat, parsed.lng, 260);
+    } else if (/goo\.gl|maps\.app\.goo\.gl/i.test(val)) {
+      setEditNotice({
+        text: '💡 Link rút gọn (goo.gl) không chứa sẵn số tọa độ. Hãy mở link trên trình duyệt rồi copy đường link đầy đủ trên thanh địa chỉ (hoặc dán Plus Code / tọa độ) vào đây để chuẩn 100%!',
+        isError: true,
+      });
     }
   };
 
@@ -1287,6 +1587,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
         name: editName,
         category: editCategory,
         address: editAddress,
+        tagline: editTagline,
         phone: editPhone,
         openHours: editHours,
         lat,
@@ -1297,7 +1598,13 @@ export const City3DView: React.FC<City3DViewProps> = ({
       // Tự động bật bộ lọc tương ứng để Admin thấy ngay ghim vừa lưu
       const isCivic = editCategory === 'public' || editCategory === 'school';
       if (isCivic && !showCivic) setShowCivic(true);
-      if (!isCivic && !showShops) setShowShops(true);
+      if (!isCivic) {
+        if (editCategory === 'food') setActiveShopGroup('food');
+        else if (editCategory === 'pub') setActiveShopGroup('pub');
+        else if (editCategory === 'cafe') setActiveShopGroup('cafe');
+        else if (editCategory === 'snack') setActiveShopGroup('snack');
+        else setActiveShopGroup('service');
+      }
 
       onDataChanged?.();
       flyToCoordinates3D(saved.lat, saved.lng, 260);
@@ -1365,23 +1672,34 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
   /* ================================================================ giao diện tối ưu không gian */
   const ctrlBtn =
-    'w-9 h-9 flex items-center justify-center text-white/90 hover:text-white hover:bg-white/15 active:scale-95 transition cursor-pointer';
+    'w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-white/90 hover:text-white hover:bg-white/15 active:scale-95 transition cursor-pointer';
   const isOsmSeedSelected = useMemo(
     () => Boolean(editId && VERIFIED_OSM_POIS.some((p) => p.id === editId)),
     [editId]
   );
 
+  const activeCategoryLabel3D = useMemo(() => {
+    if (activeShopGroup === 'food') return `Quán ăn (${shopGroupCounts.food})`;
+    if (activeShopGroup === 'pub') return `Quán nhậu (${shopGroupCounts.pub})`;
+    if (activeShopGroup === 'cafe') return `Cafe & Trà (${shopGroupCounts.cafe})`;
+    if (activeShopGroup === 'snack') return `Ăn vặt (${shopGroupCounts.snack})`;
+    if (activeShopGroup === 'service') return `Dịch vụ (${shopGroupCounts.service})`;
+    return 'Danh mục';
+  }, [activeShopGroup, shopGroupCounts]);
+
   return (
     <div
       ref={rootRef}
       className={`absolute inset-0 z-[45] overflow-hidden select-none ${
-        isPicking3DGround ? 'cursor-crosshair' : ''
+        isPicking3DGround || home3DModalMode === 'picking' ? 'cursor-crosshair' : ''
       }`}
       style={{ fontFamily: FONT, background: CITY3D_COLORS.sky }}
     >
       <div
         ref={canvasHostRef}
-        className={`absolute inset-0 ${isPicking3DGround ? 'cursor-crosshair' : ''}`}
+        className={`absolute inset-0 ${
+          isPicking3DGround || home3DModalMode === 'picking' ? 'cursor-crosshair' : ''
+        }`}
       />
 
       {/* Lớp phủ Ghim & Nhãn (Zero-GC GPU Transform) */}
@@ -1393,7 +1711,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
           style={{ visibility: 'hidden', willChange: 'transform' }}
         >
           <span className="mb-1 rounded-lg bg-[#F59E0B] px-2 py-0.5 text-[10.5px] font-extrabold text-white shadow-md border border-white">
-            🎯 {editName.trim() || 'Vị trí đang chọn'}
+            {editName.trim() || 'Vị trí đang chọn'}
           </span>
           <span className="flex h-8 w-8 items-center justify-center rounded-full border-[2.5px] border-white bg-[#F59E0B] text-white shadow-[0_0_16px_rgba(245,158,11,0.9)] animate-pulse">
             <Crosshair size={16} />
@@ -1401,10 +1719,53 @@ export const City3DView: React.FC<City3DViewProps> = ({
           <span className="h-2.5 w-0.5 bg-[#F59E0B]" />
         </div>
 
+        {/* Ghim Vị trí hiện tại của bạn ("Bạn đang ở đây") đồng bộ giữa 2D và 3D */}
+        <div
+          ref={userMarker3DElRef}
+          className="absolute left-0 top-0 z-[150000] flex flex-col items-center pointer-events-none"
+          style={{ visibility: 'hidden', willChange: 'transform' }}
+        >
+          <div className="mb-1.5 px-2.5 py-0.5 rounded-full bg-[#39B980] text-white border-2 border-[#403064] text-[10.5px] leading-snug font-extrabold whitespace-nowrap shadow-md">
+            Bạn đang ở đây
+          </div>
+          <div className="relative flex items-center justify-center">
+            <span className="absolute w-10 h-10 rounded-full bg-[#39B980]/35 animate-ping" />
+            <span className="w-4 h-4 rounded-full bg-[#39B980] border-2 border-white ring-2 ring-[#403064] shadow-md" />
+          </div>
+        </div>
+
+        {/* Ghim Chỗ bạn sinh sống ("🏠 Nhà của bạn") đồng bộ trên Sa bàn 3D */}
+        <div
+          ref={homeMarker3DElRef}
+          className="absolute left-0 top-0 z-[160000] flex flex-col items-center pointer-events-auto"
+          style={{ visibility: 'hidden', willChange: 'transform' }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              if (userHome) {
+                flyToCoordinates3D(userHome.lat, userHome.lng, 185);
+                setHome3DModalMode('view');
+              }
+            }}
+            className="flex flex-col items-center cursor-pointer focus:outline-none group"
+            title={userHome ? `${userHome.label}: ${userHome.address}` : 'Nhà của bạn'}
+          >
+            <span className="mb-1 px-2.5 py-0.5 rounded-xl bg-[#FEF3C7] text-[#92400E] border-2 border-[#D97706] text-[10.5px] font-extrabold whitespace-nowrap shadow-md">
+              🏠 {userHome?.label || 'Nhà của bạn'}
+            </span>
+            <span className="w-7 h-7 rounded-2xl bg-[#D97706] text-white border-2 border-white ring-2 ring-[#92400E] flex items-center justify-center shadow-lg text-xs font-extrabold group-hover:scale-110 transition-transform">
+              🏠
+            </span>
+            <span className="h-1.5 w-0.5 bg-[#D97706]" />
+          </button>
+        </div>
+
         {precomputedPins.map(({ place: p }) => {
           const cat = MAP_CATEGORY_BY_ID[p.category];
           const isSel = selected?.id === p.id;
           const isBeingEdited = isEditingPlace && editId === p.id;
+          const isSavedPin = savedPlaceIds.includes(p.id);
           return (
             <button
               key={p.id}
@@ -1424,26 +1785,33 @@ export const City3DView: React.FC<City3DViewProps> = ({
               style={{
                 visibility: 'hidden',
                 willChange: 'transform',
-                zIndex: isSel ? 99999 : 10,
+                zIndex: isSel ? 99999 : isSavedPin ? 25 : 10,
               }}
               title={p.name}
             >
               <span
-                className={`city3d-pin-name mb-0.5 max-w-[148px] truncate rounded-md px-1.5 py-0.5 text-[10.5px] font-bold shadow-sm border ${
+                className={`city3d-pin-name mb-0.5 max-w-[132px] sm:max-w-[148px] truncate rounded-md px-1.5 py-0.5 text-[10px] sm:text-[10.5px] font-bold shadow-sm border ${
                   isSel
                     ? 'bg-[#1E1633] text-[#FBBF24] border-[#FBBF24]'
+                    : isSavedPin
+                    ? 'bg-[#FEF3C7] text-[#92400E] border-[#F59E0B]'
                     : 'bg-white/95 text-[#2D2246] border-[#403064]/20'
                 }`}
               >
-                {p.name}
+                {isSavedPin ? `★ ${p.name}` : p.name}
               </span>
               <span
-                className={`flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-white shadow-[0_3px_10px_rgba(0,0,0,0.32)] transition-transform group-hover:scale-110 ${
+                className={`relative flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full border-2 border-white text-white shadow-[0_3px_10px_rgba(0,0,0,0.32)] transition-transform group-hover:scale-110 ${
                   isSel ? 'ring-2 ring-[#FBBF24] scale-110' : ''
                 }`}
                 style={{ background: isSel ? '#403064' : cat?.markerBg || '#39B980' }}
               >
-                {cat ? renderCategoryIcon(cat.iconName, 14) : <MapPin size={14} />}
+                {cat ? renderCategoryIcon(cat.iconName, 13) : <MapPin size={13} />}
+                {isSavedPin && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-[#F59E0B] text-white border border-white text-[8px] font-black flex items-center justify-center shadow-xs">
+                    ★
+                  </span>
+                )}
               </span>
               <span className="h-1.5 w-0.5 bg-white/90 shadow" />
             </button>
@@ -1457,7 +1825,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
               if (el) labelElsRef.current.set(index, el);
               else labelElsRef.current.delete(index);
             }}
-            className="absolute left-0 top-0 whitespace-nowrap rounded bg-[#2D2246]/80 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-xs"
+            className="absolute left-0 top-0 whitespace-nowrap rounded bg-[#2D2246]/80 px-1.5 py-0.5 text-[9.5px] sm:text-[10px] font-semibold text-white shadow-xs"
             style={{ visibility: 'hidden', willChange: 'transform' }}
           >
             {lb.name}
@@ -1473,10 +1841,10 @@ export const City3DView: React.FC<City3DViewProps> = ({
             }}
             className={`absolute left-0 top-0 whitespace-nowrap rounded px-1.5 py-0.5 font-extrabold tracking-wide shadow-xs ${
               rl.tier === 'major'
-                ? 'bg-[#FEF3C7]/95 text-[#78350F] border border-[#F59E0B]/60 text-[10.5px]'
+                ? 'bg-[#FEF3C7]/95 text-[#78350F] border border-[#F59E0B]/60 text-[9.5px] sm:text-[10.5px]'
                 : rl.tier === 'secondary'
-                ? 'bg-white/92 text-[#1E293B] border border-slate-400/50 text-[10px]'
-                : 'bg-white/85 text-[#334155] border border-slate-300/50 text-[9.5px]'
+                ? 'bg-white/92 text-[#1E293B] border border-slate-400/50 text-[9px] sm:text-[10px]'
+                : 'bg-white/85 text-[#334155] border border-slate-300/50 text-[8.5px] sm:text-[9.5px]'
             }`}
             style={{ visibility: 'hidden', willChange: 'transform' }}
           >
@@ -1485,225 +1853,589 @@ export const City3DView: React.FC<City3DViewProps> = ({
         ))}
       </div>
 
-      {/* Thanh điều hướng & bộ lọc cân đối chuẩn Google Maps / Apple Maps (Sang, Xịn, Không Copyright) */}
-      <div className="absolute left-3 right-3 top-3 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-        {/* CỤM TRÁI: Thanh Tìm kiếm & Nút 2D tích hợp nguyên khối sang trọng */}
-        <div className="pointer-events-auto relative flex items-center rounded-full bg-white/95 border border-slate-200/90 pl-1.5 pr-3 py-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] backdrop-blur-md">
+      {/* THANH TÌM KIẾM & CHỌN DANH MỤC + ĐỊA ĐIỂM ĐÃ LƯU (★) GỌN GÀNG TRÊN CÙNG CHUẨN GOOGLE MAPS */}
+      <div className="absolute left-2.5 right-2.5 sm:left-3 sm:right-auto top-2.5 z-20 pointer-events-none">
+        <div className="pointer-events-auto relative flex items-center gap-1 w-full sm:w-[440px] rounded-full bg-white/96 border border-slate-200/90 pl-1.5 pr-3 py-1 shadow-[0_6px_22px_rgba(15,23,42,0.12)] backdrop-blur-md">
+          {/* Nút chọn Danh mục dạng Dropdown */}
           <button
             type="button"
-            onClick={onClose}
-            className="flex items-center gap-1 rounded-full bg-[#1E1633] hover:bg-[#2D2246] text-white px-3 py-1 text-[11.5px] font-extrabold transition cursor-pointer shrink-0"
-            title="Chuyển về Bản đồ 2D"
+            onClick={() => {
+              setIsFilterMenuOpen((v) => !v);
+              setIsSavedMenu3DOpen(false);
+              setIsSearch3DFocused(false);
+            }}
+            className="flex items-center gap-1 rounded-full bg-[#1E1633] hover:bg-[#2D2246] text-white px-2.5 sm:px-3 py-1 text-[11px] sm:text-[11.5px] font-extrabold transition cursor-pointer shrink-0 max-w-[128px] sm:max-w-[165px]"
+            title="Bật/tắt các danh mục trên bản đồ"
           >
-            <ArrowLeft size={13} />
-            <span>Bản đồ 2D</span>
+            <span className="truncate">Danh mục</span>
+            <span className="text-[9px] opacity-80 ml-0.5">{isFilterMenuOpen ? '▲' : '▼'}</span>
           </button>
-          <div className="mx-2 h-4 w-[1px] bg-slate-200 shrink-0" />
-          <Search size={14} className="text-slate-500 shrink-0 mr-1.5" />
+
+          {/* Nút Địa điểm đã lưu (★) nhỏ gọn ngay cạnh Danh mục */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsSavedMenu3DOpen((v) => !v);
+              setIsFilterMenuOpen(false);
+              setIsSearch3DFocused(false);
+            }}
+            title="Địa điểm đã lưu của bạn (★)"
+            className={`flex items-center justify-center gap-0.5 px-2 py-1 rounded-full text-[11px] font-extrabold border transition shrink-0 cursor-pointer ${
+              isSavedMenu3DOpen || savedPlaceIds.length > 0
+                ? 'bg-[#FEF3C7] text-[#B45309] border-[#F59E0B] hover:bg-[#FDE68A]'
+                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+            }`}
+          >
+            <span>★</span>
+            {savedPlaceIds.length > 0 && (
+              <span className="text-[10px] font-extrabold">{savedPlaceIds.length}</span>
+            )}
+          </button>
+
+          <div className="mx-1 h-4 w-[1px] bg-slate-200 shrink-0" />
           <input
             type="text"
             value={search3DQuery}
-            onFocus={() => setIsSearch3DFocused(true)}
+            onClick={() => {
+              setIsSearch3DFocused(true);
+              setIsFilterMenuOpen(false);
+              setIsSavedMenu3DOpen(false);
+            }}
+            onFocus={() => {
+              setIsSearch3DFocused(true);
+              setIsFilterMenuOpen(false);
+              setIsSavedMenu3DOpen(false);
+            }}
             onBlur={() => window.setTimeout(() => setIsSearch3DFocused(false), 180)}
-            onChange={(e) => setSearch3DQuery(e.target.value)}
-            placeholder="Tìm đường, ngõ, cơ quan, quán..."
-            className="w-40 sm:w-56 bg-transparent text-[12px] font-semibold text-slate-800 placeholder-slate-400 outline-none"
+            onChange={(e) => {
+              setSearch3DQuery(e.target.value);
+              setIsSearch3DFocused(true);
+              setIsFilterMenuOpen(false);
+              setIsSavedMenu3DOpen(false);
+            }}
+            placeholder="Tìm địa chỉ, quán..."
+            className="flex-1 min-w-0 bg-transparent text-[12px] font-semibold text-slate-800 placeholder-slate-400 outline-none"
           />
           {search3DQuery && (
             <button
               type="button"
               onClick={() => setSearch3DQuery('')}
-              className="ml-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+              className="ml-1 text-slate-400 hover:text-slate-700 cursor-pointer shrink-0 text-xs font-bold px-1"
             >
-              <X size={13} />
+              ×
             </button>
           )}
 
-          {(isSearch3DFocused || search3DQuery.trim().length > 0) &&
-            search3DQuery.trim().length > 0 && (
-              <div className="absolute left-0 top-full mt-2 w-80 max-h-68 overflow-y-auto rounded-2xl bg-white/98 border border-slate-200 shadow-[0_16px_40px_rgba(15,23,42,0.18)] p-1.5 z-40 space-y-1 backdrop-blur-md">
-                {/* Gợi ý Đường & Ngõ */}
-                {Array.from(new Map(roadLabels.map((r) => [r.name, r])).values())
-                  .filter((r) =>
-                    r.name.toLowerCase().includes(search3DQuery.trim().toLowerCase())
-                  )
-                  .slice(0, 4)
-                  .map((r) => (
-                    <button
-                      key={`road-${r.name}`}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        if (!showRoadNames) setShowRoadNames(true);
-                        if (originState) {
-                          const [lng, lat] = localToLngLat(originState, r.x, -r.z);
-                          flyToCoordinates3D(lat, lng, 290);
-                        }
-                        setSearch3DQuery('');
-                        setIsSearch3DFocused(false);
-                      }}
-                      className="w-full text-left px-3 py-1.5 rounded-xl hover:bg-amber-50 flex items-center justify-between gap-2 cursor-pointer"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-[11.5px] font-extrabold text-slate-800 truncate">
-                          🛣️ {r.name}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          Tuyến đường / ngõ Phường Xuân Hòa
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-bold text-amber-700 shrink-0">
-                        Bay tới →
-                      </span>
-                    </button>
-                  ))}
-
-                {/* Gợi ý Địa danh / Cơ quan / Quán */}
-                {places
-                  .filter(
-                    (p) =>
-                      p.lat !== null &&
-                      p.lng !== null &&
-                      (p.name.toLowerCase().includes(search3DQuery.trim().toLowerCase()) ||
-                        (p.address || '')
-                          .toLowerCase()
-                          .includes(search3DQuery.trim().toLowerCase()))
-                  )
-                  .slice(0, 7)
-                  .map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        const civic = isCivicLandmark(item);
-                        if (civic && !showCivic) setShowCivic(true);
-                        if (!civic && !showShops) setShowShops(true);
-                        setSelected(item);
-                        flyToPlace(item);
-                        setSearch3DQuery('');
-                        setIsSearch3DFocused(false);
-                      }}
-                      className="w-full text-left px-3 py-1.5 rounded-xl hover:bg-emerald-50 flex items-center justify-between gap-2 cursor-pointer"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-[11.5px] font-extrabold text-slate-800 truncate">
-                          📍 {item.name}
-                        </div>
-                        <div className="text-[10px] text-slate-500 truncate">{item.address}</div>
-                      </div>
-                      <span className="text-[10px] font-bold text-emerald-700 shrink-0">
-                        Bay tới →
-                      </span>
-                    </button>
-                  ))}
+          {/* BẢNG BẬT / TẮT TỪNG DANH MỤC GỌN GÀNG (AUTO: HÀNH CHÍNH + TRƯỜNG HỌC) */}
+          {isFilterMenuOpen && (
+            <div className="absolute left-0 top-full mt-2 w-64 sm:w-72 rounded-2xl bg-white/98 border border-slate-200 shadow-[0_16px_40px_rgba(15,23,42,0.18)] p-2 z-50 space-y-1 backdrop-blur-md">
+              <div className="px-2 py-1 flex items-center justify-between border-b border-slate-100">
+                <span className="text-[10.5px] font-extrabold text-slate-500 uppercase tracking-wider">
+                  Bật / Tắt danh mục
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategories3D(['public', 'school']);
+                      setActiveShopGroup('none');
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] text-[10px] font-extrabold cursor-pointer"
+                  >
+                    Mặc định
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterMenuOpen(false)}
+                    className="px-1.5 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                </div>
               </div>
-            )}
-        </div>
 
-        {/* CỤM GIỮA: Bộ lọc danh mục cân đối chuẩn Google Maps (Pill Chips sang trọng) */}
-        <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-full bg-white/90 border border-slate-200/85 p-1 shadow-[0_6px_24px_rgba(15,23,42,0.10)] backdrop-blur-md">
-          <button
-            type="button"
-            onClick={() => {
-              const allOn = showCivic && showShops && showRoadNames;
-              setShowCivic(true);
-              setShowRoadNames(true);
-              setShowShops(!allOn);
-            }}
-            className={`rounded-full px-3 py-1 text-[11.5px] font-bold transition-all cursor-pointer ${
-              showCivic && showShops
-                ? 'bg-[#1E1633] text-white shadow-xs'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-            title="Hiển thị đầy đủ tất cả địa danh, cơ quan, trường học & quán ăn"
-          >
-            ✨ Tất cả
-          </button>
+              {(
+                [
+                  {
+                    key: 'public',
+                    cats: ['public', 'medical'] as MapCategoryKey[],
+                    label: 'Hành chính & Công cộng',
+                    activeBg: 'bg-[#059669] text-white',
+                  },
+                  {
+                    key: 'school',
+                    cats: ['school'] as MapCategoryKey[],
+                    label: 'Trường học & Giảng đường',
+                    activeBg: 'bg-[#10B981] text-white',
+                  },
+                  {
+                    key: 'food',
+                    cats: ['food'] as MapCategoryKey[],
+                    label: 'Quán ăn',
+                    activeBg: 'bg-[#E11D48] text-white',
+                  },
+                  {
+                    key: 'pub',
+                    cats: ['pub'] as MapCategoryKey[],
+                    label: 'Quán nhậu & Lẩu',
+                    activeBg: 'bg-[#D97706] text-white',
+                  },
+                  {
+                    key: 'cafe',
+                    cats: ['cafe'] as MapCategoryKey[],
+                    label: 'Cafe & Trà',
+                    activeBg: 'bg-[#0284C7] text-white',
+                  },
+                  {
+                    key: 'snack',
+                    cats: ['snack'] as MapCategoryKey[],
+                    label: 'Ăn vặt',
+                    activeBg: 'bg-[#9333EA] text-white',
+                  },
+                  {
+                    key: 'service',
+                    cats: [
+                      'service',
+                      'grocery',
+                      'supermarket',
+                      'phone',
+                      'billiards',
+                      'game',
+                      'entertainment',
+                    ] as MapCategoryKey[],
+                    label: 'Dịch vụ & Tiện ích',
+                    activeBg: 'bg-[#475569] text-white',
+                  },
+                ] as const
+              ).map((tab) => {
+                const isActive = tab.cats.some((c) => selectedCategories3D.includes(c));
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategories3D((prev) => {
+                        const hasAny = tab.cats.some((c) => prev.includes(c));
+                        if (hasAny) {
+                          return prev.filter((c) => !tab.cats.includes(c));
+                        }
+                        return [...prev, ...tab.cats];
+                      });
+                    }}
+                    className={`w-full flex items-center justify-between rounded-xl px-3 py-1.5 text-left text-[12px] font-bold transition cursor-pointer ${
+                      isActive ? tab.activeBg : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                        isActive ? 'bg-black/20 text-white' : 'bg-slate-200/80 text-slate-600'
+                      }`}
+                    >
+                      {isActive ? 'Đang bật' : 'Tắt'}
+                    </span>
+                  </button>
+                );
+              })}
 
-          <button
-            type="button"
-            onClick={() => setShowCivic((v) => !v)}
-            className={`rounded-full px-3 py-1 text-[11.5px] font-bold transition-all cursor-pointer ${
-              showCivic
-                ? 'bg-[#059669] text-white shadow-xs'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-            title="Cơ quan hành chính, Trường học, Y tế, Địa danh"
-          >
-            🏛️ Cơ quan & Trường học
-          </button>
+              <div className="my-1 border-t border-slate-100" />
 
-          <button
-            type="button"
-            onClick={() => setShowShops((v) => !v)}
-            className={`rounded-full px-3 py-1 text-[11.5px] font-bold transition-all cursor-pointer ${
-              showShops
-                ? 'bg-[#E11D48] text-white shadow-xs'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-            title="Nhà hàng, Quán ăn, Cafe & Dịch vụ"
-          >
-            🍜 Ẩm thực & Dịch vụ ({totalShopsCount})
-          </button>
+              <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowRoadNames((v) => !v)}
+                  className={`rounded-xl px-2.5 py-1.5 text-center text-[11.5px] font-bold transition cursor-pointer border ${
+                    showRoadNames
+                      ? 'bg-[#FEF3C7] text-[#92400E] border-[#F59E0B]/60'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Tên đường: {showRoadNames ? 'Bật' : 'Tắt'}
+                </button>
 
-          <button
-            type="button"
-            onClick={() => setShowRoadNames((v) => !v)}
-            className={`rounded-full px-3 py-1 text-[11.5px] font-bold transition-all cursor-pointer ${
-              showRoadNames
-                ? 'bg-[#FEF3C7] text-[#92400E] border border-[#F59E0B]/60 shadow-xs'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
-            title="Bật / tắt tên đường & ngõ nhỏ"
-          >
-            🛣️ Tên đường & Ngõ
-          </button>
-        </div>
+                <button
+                  type="button"
+                  onClick={() => setShadowsOn((v) => !v)}
+                  className={`rounded-xl px-2.5 py-1.5 text-center text-[11.5px] font-bold transition cursor-pointer border ${
+                    shadowsOn
+                      ? 'bg-amber-100 text-amber-900 border-amber-300/70'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Ánh sáng: {shadowsOn ? 'Bật' : 'Tắt'}
+                </button>
+              </div>
+            </div>
+          )}
 
-        {/* CỤM PHẢI: Thêm địa điểm & Quản trị gọn gàng */}
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-white/92 border border-slate-200/85 p-1 shadow-[0_6px_24px_rgba(15,23,42,0.10)] backdrop-blur-md">
-          <button
-            type="button"
-            onClick={openCreateNewModal}
-            className="flex items-center gap-1 rounded-full bg-[#1E1633] hover:bg-[#2D2246] text-white px-3 py-1 text-[11.5px] font-bold transition cursor-pointer"
-            title="Thêm địa danh / cơ quan / quán mới lên bản đồ"
-          >
-            <Plus size={13} />
-            <span>Thêm địa điểm</span>
-          </button>
+          {/* BẢNG ĐỊA ĐIỂM ĐÃ LƯU (★) THEO NICK TRÊN BẢN ĐỒ 3D */}
+          {isSavedMenu3DOpen && (
+            <div className="absolute left-0 top-full mt-2 w-72 sm:w-80 rounded-2xl bg-white/98 border border-[#F59E0B]/70 shadow-[0_16px_40px_rgba(15,23,42,0.18)] p-2.5 z-50 space-y-1.5 backdrop-blur-md">
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-extrabold text-[#B45309]">
+                    ★ Địa điểm đã lưu ({savedPlaces3D.length})
+                  </div>
+                  <div className="text-[10px] font-semibold text-slate-500 truncate">
+                    Nick: {userAccountLabel}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSavedMenu3DOpen(false)}
+                  className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10.5px] font-bold cursor-pointer shrink-0"
+                >
+                  Đóng
+                </button>
+              </div>
 
-          {hasAdminAccess ? (
-            onOpenWebAdmin && (
-              <button
-                type="button"
-                onClick={() => onOpenWebAdmin(selected?.id)}
-                className="flex items-center gap-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 px-3 py-1 text-[11.5px] font-bold cursor-pointer transition"
-                title="Mở trang Quản trị Web Admin đầy đủ"
-              >
-                <ShieldCheck size={13} className="text-amber-600" />
-                <span>Quản trị</span>
-              </button>
-            )
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsLoginModalOpen(true)}
-              className="flex items-center gap-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 text-[11.5px] font-bold cursor-pointer transition"
-              title="Đăng nhập Admin để chỉnh sửa địa danh & vị trí"
-            >
-              <KeyRound size={12} />
-              <span>Admin</span>
-            </button>
+              {savedPlaces3D.length === 0 ? (
+                <div className="py-4 px-2 text-center text-[11px] text-slate-500 space-y-1">
+                  <div className="font-bold text-slate-700">Chưa có địa điểm nào được lưu</div>
+                  <div>
+                    Hãy bấm nút <strong className="text-[#B45309]">☆ Lưu</strong> trên địa điểm bất kỳ để lưu vào tài khoản của bạn.
+                  </div>
+                </div>
+              ) : (
+                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 pr-0.5">
+                  {savedPlaces3D.map((item) => (
+                    <div
+                      key={item.id}
+                      className="py-1.5 px-1.5 flex items-center justify-between gap-1.5 hover:bg-amber-50/60 rounded-xl transition"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSavedMenu3DOpen(false);
+                          setSelected(item);
+                          flyToPlace(item);
+                        }}
+                        className="min-w-0 flex-1 text-left cursor-pointer"
+                      >
+                        <div className="text-[11.5px] font-extrabold text-slate-800 truncate">
+                          ★ {item.name}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate">
+                          {item.address}
+                        </div>
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {onDrawRouteToPlace && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsSavedMenu3DOpen(false);
+                              onDrawRouteToPlace(item, 'motorbike');
+                            }}
+                            className="px-2 py-1 rounded-lg bg-[#059669] hover:bg-[#047857] text-white text-[10px] font-extrabold cursor-pointer"
+                          >
+                            Đi tới
+                          </button>
+                        )}
+                        {onToggleSavePlace && (
+                          <button
+                            type="button"
+                            onClick={() => onToggleSavePlace(item)}
+                            title="Bỏ lưu địa điểm này"
+                            className="px-1.5 py-1 rounded-lg bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#B45309] text-[10px] font-extrabold cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* BẢNG GỢI Ý TÌM KIẾM ĐỊA CHỈ & ĐƯỜNG PHỐ */}
+          {isSearch3DFocused && (
+            <div className="absolute left-0 right-0 sm:w-96 top-full mt-2 max-h-72 overflow-y-auto rounded-2xl bg-white/98 border border-slate-200 shadow-[0_16px_40px_rgba(15,23,42,0.18)] p-2 z-50 space-y-1 backdrop-blur-md">
+              <div className="px-2.5 py-1 text-[10.5px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                <span>
+                  {search3DQuery.trim()
+                    ? `Kết quả "${search3DQuery.trim()}"`
+                    : 'Địa chỉ, Hàng quán & Đường phố'}
+                </span>
+                <span className="text-[10px] text-emerald-700">
+                  {places.filter((p) => p.lat !== null && p.lng !== null).length} địa điểm
+                </span>
+              </div>
+
+              {/* Gợi ý Đường & Ngõ */}
+              {Array.from(new Map(roadLabels.map((r) => [r.name, r])).values())
+                .filter((r) =>
+                  search3DQuery.trim()
+                    ? r.name.toLowerCase().includes(search3DQuery.trim().toLowerCase())
+                    : r.tier === 'major' || r.tier === 'secondary'
+                )
+                .slice(0, search3DQuery.trim() ? 5 : 4)
+                .map((r) => (
+                  <button
+                    key={`road-${r.name}`}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (!showRoadNames) setShowRoadNames(true);
+                      if (originState) {
+                        const [lng, lat] = localToLngLat(originState, r.x, -r.z);
+                        flyToCoordinates3D(lat, lng, 290);
+                      }
+                      setSearch3DQuery('');
+                      setIsSearch3DFocused(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 rounded-xl hover:bg-amber-50 flex items-center justify-between gap-2 cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[11.5px] font-extrabold text-slate-800 truncate">
+                        {r.name}
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Tuyến đường / ngõ Phường Xuân Hòa
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-amber-700 shrink-0">
+                      Bay tới
+                    </span>
+                  </button>
+                ))}
+
+              {/* Gợi ý Địa danh / Cơ quan / Hàng quán */}
+              {places
+                .filter(
+                  (p) =>
+                    p.lat !== null &&
+                    p.lng !== null &&
+                    (!search3DQuery.trim() ||
+                      p.name.toLowerCase().includes(search3DQuery.trim().toLowerCase()) ||
+                      (p.address || '')
+                        .toLowerCase()
+                        .includes(search3DQuery.trim().toLowerCase()) ||
+                      (p.metadata?.subType || '')
+                        .toLowerCase()
+                        .includes(search3DQuery.trim().toLowerCase()))
+                )
+                .slice(0, search3DQuery.trim() ? 12 : 14)
+                .map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      const civic = isCivicLandmark(item);
+                      if (civic && !showCivic) setShowCivic(true);
+                      if (!civic) {
+                        setActiveShopGroup(getShopGroupOfPlace(item));
+                      }
+                      setSelected(item);
+                      flyToPlace(item);
+                      setSearch3DQuery('');
+                      setIsSearch3DFocused(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 rounded-xl hover:bg-emerald-50 flex items-center justify-between gap-2 cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[11.5px] font-extrabold text-slate-800 truncate">
+                        {item.name}
+                      </div>
+                      <div className="text-[10px] text-slate-500 truncate">
+                        {item.metadata?.subType ? `${item.metadata.subType} · ` : ''}
+                        {item.address}
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-700 shrink-0">
+                      Bay tới
+                    </span>
+                  </button>
+                ))}
+            </div>
           )}
         </div>
       </div>
 
+      {/* THANH DẪN ĐƯỜNG GỌN GÀNG TRÊN BẢN ĐỒ 3D (ĐỒNG BỘ 100% VỚI 2D) */}
+      {activeRoute && (() => {
+        const modeLabelMap: Record<TravelMode, string> = {
+          car: 'Ô tô',
+          motorbike: 'Xe máy',
+          bicycle: 'Xe đạp',
+          walk: 'Đi bộ',
+        };
+        const activeTimeText =
+          activeRoute.travelMode === 'car'
+            ? activeRoute.eta.carText
+            : activeRoute.travelMode === 'motorbike'
+            ? activeRoute.eta.bikeText
+            : activeRoute.travelMode === 'bicycle'
+            ? activeRoute.eta.bicycleText
+            : activeRoute.eta.walkText;
+        const contactPhone = activeRoute.targetPlace.phone || '0211 3863 203';
+        const openStatus = evaluatePlaceOpenStatus(
+          activeRoute.targetPlace.openHours,
+          activeRoute.targetPlace.metadata?.liveStatus,
+          activeRoute.targetPlace.metadata?.liveStatusNote
+        );
+        const remText =
+          activeRoute.remainingDistanceMeters < 1000
+            ? `${activeRoute.remainingDistanceMeters} m`
+            : `${(activeRoute.remainingDistanceMeters / 1000).toFixed(1)} km`;
+
+        return (
+          <div className="absolute left-2.5 right-12 sm:left-3 sm:right-auto top-14 z-25 w-auto sm:w-[440px] rounded-2xl bg-[#FFFDF9]/98 border-2 border-[#2563EB] text-[#1E293B] shadow-[0_10px_28px_rgba(15,23,42,0.18)] p-2.5 text-[11px] leading-snug space-y-1.5 pointer-events-auto">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className={`px-2 py-0.5 rounded-lg font-extrabold text-[10px] shrink-0 ${
+                    activeRoute.hasArrived
+                      ? 'bg-[#059669] text-white'
+                      : 'bg-[#2563EB] text-white'
+                  }`}
+                >
+                  {activeRoute.hasArrived ? 'Đã đến nơi' : modeLabelMap[activeRoute.travelMode]}
+                </span>
+                <strong className="text-[12px] font-extrabold text-[#0F172A] truncate">
+                  {activeRoute.targetPlace.name}
+                </strong>
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] text-[#047857] font-extrabold text-[10.5px]">
+                  {activeRoute.eta.distanceText} · {activeTimeText}
+                </span>
+                {onToggleRouteInfo && (
+                  <button
+                    type="button"
+                    onClick={onToggleRouteInfo}
+                    className={`px-2 py-0.5 rounded-lg font-extrabold text-[10.5px] border cursor-pointer transition ${
+                      activeRoute.isInfoExpanded
+                        ? 'bg-[#403064] text-white border-[#403064]'
+                        : 'bg-[#EFF6FF] text-[#1D4ED8] border-[#3B82F6]/40 hover:bg-[#DBEAFE]'
+                    }`}
+                  >
+                    {activeRoute.isInfoExpanded ? 'Ẩn TT' : 'TT & SĐT'}
+                  </button>
+                )}
+                {onClearRoute && (
+                  <button
+                    type="button"
+                    onClick={onClearRoute}
+                    className="px-2 py-0.5 rounded-lg bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold text-[10.5px] cursor-pointer"
+                  >
+                    {activeRoute.hasArrived ? 'Đã đến • Tắt' : 'Tắt'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1">
+              {(
+                [
+                  { id: 'car', label: 'Ô tô', time: activeRoute.eta.carText },
+                  { id: 'motorbike', label: 'Xe máy', time: activeRoute.eta.bikeText },
+                  { id: 'bicycle', label: 'Xe đạp', time: activeRoute.eta.bicycleText },
+                  { id: 'walk', label: 'Đi bộ', time: activeRoute.eta.walkText },
+                ] as Array<{ id: TravelMode; label: string; time: string }>
+              ).map((m) => {
+                const isCurrent = activeRoute.travelMode === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => onSwitchRouteMode?.(m.id)}
+                    className={`py-1 px-1.5 rounded-xl border text-center transition cursor-pointer ${
+                      isCurrent
+                        ? 'bg-[#1E293B] text-white border-[#1E293B] font-extrabold'
+                        : 'bg-[#F8FAFC] text-[#334155] border-[#CBD5E1] hover:bg-[#EFF6FF] font-bold'
+                    }`}
+                  >
+                    <span className="block text-[10.5px] leading-tight">{m.label}</span>
+                    <span
+                      className={`block text-[9.5px] leading-tight ${
+                        isCurrent ? 'text-[#6EE7B7]' : 'text-[#047857]'
+                      }`}
+                    >
+                      {m.time}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeRoute.hasArrived ? (
+              <div className="px-2.5 py-1.5 rounded-xl bg-[#ECFDF5] border border-[#10B981] text-[#065F46] flex items-center justify-between gap-2">
+                <span className="font-extrabold text-[11px]">
+                  Bạn đã đến {activeRoute.targetPlace.name}. Bấm nút bên phải để tắt dẫn đường.
+                </span>
+                {onClearRoute && (
+                  <button
+                    type="button"
+                    onClick={onClearRoute}
+                    className="px-2.5 py-1 rounded-lg bg-[#059669] hover:bg-[#047857] text-white font-extrabold text-[10.5px] shrink-0 cursor-pointer"
+                  >
+                    Tắt khi đã đến
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="px-2.5 py-1 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between gap-2 text-[10.5px]">
+                <span className="text-[#334155] font-semibold truncate">
+                  Lộ trình:{' '}
+                  <strong className="text-[#0F172A]">
+                    {activeRoute.roadNames.length > 0
+                      ? activeRoute.roadNames.slice(0, 2).join(' → ')
+                      : 'Trục đường nội khu Xuân Hòa'}
+                  </strong>{' '}
+                  · Còn <strong className="text-[#2563EB]">{remText}</strong>
+                </span>
+                {onArriveRoute && (
+                  <button
+                    type="button"
+                    onClick={onArriveRoute}
+                    className="px-2 py-0.5 rounded-md bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] font-extrabold text-[10px] shrink-0 cursor-pointer"
+                  >
+                    Đã tới nơi
+                  </button>
+                )}
+              </div>
+            )}
+
+            {activeRoute.isInfoExpanded && (
+              <div className="pt-1.5 border-t border-[#E2E8F0] space-y-1.5 text-[11px]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#475569] font-medium truncate">
+                    Đ/c: <strong className="text-[#0F172A]">{activeRoute.targetPlace.address}</strong>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-[#F1F5F9] text-[#0F172A] font-bold text-[10px] shrink-0">
+                    {openStatus.badgeText}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 pt-0.5">
+                  <a
+                    href={`tel:${contactPhone.replace(/[^0-9+]/g, '')}`}
+                    className="flex-1 py-1.5 px-3 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-extrabold text-[11px] text-center shadow-xs"
+                  >
+                    Gọi SĐT: {contactPhone}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(activeRoute.targetPlace)}
+                    className="py-1.5 px-2.5 rounded-xl bg-[#F1ECE1] hover:bg-[#E5DEC9] text-[#403064] font-bold text-[10.5px] cursor-pointer"
+                  >
+                    Chi tiết
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Thanh nhắc khi đang ở chế độ chấm vị trí trực tiếp trên mặt đất 3D */}
       {isPicking3DGround && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-2xl bg-[#F59E0B] px-4 py-2 text-xs font-extrabold text-white shadow-xl border-2 border-white animate-bounce">
-          <Crosshair size={16} />
-          <span>Hãy click chuột trái vào đúng ngôi nhà / vị trí trên mặt đất 3D để đặt ghim!</span>
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-2xl bg-[#F59E0B] px-4 py-2 text-xs font-extrabold text-white shadow-xl border-2 border-white">
+          <span>Chạm vào đúng ngôi nhà hoặc vị trí trên mặt đất 3D để đặt ghim</span>
           <button
             type="button"
             onClick={() => setIsPicking3DGround(false)}
@@ -1714,132 +2446,651 @@ export const City3DView: React.FC<City3DViewProps> = ({
         </div>
       )}
 
-      {/* Cụm điều khiển bên phải gọn gàng */}
-      <div className="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 flex flex-col overflow-hidden rounded-2xl bg-[#1E1633]/85 shadow-xl backdrop-blur-md divide-y divide-white/10">
-        <button type="button" className={ctrlBtn} onClick={() => zoomBy(0.62)} title="Phóng to">
-          <Plus size={17} />
-        </button>
-        <button type="button" className={ctrlBtn} onClick={() => zoomBy(1.6)} title="Thu nhỏ">
-          <Minus size={17} />
-        </button>
-        <button type="button" className={ctrlBtn} onClick={() => rotateBy(-35)} title="Xoay trái">
-          <RotateCcw size={16} />
-        </button>
-        <button type="button" className={ctrlBtn} onClick={() => rotateBy(35)} title="Xoay phải">
-          <RotateCw size={16} />
-        </button>
-        <button type="button" className={ctrlBtn} onClick={resetNorth} title="Về hướng Bắc">
-          <Compass ref={compassIconRef} size={17} style={{ transform: 'rotate(-45deg)' }} />
-        </button>
-        <button
-          type="button"
-          className={ctrlBtn}
-          onClick={() => setShadowsOn((v) => !v)}
-          title={shadowsOn ? 'Tắt bóng đổ (nhẹ máy hơn)' : 'Bật bóng đổ'}
-        >
-          {shadowsOn ? <Sun size={17} className="text-[#FBBF24]" /> : <SunDim size={17} />}
-        </button>
-        <button type="button" className={ctrlBtn} onClick={toggleFullscreen} title="Toàn màn hình">
-          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-        </button>
+      {/* Thanh nhắc khi khách hàng đang chấm chọn vị trí Nhà của bạn trên Sa bàn 3D */}
+      {home3DModalMode === 'picking' && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-2xl bg-[#D97706] px-4 py-2 text-xs font-extrabold text-white shadow-xl border-2 border-white">
+          <span>Chạm vào đúng ngôi nhà hoặc ngõ bạn đang sinh sống trên mặt đất 3D</span>
+          <button
+            type="button"
+            onClick={() => setHome3DModalMode('edit')}
+            className="ml-1 rounded-lg bg-black/20 px-2 py-0.5 text-[11px] hover:bg-black/30 cursor-pointer shrink-0"
+          >
+            Quay lại
+          </button>
+        </div>
+      )}
+
+      {/* CỘT ĐIỀU KHIỂN DỌC BÊN PHẢI — ĐỒNG NHẤT 100% VỊ TRÍ & KIỂU DÁNG VỚI BẢN ĐỒ 2D (KHÔNG NHẢY XUỐNG DƯỚI) */}
+      <div className="fixed right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-30 flex flex-col items-end gap-2 pointer-events-auto">
+        {is3DLayerMenuOpen && (
+          <div className="mb-1 w-60 rounded-2xl bg-[#FFFDF9] border border-[#403064]/80 shadow-[0_12px_30px_rgba(64,48,100,0.22)] p-3 text-xs text-[#2D2246] space-y-2">
+            <div className="font-extrabold text-[#403064] pb-1.5 border-b border-[#E5DEC9] flex items-center justify-between leading-snug">
+              <span>Tùy chỉnh Sa bàn 3D</span>
+              <button
+                type="button"
+                onClick={() => setIs3DLayerMenuOpen(false)}
+                className="text-[11px] font-bold text-[#65587F] hover:text-[#2D2246] cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="flex items-center justify-between gap-2 cursor-pointer select-none py-0.5">
+                <span className="font-semibold text-[11.5px]">Hiện ghim định vị</span>
+                <input
+                  type="checkbox"
+                  checked={showLocationPins}
+                  onChange={() => setShowLocationPins((v) => !v)}
+                  className="w-4 h-4 accent-[#39B980] rounded cursor-pointer"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-2 cursor-pointer select-none py-0.5">
+                <span className="font-semibold text-[11.5px]">Hiện tên công trình 3D</span>
+                <input
+                  type="checkbox"
+                  checked={showCivic}
+                  onChange={() => setShowCivic((v) => !v)}
+                  className="w-4 h-4 accent-[#39B980] rounded cursor-pointer"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-2 cursor-pointer select-none py-0.5">
+                <span className="font-semibold text-[11.5px]">Hiện tên đường 3D</span>
+                <input
+                  type="checkbox"
+                  checked={showRoadNames}
+                  onChange={() => setShowRoadNames((v) => !v)}
+                  className="w-4 h-4 accent-[#39B980] rounded cursor-pointer"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-2 cursor-pointer select-none py-0.5">
+                <span className="font-semibold text-[11.5px]">Bóng nắng 3D chân thực</span>
+                <input
+                  type="checkbox"
+                  checked={shadowsOn}
+                  onChange={() => setShadowsOn((v) => !v)}
+                  className="w-4 h-4 accent-[#39B980] rounded cursor-pointer"
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1 pt-1.5 border-t border-[#E5DEC9]">
+              <button
+                type="button"
+                onClick={() => zoomBy(0.62)}
+                className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[10.5px] text-[#2D2246] cursor-pointer"
+              >
+                Phóng +
+              </button>
+              <button
+                type="button"
+                onClick={() => zoomBy(1.6)}
+                className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[10.5px] text-[#2D2246] cursor-pointer"
+              >
+                Thu −
+              </button>
+              <button
+                type="button"
+                onClick={resetNorth}
+                className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[10.5px] text-[#2D2246] cursor-pointer"
+              >
+                Hướng Bắc
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  flyToCoordinates3D(XUANHOA_DEFAULT_CENTER.lat, XUANHOA_DEFAULT_CENTER.lng, 280)
+                }
+                className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[10.5px] text-[#2D2246] cursor-pointer"
+              >
+                Trung tâm
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-sm border border-[#403064]/85 shadow-[0_6px_20px_rgba(64,48,100,0.16)] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => {
+              const eng = engineRef.current;
+              if (eng?.origin) {
+                const [lng, lat] = localToLngLat(
+                  eng.origin,
+                  eng.controls.target.x,
+                  -eng.controls.target.z
+                );
+                onClose({ lat, lng });
+              } else {
+                onClose();
+              }
+            }}
+            aria-label="Chuyển sang Bản đồ 2D"
+            title="Chuyển sang Bản đồ 2D"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-black text-[11px] transition-all border-b border-[#E5DEC9] cursor-pointer bg-[#059669] hover:bg-[#047857] text-white"
+          >
+            2D
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onLocateUser?.();
+              if (userCoords3DRef.current) {
+                flyToCoordinates3D(userCoords3DRef.current.lat, userCoords3DRef.current.lng, 260);
+              }
+            }}
+            aria-label="Định vị vị trí hiện tại của tôi"
+            title="Định vị vị trí hiện tại của bạn (GPS)"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-[#1D7A52] hover:bg-[#E6F7EF] transition-colors border-b border-[#E5DEC9] cursor-pointer"
+          >
+            {isLocatingUser ? (
+              <Loader2 size={15} className="animate-spin text-[#39B980]" />
+            ) : (
+              <LocateFixed size={15} className="text-[#39B980]" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIs3DLayerMenuOpen((v) => !v)}
+            aria-label="Tùy chỉnh lớp bản đồ 3D"
+            title="Tùy chỉnh lớp bản đồ & Ánh sáng 3D"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center transition-colors border-b border-[#E5DEC9] cursor-pointer"
+            style={{
+              backgroundColor: is3DLayerMenuOpen ? '#E6F7EF' : 'transparent',
+              color: '#403064',
+            }}
+          >
+            <Layers size={15} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (userHome) {
+                flyToCoordinates3D(userHome.lat, userHome.lng, 185);
+                setHome3DModalMode('view');
+              } else {
+                const eng = engineRef.current;
+                let defaultLat = initialCenter.lat;
+                let defaultLng = initialCenter.lng;
+                if (eng?.origin) {
+                  const [lng, lat] = localToLngLat(
+                    eng.origin,
+                    eng.controls.target.x,
+                    -eng.controls.target.z
+                  );
+                  defaultLat = Number(lat.toFixed(6));
+                  defaultLng = Number(lng.toFixed(6));
+                }
+                setHome3DLabelInput('Nhà của bạn');
+                setHome3DAddressInput('Phường Xuân Hòa');
+                setHome3DMapsInput('');
+                setHome3DLatInput(String(userCoords?.lat ?? defaultLat));
+                setHome3DLngInput(String(userCoords?.lng ?? defaultLng));
+                setHome3DFeedback(null);
+                setHome3DModalMode('edit');
+              }
+            }}
+            aria-label="Chỗ bạn sinh sống (Nhà của bạn)"
+            title={
+              userHome
+                ? `Đi tới ${userHome.label} (${userHome.address})`
+                : 'Định vị chỗ bạn sinh sống (Nhà của bạn)'
+            }
+            className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center transition-colors cursor-pointer ${
+              userHome
+                ? 'bg-[#FEF3C7] text-[#D97706] hover:bg-[#FDE68A]'
+                : 'text-[#403064] hover:bg-[#E6F7EF]'
+            }`}
+          >
+            <Home size={15} />
+          </button>
+        </div>
       </div>
 
-      {/* Thông báo trạng thái lưu / cập nhật nhanh (Đã bỏ hoàn toàn nút búa công cụ vẽ thừa) */}
+      {/* HỘP THOẠI ĐỊNH VỊ & QUẢN LÝ "CHỖ BẠN SINH SỐNG (NHÀ CỦA BẠN)" TRÊN SA BÀN 3D */}
+      {(home3DModalMode === 'view' || home3DModalMode === 'edit') && (
+        <div
+          className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
+          onClick={() => setHome3DModalMode('closed')}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-2xl overflow-hidden text-[#1E293B]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 bg-[#FEF3C7]/85 border-b border-[#E5DEC9] flex items-center justify-between">
+              <div className="min-w-0">
+                <h3 className="text-sm font-extrabold text-[#92400E] leading-snug">
+                  {home3DModalMode === 'view' && userHome
+                    ? `🏠 ${userHome.label}`
+                    : userHome
+                    ? 'Thay đổi chỗ bạn sinh sống'
+                    : 'Định vị chỗ bạn sinh sống'}
+                </h3>
+                <p className="text-[11px] font-semibold text-[#65587F] truncate">
+                  Nick: {userAccountLabel}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHome3DModalMode('closed')}
+                className="px-2.5 py-1 rounded-xl bg-white hover:bg-[#F1ECE1] border border-[#E5DEC9] text-[#403064] text-xs font-extrabold cursor-pointer shrink-0"
+              >
+                Đóng
+              </button>
+            </div>
+
+            {home3DModalMode === 'view' && userHome ? (
+              <div className="p-4 space-y-3 text-xs">
+                <div className="p-3 rounded-xl bg-[#F8F5EE] border border-[#E5DEC9] space-y-1">
+                  <div className="text-[11px] font-bold text-[#65587F]">
+                    Địa chỉ sinh sống hiện tại của bạn:
+                  </div>
+                  <div className="text-[13px] font-extrabold text-[#1E293B]">
+                    {userHome.address}
+                  </div>
+                  <div className="text-[10.5px] font-semibold text-[#047857]">
+                    Tọa độ ghim: {userHome.lat.toFixed(6)}, {userHome.lng.toFixed(6)}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {onRouteToHome && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHome3DModalMode('closed');
+                        onRouteToHome(userHome);
+                      }}
+                      className="col-span-3 py-2.5 px-3 rounded-xl bg-[#059669] hover:bg-[#047857] text-white font-extrabold text-xs shadow-xs cursor-pointer"
+                    >
+                      Chỉ đường về nhà bạn
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => flyToCoordinates3D(userHome.lat, userHome.lng, 165)}
+                    className="py-2 px-2.5 rounded-xl bg-[#F1ECE1] hover:bg-[#E5DEC9] text-[#403064] font-extrabold text-[11.5px] cursor-pointer"
+                  >
+                    Đứng tại nhà
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHome3DLabelInput(userHome.label || 'Nhà của bạn');
+                      setHome3DAddressInput(userHome.address || 'Phường Xuân Hòa');
+                      setHome3DMapsInput('');
+                      setHome3DLatInput(String(userHome.lat));
+                      setHome3DLngInput(String(userHome.lng));
+                      setHome3DFeedback(null);
+                      setHome3DModalMode('edit');
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#F59E0B] font-extrabold text-[11.5px] cursor-pointer"
+                  >
+                    Thay đổi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClearUserHome?.();
+                      setHome3DModalMode('closed');
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold text-[11.5px] cursor-pointer"
+                  >
+                    Xóa
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const lat = parseFloat(home3DLatInput);
+                  const lng = parseFloat(home3DLngInput);
+                  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                    setHome3DFeedback('Vui lòng chấm vị trí trên bản đồ 3D hoặc nhập tọa độ hợp lệ.');
+                    return;
+                  }
+                  onSaveUserHome?.({
+                    label: home3DLabelInput.trim() || 'Nhà của bạn',
+                    address: home3DAddressInput.trim() || 'Phường Xuân Hòa',
+                    lat,
+                    lng,
+                  });
+                  flyToCoordinates3D(lat, lng, 185);
+                  setHome3DModalMode('view');
+                }}
+                className="p-4 space-y-3 text-xs"
+              >
+                <div className="p-2.5 rounded-xl bg-[#FEF3C7]/60 border border-[#F59E0B]/60 text-[11px] font-semibold text-[#78350F] leading-snug">
+                  Hãy định vị chỗ bạn đang sinh sống. Sau khi lưu, mỗi lần bấm biểu tượng ngôi nhà 🏠 bản đồ sẽ đứng đúng tại địa chỉ nhà bạn cho đến khi bạn thay đổi hoặc xóa.
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setHome3DModalMode('picking')}
+                    className="py-2 px-2.5 rounded-xl bg-[#D97706] hover:bg-[#B45309] text-white font-extrabold text-[11px] shadow-xs cursor-pointer"
+                  >
+                    Chấm vị trí nhà trên 3D
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (userCoords) {
+                        setHome3DLatInput(String(userCoords.lat));
+                        setHome3DLngInput(String(userCoords.lng));
+                        flyToCoordinates3D(userCoords.lat, userCoords.lng, 185);
+                        setHome3DFeedback(
+                          `Đã lấy theo GPS hiện tại (${userCoords.lat.toFixed(5)}, ${userCoords.lng.toFixed(5)})!`
+                        );
+                      } else {
+                        onLocateUser?.();
+                        setHome3DFeedback('Đang lấy tín hiệu GPS hiện tại của bạn...');
+                      }
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] border border-[#10B981]/50 font-extrabold text-[11px] cursor-pointer"
+                  >
+                    Lấy theo GPS hiện tại
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#475569] mb-1">
+                      Tên gọi chỗ ở
+                    </label>
+                    <input
+                      type="text"
+                      value={home3DLabelInput}
+                      onChange={(e) => setHome3DLabelInput(e.target.value)}
+                      placeholder="VD: Nhà của bạn, Phòng trọ..."
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-bold bg-white text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#475569] mb-1">
+                      Địa chỉ / Số nhà / Ngõ
+                    </label>
+                    <input
+                      type="text"
+                      value={home3DAddressInput}
+                      onChange={(e) => setHome3DAddressInput(e.target.value)}
+                      placeholder="VD: Ngõ 29 Nguyễn Văn Linh, Xuân Hòa"
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-semibold bg-white text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#475569] mb-1">
+                    Dán link Google Maps / Plus Code
+                  </label>
+                  <input
+                    type="text"
+                    value={home3DMapsInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setHome3DMapsInput(val);
+                      const parsed = parseCoordinatesFromInputOrUrl(val);
+                      if (parsed) {
+                        setHome3DLatInput(String(parsed.lat));
+                        setHome3DLngInput(String(parsed.lng));
+                        flyToCoordinates3D(parsed.lat, parsed.lng, 185);
+                        setHome3DFeedback(`Đã nhận tọa độ (${parsed.lat}, ${parsed.lng}) từ link Maps!`);
+                      }
+                    }}
+                    placeholder="Dán link Google Maps hoặc tọa độ..."
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-medium bg-white text-slate-800"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-[#64748B] mb-0.5">
+                      Vĩ độ (Lat)
+                    </label>
+                    <input
+                      type="text"
+                      value={home3DLatInput}
+                      onChange={(e) => setHome3DLatInput(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-mono font-bold bg-white text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-[#64748B] mb-0.5">
+                      Kinh độ (Lng)
+                    </label>
+                    <input
+                      type="text"
+                      value={home3DLngInput}
+                      onChange={(e) => setHome3DLngInput(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-mono font-bold bg-white text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                {home3DFeedback && (
+                  <div className="p-2 rounded-xl bg-[#E6F7EF] text-[#047857] text-[11px] font-bold">
+                    {home3DFeedback}
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-[#E5DEC9] flex items-center justify-between gap-2">
+                  {userHome ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClearUserHome?.();
+                        setHome3DModalMode('closed');
+                      }}
+                      className="px-3 py-2 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold text-[11px] cursor-pointer"
+                    >
+                      Xóa nhà đã lưu
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHome3DModalMode(userHome ? 'view' : 'closed')}
+                      className="px-3 py-2 rounded-xl bg-[#F1ECE1] text-[#403064] font-bold text-xs cursor-pointer"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-xl bg-[#059669] hover:bg-[#047857] text-white font-extrabold text-xs shadow-xs cursor-pointer"
+                    >
+                      Lưu chỗ bạn sống
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Thông báo trạng thái lưu / cập nhật nhanh */}
       {isReady && !isEditingPlace && !isCreatingNew && liveState.message && (
-        <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 max-w-[90vw] pointer-events-none">
+        <div className="absolute bottom-14 left-1/2 z-10 -translate-x-1/2 max-w-[90vw] pointer-events-none">
           <div className="pointer-events-auto rounded-full bg-[#1E1633]/92 px-4 py-1.5 text-center text-[11.5px] font-semibold text-white shadow-lg backdrop-blur-md">
             {liveState.message}
           </div>
         </div>
       )}
 
-      {/* Thẻ thông tin Địa danh / Quán đang chọn (Góc dưới trái) */}
+      {/* Thẻ thông tin Địa danh / Quán đang chọn (Gọn gàng ở góc dưới trái, tối ưu cho Mobile) */}
       {selected && !isEditingPlace && !isCreatingNew && (
-        <div className="absolute left-2.5 bottom-16 sm:bottom-4 z-20 w-[min(92vw,340px)] rounded-2xl border-2 border-[#403064] bg-[#FFFDF9]/98 p-3 text-[#2D2246] shadow-2xl backdrop-blur-md">
+        <div className="absolute left-2.5 right-12 sm:right-auto bottom-12 sm:bottom-14 z-20 sm:w-[330px] rounded-2xl border border-[#403064]/80 bg-[#FFFDF9]/98 p-2.5 sm:p-3 text-[#2D2246] shadow-2xl backdrop-blur-md">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="inline-flex items-center gap-1 rounded-md bg-[#E6F7EF] px-2 py-0.5 text-[10.5px] font-extrabold text-[#047857]">
+              <div className="inline-flex items-center rounded-md bg-[#E6F7EF] px-2 py-0.5 text-[10px] font-extrabold text-[#047857]">
                 {MAP_CATEGORY_BY_ID[selected.category]?.label || 'Địa điểm công cộng'}
               </div>
-              <div className="mt-1 text-[14.5px] font-extrabold leading-snug text-[#1E1633]">
+              <div className="mt-1 text-[13.5px] sm:text-[14px] font-extrabold leading-snug text-[#1E1633]">
                 {selected.name}
               </div>
               {selected.address && (
-                <div className="mt-0.5 text-[11.5px] font-medium text-[#65587F] line-clamp-2">
-                  📍 {selected.address}
+                <div className="mt-0.5 text-[11px] font-medium text-[#65587F] line-clamp-2">
+                  {selected.address}
+                </div>
+              )}
+              {selected.metadata?.subType && (
+                <div className="mt-1 rounded-lg bg-[#F8F5EE] border border-[#E5DEC9] px-2 py-1 text-[10.5px] font-semibold text-[#403064] line-clamp-2">
+                  {selected.metadata.subType}
                 </div>
               )}
               {(selected.phone || selected.openHours) && (
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-semibold text-[#334155]">
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] font-semibold text-[#334155]">
                   {selected.phone && (
                     <a
                       href={`tel:${selected.phone}`}
-                      className="inline-flex items-center gap-1 text-[#047857] hover:underline"
+                      className="text-[#047857] hover:underline"
                     >
-                      <Phone size={11} /> {selected.phone}
+                      SĐT: {selected.phone}
                     </a>
                   )}
                   {selected.openHours && (
-                    <span className="inline-flex items-center gap-1 text-[#64748B]">
-                      <Clock size={11} /> {selected.openHours}
+                    <span className="text-[#64748B]">
+                      Giờ mở cửa: {selected.openHours}
                     </span>
                   )}
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setSelected(null)}
-              className="rounded-lg bg-[#F1ECE1] p-1 text-[#403064] hover:bg-[#E5DEC9] cursor-pointer shrink-0"
-            >
-              <X size={14} />
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onToggleSavePlace && (
+                <button
+                  type="button"
+                  onClick={() => onToggleSavePlace(selected)}
+                  className={`rounded-lg px-2 py-0.5 text-[10.5px] font-extrabold border transition cursor-pointer ${
+                    savedPlaceIds.includes(selected.id)
+                      ? 'bg-[#FEF3C7] text-[#B45309] border-[#F59E0B]'
+                      : 'bg-white text-[#403064] border-[#403064]/30 hover:bg-[#FEF3C7]/60'
+                  }`}
+                >
+                  {savedPlaceIds.includes(selected.id) ? '★ Đã lưu' : '☆ Lưu'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="rounded-lg bg-[#F1ECE1] px-2 py-0.5 text-xs font-bold text-[#403064] hover:bg-[#E5DEC9] cursor-pointer shrink-0"
+              >
+                ×
+              </button>
+            </div>
           </div>
 
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {onDrawRouteToPlace && selected.lat !== null && selected.lng !== null && (
+              <button
+                type="button"
+                onClick={() => {
+                  onDrawRouteToPlace(selected, 'motorbike');
+                  setSelected(null);
+                }}
+                className="flex-1 rounded-xl bg-[#39B980] hover:bg-[#2FA36E] border border-[#403064] px-2.5 py-1.5 text-[11px] font-extrabold text-white cursor-pointer"
+              >
+                Bắt đầu chỉ đường
+              </button>
+            )}
+            {selected.phone && (
+              <a
+                href={`tel:${selected.phone.replace(/[^0-9+]/g, '')}`}
+                className="rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] border border-[#3B82F6]/40 px-2.5 py-1.5 text-[11px] font-extrabold text-[#1D4ED8]"
+              >
+                Gọi điện
+              </a>
+            )}
             {onOpenPlace && selected.originalPlace && !isCivicLandmark(selected) && (
               <button
                 type="button"
                 onClick={() => onOpenPlace(selected)}
-                className="flex-1 rounded-xl bg-[#059669] hover:bg-[#047857] px-2.5 py-1.5 text-[11.5px] font-extrabold text-white cursor-pointer"
+                className="rounded-xl bg-[#403064] hover:bg-[#2D2246] px-2.5 py-1.5 text-[11px] font-extrabold text-white cursor-pointer"
               >
-                Xem thực đơn
+                Thực đơn
               </button>
             )}
-            {onShowPlaceIn2D && (
+            {hasAdminAccess && (
               <button
                 type="button"
-                onClick={() => onShowPlaceIn2D(selected)}
-                className="flex-1 rounded-xl border border-[#403064] bg-white hover:bg-[#F8F5EE] px-2.5 py-1.5 text-[11.5px] font-extrabold text-[#403064] cursor-pointer"
+                onClick={() => openEditForPlace(selected)}
+                className="rounded-xl bg-[#FEF3C7] hover:bg-[#FDE68A] border border-[#F59E0B] px-2.5 py-1.5 text-[11px] font-extrabold text-[#92400E] cursor-pointer"
               >
-                Chỉ đường (2D)
+                Sửa địa điểm
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => openEditForPlace(selected)}
-              className="inline-flex items-center justify-center gap-1 rounded-xl bg-[#FEF3C7] hover:bg-[#FDE68A] border border-[#F59E0B] px-2.5 py-1.5 text-[11.5px] font-extrabold text-[#92400E] cursor-pointer"
-              title="Sửa tên gọi, vị trí, số điện thoại, icon của địa danh này"
-            >
-              <Pencil size={12} /> Sửa / Định vị
-            </button>
           </div>
         </div>
       )}
 
+      {/* THANH ĐIỀU KHIỂN ADMIN ĐẶT GỌN Ở DƯỚI ĐÁY BẢN ĐỒ (Dễ bấm bằng ngón cái trên Mobile, không icon thừa) */}
+      {hasAdminAccess ? (
+        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-20 max-w-[96vw] pointer-events-auto">
+          <div className="flex items-center gap-1 rounded-full bg-white/95 border border-amber-300 px-2 py-1 shadow-[0_6px_20px_rgba(15,23,42,0.12)] backdrop-blur-md whitespace-nowrap">
+            <span className="text-[10.5px] font-extrabold text-amber-800 px-1.5">Admin</span>
+            <button
+              type="button"
+              onClick={openCreateNewModal}
+              className="rounded-full bg-[#059669] hover:bg-[#047857] text-white px-2.5 py-1 text-[10.5px] font-bold transition cursor-pointer"
+            >
+              Thêm mới
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (selected) {
+                  openEditForPlace(selected);
+                } else if (placesWithCoords.length > 0) {
+                  setSelected(placesWithCoords[0]);
+                  openEditForPlace(placesWithCoords[0]);
+                }
+              }}
+              className="rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#F59E0B] px-2.5 py-1 text-[10.5px] font-bold transition cursor-pointer"
+            >
+              Sửa địa điểm
+            </button>
+            {onOpenWebAdmin && (
+              <button
+                type="button"
+                onClick={() => onOpenWebAdmin(selected?.id)}
+                className="rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 px-2.5 py-1 text-[10.5px] font-bold cursor-pointer transition"
+              >
+                Quản trị
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsLoginModalOpen(true)}
+          className="absolute right-2.5 bottom-2.5 z-10 rounded-full bg-white/85 hover:bg-white border border-slate-300/80 px-2.5 py-1 text-[10px] font-bold text-slate-600 shadow-sm backdrop-blur-md cursor-pointer transition"
+          title="Đăng nhập Quản trị viên"
+        >
+          Admin
+        </button>
+      )}
+
       {/* Khung Chỉnh sửa / Thêm mới Địa danh & Định vị trực tiếp trên 3D (Gọn gàng góc trái) */}
       {(isEditingPlace || isCreatingNew) && (
-        <div className="absolute left-2.5 bottom-3 top-14 z-20 flex items-end pointer-events-none">
+        <div className="absolute left-2.5 bottom-2.5 top-14 z-30 flex items-end pointer-events-none">
           <form
             onSubmit={handleSavePlaceEdit}
-            className="pointer-events-auto w-[min(94vw,375px)] max-h-full overflow-y-auto rounded-2xl border-2 border-[#403064] bg-[#FFFDF9]/98 p-3.5 text-xs text-[#2D2246] shadow-2xl space-y-2.5 backdrop-blur-md"
+            className="pointer-events-auto w-[min(94vw,370px)] max-h-full overflow-y-auto rounded-2xl border-2 border-[#403064] bg-[#FFFDF9]/98 p-3 text-xs text-[#2D2246] shadow-2xl space-y-2 backdrop-blur-md"
           >
             <div className="flex items-center justify-between border-b border-[#E5DEC9] pb-2">
               <div>
-                <span className="inline-flex items-center gap-1 rounded bg-[#FEF3C7] px-1.5 py-0.5 text-[10px] font-extrabold text-[#92400E]">
-                  {isCreatingNew ? '➕ THÊM ĐỊA DANH MỚI' : '✏️ CHỈNH SỬA ĐỊA DANH & VỊ TRÍ'}
+                <span className="inline-flex items-center rounded bg-[#FEF3C7] px-1.5 py-0.5 text-[10px] font-extrabold text-[#92400E]">
+                  {isCreatingNew ? 'THÊM ĐỊA DANH MỚI' : 'CHỈNH SỬA ĐỊA DANH & VỊ TRÍ'}
                 </span>
-                <h3 className="text-[13.5px] font-extrabold text-[#1E1633] mt-0.5">
+                <h3 className="text-[13px] font-extrabold text-[#1E1633] mt-0.5">
                   {isCreatingNew ? 'Cắm địa điểm mới lên Bản đồ' : editName || 'Cập nhật địa danh'}
                 </h3>
               </div>
@@ -1850,9 +3101,9 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   setIsCreatingNew(false);
                   setIsPicking3DGround(false);
                 }}
-                className="rounded-lg bg-[#F1ECE1] p-1 text-[#403064] cursor-pointer"
+                className="rounded-lg bg-[#F1ECE1] px-2 py-0.5 text-xs font-bold text-[#403064] cursor-pointer"
               >
-                <X size={15} />
+                Đóng
               </button>
             </div>
 
@@ -1873,7 +3124,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[11px] font-extrabold text-[#403064] mb-0.5">
-                  Loại & Biểu tượng (Icon)
+                  Loại & Biểu tượng
                 </label>
                 <select
                   value={editCategory}
@@ -1930,10 +3181,23 @@ export const City3DView: React.FC<City3DViewProps> = ({
               </div>
             </div>
 
+            <div>
+              <label className="block text-[11px] font-extrabold text-[#403064] mb-0.5">
+                Mô tả chức năng / Ghi chú hiển thị
+              </label>
+              <input
+                type="text"
+                value={editTagline}
+                onChange={(e) => setEditTagline(e.target.value)}
+                placeholder="VD: Trụ sở làm việc mới / Điểm tiếp dân / Món đặc sản..."
+                className="w-full rounded-xl border border-[#CBD5E1] bg-white px-2.5 py-1.5 text-xs font-medium text-[#1E293B]"
+              />
+            </div>
+
             {/* Khung Định vị bằng Link Maps / Plus Code / Địa chỉ / Chấm trên 3D */}
             <div className="rounded-xl bg-[#F8F5EE] border border-[#E5DEC9] p-2.5 space-y-2">
               <label className="block text-[11px] font-extrabold text-[#1D7A52]">
-                📍 Định vị (Dán Link Google Maps, Plus Code hoặc gõ địa chỉ):
+                Định vị (Dán Link Google Maps, Plus Code hoặc gõ địa chỉ):
               </label>
               <div className="flex gap-1.5">
                 <input
@@ -1947,10 +3211,9 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   type="button"
                   onClick={handleSearchAddressIn3D}
                   disabled={isGeocoding}
-                  className="inline-flex items-center gap-1 rounded-lg bg-[#059669] hover:bg-[#047857] px-2.5 py-1.5 text-[11px] font-extrabold text-white cursor-pointer shrink-0"
+                  className="rounded-lg bg-[#059669] hover:bg-[#047857] px-2.5 py-1.5 text-[11px] font-extrabold text-white cursor-pointer shrink-0"
                 >
-                  {isGeocoding ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-                  <span>Tìm</span>
+                  {isGeocoding ? 'Đang tìm...' : 'Tìm'}
                 </button>
               </div>
 
@@ -1980,18 +3243,15 @@ export const City3DView: React.FC<City3DViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsPicking3DGround((v) => !v)}
-                  className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg py-1.5 px-2 text-[11px] font-extrabold cursor-pointer transition ${
+                  className={`flex-1 rounded-lg py-1.5 px-2 text-[11px] font-extrabold cursor-pointer transition ${
                     isPicking3DGround
                       ? 'bg-[#F59E0B] text-white shadow-inner'
                       : 'bg-[#403064] hover:bg-[#2D2246] text-white'
                   }`}
                 >
-                  <Crosshair size={13} />
-                  <span>
-                    {isPicking3DGround
-                      ? 'Đang chờ bạn click lên mặt đất 3D…'
-                      : '🎯 Chấm vị trí trên mặt đất 3D'}
-                  </span>
+                  {isPicking3DGround
+                    ? 'Đang chờ bạn chạm lên mặt đất 3D...'
+                    : 'Chấm vị trí trên mặt đất 3D'}
                 </button>
               </div>
 
@@ -2039,19 +3299,19 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   <button
                     type="button"
                     onClick={handleDeletePlace}
-                    className="inline-flex items-center gap-1 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] px-2.5 py-1.5 text-[11px] font-bold text-[#991B1B] cursor-pointer"
+                    className="rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] px-2.5 py-1.5 text-[11px] font-bold text-[#991B1B] cursor-pointer"
                     title="Ẩn địa danh này khỏi bản đồ"
                   >
-                    <Trash2 size={12} /> Ẩn
+                    Ẩn
                   </button>
                   {isOsmSeedSelected && (
                     <button
                       type="button"
                       onClick={handleRestoreDefault}
-                      className="inline-flex items-center gap-1 rounded-xl bg-[#F1F5F9] hover:bg-[#E2E8F0] px-2 py-1.5 text-[11px] font-bold text-[#475569] cursor-pointer"
+                      className="rounded-xl bg-[#F1F5F9] hover:bg-[#E2E8F0] px-2 py-1.5 text-[11px] font-bold text-[#475569] cursor-pointer"
                       title="Khôi phục về dữ liệu gốc"
                     >
-                      ↺ Gốc
+                      Khôi phục gốc
                     </button>
                   )}
                 </div>
@@ -2062,17 +3322,17 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenWebAdmin(editId)}
-                    className="inline-flex items-center gap-1 rounded-xl bg-[#F1ECE1] hover:bg-[#E5DEC9] px-2.5 py-1.5 text-[11px] font-bold text-[#403064] cursor-pointer"
+                    className="rounded-xl bg-[#F1ECE1] hover:bg-[#E5DEC9] px-2.5 py-1.5 text-[11px] font-bold text-[#403064] cursor-pointer"
                     title="Mở trong Web Admin"
                   >
-                    <ExternalLink size={12} /> Admin
+                    Quản trị
                   </button>
                 )}
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1 rounded-xl bg-[#059669] hover:bg-[#047857] px-3.5 py-1.5 text-xs font-extrabold text-white shadow-md cursor-pointer"
+                  className="rounded-xl bg-[#059669] hover:bg-[#047857] px-3.5 py-1.5 text-xs font-extrabold text-white shadow-md cursor-pointer"
                 >
-                  <Check size={14} /> Lưu cập nhật
+                  Lưu cập nhật
                 </button>
               </div>
             </div>
@@ -2092,15 +3352,15 @@ export const City3DView: React.FC<City3DViewProps> = ({
             className="w-[min(90vw,340px)] rounded-2xl border-2 border-[#403064] bg-[#FFFDF9] p-4 text-xs text-[#2D2246] shadow-2xl space-y-3"
           >
             <div className="flex items-center justify-between">
-              <div className="font-extrabold text-sm text-[#1E1633] flex items-center gap-1.5">
-                <ShieldCheck size={16} className="text-[#059669]" /> Mở khóa Quản trị Bản đồ
+              <div className="font-extrabold text-sm text-[#1E1633]">
+                Mở khóa Quản trị Bản đồ
               </div>
               <button
                 type="button"
                 onClick={() => setIsLoginModalOpen(false)}
-                className="rounded-lg bg-[#F1ECE1] p-1 text-[#403064] cursor-pointer"
+                className="rounded-lg bg-[#F1ECE1] px-2 py-0.5 text-xs font-bold text-[#403064] cursor-pointer"
               >
-                <X size={14} />
+                Đóng
               </button>
             </div>
             <p className="text-[11px] text-[#64748B]">
@@ -2151,37 +3411,27 @@ export const City3DView: React.FC<City3DViewProps> = ({
         </div>
       )}
 
-      {/* Màn hình đang dựng */}
+      {/* Thông báo gọn gàng khi đang vào Bản đồ số Phường Xuân Hòa (3D) */}
       {(!isReady || error) && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#DCE7EF]/70 backdrop-blur-[2px] pointer-events-none">
-          <div className="pointer-events-auto w-[min(88vw,360px)] rounded-3xl border-2 border-[#403064] bg-[#FFFDF9] p-5 text-center shadow-2xl">
-            {error ? (
-              <>
-                <div className="text-[15px] font-extrabold text-[#B91C1C]">Không mở được Bản đồ 3D</div>
-                <div className="mt-1.5 text-[13px] font-medium text-[#2D2246]">{error}</div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="mt-4 rounded-xl bg-[#403064] px-4 py-2 text-sm font-bold text-white cursor-pointer"
-                >
-                  Quay lại bản đồ 2D
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-center gap-2 text-[15px] font-extrabold text-[#2D2246]">
-                  <Building2 size={18} className="text-[#059669]" /> Đang dựng thành phố 3D
-                </div>
-                <div className="mt-1 text-[12.5px] font-medium text-[#65587F]">{progress.label}</div>
-                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[#E5DEC9]">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#10B981] to-[#059669] transition-all duration-300"
-                    style={{ width: `${progress.pct}%` }}
-                  />
-                </div>
-              </>
-            )}
-          </div>
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+          {error ? (
+            <div className="pointer-events-auto w-[min(88vw,320px)] rounded-2xl border border-[#EF4444] bg-[#FFFDF9] p-3.5 text-center shadow-xl">
+              <div className="text-xs font-extrabold text-[#B91C1C]">Không mở được Bản đồ 3D</div>
+              <div className="mt-1 text-[11px] font-medium text-[#2D2246]">{error}</div>
+              <button
+                type="button"
+                onClick={() => onClose()}
+                className="mt-2.5 rounded-xl bg-[#403064] px-3 py-1.5 text-xs font-bold text-white cursor-pointer"
+              >
+                Quay lại bản đồ 2D
+              </button>
+            </div>
+          ) : (
+            <div className="pointer-events-auto inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#1E1633]/94 text-white border border-[#39B980]/60 shadow-[0_10px_28px_rgba(15,23,42,0.22)] backdrop-blur-md text-[11.5px] font-extrabold whitespace-nowrap">
+              <Loader2 size={14} className="animate-spin text-[#39B980] shrink-0" />
+              <span>Đang vào Bản đồ số Phường Xuân Hòa ({progress.pct}%)</span>
+            </div>
+          )}
         </div>
       )}
 

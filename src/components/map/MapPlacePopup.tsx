@@ -17,9 +17,9 @@ import { MAP_CATEGORY_BY_ID } from '@/lib/map/map-categories';
 import {
   calculateDistanceAndEta,
   evaluatePlaceOpenStatus,
+  type TravelMode,
 } from '@/lib/map/map-data';
 import { XUANHOA_DEFAULT_CENTER } from '@/lib/map/map-config';
-import { renderCategoryIcon } from './MapCategoryPanel';
 
 interface MapPlacePopupProps {
   place: PlaceLocation | null;
@@ -29,10 +29,12 @@ interface MapPlacePopupProps {
   onEditCoordinates?: (place: PlaceLocation) => void;
   userCoords?: { lat: number; lng: number } | null;
   activeRouteDistanceMeters?: number | null;
-  onDrawRouteToPlace?: (place: PlaceLocation) => void;
+  onDrawRouteToPlace?: (place: PlaceLocation, mode?: TravelMode) => void;
   onClearRoute?: () => void;
   isRouteActiveForThisPlace?: boolean;
   onOpenMerchantPortal?: (place: PlaceLocation) => void;
+  isSaved?: boolean;
+  onToggleSave?: (place: PlaceLocation) => void;
 }
 
 export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
@@ -47,10 +49,15 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
   onClearRoute,
   isRouteActiveForThisPlace,
   onOpenMerchantPortal,
+  isSaved = false,
+  onToggleSave,
 }) => {
+  const [selectedMode, setSelectedMode] = React.useState<TravelMode>('motorbike');
+
   if (!place) return null;
 
   const cat = MAP_CATEGORY_BY_ID[place.category];
+  const contactPhone = place.phone || '0211 3863 203';
 
   // Tính khoảng cách và thời gian di chuyển từ vị trí GPS của khách (hoặc từ tâm Xuân Hòa nếu chưa bật GPS)
   const originLat = userCoords ? userCoords.lat : XUANHOA_DEFAULT_CENTER.lat;
@@ -93,15 +100,13 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span
-            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-xl text-[11px] font-extrabold border border-[#403064] text-white"
+            className="inline-flex items-center px-2.5 py-0.5 rounded-xl text-[10.5px] font-extrabold border border-[#403064] text-white"
             style={{ backgroundColor: cat?.markerBg || '#39B980' }}
           >
-            {cat && renderCategoryIcon(cat.iconName, 12)}
             <span>{cat?.shortLabel || 'Địa điểm'}</span>
           </span>
 
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#E6F7EF] text-[#1D7A52] border border-[#39B980]/40">
-            <CheckCircle2 size={11} />
+          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#E6F7EF] text-[#1D7A52] border border-[#39B980]/40">
             <span>
               {place.coordinateSource === 'merchant_verified' ||
               place.metadata.claimedByEmail
@@ -114,7 +119,7 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
 
           {/* Trạng thái Đang mở cửa / Đã đóng cửa giống Google Maps */}
           <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-extrabold border"
+            className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-extrabold border"
             style={{
               backgroundColor:
                 openStatus.tone === 'emerald'
@@ -140,56 +145,111 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Đóng thông tin địa điểm"
-          className="p-1.5 rounded-xl bg-[#F1ECE1] text-[#403064] hover:bg-[#E5DEC9] transition-colors cursor-pointer shrink-0"
-        >
-          <X size={15} />
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onToggleSave && (
+            <button
+              type="button"
+              onClick={() => onToggleSave(place)}
+              title={isSaved ? 'Bỏ lưu địa điểm này' : 'Lưu địa điểm vào tài khoản của bạn'}
+              className={`px-2.5 py-0.5 rounded-xl text-[11px] font-extrabold border transition-all cursor-pointer flex items-center gap-1 ${
+                isSaved
+                  ? 'bg-[#FEF3C7] text-[#B45309] border-[#F59E0B] shadow-xs'
+                  : 'bg-[#FFFDF9] text-[#403064] border-[#403064]/30 hover:bg-[#FEF3C7]/60'
+              }`}
+            >
+              <span>{isSaved ? '★ Đã lưu' : '☆ Lưu'}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng thông tin địa điểm"
+            className="px-2 py-0.5 rounded-xl bg-[#F1ECE1] text-[#403064] hover:bg-[#E5DEC9] text-xs font-bold transition-colors cursor-pointer shrink-0"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       {/* Tên & Địa chỉ */}
-      <div className="mt-2">
-        <h3 className="text-[15px] font-extrabold text-[#2D2246] leading-snug">
+      <div className="mt-1.5">
+        <h3 className="text-[14px] sm:text-[15px] font-extrabold text-[#2D2246] leading-snug">
           {place.name}
         </h3>
-        <p className="text-xs text-[#65587F] mt-0.5 flex items-start gap-1.5">
-          <MapPin size={13} className="shrink-0 mt-0.5 text-[#39B980]" />
+        <p className="text-[11.5px] text-[#65587F] mt-0.5">
           <span>{place.address}</span>
         </p>
       </div>
 
-      {/* THANH KHOẢNG CÁCH & THỜI GIAN DI CHUYỂN TỪ VỊ TRÍ ĐỊNH VỊ (GOOGLE MAPS STYLE) */}
+      {/* THANH KHOẢNG CÁCH & 4 PHƯƠNG TIỆN DI CHUYỂN CHUẨN GOOGLE MAPS */}
       {etaInfo && (
-        <div className="mt-2.5 p-2.5 rounded-2xl bg-[#E6F7EF]/85 border border-[#39B980] flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-1.5 font-extrabold text-[#1D7A52]">
-            <Route size={14} className="shrink-0" />
-            <span>
-              {userCoords ? 'Cách vị trí của bạn:' : 'Từ trung tâm ĐHSP2:'}{' '}
+        <div className="mt-2 p-2.5 rounded-2xl bg-[#E6F7EF]/85 border border-[#39B980] space-y-1.5 text-[11.5px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-extrabold text-[#1D7A52]">
+              Quãng đường dự kiến:{' '}
               <strong className="text-[#2D2246]">{etaInfo.distanceText}</strong>
             </span>
+            <span className="text-[10.5px] font-bold text-[#65587F]">
+              Chọn phương tiện để đi
+            </span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] font-bold text-[#2D2246]">
-            <span className="px-2 py-0.5 rounded-lg bg-[#FFFDF9] border border-[#39B980]/40">
-              🛵 {etaInfo.bikeText}
-            </span>
-            <span className="px-2 py-0.5 rounded-lg bg-[#FFFDF9] border border-[#39B980]/40">
-              🚶 {etaInfo.walkText}
-            </span>
+          <div className="grid grid-cols-4 gap-1 text-[10.5px] font-bold">
+            {(
+              [
+                { id: 'car', label: 'Ô tô', time: etaInfo.carText },
+                { id: 'motorbike', label: 'Xe máy', time: etaInfo.bikeText },
+                { id: 'bicycle', label: 'Xe đạp', time: etaInfo.bicycleText },
+                { id: 'walk', label: 'Đi bộ', time: etaInfo.walkText },
+              ] as Array<{ id: TravelMode; label: string; time: string }>
+            ).map((m) => {
+              const active = selectedMode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedMode(m.id);
+                    if (onDrawRouteToPlace && place.lat !== null && place.lng !== null) {
+                      onDrawRouteToPlace(place, m.id);
+                    }
+                  }}
+                  className={`py-1 px-1.5 rounded-xl border text-center transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-[#2D2246] text-white border-[#2D2246]'
+                      : 'bg-[#FFFDF9] text-[#2D2246] border-[#39B980]/40 hover:bg-[#E6F7EF]'
+                  }`}
+                >
+                  <div className="font-extrabold leading-tight">{m.label}</div>
+                  <div
+                    className={`text-[10px] leading-tight ${
+                      active ? 'text-[#6EE7B7]' : 'text-[#1D7A52]'
+                    }`}
+                  >
+                    {m.time}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Lời nhắn trực tiếp từ chủ quán hoặc Giờ bán chi tiết */}
+      {/* Lời nhắn trực tiếp từ chủ quán + Giờ mở cửa + SĐT liên hệ */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-[#403064]">
-        <span className="px-2 py-0.5 rounded-lg bg-[#F3EFE6] inline-flex items-center gap-1 font-semibold">
-          <Clock size={11} /> {openStatus.detailText}
+        <span className="px-2 py-0.5 rounded-lg bg-[#F3EFE6] font-semibold">
+          {openStatus.detailText}
         </span>
+        {contactPhone && (
+          <a
+            href={`tel:${contactPhone.replace(/[^0-9+]/g, '')}`}
+            className="px-2 py-0.5 rounded-lg bg-[#EFF6FF] text-[#1D4ED8] border border-[#3B82F6]/30 font-extrabold hover:bg-[#DBEAFE]"
+          >
+            SĐT: {contactPhone}
+          </a>
+        )}
         {place.metadata.priceRange && (
           <span className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] text-[#1D7A52] font-bold">
-            💰 {place.metadata.priceRange}
+            {place.metadata.priceRange}
           </span>
         )}
         {place.metadata.subType && (
@@ -214,8 +274,8 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
         </div>
       )}
 
-      {/* Nút hành động: Chỉ đường ngay trên bản đồ + Thực đơn + Google Maps + Gọi */}
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      {/* Nút hành động: Chỉ đường ngay trên bản đồ + Thực đơn + Gọi SĐT + Google Maps */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         {onDrawRouteToPlace && place.lat !== null && place.lng !== null && (
           <button
             type="button"
@@ -223,62 +283,57 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
               if (isRouteActiveForThisPlace && onClearRoute) {
                 onClearRoute();
               } else {
-                onDrawRouteToPlace(place);
+                onDrawRouteToPlace(place, selectedMode);
               }
             }}
-            className="flex-1 min-w-[140px] py-2 px-3 rounded-2xl border-2 border-[#403064] text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+            className="flex-1 min-w-[130px] py-1.5 px-3 rounded-2xl border-2 border-[#403064] text-[11.5px] font-extrabold flex items-center justify-center shadow-sm transition-colors cursor-pointer"
             style={{
               backgroundColor: isRouteActiveForThisPlace ? '#403064' : '#39B980',
               color: '#FFFFFF',
             }}
           >
-            <Route size={14} />
             <span>
-              {isRouteActiveForThisPlace ? 'Đang chỉ đường (Tắt)' : 'Chỉ đường tới đây'}
+              {isRouteActiveForThisPlace ? 'Đang chỉ đường (Tắt)' : 'Bắt đầu chỉ đường'}
             </span>
           </button>
+        )}
+
+        {contactPhone && (
+          <a
+            href={`tel:${contactPhone.replace(/[^0-9+]/g, '')}`}
+            className="py-1.5 px-3 rounded-2xl bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] border border-[#3B82F6]/40 text-[11.5px] font-extrabold flex items-center justify-center"
+          >
+            <span>Gọi điện</span>
+          </a>
         )}
 
         {place.originalPlace && (
           <button
             type="button"
             onClick={() => onOpenFullPlaceModal(place)}
-            className="flex-1 min-w-[125px] py-2 px-3 rounded-2xl bg-[#403064] hover:bg-[#523E7D] text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+            className="py-1.5 px-3 rounded-2xl bg-[#403064] hover:bg-[#523E7D] text-white text-[11.5px] font-extrabold flex items-center justify-center shadow-sm transition-colors cursor-pointer"
           >
-            <UtensilsCrossed size={13} />
-            <span>Xem Thực đơn</span>
+            <span>Thực đơn</span>
           </button>
         )}
 
         <button
           type="button"
           onClick={handleOpenGoogleMaps}
-          className="py-2 px-2.5 rounded-2xl bg-[#F1ECE1] hover:bg-[#E5DEC9] text-[#403064] border border-[#403064]/30 text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+          className="py-1.5 px-2.5 rounded-2xl bg-[#F1ECE1] hover:bg-[#E5DEC9] text-[#403064] border border-[#403064]/30 text-[11.5px] font-bold flex items-center justify-center transition-colors cursor-pointer"
           title="Mở ứng dụng Google Maps dẫn đường giọng nói"
         >
-          <Navigation size={13} />
           <span>Google Maps</span>
         </button>
 
-        {place.phone && (
-          <a
-            href={`tel:${place.phone.replace(/[^0-9+]/g, '')}`}
-            className="py-2 px-2.5 rounded-2xl bg-[#F1ECE1] hover:bg-[#E5DEC9] text-[#403064] border border-[#403064]/30 text-xs font-bold flex items-center gap-1"
-          >
-            <Phone size={13} />
-            <span>Gọi</span>
-          </a>
-        )}
-
-        {place.originalPlace && onOpenMerchantPortal && (
+        {isAdminUser && place.originalPlace && onOpenMerchantPortal && (
           <button
             type="button"
             onClick={() => onOpenMerchantPortal(place)}
-            className="py-2 px-2.5 rounded-2xl bg-[#EDE9FE] hover:bg-[#DDD6FE] text-[#403064] border border-[#403064]/40 text-[11px] font-extrabold flex items-center gap-1 cursor-pointer"
-            title="Dành cho Chủ quán nhập mã code để cập nhật thông tin hoặc tọa độ"
+            className="py-1.5 px-2.5 rounded-2xl bg-[#EDE9FE] hover:bg-[#DDD6FE] text-[#403064] border border-[#403064]/40 text-[11px] font-extrabold flex items-center cursor-pointer"
+            title="Quản lý mã code & thực đơn quán"
           >
-            <Store size={12} />
-            <span>Chủ quán</span>
+            <span>Mã quán</span>
           </button>
         )}
 
@@ -286,11 +341,10 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
           <button
             type="button"
             onClick={() => onEditCoordinates(place)}
-            className="py-2 px-2.5 rounded-2xl bg-[#FEF3C7] text-[#92400E] border border-[#F59E0B]/50 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-            title="Chỉnh sửa tọa độ trong Admin"
+            className="py-1.5 px-2.5 rounded-2xl bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#F59E0B] text-[11.5px] font-extrabold flex items-center cursor-pointer shadow-xs"
+            title="Chỉnh sửa tên địa danh, danh mục, địa chỉ, mô tả, tọa độ hoặc ẩn địa điểm"
           >
-            <Edit3 size={12} />
-            <span>Admin</span>
+            <span>Sửa địa điểm</span>
           </button>
         )}
       </div>

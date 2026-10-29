@@ -401,7 +401,7 @@ for (let k = 0; k < active.length; k++) {
 }
 
 const visitedChainPixel = new Uint8Array(W * H);
-const extractedChains = [];
+const rawEdges = [];
 
 for (const cluster of nodeClusters) {
   for (const [px, py] of cluster.pixels) {
@@ -414,10 +414,12 @@ for (const cluster of nodeClusters) {
         if (otherCid > cluster.id) {
           const other = nodeClusters[otherCid];
           const medDist = (cluster.maxDist + other.maxDist) * 0.5;
-          extractedChains.push({
-            ptsPx: [[cluster.cx, cluster.cy], [other.cx, other.cy]],
+          rawEdges.push({
+            id: rawEdges.length,
+            u: cluster.id,
+            v: otherCid,
+            path: [[cluster.cx, cluster.cy], [other.cx, other.cy]],
             medDist,
-            isDeadEnd: cluster.isDeadEnd || other.isDeadEnd,
           });
         }
         continue;
@@ -481,46 +483,283 @@ for (const cluster of nodeClusters) {
         }
       }
 
-      const rawDists = path.map(([x, y]) => dist[Math.round(y) * W + Math.round(x)]);
-      // Smooth distances with a 5-point moving median to detect true width transitions (concrete road vs narrow asphalt alley)
-      const classOfD = (d) => (d >= 5.2 ? 2 : d >= 3.35 ? 1 : 0);
-      const classes = rawDists.map((_, idx) => {
-        const win = [];
-        for (let w = Math.max(0, idx - 2); w <= Math.min(rawDists.length - 1, idx + 2); w++) {
-          win.push(rawDists[w]);
-        }
-        win.sort((a, b) => a - b);
-        return classOfD(win[Math.floor(win.length / 2)]);
+      const trim = path.length >= 10 ? 3 : path.length >= 6 ? 2 : 0;
+      const core = trim > 0 ? path.slice(trim, path.length - trim) : path;
+      const spDists = core.map(([x, y]) => dist[Math.round(y) * W + Math.round(x)]).sort((a, b) => a - b);
+      const medDist = spDists[Math.floor(spDists.length * 0.5)];
+      rawEdges.push({
+        id: rawEdges.length,
+        u: cluster.id,
+        v: endClusterId,
+        path,
+        medDist,
       });
-
-      // Split path only if there is a sustained width class transition (>= 18 pixels in each subsegment)
-      const subPaths = [];
-      let segStart = 0;
-      for (let idx = 1; idx < path.length; idx++) {
-        if (classes[idx] !== classes[segStart] && idx - segStart >= 18 && path.length - idx >= 18) {
-          subPaths.push(path.slice(segStart, idx + 1));
-          segStart = idx;
-        }
-      }
-      subPaths.push(path.slice(segStart));
-
-      for (const sp of subPaths) {
-        const trim = sp.length >= 10 ? 3 : sp.length >= 6 ? 2 : 0;
-        const core = trim > 0 ? sp.slice(trim, sp.length - trim) : sp;
-        const spDists = core.map(([x, y]) => dist[Math.round(y) * W + Math.round(x)]).sort((a, b) => a - b);
-        const medDist = spDists[Math.floor(spDists.length * 0.5)];
-        const simple = simplifyRDP(sp, 1.2);
-        extractedChains.push({
-          ptsPx: simple,
-          medDist,
-          isDeadEnd: cluster.isDeadEnd || endCluster.isDeadEnd,
-        });
-      }
     }
   }
 }
 
-console.log(`Extracted ${extractedChains.length} clean m-connected chains from Google Maps.`);
+// 6B. Chaining collinear through-roads & straightening T-junction bulges ("đường chính thẳng, ngõ nhỏ theo đường chính")
+const incident = Array.from({ length: nodeClusters.length }, () => []);
+for (const e of rawEdges) {
+  if (e.u === e.v) continue;
+  incident[e.u].push({ edgeId: e.id, other: e.v, rev: false });
+  incident[e.v].push({ edgeId: e.id, other: e.u, rev: true });
+}
+
+function getEdgeDirFromNode(nodeId, inc) {
+  const e = rawEdges[inc.edgeId];
+  const pts = inc.rev ? e.path.slice().reverse() : e.path;
+  const n = pts.length;
+  const r = Math.min(Math.floor(n * 0.35), Math.ceil(nodeClusters[nodeId].maxDist * 1.4));
+  const i0 = Math.min(n - 2, Math.max(0, r));
+  const i1 = Math.min(n - 1, Math.max(i0 + 1, r + 16));
+  let dx = pts[i1][0] - pts[i0][0];
+  let dy = pts[i1][1] - pts[i0][1];
+  let l = Math.hypot(dx, dy);
+  if (l < 1e-6) {
+    dx = pts[n - 1][0] - pts[0][0];
+    dy = pts[n - 1][1] - pts[0][1];
+    l = Math.hypot(dx, dy) || 1;
+  }
+  return [dx / l, dy / l];
+}
+
+// Pair collinear through-road edges at each node
+const nextInChain = new Map(); // key: `${nodeId}:${edgeId}` -> otherEdgeId
+for (let u = 0; u < nodeClusters.length; u++) {
+  const incs = incident[u];
+  if (incs.length < 2) continue;
+  let bestPair = null;
+  let bestScore = -Infinity;
+  for (let i = 0; i < incs.length; i++) {
+    for (let j = i + 1; j < incs.length; j++) {
+      const eA = rawEdges[incs[i].edgeId];
+      const eB = rawEdges[incs[j].edgeId];
+      const diffDist = Math.abs(eA.medDist - eB.medDist);
+      const bothMain = eA.medDist >= 4.2 && eB.medDist >= 4.2;
+      if (!bothMain && diffDist > 1.75) continue;
+      const [ax, ay] = getEdgeDirFromNode(u, incs[i]);
+      const [bx, by] = getEdgeDirFromNode(u, incs[j]);
+      const dot = ax * bx + ay * by; // -1.0 is 180 deg straight
+      if (dot > -0.72) continue;
+      const avgDist = (eA.medDist + eB.medDist) * 0.5;
+      const score = -dot * (1 + 0.25 * avgDist) - diffDist * 0.15;
+      if (score > bestScore) {
+        bestScore = score;
+        bestPair = [incs[i].edgeId, incs[j].edgeId];
+      }
+    }
+  }
+  if (bestPair) {
+    nextInChain.set(`${u}:${bestPair[0]}`, bestPair[1]);
+    nextInChain.set(`${u}:${bestPair[1]}`, bestPair[0]);
+  }
+}
+
+const usedEdge = new Uint8Array(rawEdges.length);
+const mergedChains = [];
+const nodeToThroughChain = new Map(); // nodeId -> { chainIdx } (only for interior nodes of a through-chain)
+
+for (let startEid = 0; startEid < rawEdges.length; startEid++) {
+  if (usedEdge[startEid]) continue;
+  const e0 = rawEdges[startEid];
+  if (e0.u === e0.v) {
+    usedEdge[startEid] = 1;
+    continue;
+  }
+
+  // Walk backward from e0.u
+  const backEdges = [];
+  let currNode = e0.u;
+  let currEid = startEid;
+  while (true) {
+    const prevEid = nextInChain.get(`${currNode}:${currEid}`);
+    if (prevEid === undefined || usedEdge[prevEid] || prevEid === startEid) break;
+    backEdges.push({ eid: prevEid, enterNode: currNode });
+    const pe = rawEdges[prevEid];
+    currNode = pe.u === currNode ? pe.v : pe.u;
+    currEid = prevEid;
+  }
+  backEdges.reverse();
+
+  // Ordered sequence of edges from start of through-chain to end
+  const seq = [];
+  let walkNode = currNode;
+  for (const b of backEdges) {
+    const pe = rawEdges[b.eid];
+    const nextNode = pe.u === walkNode ? pe.v : pe.u;
+    seq.push({ eid: b.eid, from: walkNode, to: nextNode });
+    usedEdge[b.eid] = 1;
+    walkNode = nextNode;
+  }
+
+  // Walk forward from e0
+  currEid = startEid;
+  while (currEid !== undefined && !usedEdge[currEid]) {
+    const ce = rawEdges[currEid];
+    const nextNode = ce.u === walkNode ? ce.v : ce.u;
+    seq.push({ eid: currEid, from: walkNode, to: nextNode });
+    usedEdge[currEid] = 1;
+    walkNode = nextNode;
+    currEid = nextInChain.get(`${walkNode}:${currEid}`);
+  }
+
+  if (seq.length === 0) continue;
+
+  const fullPath = [];
+  const junctionIndices = []; // { idx, nodeId }
+  const allDists = [];
+
+  for (let s = 0; s < seq.length; s++) {
+    const { eid, from } = seq[s];
+    const ce = rawEdges[eid];
+    const pts = ce.u === from ? ce.path : ce.path.slice().reverse();
+    if (s === 0) {
+      for (const p of pts) fullPath.push([p[0], p[1]]);
+    } else {
+      junctionIndices.push({ idx: fullPath.length - 1, nodeId: from });
+      for (let k = 1; k < pts.length; k++) fullPath.push([pts[k][0], pts[k][1]]);
+    }
+    allDists.push(ce.medDist);
+  }
+
+  allDists.sort((a, b) => a - b);
+  const medDist = allDists[Math.floor(allDists.length * 0.5)];
+  const startNode = seq[0].from;
+  const endNode = seq[seq.length - 1].to;
+
+  // Excise T-junction skeleton bulges around intermediate nodes where side alleys branch off
+  const bulged = new Uint8Array(fullPath.length);
+  for (const { idx, nodeId } of junctionIndices) {
+    if (incident[nodeId].length >= 3) {
+      const r = Math.ceil(Math.max(medDist, nodeClusters[nodeId].maxDist) * 2.2) + 4;
+      const a = Math.max(1, idx - r);
+      const b = Math.min(fullPath.length - 2, idx + r);
+      for (let k = a; k <= b; k++) bulged[k] = 1;
+    }
+  }
+
+  // Linearly interpolate across excised bulge spans so the main road stays dead-straight through junctions
+  const deBulged = fullPath.map(([x, y]) => [x, y]);
+  let i = 1;
+  while (i < deBulged.length - 1) {
+    if (!bulged[i]) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < deBulged.length - 1 && bulged[j]) j++;
+    const pA = deBulged[i - 1];
+    const pB = deBulged[j];
+    const span = j - (i - 1);
+    for (let k = i; k < j; k++) {
+      const t = (k - (i - 1)) / span;
+      deBulged[k] = [pA[0] + (pB[0] - pA[0]) * t, pA[1] + (pB[1] - pA[1]) * t];
+    }
+    i = j + 1;
+  }
+
+  // Gentle smoothing pass on wide roads to eliminate pixel staircase noise
+  const smoothed = deBulged.map(([x, y], idx) => {
+    if (idx === 0 || idx === deBulged.length - 1 || deBulged.length < 7) return [x, y];
+    const w = medDist >= 3.35 ? 3 : 1;
+    let sx = 0, sy = 0, cnt = 0;
+    for (let d = -w; d <= w; d++) {
+      const t = Math.max(0, Math.min(deBulged.length - 1, idx + d));
+      sx += deBulged[t][0];
+      sy += deBulged[t][1];
+      cnt++;
+    }
+    return [sx / cnt, sy / cnt];
+  });
+
+  const chainIdx = mergedChains.length;
+  for (const { nodeId } of junctionIndices) {
+    const prev = nodeToThroughChain.get(nodeId);
+    if (!prev || medDist > mergedChains[prev].medDist) {
+      nodeToThroughChain.set(nodeId, chainIdx);
+    }
+  }
+
+  mergedChains.push({
+    chainIdx,
+    startNode,
+    endNode,
+    rawPath: smoothed,
+    ptsPx: simplifyRDP(smoothed, medDist >= 4.8 ? 2.2 : medDist >= 3.35 ? 1.6 : 1.2),
+    medDist,
+    isDeadEnd: nodeClusters[startNode].isDeadEnd || nodeClusters[endNode].isDeadEnd,
+  });
+}
+
+// Project a point (px, py) orthogonally onto a polyline, returning { pt: [qx, qy], segIdx, dist }
+function projectOntoPolyline(px, py, poly) {
+  let bestDist = Infinity;
+  let bestPt = [px, py];
+  let bestSeg = 0;
+  for (let i = 0; i < poly.length - 1; i++) {
+    const [ax, ay] = poly[i];
+    const [bx, by] = poly[i + 1];
+    const dx = bx - ax, dy = by - ay;
+    const l2 = dx * dx + dy * dy;
+    const t = l2 > 1e-9 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+    const qx = ax + t * dx, qy = ay + t * dy;
+    const d = Math.hypot(px - qx, py - qy);
+    if (d < bestDist) {
+      bestDist = d;
+      bestPt = [qx, qy];
+      bestSeg = i;
+    }
+  }
+  return { pt: bestPt, segIdx: bestSeg, dist: bestDist };
+}
+
+// Sort chains from widest (major/secondary) to narrowest (alley) so main roads are fixed first,
+// and branching alleys snap orthogonally onto the straight main roads!
+const orderByWidth = mergedChains.map((_, idx) => idx).sort((a, b) => mergedChains[b].medDist - mergedChains[a].medDist);
+const snappedNodePos = new Map(); // nodeId -> [qx, qy]
+
+for (const cIdx of orderByWidth) {
+  const ch = mergedChains[cIdx];
+  let workPath = ch.rawPath.slice();
+
+  // Check if startNode connects into an already-straightened through-road
+  const startHostIdx = nodeToThroughChain.get(ch.startNode);
+  if (startHostIdx !== undefined && startHostIdx !== cIdx) {
+    const host = mergedChains[startHostIdx];
+    const trim = Math.min(Math.floor(workPath.length * 0.42), Math.ceil(host.medDist * 1.45) + 2);
+    if (trim > 0 && workPath.length - trim >= 2) {
+      workPath = workPath.slice(trim);
+    }
+    const proj = projectOntoPolyline(workPath[0][0], workPath[0][1], host.ptsPx);
+    workPath.unshift(proj.pt);
+    snappedNodePos.set(ch.startNode, proj.pt);
+  } else if (snappedNodePos.has(ch.startNode)) {
+    workPath[0] = snappedNodePos.get(ch.startNode);
+  }
+
+  // Check if endNode connects into an already-straightened through-road
+  const endHostIdx = nodeToThroughChain.get(ch.endNode);
+  if (endHostIdx !== undefined && endHostIdx !== cIdx) {
+    const host = mergedChains[endHostIdx];
+    const trim = Math.min(Math.floor(workPath.length * 0.42), Math.ceil(host.medDist * 1.45) + 2);
+    if (trim > 0 && workPath.length - trim >= 2) {
+      workPath = workPath.slice(0, workPath.length - trim);
+    }
+    const lastPt = workPath[workPath.length - 1];
+    const proj = projectOntoPolyline(lastPt[0], lastPt[1], host.ptsPx);
+    workPath.push(proj.pt);
+    snappedNodePos.set(ch.endNode, proj.pt);
+  } else if (snappedNodePos.has(ch.endNode)) {
+    workPath[workPath.length - 1] = snappedNodePos.get(ch.endNode);
+  }
+
+  const eps = ch.medDist >= 4.8 ? 2.2 : ch.medDist >= 3.35 ? 1.6 : 1.2;
+  ch.ptsPx = simplifyRDP(workPath, eps);
+}
+
+const extractedChains = mergedChains;
+console.log(`Extracted ${extractedChains.length} straightened & snapped road/alley chains from Google Maps.`);
 
 // 7. Load original verified named OSM roads from HEAD~1 for accurate street naming
 const origGeo = JSON.parse(
@@ -530,7 +769,7 @@ const origGeo = JSON.parse(
 const BAD_TRAIL_REGEX =
   /dốc |đường mòn|loop|shortcut|pit stop|megawatt|roche|há mồm|ban tiện|llum|cây cô đơn|đá bạc|đá trắng|đồi gió|zenmy|green pearl/i;
 
-const verifiedRefWays = [];
+const verifiedRefMap = new Map();
 for (const f of origGeo.features) {
   const rawName = String(f.properties?.name || '').trim();
   if (!rawName || BAD_TRAIL_REGEX.test(rawName)) continue;
@@ -542,13 +781,20 @@ for (const f of origGeo.features) {
   if (name === 'Đường bê tông') continue;
   const coords = f.geometry?.coordinates;
   if (!coords || coords.length < 2) continue;
-  verifiedRefWays.push({
-    name,
-    tier: f.properties?.tier || 'minor',
-    highway: f.properties?.highway || 'residential',
-    coords,
-  });
+  if (!verifiedRefMap.has(name)) {
+    verifiedRefMap.set(name, {
+      name,
+      tier: f.properties?.tier || 'minor',
+      highway: f.properties?.highway || 'residential',
+      ways: [],
+    });
+  }
+  const entry = verifiedRefMap.get(name);
+  if (f.properties?.tier === 'major') entry.tier = 'major';
+  else if (f.properties?.tier === 'secondary' && entry.tier !== 'major') entry.tier = 'secondary';
+  entry.ways.push(coords);
 }
+const verifiedRefGroups = Array.from(verifiedRefMap.values());
 
 function ptSegDistAndDir(px, py, ax, ay, bx, by) {
   const dx = bx - ax, dy = by - ay;
@@ -589,22 +835,24 @@ function sampleAlongLine(coords, frac) {
   return coords[0];
 }
 
-function minDistToRefWay(pt, refCoords) {
+function minDistToRefGroup(pt, ways) {
   let best = Infinity;
   let bestUx = 1, bestUy = 0;
-  for (let i = 0; i < refCoords.length - 1; i++) {
-    const { dist: d, ux, uy } = ptSegDistAndDir(
-      pt[0],
-      pt[1],
-      refCoords[i][0],
-      refCoords[i][1],
-      refCoords[i + 1][0],
-      refCoords[i + 1][1]
-    );
-    if (d < best) {
-      best = d;
-      bestUx = ux;
-      bestUy = uy;
+  for (const refCoords of ways) {
+    for (let i = 0; i < refCoords.length - 1; i++) {
+      const { dist: d, ux, uy } = ptSegDistAndDir(
+        pt[0],
+        pt[1],
+        refCoords[i][0],
+        refCoords[i][1],
+        refCoords[i + 1][0],
+        refCoords[i + 1][1]
+      );
+      if (d < best) {
+        best = d;
+        bestUx = ux;
+        bestUy = uy;
+      }
     }
   }
   return { dist: best, ux: bestUx, uy: bestUy };
@@ -614,29 +862,31 @@ function matchVerifiedStreetName(coords, medDist) {
   const p25 = sampleAlongLine(coords, 0.25);
   const p50 = sampleAlongLine(coords, 0.5);
   const p75 = sampleAlongLine(coords, 0.75);
+  const p45 = sampleAlongLine(coords, 0.45);
+  const p55 = sampleAlongLine(coords, 0.55);
   const [mLng, mLat] = p50;
 
-  const ux = coords[coords.length - 1][0] - coords[0][0];
-  const uy = coords[coords.length - 1][1] - coords[0][1];
+  const ux = p55[0] - p45[0];
+  const uy = p55[1] - p45[1];
   const uLen = Math.hypot(ux, uy) || 1e-9;
   const dirX = ux / uLen, dirY = uy / uLen;
 
-  // 1. Đối chiếu chặt chẽ với các trục đường chính thức đã có tên (cả 3 điểm 25%, 50%, 75% đều nằm trên trục đường < 14m & song song)
+  // 1. Đối chiếu chặt chẽ với các trục đường chính thức đã có tên (cả 3 điểm 25%, 50%, 75% đều nằm trên trục đường < 15m & song song)
   let bestMatch = null;
-  let bestDist = 0.000135; // ~14.5m
+  let bestDist = 0.000145;
 
-  for (const ref of verifiedRefWays) {
+  for (const ref of verifiedRefGroups) {
     // Tuyệt đối không cho Phố Cù Chính Lan nhảy sang phía Tây đường Nguyễn Văn Linh
     if (ref.name.includes('Cù Chính Lan') && mLng < 105.71836) continue;
 
-    const d50 = minDistToRefWay(p50, ref.coords);
+    const d50 = minDistToRefGroup(p50, ref.ways);
     if (d50.dist >= bestDist) continue;
-    const d25 = minDistToRefWay(p25, ref.coords);
-    const d75 = minDistToRefWay(p75, ref.coords);
-    if (d25.dist > 0.00016 || d75.dist > 0.00016) continue;
+    const d25 = minDistToRefGroup(p25, ref.ways);
+    const d75 = minDistToRefGroup(p75, ref.ways);
+    if (d25.dist > 0.00018 || d75.dist > 0.00018) continue;
 
     const cosAngle = Math.abs(dirX * d50.ux + dirY * d50.uy);
-    if (cosAngle >= 0.85) {
+    if (cosAngle >= 0.82) {
       bestDist = d50.dist;
       bestMatch = ref;
     }

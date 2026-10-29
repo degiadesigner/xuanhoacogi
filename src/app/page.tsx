@@ -85,6 +85,7 @@ function parseHashToView(): AppView {
 
   // 1. Ưu tiên kiểm tra hash tường minh trước để khi từ /quanly nhảy sang #/ban-do luôn chuyển trang tức thì
   if (
+    hash.includes('bandoso') ||
     hash.includes('demo-ban-do') ||
     hash.includes('ban-do') ||
     hash.includes('map') ||
@@ -123,7 +124,19 @@ function parseHashToView(): AppView {
     return 'spin';
   }
 
-  // 2. Nếu không có hash cụ thể thì kiểm tra pathname (/quanly, /admin)
+  // 2. Hỗ trợ cả xuanhoacogi.com/bandoso VÀ bandoso.xuanhoacogi.com
+  const hostname = (window.location.hostname || '').toLowerCase();
+  if (
+    hostname.startsWith('bandoso.') ||
+    pathname === '/bandoso' ||
+    pathname === '/bandoso/' ||
+    pathname === '/ban-do' ||
+    pathname === '/ban-do/'
+  ) {
+    return 'map';
+  }
+
+  // 3. Nếu không có hash cụ thể thì kiểm tra pathname (/quanly, /admin)
   if (
     pathname === '/quanly' ||
     pathname === '/quanly/' ||
@@ -217,7 +230,7 @@ export default function Home() {
       spin: '#/',
       dishes: '#/kham-pha-mon',
       places: '#/quan-an',
-      map: '#/demo-ban-do',
+      map: '#/bandoso',
       guide: '#/cach-su-dung',
       about: '#/gioi-thieu',
       'coming-soon': '#/sap-ra-mat',

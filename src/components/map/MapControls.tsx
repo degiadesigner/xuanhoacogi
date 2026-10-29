@@ -30,6 +30,8 @@ interface MapControlsProps {
   is3DMode?: boolean;
   onToggle3DMode?: () => void;
   onOpenCity3D?: () => void;
+  onClickHomeButton?: () => void;
+  hasSavedHome?: boolean;
 }
 
 export const MapControls: React.FC<MapControlsProps> = ({
@@ -46,6 +48,8 @@ export const MapControls: React.FC<MapControlsProps> = ({
   is3DMode = true,
   onToggle3DMode,
   onOpenCity3D,
+  onClickHomeButton,
+  hasSavedHome = false,
 }) => {
   const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
   const [isPresetRollOpen, setIsPresetRollOpen] = useState(false);
@@ -85,60 +89,34 @@ export const MapControls: React.FC<MapControlsProps> = ({
   return (
     <div
       ref={dropdownContainerRef}
-      className="fixed right-2.5 sm:right-3.5 bottom-20 md:bottom-6 z-30 flex flex-col items-end gap-2 pointer-events-auto"
+      className="fixed right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-30 flex flex-col items-end gap-2 pointer-events-auto"
       style={{
         fontFamily:
           "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
-      {/* Popover chọn nhanh Khu vực & Bật/Tắt các lớp bản đồ */}
+      {/* Popover Tùy chỉnh Bản đồ 2D — Chuẩn, Đủ, Không Thừa */}
       {isLayerMenuOpen && (
-        <div className="mb-1 w-68 rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_12px_30px_rgba(64,48,100,0.22)] p-3 text-xs text-[#2D2246] space-y-2.5">
-          <div className="font-extrabold text-[#403064] pb-2 border-b border-[#E5DEC9] flex items-center justify-between leading-snug">
-            <span>Lớp bản đồ & Khu vực</span>
+        <div className="mb-1 w-60 rounded-2xl bg-[#FFFDF9] border border-[#403064]/80 shadow-[0_12px_30px_rgba(64,48,100,0.22)] p-3 text-xs text-[#2D2246] space-y-2.5">
+          <div className="font-extrabold text-[#403064] pb-1.5 border-b border-[#E5DEC9] flex items-center justify-between leading-snug">
+            <span>Tùy chỉnh bản đồ</span>
             <button
               type="button"
               onClick={() => setIsLayerMenuOpen(false)}
-              className="text-[11px] text-[#65587F] hover:text-[#2D2246] cursor-pointer"
+              className="text-[11px] font-bold text-[#65587F] hover:text-[#2D2246] cursor-pointer"
             >
               Đóng
             </button>
           </div>
 
-          {/* Chọn nhanh 11 Khu vực Xuân Hòa */}
-          <div>
-            <label className="block text-[10.5px] font-extrabold text-[#65587F] mb-1">
-              📍 Bay nhanh tới Khu vực ({activeIdx + 1}/{MAP_AREA_PRESETS.length}):
-            </label>
-            <select
-              value={activePreset.id}
-              onChange={(e) => {
-                const found = MAP_AREA_PRESETS.find((p) => p.id === e.target.value);
-                if (found) {
-                  onSelectPreset(found);
-                  setIsLayerMenuOpen(false);
-                }
-              }}
-              className="w-full px-2.5 py-1.5 rounded-xl bg-[#F8F5EE] border border-[#403064] font-extrabold text-xs text-[#2D2246] cursor-pointer"
-            >
-              {MAP_AREA_PRESETS.map((p, idx) => (
-                <option key={p.id} value={p.id}>
-                  #{idx + 1} • {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1.5 pt-1 border-t border-[#E5DEC9]">
+          <div className="space-y-1.5">
             {(
               [
-                { key: 'realPois', label: '📍 Hiện Icon Địa điểm & Quán' },
-                { key: 'buildings', label: '🏢 Công trình & Khối nhà 3D' },
-                { key: 'baseGeography', label: '🛣️ Đường phố & Ngõ nhỏ' },
-                { key: 'waterAndParks', label: '🌳 Núi Thằn Lằn & Hồ Đại Lải' },
-                { key: 'wardBoundary', label: '🗺️ Ranh giới Phường Xuân Hòa' },
-                { key: 'userLocation', label: '🟢 Chấm xanh Vị trí của tôi' },
-                { key: 'gameAssets', label: '🏰 Lớp Tài sản Game (Demo)' },
+                { key: 'realPois', label: 'Hiện ghim định vị' },
+                { key: 'buildings', label: 'Hiện khối nhà & công trình' },
+                { key: 'baseGeography', label: 'Hiện đường phố & ngõ nhỏ' },
+                { key: 'waterAndParks', label: 'Hiện mặt hồ & công viên' },
+                { key: 'wardBoundary', label: 'Hiện ranh giới Phường' },
               ] as Array<{ key: keyof MapLayerVisibility; label: string }>
             ).map((item) => (
               <label
@@ -157,34 +135,47 @@ export const MapControls: React.FC<MapControlsProps> = ({
               </label>
             ))}
           </div>
+
+          <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-[#E5DEC9]">
+            <button
+              type="button"
+              onClick={onZoomIn}
+              className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[11px] text-[#2D2246] cursor-pointer"
+            >
+              Phóng +
+            </button>
+            <button
+              type="button"
+              onClick={onZoomOut}
+              className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[11px] text-[#2D2246] cursor-pointer"
+            >
+              Thu −
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onResetCenter();
+                setIsLayerMenuOpen(false);
+              }}
+              className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[11px] text-[#2D2246] cursor-pointer"
+            >
+              Trung tâm
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Cột nút tròn gọn chuẩn Google Maps ở góc phải dưới (GPS, 3D/2D, Lớp bản đồ, Về trung tâm) */}
-      <div className="flex flex-col rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-sm border-2 border-[#403064] shadow-[0_6px_20px_rgba(64,48,100,0.16)] overflow-hidden">
-        <button
-          type="button"
-          onClick={onLocateUser}
-          aria-label="Định vị vị trí hiện tại của tôi"
-          title="Định vị vị trí hiện tại của bạn (GPS)"
-          className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#1D7A52] hover:bg-[#E6F7EF] transition-colors border-b border-[#E5DEC9] cursor-pointer"
-        >
-          {isLocatingUser ? (
-            <Loader2 size={16} className="animate-spin text-[#39B980]" />
-          ) : (
-            <LocateFixed size={16} className="text-[#39B980]" />
-          )}
-        </button>
-
+      {/* Cột điều khiển gọn gàng bên phải (3D/2D ở đầu, GPS, Tùy chỉnh bản đồ, Ngôi nhà = Chỗ bạn sống) */}
+      <div className="flex flex-col rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-sm border border-[#403064]/85 shadow-[0_6px_20px_rgba(64,48,100,0.16)] overflow-hidden">
         {onOpenCity3D ? (
           <button
             type="button"
             onClick={onOpenCity3D}
             aria-label="Mở Sa bàn 3D Phường Xuân Hòa"
-            title="Mở Sa bàn 3D Phường Xuân Hòa (37.787 công trình, mái ngói, bóng nắng)"
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center font-black text-[11px] transition-all border-b border-[#E5DEC9] cursor-pointer bg-gradient-to-br from-[#FFFDF9] to-[#E6F7EF] hover:from-[#39B980] hover:to-[#227C55] hover:text-white text-[#1D7A52] group"
+            title="Chuyển sang Bản đồ 3D"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-black text-[11px] transition-all border-b border-[#E5DEC9] cursor-pointer bg-[#059669] hover:bg-[#047857] text-white"
           >
-            <span className="group-hover:scale-110 transition-transform">3D</span>
+            3D
           </button>
         ) : onToggle3DMode ? (
           <button
@@ -192,7 +183,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
             onClick={onToggle3DMode}
             aria-label="Chuyển đổi góc nhìn 3D / 2D"
             title="Chuyển đổi góc nhìn 3D / 2D"
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center font-extrabold text-[11px] transition-colors border-b border-[#E5DEC9] cursor-pointer"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-extrabold text-[11px] transition-colors border-b border-[#E5DEC9] cursor-pointer"
             style={{
               backgroundColor: is3DMode ? '#39B980' : 'transparent',
               color: is3DMode ? '#FFFFFF' : '#403064',
@@ -204,26 +195,48 @@ export const MapControls: React.FC<MapControlsProps> = ({
 
         <button
           type="button"
+          onClick={onLocateUser}
+          aria-label="Định vị vị trí hiện tại của tôi"
+          title="Định vị vị trí hiện tại của bạn (GPS)"
+          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-[#1D7A52] hover:bg-[#E6F7EF] transition-colors border-b border-[#E5DEC9] cursor-pointer"
+        >
+          {isLocatingUser ? (
+            <Loader2 size={15} className="animate-spin text-[#39B980]" />
+          ) : (
+            <LocateFixed size={15} className="text-[#39B980]" />
+          )}
+        </button>
+
+        <button
+          type="button"
           onClick={() => setIsLayerMenuOpen((v) => !v)}
-          aria-label="Tùy chỉnh lớp bản đồ & khu vực"
-          title="Chọn Khu vực & Bật/Tắt các lớp bản đồ"
-          className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center transition-colors border-b border-[#E5DEC9] cursor-pointer"
+          aria-label="Tùy chỉnh lớp bản đồ"
+          title="Tùy chỉnh hiển thị bản đồ"
+          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center transition-colors border-b border-[#E5DEC9] cursor-pointer"
           style={{
             backgroundColor: isLayerMenuOpen ? '#E6F7EF' : 'transparent',
             color: '#403064',
           }}
         >
-          <Layers size={16} />
+          <Layers size={15} />
         </button>
 
         <button
           type="button"
-          onClick={onResetCenter}
-          aria-label="Trở về vị trí trung tâm Xuân Hòa"
-          title="Trở về trung tâm Xuân Hòa"
-          className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#403064] hover:bg-[#E6F7EF] transition-colors cursor-pointer"
+          onClick={onClickHomeButton || onResetCenter}
+          aria-label="Chỗ bạn sinh sống (Nhà của bạn)"
+          title={
+            hasSavedHome
+              ? 'Nhà của bạn — Bấm để về đúng địa chỉ chỗ bạn sống'
+              : 'Định vị chỗ bạn sinh sống (Nhà của bạn)'
+          }
+          className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center transition-colors cursor-pointer ${
+            hasSavedHome
+              ? 'bg-[#FEF3C7] text-[#B45309] hover:bg-[#FDE68A]'
+              : 'text-[#403064] hover:bg-[#E6F7EF]'
+          }`}
         >
-          <Home size={16} />
+          <Home size={15} />
         </button>
       </div>
     </div>

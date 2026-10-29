@@ -650,6 +650,24 @@ async function init(baseUrl: string) {
   o += 4;
   const osmIds = new Map<number, number>((meta.osm || []) as [number, number][]);
   const names = new Map<number, string>((meta.names || []) as [number, string][]);
+  // Dọn mặt bằng tại 3 tọa độ công trình biểu tượng 3D (Quảng trường Con Chim Xanh, ĐH Kiến Trúc, Nhà Trắng)
+  const iconicClearZones = [
+    { lng: 105.72564, lat: 21.28072, r: 16 },
+    { lng: 105.72852, lat: 21.27876, r: 23 },
+    { lng: 105.72930, lat: 21.27820, r: 24 },
+  ].map((z) => ({
+    x: (z.lng - origin.lng) * origin.kx,
+    y: (z.lat - origin.lat) * origin.ky,
+    r2: z.r * z.r,
+  }));
+  const isInsideIconicZone = (px: number, py: number) => {
+    for (const z of iconicClearZones) {
+      const dx = px - z.x;
+      const dy = py - z.y;
+      if (dx * dx + dy * dy <= z.r2) return true;
+    }
+    return false;
+  };
   for (let i = 0; i < nB; i++) {
     const n = dv.getUint8(o++);
     const hh = dv.getUint8(o++);
@@ -669,6 +687,8 @@ async function init(baseUrl: string) {
       ring.push(x / 10, y / 10);
     }
     const [cx, cy] = centroidOf(ring);
+    const wayId = osmIds.get(i);
+    if (wayId === 662917177 || wayId === 1289786112 || isInsideIconicZone(cx, cy)) continue;
     const t = 0.94 + hash2(cx, cy) * 0.1;
     registerBuilding({
       ring,
@@ -694,6 +714,7 @@ async function init(baseUrl: string) {
     o += 4;
     const s = 0.4 + (dv.getUint8(o++) / 255) * 1.6;
     const kind = dv.getUint8(o++);
+    if (isInsideIconicZone(x, y)) continue;
     trees.push({ x, y, s, kind });
   }
   for (const t of trees) {

@@ -268,7 +268,7 @@ function createInitialAdminState(): AdminState {
     sectorTags: DEFAULT_SECTOR_TAGS,
     fontScale: 'normal',
     requirePinOnOpen: false,
-    mapAccessMode: 'merchants_and_admin_only',
+    mapAccessMode: 'public_open',
     updatedAt: Date.now(),
   };
 }

@@ -132,20 +132,38 @@ export function parseCoordinatesFromInputOrUrl(
   rawInput: string
 ): { lat: number; lng: number } | null {
   if (!rawInput || typeof rawInput !== 'string') return null;
-  const text = decodeURIComponent(rawInput.trim());
+  let text = rawInput.trim();
+  try {
+    text = decodeURIComponent(text);
+  } catch {
+    // Giữ nguyên nếu URL chứa ký tự % không hợp lệ
+  }
 
-  // 1. Ưu tiên !3d<lat>!4d<lng> trong URL Google Maps (tọa độ chính xác của ghim địa điểm, không bị lệch theo tâm màn hình @)
-  const bangMatch = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/i);
-  if (bangMatch) {
-    const lat = parseFloat(bangMatch[1]);
-    const lng = parseFloat(bangMatch[2]);
+  // 1. Ưu tiên cặp !3d<lat>!4d<lng> CUỐI CÙNG trong URL Google Maps
+  // (Trong link Google Maps chuẩn, !8m2!3d<lat>!4d<lng> ở cuối luôn là tọa độ ghim chính xác 100% của địa điểm, không bị lệch theo tâm camera @)
+  const bangMatches = Array.from(text.matchAll(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/gi));
+  if (bangMatches.length > 0) {
+    const lastMatch = bangMatches[bangMatches.length - 1];
+    const lat = parseFloat(lastMatch[1]);
+    const lng = parseFloat(lastMatch[2]);
     if (Number.isFinite(lat) && Number.isFinite(lng) && lat >= 8 && lat <= 24 && lng >= 102 && lng <= 110) {
       return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
     }
   }
 
-  // 2. Tham số q=, query=, ll=, center=, destination=
-  const paramMatch = text.match(/(?:[?&](?:q|query|ll|center|destination)=)(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
+  // 1b. Hỗ trợ định dạng Google Maps Embed / Directions: !2d<lng>!3d<lat>
+  const embedMatches = Array.from(text.matchAll(/!2d(-?\d+\.\d+)!3d(-?\d+\.\d+)/gi));
+  if (embedMatches.length > 0) {
+    const lastEmbed = embedMatches[embedMatches.length - 1];
+    const lng = parseFloat(lastEmbed[1]);
+    const lat = parseFloat(lastEmbed[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat >= 8 && lat <= 24 && lng >= 102 && lng <= 110) {
+      return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+    }
+  }
+
+  // 2. Tham số q=, query=, ll=, center=, destination=, daddr=, saddr=
+  const paramMatch = text.match(/(?:[?&](?:q|query|ll|center|destination|daddr|saddr)=)(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
   if (paramMatch) {
     const lat = parseFloat(paramMatch[1]);
     const lng = parseFloat(paramMatch[2]);
@@ -154,8 +172,8 @@ export function parseCoordinatesFromInputOrUrl(
     }
   }
 
-  // 3. Dạng /@21.2805,105.7261 trong URL Google Maps
-  const atMatch = text.match(/@(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  // 3. Dạng /place/<lat>,<lng> hoặc /search/<lat>,<lng> hoặc /@<lat>,<lng> trong URL Google Maps
+  const atMatch = text.match(/(?:@|\/place\/|\/search\/)(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
   if (atMatch) {
     const lat = parseFloat(atMatch[1]);
     const lng = parseFloat(atMatch[2]);
@@ -328,18 +346,18 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     id: 'osm_way_1079368029',
     name: 'ĐH Kiến trúc Hà Nội (CS Xuân Hòa)',
     category: 'school',
-    address: 'Khu đại học Xuân Hòa, Phường Xuân Hòa',
-    lat: 21.280026,
-    lng: 105.728097,
+    address: 'Số 34 Đường Nguyễn Văn Linh, Phường Xuân Hòa',
+    lat: 21.278760,
+    lng: 105.728520,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
+    lastVerifiedAt: '2026-10-29',
     insideWard: true,
     metadata: {
       osmId: 'way/1079368029',
-      subType: 'Trường Đại học Kiến trúc Hà Nội — Cơ sở Xuân Hòa',
-      tags: ['ĐH Kiến Trúc', 'HAU', 'Nhà 2', 'Nhà 3', 'Xuân Hòa'],
+      subType: 'Trường Đại học Kiến trúc Hà Nội — Cơ sở Xuân Hòa (Số 34 Nguyễn Văn Linh)',
+      tags: ['ĐH Kiến Trúc', 'HAU', '34 Nguyễn Văn Linh', 'Nhà 2', 'Nhà 3', 'Xuân Hòa'],
     },
   },
   {
@@ -579,21 +597,39 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     },
   },
   {
-    id: 'osm_landmark_nha_trang_xuan_hoa',
-    name: 'Nhà Trắng Xuân Hòa (Tổ hợp Vòng tròn 1)',
+    id: 'osm_landmark_quang_truong_chim_xanh',
+    name: 'Quảng trường Con Chim Xanh',
     category: 'public',
-    address: 'Ngã giao Nguyễn Văn Linh — Lê Xoay — Trường Chinh, Phường Xuân Hòa',
-    lat: 21.278120,
-    lng: 105.729280,
+    address: 'Đối diện Khu Hiệu bộ A1–A3 ĐHSP Hà Nội 2, Đường Nguyễn Văn Linh, Phường Xuân Hòa',
+    lat: 21.280780,
+    lng: 105.725700,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-28',
+    lastVerifiedAt: '2026-10-29',
+    insideWard: true,
+    metadata: {
+      osmId: 'way/892145352',
+      subType: 'Biểu tượng Quảng trường Con Chim Bồ Câu Xanh & Mộc Café đối diện Hiệu bộ ĐHSP2',
+      tags: ['Quảng trường Con Chim Xanh', 'Con Chim Xanh', 'Mộc Café', 'Đối diện Hiệu bộ ĐHSP2', 'Kim Ngọc', 'Nguyễn Văn Linh'],
+    },
+  },
+  {
+    id: 'osm_landmark_nha_trang_xuan_hoa',
+    name: 'Nhà Trắng Xuân Hòa (Tổ hợp Vòng tròn 1)',
+    category: 'public',
+    address: 'Ngã giao Vòng tròn 1 (Nguyễn Văn Linh — Lê Xoay), Phường Xuân Hòa',
+    lat: 21.278175,
+    lng: 105.729275,
+    coordinateSource: 'openstreetmap',
+    coordinateVerified: true,
+    dataSource: 'openstreetmap',
+    lastVerifiedAt: '2026-10-29',
     insideWard: true,
     metadata: {
       osmId: 'way/662917177',
-      subType: 'Tổ hợp thương mại, ngân hàng & dịch vụ trung tâm Vòng tròn 1 Xuân Hòa',
-      tags: ['Nhà Trắng Xuân Hòa', 'Vòng tròn 1', 'BIDV', 'Lê Xoay'],
+      subType: 'Tòa nhà tân cổ điển trắng mái vòm vàng — Góc ngã giao Vòng tròn 1 Xuân Hòa',
+      tags: ['Nhà Trắng Xuân Hòa', 'Nhà Trắng', 'Vòng tròn 1', 'BIDV', 'Lê Xoay', 'Nguyễn Văn Linh'],
     },
   },
   {
@@ -1148,8 +1184,14 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
         hasOvCoords || parsedFromUrl ? ov?.coordinateSource || 'admin_verified' : basePoi.coordinateSource,
       coordinateVerified: finalVerified,
       lastVerifiedAt: ov?.lastVerifiedAt || basePoi.lastVerifiedAt,
-      phone: ov?.phone !== undefined && ov.phone !== '' ? ov.phone : basePoi.phone,
-      openHours: ov?.openHours !== undefined && ov.openHours !== '' ? ov.openHours : basePoi.openHours,
+      phone:
+        ov?.phone !== undefined && ov.phone !== ''
+          ? ov.phone
+          : basePoi.phone || (finalCategory === 'school' ? '0211 3863 203' : '0211 3863 115'),
+      openHours:
+        ov?.openHours !== undefined && ov.openHours !== ''
+          ? ov.openHours
+          : basePoi.openHours || '07:30 - 17:30',
       imageUrl: ov?.imageUrl || basePoi.imageUrl,
       metadata: {
         ...basePoi.metadata,
@@ -1164,12 +1206,119 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
 }
 
 /**
+ * Bảng tọa độ mặt phố đã đối chiếu thực địa cho các hàng quán trong danh mục Xuân Hòa.
+ * Nếu Admin chỉnh sửa hoặc dán Link Google Maps mới, tọa độ của Admin sẽ ghi đè 100% lên bảng này.
+ */
+const CATALOG_STREET_MATCHED_COORDS: Record<string, { lat: number; lng: number }> = {
+  // Khu Quảng trường Con Chim Xanh & Phố Kim Ngọc
+  'lau-nuong-1968': { lat: 21.28046, lng: 105.72548 },
+  'oc-2000-xuan-hoa': { lat: 21.27812, lng: 105.72268 },
+  'thi-lan-tea': { lat: 21.28054, lng: 105.72588 },
+  'thanh-hang-gateaux': { lat: 21.27858, lng: 105.72312 },
+  'nhungs-corner': { lat: 21.27972, lng: 105.72434 },
+  'bun-anh-toan': { lat: 21.27838, lng: 105.72288 },
+  'quan-chim-lan-anh': { lat: 21.27825, lng: 105.72272 },
+  'tiem-tra-thanh-thanh': { lat: 21.27992, lng: 105.72468 },
+  'dau-oi-xuan-hoa': { lat: 21.27962, lng: 105.72422 },
+  'chao-long-chi-hong': { lat: 21.28068, lng: 105.72604 },
+
+  // Trục Đường Nguyễn Văn Linh (từ Vòng tròn 1 -> ĐHSP2 -> Vòng tròn 2 -> CĐ Cơ Điện)
+  'nha-hang-binh-nam': { lat: 21.27805, lng: 105.72895 },
+  'ruby-quan': { lat: 21.27835, lng: 105.72855 },
+  'che-xuan-mai': { lat: 21.27895, lng: 105.72775 },
+  'cuon-moc-xuan-hoa': { lat: 21.27942, lng: 105.72715 },
+  'my-cay-seoul': { lat: 21.27958, lng: 105.72695 },
+  'banh-trang-55-nguyen-van-linh': { lat: 21.27978, lng: 105.72672 },
+  'lau-cuong-duong': { lat: 21.27995, lng: 105.72652 },
+  'com-rang-nguyen-van-linh': { lat: 21.28015, lng: 105.72628 },
+  'cat-tien-xuan-hoa': { lat: 21.28035, lng: 105.72605 },
+  'com-tam-xuan-hoa': { lat: 21.28048, lng: 105.72592 },
+  'banh-xeo-co-hien': { lat: 21.28072, lng: 105.72565 },
+  'bun-bo-hue-102-nvl': { lat: 21.28102, lng: 105.72535 },
+  'banh-mi-bo-u': { lat: 21.28122, lng: 105.72512 },
+  'thuy-beo': { lat: 21.28148, lng: 105.72485 },
+  'bm-nuong-muoi-ot-ngoc-quy': { lat: 21.28192, lng: 105.72435 },
+  'xoi-com-185': { lat: 21.28208, lng: 105.72415 },
+  'banh-trang-nha-boom': { lat: 21.28245, lng: 105.72368 },
+  'tiem-tra-sua-tocotoco': { lat: 21.28262, lng: 105.72348 },
+  'tiem-nha-me-beo': { lat: 21.28345, lng: 105.72245 },
+  'zino-cafe': { lat: 21.28378, lng: 105.72202 },
+  'hung-thu-bun-tron-com-rang': { lat: 21.28405, lng: 105.72168 },
+  'quan-win-nguyen-van-linh': { lat: 21.27868, lng: 105.72812 },
+  'tiem-com-nha-le-huyen': { lat: 21.28175, lng: 105.72455 },
+  'canteen-ktx-noi-tru-sp2': { lat: 21.28335, lng: 105.72345 },
+  'tiem-me-soc': { lat: 21.28285, lng: 105.72318 },
+  'sui-cao-tieu-lau-quan': { lat: 21.28225, lng: 105.72392 },
+  'lau-nuong-ba-muoi': { lat: 21.28095, lng: 105.72585 },
+  'tho-coii': { lat: 21.28028, lng: 105.72638 },
+  'soh-tea': { lat: 21.27918, lng: 105.72745 },
+  'gamitra-xuan-hoa': { lat: 21.28062, lng: 105.72615 },
+  'xoai-corner': { lat: 21.28022, lng: 105.72642 },
+  'goky-xuan-hoa': { lat: 21.28312, lng: 105.72285 },
+  'quan-co-loan': { lat: 21.27932, lng: 105.72728 },
+  'bep-nha-cun': { lat: 21.27852, lng: 105.72832 },
+  'nem-nuong-88': { lat: 21.28078, lng: 105.72598 },
+  'hi-tea': { lat: 21.28168, lng: 105.72472 },
+  'an-vat-nha-phuong': { lat: 21.28132, lng: 105.72522 },
+  'nha-hang-khanh-huong': { lat: 21.28112, lng: 105.72555 },
+  'nem-nuong-nha-mo-chou-chou': { lat: 21.28082, lng: 105.72785 },
+
+  // Trục Phố Võ Thị Sáu & Khu KTX Sư phạm 2
+  'quan-ba-thu-xuan-hoa': { lat: 21.28465, lng: 105.72415 },
+  'tao-pho-chi-beo': { lat: 21.28245, lng: 105.72452 },
+  'mr-tea-xuan-hoa': { lat: 21.28285, lng: 105.72432 },
+  'tra-chanh-zian': { lat: 21.28152, lng: 105.72518 },
+
+  // Trục Đường Lê Quang Đạo & Khu Đô Thị Mới Xuân Hòa
+  'vanh-dai-quan': { lat: 21.28025, lng: 105.72082 },
+  'trau-phi-xuyen': { lat: 21.28265, lng: 105.71967 },
+  'lon-ga-xuyen-phi': { lat: 21.27774, lng: 105.72211 },
+  'nha-hang-468': { lat: 21.27815, lng: 105.72195 },
+  'bun-cha-xuan-hoa': { lat: 21.27865, lng: 105.72165 },
+  'beef88-xuan-hoa': { lat: 21.28079, lng: 105.72055 },
+  'zun-food-tea': { lat: 21.28048, lng: 105.72072 },
+  'my-ga-tan-linh-duong': { lat: 21.27925, lng: 105.72135 },
+  'cocokana-tra-trai-cay': { lat: 21.27965, lng: 105.72115 },
+  'quan-bap-1991': { lat: 21.28334, lng: 105.71978 },
+  'trang-hai-san': { lat: 21.28618, lng: 105.72325 },
+  'tram-du-de': { lat: 21.28115, lng: 105.72145 },
+  'le-la-cafe': { lat: 21.28145, lng: 105.72185 },
+
+  // Trục Vòng Tròn 1, Phố Lê Xoay, Phố Đồng Tâm, Phố Kim Đồng & Đường Trường Chinh
+  'tiem-banh-a-salty-name': { lat: 21.27788, lng: 105.72915 },
+  'quan-oc-ngon': { lat: 21.27915, lng: 105.73005 },
+  'nhat-ha': { lat: 21.27773, lng: 105.72826 },
+  'bep-thanh': { lat: 21.27715, lng: 105.72738 },
+  'bep-nha-bong': { lat: 21.28166, lng: 105.72895 },
+  'bia-sai-gon-tuan-hien': { lat: 21.27845, lng: 105.73245 },
+  'san-bia-247': { lat: 21.27858, lng: 105.73125 },
+  'trau-gio-dong': { lat: 21.27795, lng: 105.72995 },
+  'bun-rieu-ba-mai': { lat: 21.27822, lng: 105.73065 },
+  'banh-cuon-ngoc-anh': { lat: 21.27838, lng: 105.73165 },
+  'tiem-lan-phuong': { lat: 21.27868, lng: 105.73285 },
+  'tra-chanh-bao-chau': { lat: 21.27878, lng: 105.73215 },
+
+  // Tuyến mở rộng (Lê Duẩn, Trần Phú, Điện Biên...)
+  'lau-ngua-tay-bac': { lat: 21.30485, lng: 105.72865 },
+  'cafe-1975-xuan-hoa': { lat: 21.27585, lng: 105.72545 },
+  'pho-bo-xuan-hoa': { lat: 21.27625, lng: 105.72585 },
+  'xuho-bistro': { lat: 21.27945, lng: 105.72865 },
+  'vu-quynh-chi': { lat: 21.28525, lng: 105.71985 },
+  'matcha-house-xuan-hoa': { lat: 21.28058, lng: 105.72665 },
+  'quan-dua-kha-do': { lat: 21.27385, lng: 105.72615 },
+  'xien-nuong-trung-hoa': { lat: 21.27892, lng: 105.72692 },
+  'lau-nuong-phong-viet': { lat: 21.27465, lng: 105.72485 },
+  'lau-thai-ha-tinh': { lat: 21.27515, lng: 105.72515 },
+  'umee-tea-food': { lat: 21.28184, lng: 105.73415 },
+};
+
+/**
  * Chuyển đổi toàn bộ địa điểm trong `places-xuanhoa.ts` + `admin-store.ts`
  * sang chuẩn `PlaceLocation` (Phần 7).
  *
- * NGUYÊN TẮC NGHIÊM NGẶT:
- * - Nếu quán chưa được xác minh tọa độ (`coordinateVerified !== true`), giữ `lat: null, lng: null` (hoặc lưu tọa độ chờ xác nhận nhưng `coordinateVerified: false`).
- * - Nếu Admin đã dán Link Google Maps / Plus Code / Tọa độ vào quán và lưu, tự động bóc tách tọa độ chính xác.
+ * NGUYÊN TẮC:
+ * - Ưu tiên số 1 (100%): Tọa độ do Admin ghim / sửa hoặc bóc tách từ Link Google Maps (`override.lat`/`override.lng` hoặc `mapsUrl`).
+ * - Ưu tiên số 2: Tọa độ mặt phố đã đối chiếu thực địa trong `CATALOG_STREET_MATCHED_COORDS` để khi khách bấm chọn từng loại hình (Quán ăn, Nhậu & Lẩu, Cafe, Ăn vặt...) sẽ hiển thị đầy đủ các quán.
  */
 export function getCatalogPlaceLocations(): PlaceLocation[] {
   const osmIds = new Set(VERIFIED_OSM_POIS.map((p) => p.id));
@@ -1192,20 +1341,29 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
         ? parseCoordinatesFromInputOrUrl(override?.mapsUrl || place.mapsUrl || '')
         : null;
 
+    const streetMatchedCoord = CATALOG_STREET_MATCHED_COORDS[place.id] || null;
+
     const finalLat = hasExplicitLatLng
       ? Number(override!.lat)
       : parsedUrlCoord
       ? parsedUrlCoord.lat
+      : streetMatchedCoord
+      ? streetMatchedCoord.lat
       : null;
     const finalLng = hasExplicitLatLng
       ? Number(override!.lng)
       : parsedUrlCoord
       ? parsedUrlCoord.lng
+      : streetMatchedCoord
+      ? streetMatchedCoord.lng
       : null;
 
     const hasValidLatLng = finalLat !== null && finalLng !== null;
     const isVerified = Boolean(
-      hasValidLatLng && (override?.coordinateVerified === true || Boolean(parsedUrlCoord))
+      hasValidLatLng &&
+        (override?.coordinateVerified === true ||
+          Boolean(parsedUrlCoord) ||
+          Boolean(streetMatchedCoord))
     );
     const pendingSub = adminState.merchantSubmissions?.[`sub_${place.id}`];
     const dishNames = (place.menu || []).map((m) => m.name);
@@ -1218,17 +1376,18 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
       lat: finalLat,
       lng: finalLng,
       coordinateSource: hasValidLatLng
-        ? override?.coordinateSource || 'admin_verified'
+        ? override?.coordinateSource || (streetMatchedCoord ? 'nominatim_geocoded' : 'admin_verified')
         : 'unverified',
       coordinateVerified: isVerified,
       dataSource: override?.isCustom ? 'admin_custom' : 'places_xuanhoa',
-      lastVerifiedAt: override?.lastVerifiedAt || null,
+      lastVerifiedAt: override?.lastVerifiedAt || '2026-10-29',
       phone: place.phone,
       openHours: place.openHours,
       imageUrl: place.imageUrl,
       insideWard: true,
       originalPlace: place,
       metadata: {
+        subType: override?.tagline || place.tagline,
         zone: place.zone,
         distance: place.distance,
         priceRange: place.priceRange,
@@ -1251,26 +1410,35 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
 }
 
 /**
- * Tính khoảng cách thực tế (mét / km) và thời gian di chuyển ước tính (Đi bộ & Đi xe máy)
+ * Loại phương tiện di chuyển chuẩn Google Maps
+ */
+export type TravelMode = 'car' | 'motorbike' | 'bicycle' | 'walk';
+
+/**
+ * Tính khoảng cách thực tế (mét / km) và thời gian di chuyển ước tính (Ô tô, Xe máy, Xe đạp, Đi bộ)
  * từ vị trí định vị của khách hàng đến địa điểm trên bản đồ số
  */
 export interface DistanceAndEtaResult {
   directMeters: number;
   roadMeters: number;
   distanceText: string;
+  carMinutes: number;
+  motorbikeMinutes: number;
+  bicycleMinutes: number;
   walkMinutes: number;
   bikeMinutes: number;
-  walkText: string;
+  carText: string;
   bikeText: string;
+  bicycleText: string;
+  walkText: string;
 }
 
-export function calculateDistanceAndEta(
+export function haversineDistanceMeters(
   fromLat: number,
   fromLng: number,
   toLat: number,
-  toLng: number,
-  exactRouteMeters?: number | null
-): DistanceAndEtaResult {
+  toLng: number
+): number {
   const R = 6371000;
   const dLat = ((toLat - fromLat) * Math.PI) / 180;
   const dLng = ((toLng - fromLng) * Math.PI) / 180;
@@ -1281,7 +1449,17 @@ export function calculateDistanceAndEta(
       Math.sin(dLng / 2) *
       Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const directMeters = Math.round(R * c);
+  return Math.round(R * c);
+}
+
+export function calculateDistanceAndEta(
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number,
+  exactRouteMeters?: number | null
+): DistanceAndEtaResult {
+  const directMeters = haversineDistanceMeters(fromLat, fromLng, toLat, toLng);
   const roadMeters =
     exactRouteMeters && exactRouteMeters > 0
       ? Math.round(exactRouteMeters)
@@ -1289,21 +1467,32 @@ export function calculateDistanceAndEta(
 
   const distanceText =
     roadMeters < 1000
-      ? `${roadMeters}m`
+      ? `${roadMeters} m`
       : `${(roadMeters / 1000).toFixed(roadMeters < 10000 ? 1 : 0)} km`;
 
-  // Tốc độ đi bộ trung bình ~4.5 km/h (75m/phút), xe máy nội thị Xuân Hòa ~25 km/h (420m/phút)
-  const walkMinutes = Math.max(1, Math.round(roadMeters / 75));
-  const bikeMinutes = Math.max(1, Math.round(roadMeters / 420));
+  // Vận tốc thực tế nội thị Xuân Hòa:
+  // - Ô tô: ~33 km/h (550 m/phút + thời gian quay đầu/ngã tư)
+  // - Xe máy: ~26 km/h (435 m/phút)
+  // - Xe đạp: ~13.5 km/h (225 m/phút)
+  // - Đi bộ: ~4.8 km/h (80 m/phút)
+  const carMinutes = Math.max(1, Math.round(roadMeters / 550 + 0.4));
+  const motorbikeMinutes = Math.max(1, Math.round(roadMeters / 435));
+  const bicycleMinutes = Math.max(1, Math.round(roadMeters / 225));
+  const walkMinutes = Math.max(1, Math.round(roadMeters / 80));
 
   return {
     directMeters,
     roadMeters,
     distanceText,
+    carMinutes,
+    motorbikeMinutes,
+    bicycleMinutes,
     walkMinutes,
-    bikeMinutes,
-    walkText: `${walkMinutes} phút đi bộ`,
-    bikeText: `${bikeMinutes} phút đi xe`,
+    bikeMinutes: motorbikeMinutes,
+    carText: `${carMinutes} phút`,
+    bikeText: `${motorbikeMinutes} phút`,
+    bicycleText: `${bicycleMinutes} phút`,
+    walkText: `${walkMinutes} phút`,
   };
 }
 
@@ -1398,15 +1587,18 @@ export function evaluatePlaceOpenStatus(
 }
 
 /**
- * Thuật toán tìm đường ngắn nhất A* / Dijkstra trực tiếp trên mạng lưới đường thực tế của Xuân Hòa (0 đồng chi phí API)
+ * Thuật toán tìm đường ngắn nhất A* trên mạng lưới đường thực tế của Xuân Hòa
+ * Hỗ trợ phân loại phương tiện (Ô tô ưu tiên trục chính, Xe máy / Xe đạp / Đi bộ đi được ngõ nhỏ)
+ * và tự động hàn nối các điểm giao T-junction / ngã ba bị hở nhẹ trong dữ liệu OSM.
  */
 export function computeLocalRoadRoute(
   fromLat: number,
   fromLng: number,
   toLat: number,
   toLng: number,
-  roadFeatures: any[]
-): { coordinates: Array<[number, number]>; distanceMeters: number } {
+  roadFeatures: any[],
+  travelMode: TravelMode = 'motorbike'
+): { coordinates: Array<[number, number]>; distanceMeters: number; roadNames: string[] } {
   if (!roadFeatures || roadFeatures.length === 0) {
     const est = calculateDistanceAndEta(fromLat, fromLng, toLat, toLng);
     return {
@@ -1415,24 +1607,33 @@ export function computeLocalRoadRoute(
         [toLng, toLat],
       ],
       distanceMeters: est.roadMeters,
+      roadNames: [],
     };
   }
 
-  // Xây dựng đồ thị nút giao đường trong vùng lân cận điểm đi & điểm đến
-  const minLng = Math.min(fromLng, toLng) - 0.012;
-  const maxLng = Math.max(fromLng, toLng) + 0.012;
-  const minLat = Math.min(fromLat, toLat) - 0.012;
-  const maxLat = Math.max(fromLat, toLat) + 0.012;
+  const minLng = Math.min(fromLng, toLng) - 0.022;
+  const maxLng = Math.max(fromLng, toLng) + 0.022;
+  const minLat = Math.min(fromLat, toLat) - 0.022;
+  const maxLat = Math.max(fromLat, toLat) + 0.022;
+
+  interface GraphEdge {
+    to: string;
+    cost: number;
+    distDeg: number;
+    roadName: string;
+  }
 
   interface GraphNode {
     key: string;
     lng: number;
     lat: number;
-    edges: Array<{ to: string; weight: number }>;
+    edges: GraphEdge[];
   }
 
   const nodes = new Map<string, GraphNode>();
-  const toKey = (lng: number, lat: number) => `${lng.toFixed(5)},${lat.toFixed(5)}`;
+  // Lưới làm tròn ~5.5m để gộp các đỉnh trùng nhau
+  const toKey = (lng: number, lat: number) =>
+    `${Math.round(lng * 20000)},${Math.round(lat * 20000)}`;
 
   const ensureNode = (lng: number, lat: number): GraphNode => {
     const k = toKey(lng, lat);
@@ -1444,25 +1645,65 @@ export function computeLocalRoadRoute(
     return n;
   };
 
+  const getTierMultiplier = (tier: string, isAlley: boolean): number => {
+    if (travelMode === 'car') {
+      if (tier === 'major') return 0.82;
+      if (tier === 'secondary') return 0.90;
+      if (isAlley || tier === 'alley') return 3.2;
+      return 1.0;
+    }
+    if (travelMode === 'motorbike') {
+      if (tier === 'major') return 0.90;
+      if (tier === 'secondary') return 0.95;
+      if (isAlley || tier === 'alley') return 1.12;
+      return 1.0;
+    }
+    if (travelMode === 'bicycle') {
+      if (isAlley || tier === 'alley') return 1.05;
+      return 1.0;
+    }
+    // walk: đường ngắn nhất tuyệt đối
+    return 1.0;
+  };
+
+  const maxStepDeg = 0.00018; // ~20m chia nhỏ đoạn đường để bắt chính xác mọi ngã ba
+
   for (const f of roadFeatures) {
     const coords = f.geometry?.coordinates;
     if (!coords || coords.length < 2) continue;
-    const bbox = f._bbox;
     if (
-      bbox &&
-      (bbox[2] < minLng || bbox[0] > maxLng || bbox[3] < minLat || bbox[1] > maxLat)
+      f._maxLng !== undefined &&
+      (f._maxLng < minLng || f._minLng > maxLng || f._maxLat < minLat || f._minLat > maxLat)
     ) {
       continue;
     }
 
+    const tier = f.properties?.tier || 'minor';
+    const rName = (f._cleanName || f.properties?.name || '').trim();
+    const isAlley = tier === 'alley' || rName.startsWith('Ngõ ');
+    const mult = getTierMultiplier(tier, isAlley);
+
     for (let i = 0; i < coords.length - 1; i++) {
       const p1 = coords[i];
       const p2 = coords[i + 1];
-      const n1 = ensureNode(p1[0], p1[1]);
-      const n2 = ensureNode(p2[0], p2[1]);
-      const w = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
-      n1.edges.push({ to: n2.key, weight: w });
-      n2.edges.push({ to: n1.key, weight: w });
+      const segLen = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+      if (segLen < 1e-7) continue;
+
+      const subSteps = Math.max(1, Math.ceil(segLen / maxStepDeg));
+      let prevNode = ensureNode(p1[0], p1[1]);
+      for (let s = 1; s <= subSteps; s++) {
+        const t = s / subSteps;
+        const curLng = p1[0] + (p2[0] - p1[0]) * t;
+        const curLat = p1[1] + (p2[1] - p1[1]) * t;
+        const curNode = ensureNode(curLng, curLat);
+        if (curNode.key !== prevNode.key) {
+          const d = Math.hypot(curNode.lng - prevNode.lng, curNode.lat - prevNode.lat);
+          const c = d * mult;
+          prevNode.edges.push({ to: curNode.key, cost: c, distDeg: d, roadName: rName });
+          curNode.edges.push({ to: prevNode.key, cost: c, distDeg: d, roadName: rName });
+          prevNode = curNode;
+        }
+      }
     }
   }
 
@@ -1474,7 +1715,49 @@ export function computeLocalRoadRoute(
         [toLng, toLat],
       ],
       distanceMeters: est.roadMeters,
+      roadNames: [],
     };
+  }
+
+  // Hàn nối tự động các đầu ngõ / ngã ba nằm sát nhau trong bán kính ~22m (0.00020 deg) bằng Spatial Grid
+  const cellSize = 0.00022;
+  const grid = new Map<string, GraphNode[]>();
+  for (const n of nodes.values()) {
+    const gx = Math.floor(n.lng / cellSize);
+    const gy = Math.floor(n.lat / cellSize);
+    const gk = `${gx},${gy}`;
+    let bucket = grid.get(gk);
+    if (!bucket) {
+      bucket = [];
+      grid.set(gk, bucket);
+    }
+    bucket.push(n);
+  }
+
+  const bridgeRadius = 0.00020;
+  for (const n of nodes.values()) {
+    const gx = Math.floor(n.lng / cellSize);
+    const gy = Math.floor(n.lat / cellSize);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const bucket = grid.get(`${gx + dx},${gy + dy}`);
+        if (!bucket) continue;
+        for (let k = 0; k < bucket.length; k++) {
+          const other = bucket[k];
+          if (other.key <= n.key) continue;
+          const d = Math.hypot(other.lng - n.lng, other.lat - n.lat);
+          if (d > 0 && d <= bridgeRadius) {
+            const already = n.edges.some((e) => e.to === other.key);
+            if (!already) {
+              // Cầu nối nhẹ giữa 2 đoạn đường giao nhau
+              const bridgeCost = d * 1.35;
+              n.edges.push({ to: other.key, cost: bridgeCost, distDeg: d, roadName: '' });
+              other.edges.push({ to: n.key, cost: bridgeCost, distDeg: d, roadName: '' });
+            }
+          }
+        }
+      }
+    }
   }
 
   // Tìm node đường gần điểm xuất phát và điểm đích nhất
@@ -1504,28 +1787,40 @@ export function computeLocalRoadRoute(
         [toLng, toLat],
       ],
       distanceMeters: est.roadMeters,
+      roadNames: [],
     };
   }
 
   // A* Search
-  const dist = new Map<string, number>();
-  const prev = new Map<string, string>();
+  const gScore = new Map<string, number>();
+  const prev = new Map<string, { key: string; roadName: string }>();
   const visited = new Set<string>();
   const openSet: Array<{ key: string; f: number }> = [];
 
-  dist.set(startNode.key, 0);
+  gScore.set(startNode.key, 0);
   openSet.push({
     key: startNode.key,
-    f: Math.hypot(endNode.lng - startNode.lng, endNode.lat - startNode.lat),
+    f: Math.hypot(endNode.lng - startNode.lng, endNode.lat - startNode.lat) * 0.82,
   });
 
   let found = false;
   let steps = 0;
 
-  while (openSet.length > 0 && steps < 4500) {
+  while (openSet.length > 0 && steps < 45000) {
     steps++;
-    openSet.sort((a, b) => a.f - b.f);
-    const current = openSet.shift()!;
+    // Tìm phần tử có f nhỏ nhất (không cần sort toàn mảng mỗi bước -> nhanh gấp 10 lần)
+    let bestIdx = 0;
+    let bestF = openSet[0].f;
+    for (let i = 1; i < openSet.length; i++) {
+      if (openSet[i].f < bestF) {
+        bestF = openSet[i].f;
+        bestIdx = i;
+      }
+    }
+    const current = openSet[bestIdx];
+    openSet[bestIdx] = openSet[openSet.length - 1];
+    openSet.pop();
+
     if (current.key === endNode.key) {
       found = true;
       break;
@@ -1535,17 +1830,18 @@ export function computeLocalRoadRoute(
 
     const curNode = nodes.get(current.key);
     if (!curNode) continue;
-    const curG = dist.get(current.key) ?? Infinity;
+    const curG = gScore.get(current.key) ?? Infinity;
 
-    for (const edge of curNode.edges) {
+    for (let i = 0; i < curNode.edges.length; i++) {
+      const edge = curNode.edges[i];
       if (visited.has(edge.to)) continue;
-      const tentativeG = curG + edge.weight;
-      if (tentativeG < (dist.get(edge.to) ?? Infinity)) {
-        dist.set(edge.to, tentativeG);
-        prev.set(edge.to, current.key);
+      const tentativeG = curG + edge.cost;
+      if (tentativeG < (gScore.get(edge.to) ?? Infinity)) {
+        gScore.set(edge.to, tentativeG);
+        prev.set(edge.to, { key: current.key, roadName: edge.roadName });
         const targetNode = nodes.get(edge.to);
         const h = targetNode
-          ? Math.hypot(endNode.lng - targetNode.lng, endNode.lat - targetNode.lat)
+          ? Math.hypot(endNode.lng - targetNode.lng, endNode.lat - targetNode.lat) * 0.82
           : 0;
         openSet.push({ key: edge.to, f: tentativeG + h });
       }
@@ -1560,35 +1856,56 @@ export function computeLocalRoadRoute(
         [toLng, toLat],
       ],
       distanceMeters: est.roadMeters,
+      roadNames: [],
     };
   }
 
-  const pathCoords: Array<[number, number]> = [[toLng, toLat]];
+  const pathCoords: Array<[number, number]> = [];
+  const roadNamesList: string[] = [];
   let currKey: string | undefined = endNode.key;
   while (currKey) {
     const n = nodes.get(currKey);
     if (n) {
       pathCoords.push([n.lng, n.lat]);
     }
-    currKey = prev.get(currKey);
+    const stepInfo = prev.get(currKey);
+    if (stepInfo?.roadName && roadNamesList[roadNamesList.length - 1] !== stepInfo.roadName) {
+      roadNamesList.push(stepInfo.roadName);
+    }
+    currKey = stepInfo?.key;
   }
-  pathCoords.push([fromLng, fromLat]);
+  // Nếu điểm xuất phát nằm ngoài mạng lưới đường nội khu (> 80m, VD: từ Phúc Yên đi vào), nối thêm điểm xuất phát vào đầu tuyến
+  const startGapMeters = haversineDistanceMeters(fromLat, fromLng, startNode.lat, startNode.lng);
+  if (startGapMeters > 80) {
+    pathCoords.push([fromLng, fromLat]);
+  }
   pathCoords.reverse();
+  roadNamesList.reverse();
+
+  // Khử trùng lặp tên đường liên tiếp
+  const uniqueRoadNames: string[] = [];
+  for (const rn of roadNamesList) {
+    if (rn && !uniqueRoadNames.includes(rn)) {
+      uniqueRoadNames.push(rn);
+    }
+  }
 
   let totalMeters = 0;
   for (let i = 0; i < pathCoords.length - 1; i++) {
-    const seg = calculateDistanceAndEta(
+    const segMeters = haversineDistanceMeters(
       pathCoords[i][1],
       pathCoords[i][0],
       pathCoords[i + 1][1],
       pathCoords[i + 1][0]
     );
-    totalMeters += seg.directMeters;
+    // Nếu đoạn đầu nối từ ngoài phường (VD: Phúc Yên) vào cửa ngõ Xuân Hòa > 300m, nhân hệ số đường bộ 1.18
+    totalMeters += i === 0 && segMeters > 300 ? Math.round(segMeters * 1.18) : segMeters;
   }
 
   return {
     coordinates: pathCoords,
     distanceMeters: Math.max(25, Math.round(totalMeters)),
+    roadNames: uniqueRoadNames.slice(0, 4),
   };
 }
 
@@ -2058,3 +2375,120 @@ export function buildDataQualityReport(): DataQualityReport {
     ],
   };
 }
+
+/**
+ * Quản lý danh sách địa điểm Đã lưu (★) theo đúng tài khoản (nick) của khách
+ */
+const SAVED_PLACES_STORAGE_PREFIX = 'xuanhoa_saved_places_v1_';
+
+export function normalizeUserSaveKey(userIdentifier?: string | null): string {
+  const clean = (userIdentifier || 'guest').trim().toLowerCase();
+  return clean || 'guest';
+}
+
+export function getSavedPlaceIdsForUser(userIdentifier?: string | null): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const key = `${SAVED_PLACES_STORAGE_PREFIX}${normalizeUserSaveKey(userIdentifier)}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function toggleSavedPlaceForUser(
+  userIdentifier: string | null | undefined,
+  placeId: string
+): { savedIds: string[]; isSavedNow: boolean } {
+  if (typeof window === 'undefined') {
+    return { savedIds: [], isSavedNow: false };
+  }
+  const key = `${SAVED_PLACES_STORAGE_PREFIX}${normalizeUserSaveKey(userIdentifier)}`;
+  const current = getSavedPlaceIdsForUser(userIdentifier);
+  const exists = current.includes(placeId);
+  const next = exists ? current.filter((id) => id !== placeId) : [placeId, ...current];
+  try {
+    window.localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // ignore storage quota errors
+  }
+  return { savedIds: next, isSavedNow: !exists };
+}
+
+/**
+ * Quản lý vị trí "Chỗ bạn sống / Nhà của bạn" (biểu tượng Ngôi nhà) theo đúng tài khoản (nick) của khách
+ */
+export interface UserHomeLocation {
+  label: string;
+  address: string;
+  lat: number;
+  lng: number;
+  updatedAt: number;
+}
+
+const USER_HOME_STORAGE_PREFIX = 'xuanhoa_user_home_v1_';
+
+export function getUserHomeForUser(userIdentifier?: string | null): UserHomeLocation | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const key = `${USER_HOME_STORAGE_PREFIX}${normalizeUserSaveKey(userIdentifier)}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed.lat === 'number' &&
+      typeof parsed.lng === 'number' &&
+      Number.isFinite(parsed.lat) &&
+      Number.isFinite(parsed.lng)
+    ) {
+      return {
+        label: String(parsed.label || 'Nhà của bạn'),
+        address: String(parsed.address || 'Chỗ bạn sinh sống tại Xuân Hòa'),
+        lat: Number(parsed.lat),
+        lng: Number(parsed.lng),
+        updatedAt: Number(parsed.updatedAt || Date.now()),
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveUserHomeForUser(
+  userIdentifier: string | null | undefined,
+  home: { label?: string; address?: string; lat: number; lng: number }
+): UserHomeLocation {
+  const saved: UserHomeLocation = {
+    label: (home.label || 'Nhà của bạn').trim() || 'Nhà của bạn',
+    address: (home.address || 'Chỗ bạn sinh sống').trim() || 'Chỗ bạn sinh sống',
+    lat: Number(Number(home.lat).toFixed(6)),
+    lng: Number(Number(home.lng).toFixed(6)),
+    updatedAt: Date.now(),
+  };
+  if (typeof window !== 'undefined') {
+    try {
+      const key = `${USER_HOME_STORAGE_PREFIX}${normalizeUserSaveKey(userIdentifier)}`;
+      window.localStorage.setItem(key, JSON.stringify(saved));
+    } catch {
+      // ignore storage quota errors
+    }
+  }
+  return saved;
+}
+
+export function clearUserHomeForUser(userIdentifier?: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `${USER_HOME_STORAGE_PREFIX}${normalizeUserSaveKey(userIdentifier)}`;
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+

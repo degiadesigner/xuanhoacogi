@@ -23,6 +23,10 @@ import {
   LogIn,
   Sparkles,
   Plus,
+  Edit3,
+  Trash2,
+  RotateCcw,
+  Settings,
 } from 'lucide-react';
 import type { Place } from '@/lib/places-xuanhoa';
 import type { UserAuthProfile } from '@/lib/auth';
@@ -60,13 +64,28 @@ import {
 } from '@/lib/map/map-config';
 import {
   DEMO_GAME_ASSETS,
+  VERIFIED_OSM_POIS,
   VERIFIED_OSM_ROADS_SEED,
   buildDataQualityReport,
   calculateDistanceAndEta,
   computeLocalRoadRoute,
+  evaluatePlaceOpenStatus,
   findSuggestedRoadForAddress,
   geocodeAddressWithNominatim,
   getAllMapPlaceLocations,
+  getSavedPlaceIdsForUser,
+  toggleSavedPlaceForUser,
+  getUserHomeForUser,
+  saveUserHomeForUser,
+  clearUserHomeForUser,
+  haversineDistanceMeters,
+  parseCoordinatesFromInputOrUrl,
+  saveLandmarkOrPlaceFromMap,
+  hideLandmarkOrPlaceFromMap,
+  restoreLandmarkOrPlaceDefault,
+  type DistanceAndEtaResult,
+  type TravelMode,
+  type UserHomeLocation,
 } from '@/lib/map/map-data';
 import { MapSearchBar } from '@/components/map/MapSearchBar';
 import { MapCategoryPanel, renderCategoryIcon } from '@/components/map/MapCategoryPanel';
@@ -141,8 +160,10 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   const markerLabelElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const gameAssetElsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
   const userMarkerElRef = useRef<HTMLDivElement | null>(null);
+  const userHomeMarkerElRef = useRef<HTMLDivElement | null>(null);
   const filteredVerifiedMarkersRef = useRef<PlaceLocation[]>([]);
   const userCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const userHomeRef = useRef<UserHomeLocation | null>(null);
   const selectedPlaceIdRef = useRef<string | null>(null);
   const hoveredPlaceIdRef = useRef<string | null>(null);
 
@@ -178,8 +199,65 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   const [osmRoadMatchedCatalog, setOsmRoadMatchedCatalog] = useState<
     Record<string, { lat: number; lng: number; roadName: string; osmId: string }>
   >({});
-  const [selectedCategories, setSelectedCategories] = useState<MapCategoryKey[]>(['all']);
+  const [selectedCategories, setSelectedCategories] = useState<MapCategoryKey[]>(['public', 'school']);
   const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState<boolean>(false);
+  const [isCategoryDropdown2DOpen, setIsCategoryDropdown2DOpen] = useState<boolean>(false);
+  const [isSavedDropdown2DOpen, setIsSavedDropdown2DOpen] = useState<boolean>(false);
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState<boolean>(true);
+
+  // Định danh tài khoản (nick) hiện tại để lưu địa điểm yêu thích (★) riêng cho từng nick
+  const userAccountKey = useMemo(
+    () => authUser?.email || authUser?.nickname || authUser?.displayName || 'guest',
+    [authUser?.email, authUser?.nickname, authUser?.displayName]
+  );
+  const userAccountLabel = useMemo(
+    () => authUser?.nickname || authUser?.displayName || authUser?.email || 'Tài khoản của bạn',
+    [authUser?.nickname, authUser?.displayName, authUser?.email]
+  );
+  const [savedPlaceIds, setSavedPlaceIds] = useState<string[]>(() =>
+    getSavedPlaceIdsForUser(authUser?.email || authUser?.nickname || authUser?.displayName || 'guest')
+  );
+  const [userHome, setUserHome] = useState<UserHomeLocation | null>(() =>
+    getUserHomeForUser(authUser?.email || authUser?.nickname || authUser?.displayName || 'guest')
+  );
+  userHomeRef.current = userHome;
+
+  // Trạng thái Hộp thoại "Chỗ bạn sinh sống (Nhà của bạn)" khi ấn vào biểu tượng Ngôi nhà
+  const [homeModalMode, setHomeModalMode] = useState<'closed' | 'view' | 'edit' | 'picking'>('closed');
+  const [homeLabelInput, setHomeLabelInput] = useState<string>('Nhà của bạn');
+  const [homeAddressInput, setHomeAddressInput] = useState<string>('');
+  const [homeMapsInput, setHomeMapsInput] = useState<string>('');
+  const [homeLatInput, setHomeLatInput] = useState<string>('');
+  const [homeLngInput, setHomeLngInput] = useState<string>('');
+  const [homeFeedback, setHomeFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSavedPlaceIds(getSavedPlaceIdsForUser(userAccountKey));
+    setUserHome(getUserHomeForUser(userAccountKey));
+  }, [userAccountKey, syncTick]);
+
+  // Tự động thu gọn bảng báo "Đang vào Bản đồ số Phường Xuân Hòa" sau 1.1 giây khi đã tải xong
+  useEffect(() => {
+    if (!isMapLoading) {
+      const t = window.setTimeout(() => setShowWelcomeBanner(false), 950);
+      return () => window.clearTimeout(t);
+    }
+  }, [isMapLoading]);
+
+  const handleToggleSavePlace = useCallback(
+    (place: PlaceLocation) => {
+      triggerFeedback('tap');
+      const res = toggleSavedPlaceForUser(userAccountKey, place.id);
+      setSavedPlaceIds(res.savedIds);
+      setLocationNotice(
+        res.isSavedNow
+          ? `★ Đã lưu "${place.name}" vào danh sách của ${userAccountLabel}`
+          : `Đã bỏ lưu "${place.name}"`
+      );
+      window.setTimeout(() => setLocationNotice(null), 2800);
+    },
+    [userAccountKey, userAccountLabel]
+  );
   const [layerVisibility, setLayerVisibility] = useState<MapLayerVisibility>(
     DEFAULT_LAYER_VISIBILITY
   );
@@ -208,13 +286,21 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       window.location.hash.includes('map3d') ||
       window.location.hash.includes('3d'))
   );
-  // Mặc định ẩn các quán ăn/dịch vụ chưa chuẩn định vị (chỉ hiện Cơ quan hành chính, Công an, Trường học, Y tế, Địa danh chuẩn)
+  // Mặc định chỉ hiển thị Cơ quan hành chính & Khu học giảng đường, khi bấm vào từng loại hình mới hiện hàng quán loại đó
   const [showCommercialShops, setShowCommercialShops] = useState<boolean>(false);
 
-  // Báo cáo chất lượng dữ liệu & Công cụ Admin gắn tọa độ
+  // Báo cáo chất lượng dữ liệu & Công cụ Admin chỉnh sửa / thêm mới địa danh, trụ sở, quán ăn
   const [isDataQualityOpen, setIsDataQualityOpen] = useState<boolean>(false);
   const [isAdminCoordModalOpen, setIsAdminCoordModalOpen] = useState<boolean>(false);
+  const [isAdminCreatingNew, setIsAdminCreatingNew] = useState<boolean>(false);
   const [adminTargetPlace, setAdminTargetPlace] = useState<PlaceLocation | null>(null);
+  const [adminEditName, setAdminEditName] = useState<string>('');
+  const [adminEditCategory, setAdminEditCategory] = useState<Exclude<MapCategoryKey, 'all' | 'game_asset'>>('public');
+  const [adminEditAddress, setAdminEditAddress] = useState<string>('');
+  const [adminEditTagline, setAdminEditTagline] = useState<string>('');
+  const [adminEditPhone, setAdminEditPhone] = useState<string>('');
+  const [adminEditHours, setAdminEditHours] = useState<string>('07:30 - 17:30');
+  const [adminMapsUrlInput, setAdminMapsUrlInput] = useState<string>('');
   const [adminLatInput, setAdminLatInput] = useState<string>('');
   const [adminLngInput, setAdminLngInput] = useState<string>('');
   const [adminCoordSource, setAdminCoordSource] = useState<
@@ -254,11 +340,18 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   } | null>(null);
   const [activeRoute, setActiveRoute] = useState<{
     targetPlace: PlaceLocation;
+    travelMode: TravelMode;
+    originCoords: { lat: number; lng: number };
     pathLngLat: [number, number][];
-    distanceText: string;
-    motorbikeMinutes: number;
-    walkMinutes: number;
+    totalDistanceMeters: number;
+    remainingDistanceMeters: number;
+    eta: DistanceAndEtaResult;
+    roadNames: string[];
     originLabel: string;
+    progressIndex: number;
+    currentPos: [number, number];
+    hasArrived: boolean;
+    isInfoExpanded: boolean;
   } | null>(null);
   const activeRouteRef = useRef<typeof activeRoute>(null);
   activeRouteRef.current = activeRoute;
@@ -909,48 +1002,82 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         ctx.restore();
       }
 
-      // 4c-route. Vẽ tuyến đường dẫn đường Google Maps-style từ vị trí người dùng đến quán đã chọn
+      // 4c-route. Vẽ tuyến đường dẫn đường Google Maps-style từ vị trí người dùng đến địa chỉ đã chọn
       const route = activeRouteRef.current;
       if (route && route.pathLngLat && route.pathLngLat.length >= 2) {
         ctx.save();
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        // Viền ngoài nổi bật
-        traceCoords(route.pathLngLat, false);
-        ctx.strokeStyle = '#1E3A8A';
+        const pIdx = Math.min(
+          Math.max(0, route.progressIndex || 0),
+          route.pathLngLat.length - 1
+        );
+        const travelledCoords = route.pathLngLat.slice(0, pIdx + 1);
+        const remainingCoords = route.pathLngLat.slice(pIdx);
+
+        // Đoạn đường đã đi qua (màu xám xanh nhẹ giống Google Maps)
+        if (travelledCoords.length >= 2) {
+          traceCoords(travelledCoords, false);
+          ctx.strokeStyle = '#94A3B8';
+          ctx.lineWidth = 6.5;
+          ctx.stroke();
+        }
+
+        // Đoạn đường còn lại phía trước (xanh dương nổi bật chuẩn Google Maps)
+        const activeSegment = remainingCoords.length >= 2 ? remainingCoords : route.pathLngLat;
+        traceCoords(activeSegment, false);
+        ctx.strokeStyle = route.hasArrived ? '#059669' : '#1E3A8A';
         ctx.lineWidth = 9.5;
         ctx.stroke();
 
-        // Lõi đường màu xanh dương sáng chuẩn dẫn đường
-        traceCoords(route.pathLngLat, false);
-        ctx.strokeStyle = '#3B82F6';
+        traceCoords(activeSegment, false);
+        ctx.strokeStyle = route.hasArrived ? '#10B981' : '#3B82F6';
         ctx.lineWidth = 5.5;
         ctx.stroke();
 
-        // Vạch mũi tên hướng đi ở tâm
+        // Vạch hướng đi ở tâm đường
         ctx.setLineDash([7, 7]);
-        traceCoords(route.pathLngLat, false);
+        traceCoords(activeSegment, false);
         ctx.strokeStyle = '#EFF6FF';
         ctx.lineWidth = 2.0;
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Điểm xuất phát & Điểm đích
+        // Điểm xuất phát, Vị trí đang di chuyển & Điểm đích
         const startPt = map.project(route.pathLngLat[0]);
         const endPt = map.project(route.pathLngLat[route.pathLngLat.length - 1]);
+        const curLngLat = route.currentPos || route.pathLngLat[pIdx] || route.pathLngLat[0];
+        const curPt = map.project(curLngLat);
 
-        ctx.fillStyle = '#39B980';
+        ctx.fillStyle = '#64748B';
         ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 2.2;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(startPt.x, startPt.y, 6, 0, Math.PI * 2);
+        ctx.arc(startPt.x, startPt.y, 4.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
-        ctx.fillStyle = '#EF4444';
+        // Điểm đích
+        ctx.fillStyle = route.hasArrived ? '#10B981' : '#EF4444';
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2.4;
         ctx.beginPath();
-        ctx.arc(endPt.x, endPt.y, 6.5, 0, Math.PI * 2);
+        ctx.arc(endPt.x, endPt.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Chấm xanh GPS đang di chuyển trên tuyến đường
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.24)';
+        ctx.beginPath();
+        ctx.arc(curPt.x, curPt.y, 13, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#2563EB';
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(curPt.x, curPt.y, 6.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
@@ -1519,8 +1646,11 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         }
       }
 
-      if (userMarkerElRef.current && userCoordsRef.current && vis.userLocation) {
-        const pt = projPt(userCoordsRef.current.lng, userCoordsRef.current.lat);
+      if (userMarkerElRef.current && (userCoordsRef.current || activeRouteRef.current) && vis.userLocation) {
+        const activePos = activeRouteRef.current?.currentPos;
+        const uLng = activePos ? activePos[0] : userCoordsRef.current!.lng;
+        const uLat = activePos ? activePos[1] : userCoordsRef.current!.lat;
+        const pt = projPt(uLng, uLat);
         if (userMarkerElRef.current.style.display !== 'block') {
           userMarkerElRef.current.style.display = 'block';
         }
@@ -1528,6 +1658,18 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       } else if (userMarkerElRef.current) {
         if (userMarkerElRef.current.style.display !== 'none') {
           userMarkerElRef.current.style.display = 'none';
+        }
+      }
+
+      if (userHomeMarkerElRef.current && userHomeRef.current) {
+        const pt = projPt(userHomeRef.current.lng, userHomeRef.current.lat);
+        if (userHomeMarkerElRef.current.style.display !== 'block') {
+          userHomeMarkerElRef.current.style.display = 'block';
+        }
+        userHomeMarkerElRef.current.style.transform = `translate3d(${pt.x.toFixed(1)}px, ${pt.y.toFixed(1)}px, 0)`;
+      } else if (userHomeMarkerElRef.current) {
+        if (userHomeMarkerElRef.current.style.display !== 'none') {
+          userHomeMarkerElRef.current.style.display = 'none';
         }
       }
 
@@ -2242,31 +2384,48 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     };
   }, [verifiedMapMarkers.length, unverifiedCatalogPlaces.length, syncTick]);
 
-  // Lọc danh sách marker đã xác minh theo danh mục đang chọn (mặc định ẩn các quán ăn/dịch vụ chưa chuẩn định vị)
+  // Danh sách các địa điểm đã được lưu (★) của tài khoản hiện tại
+  const savedPlaceObjects = useMemo(
+    () => verifiedMapMarkers.filter((loc) => savedPlaceIds.includes(loc.id)),
+    [verifiedMapMarkers, savedPlaceIds]
+  );
+
+  // Lọc danh sách marker đã xác minh theo danh mục đang bật (mặc định auto bật Hành chính + Trường học; nếu tắt "Hiện ghim định vị" thì không hiện ghim nào ngoài địa điểm đang chọn)
   const filteredVerifiedMarkers = useMemo(() => {
-    if (!layerVisibility.realPois) return [];
-    const baseList = showCommercialShops
-      ? verifiedMapMarkers
-      : verifiedMapMarkers.filter(
-          (loc) =>
-            loc.dataSource === 'openstreetmap' &&
-            loc.category !== 'food' &&
-            loc.category !== 'cafe' &&
-            loc.category !== 'snack' &&
-            loc.category !== 'pub' &&
-            loc.category !== 'billiards' &&
-            loc.category !== 'game' &&
-            loc.category !== 'phone'
-        );
-    if (selectedCategories.includes('all')) return baseList;
-    return baseList.filter((loc) => selectedCategories.includes(loc.category));
-  }, [verifiedMapMarkers, selectedCategories, layerVisibility.realPois, showCommercialShops]);
+    if (!layerVisibility.realPois || !layerVisibility.verifiedMarkers) {
+      return selectedPlace
+        ? verifiedMapMarkers.filter((loc) => loc.id === selectedPlace.id)
+        : [];
+    }
+    return verifiedMapMarkers.filter((loc) => {
+      if (selectedPlace?.id === loc.id) return true;
+      if (savedPlaceIds.includes(loc.id)) return true;
+      if (selectedCategories.includes('all')) return true;
+      return selectedCategories.includes(loc.category);
+    });
+  }, [
+    verifiedMapMarkers,
+    selectedCategories,
+    layerVisibility.realPois,
+    layerVisibility.verifiedMarkers,
+    selectedPlace,
+    savedPlaceIds,
+  ]);
 
   // Đồng bộ danh sách marker đã lọc vào ref để vòng lặp 60fps khóa tọa độ chính xác tuyệt đối
   useEffect(() => {
     filteredVerifiedMarkersRef.current = filteredVerifiedMarkers;
     scheduleCanvasRender();
   }, [filteredVerifiedMarkers, scheduleCanvasRender]);
+
+  // Đồng bộ lại thẻ selectedPlace đang mở ngay khi Admin lưu chỉnh sửa tên / địa chỉ / tọa độ
+  useEffect(() => {
+    if (!selectedPlace) return;
+    const updated = verifiedMapMarkers.find((p) => p.id === selectedPlace.id);
+    if (updated) {
+      setSelectedPlace(updated);
+    }
+  }, [verifiedMapMarkers, selectedPlace?.id]);
 
   useEffect(() => {
     selectedPlaceIdRef.current = selectedPlace?.id || null;
@@ -2439,6 +2598,20 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         return;
       }
 
+      if (homeModalMode === 'picking') {
+        triggerFeedback('pin');
+        setHomeLatInput(String(pickedLat));
+        setHomeLngInput(String(pickedLng));
+        if (!homeAddressInput.trim()) {
+          setHomeAddressInput('Phường Xuân Hòa');
+        }
+        setHomeModalMode('edit');
+        setHomeFeedback(
+          `Đã lấy tọa độ chỗ bạn sống trên bản đồ (${pickedLat}, ${pickedLng}). Bấm "Lưu chỗ bạn sống" để hoàn tất!`
+        );
+        return;
+      }
+
       if (isPickingOnMap && isAdminUser) {
         triggerFeedback('pin');
         setAdminLatInput(String(pickedLat));
@@ -2467,7 +2640,19 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     return () => {
       map.off('click', handleMapClick);
     };
-  }, [isPickingOnMap, isAdminUser, merchantPickingForPlace, scheduleCanvasRender]);
+  }, [
+    homeModalMode,
+    homeAddressInput,
+    isPickingOnMap,
+    isAdminUser,
+    merchantPickingForPlace,
+    scheduleCanvasRender,
+  ]);
+
+  useEffect(() => {
+    userHomeRef.current = userHome;
+    scheduleCanvasRender();
+  }, [userHome, scheduleCanvasRender]);
 
   // Điều hướng Camera + Cập nhật Tiêu điểm 3D (Spotlight 3D) tới đúng vùng đang xem
   const flyToCoordinates = useCallback(
@@ -2532,50 +2717,160 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     [flyToCoordinates, currentZoom]
   );
 
-  // Vẽ đường đi Google Maps-style từ vị trí định vị của khách hàng đến đúng quán đã chọn
+  // Vẽ đường đi Google Maps-style từ vị trí thực tế của khách hàng (GPS thật, VD: Phúc Yên) đến đúng địa chỉ tại Xuân Hòa
   const handleDrawRouteToPlace = useCallback(
-    (place: PlaceLocation) => {
+    (place: PlaceLocation, mode: TravelMode = 'motorbike') => {
       if (place.lat === null || place.lng === null) return;
+
       const origin = userCoords || {
         lat: XUANHOA_DEFAULT_CENTER.lat,
         lng: XUANHOA_DEFAULT_CENTER.lng,
       };
-      const originLabel = userCoords
-        ? 'Vị trí GPS của bạn'
-        : 'Tâm ĐH Sư Phạm Hà Nội 2 (Mặc định khi chưa bật GPS)';
+      setLayerVisibility((prev) => ({ ...prev, userLocation: true }));
 
+      const originLabel = userCoords ? 'Vị trí GPS của bạn' : 'Trung tâm Xuân Hòa';
       const roadFeatures = geoLayersRef.current?.roads || [];
       const computed = computeLocalRoadRoute(
         origin.lat,
         origin.lng,
         place.lat,
         place.lng,
-        roadFeatures
+        roadFeatures,
+        mode
       );
-      const eta = calculateDistanceAndEta(origin.lat, origin.lng, place.lat, place.lng);
+      const eta = calculateDistanceAndEta(
+        origin.lat,
+        origin.lng,
+        place.lat,
+        place.lng,
+        computed.distanceMeters
+      );
 
       const newRoute = {
         targetPlace: place,
+        travelMode: mode,
+        originCoords: origin,
         pathLngLat: computed.coordinates,
-        distanceText: eta.distanceText,
-        motorbikeMinutes: eta.bikeMinutes,
-        walkMinutes: eta.walkMinutes,
+        totalDistanceMeters: computed.distanceMeters,
+        remainingDistanceMeters: computed.distanceMeters,
+        eta,
+        roadNames: computed.roadNames,
         originLabel,
+        progressIndex: 0,
+        currentPos: computed.coordinates[0] || ([origin.lng, origin.lat] as [number, number]),
+        hasArrived: false,
+        isInfoExpanded: false,
       };
       setActiveRoute(newRoute);
       activeRouteRef.current = newRoute;
-      setSelectedPlace(place);
+      // Tự động đóng bảng popup lớn ở đáy và thông báo phụ để màn hình gọn gàng chuẩn Google Maps
+      setSelectedPlace(null);
+      setLocationNotice(null);
 
-      const midLat = (origin.lat + place.lat) * 0.5;
-      const midLng = (origin.lng + place.lng) * 0.5;
-      const distDeg = Math.hypot(origin.lat - place.lat, origin.lng - place.lng);
-      const targetZoom = distDeg > 0.02 ? 14.3 : distDeg > 0.009 ? 15.1 : 15.8;
-
-      flyToCoordinates(midLat, midLng, targetZoom, `🧭 Đường tới ${place.name}`, 0.006);
+      // Nếu khách đang ở xa (VD: Phúc Yên > 2.5km), giữ góc nhìn ưu tiên vào lộ trình tiến vào địa điểm tại Xuân Hòa để nhìn rõ đường phố, còn nếu ở gần thì căn giữa toàn tuyến
+      const distMeters = haversineDistanceMeters(origin.lat, origin.lng, place.lat, place.lng);
+      if (distMeters > 2500) {
+        flyToCoordinates(place.lat, place.lng, 15.6, `Đường tới ${place.name}`, 0.0055);
+      } else {
+        const midLat = (origin.lat + place.lat) * 0.5;
+        const midLng = (origin.lng + place.lng) * 0.5;
+        const distDeg = Math.hypot(origin.lat - place.lat, origin.lng - place.lng);
+        const targetZoom = distDeg > 0.015 ? 14.8 : distDeg > 0.007 ? 15.5 : 16.0;
+        flyToCoordinates(midLat, midLng, targetZoom, `Đường tới ${place.name}`, 0.0055);
+      }
       scheduleCanvasRender();
     },
     [userCoords, flyToCoordinates, scheduleCanvasRender]
   );
+
+  // Chuyển đổi phương tiện (Ô tô | Xe máy | Xe đạp | Đi bộ) ngay trên thanh dẫn đường
+  const handleSwitchRouteMode = useCallback(
+    (newMode: TravelMode) => {
+      const current = activeRouteRef.current;
+      if (!current || current.targetPlace.lat === null || current.targetPlace.lng === null) return;
+      const origin = current.originCoords;
+      const place = current.targetPlace;
+      const roadFeatures = geoLayersRef.current?.roads || [];
+      const computed = computeLocalRoadRoute(
+        origin.lat,
+        origin.lng,
+        place.lat!,
+        place.lng!,
+        roadFeatures,
+        newMode
+      );
+      const eta = calculateDistanceAndEta(
+        origin.lat,
+        origin.lng,
+        place.lat!,
+        place.lng!,
+        computed.distanceMeters
+      );
+      const updated = {
+        ...current,
+        travelMode: newMode,
+        pathLngLat: computed.coordinates,
+        totalDistanceMeters: computed.distanceMeters,
+        remainingDistanceMeters: computed.distanceMeters,
+        eta,
+        roadNames: computed.roadNames,
+        progressIndex: 0,
+        currentPos: computed.coordinates[0] || ([origin.lng, origin.lat] as [number, number]),
+        hasArrived: false,
+      };
+      setActiveRoute(updated);
+      activeRouteRef.current = updated;
+      scheduleCanvasRender();
+    },
+    [scheduleCanvasRender]
+  );
+
+  // Mô phỏng & đồng bộ hành trình di chuyển dọc theo tuyến đường tới đích + tự động báo khi đến nơi
+  useEffect(() => {
+    if (!activeRoute || activeRoute.hasArrived) return;
+    const coords = activeRoute.pathLngLat;
+    if (!coords || coords.length < 2) return;
+
+    const stepIntervalMs =
+      activeRoute.travelMode === 'car'
+        ? 650
+        : activeRoute.travelMode === 'motorbike'
+        ? 750
+        : activeRoute.travelMode === 'bicycle'
+        ? 950
+        : 1150;
+
+    const timer = setInterval(() => {
+      setActiveRoute((prev) => {
+        if (!prev || prev.hasArrived) return prev;
+        const totalPts = prev.pathLngLat.length;
+        const step = Math.max(1, Math.ceil(totalPts / 18));
+        const nextIdx = Math.min(totalPts - 1, prev.progressIndex + step);
+        const nextPos = prev.pathLngLat[nextIdx];
+        const arrived = nextIdx >= totalPts - 1;
+        const ratioRemaining = Math.max(0, 1 - nextIdx / Math.max(1, totalPts - 1));
+        const remMeters = arrived ? 0 : Math.round(prev.totalDistanceMeters * ratioRemaining);
+
+        const nextState = {
+          ...prev,
+          progressIndex: nextIdx,
+          currentPos: nextPos,
+          remainingDistanceMeters: remMeters,
+          hasArrived: arrived,
+        };
+        activeRouteRef.current = nextState;
+        scheduleCanvasRender();
+        return nextState;
+      });
+    }, stepIntervalMs);
+
+    return () => clearInterval(timer);
+  }, [
+    activeRoute?.targetPlace.id,
+    activeRoute?.travelMode,
+    activeRoute?.hasArrived,
+    scheduleCanvasRender,
+  ]);
 
   const handleOpenMerchantPortal = useCallback(
     (tab?: 'merchant' | 'create_new' | 'admin_approvals' | 'admin_codes') => {
@@ -2651,66 +2946,72 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     });
   }, []);
 
-  // Bắt trình duyệt Điện thoại / PC xin quyền định vị GPS thực tế & Bay tới đúng vị trí người dùng đang đứng
+  // Kết nối GPS thông minh:
+  // - Khi mở bản đồ (isAutoStartup = true): cắm ghim "Bạn đang ở đây" vào đúng vị trí thực tế bạn đang đứng (VD: Phúc Yên), nhưng giữ camera bản đồ ở Khu trung tâm Xuân Hòa để dễ xem.
+  // - Khi bạn chủ động bấm nút Định vị GPS bên phải (isAutoStartup = false): camera mới bay ra đúng vị trí bạn đang đứng.
   const handleLocateUser = useCallback(
     (isAutoStartup = false) => {
+      setLocationNotice(null);
+      setLayerVisibility((prev) => ({ ...prev, userLocation: true }));
+
+      if (!isAutoStartup && userCoordsRef.current) {
+        flyToCoordinates(
+          userCoordsRef.current.lat,
+          userCoordsRef.current.lng,
+          15.8,
+          'Vị trí hiện tại của bạn',
+          0.0045
+        );
+        scheduleCanvasRender();
+      }
+
       if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
-        if (!isAutoStartup) {
-          setLocationNotice('Trình duyệt của bạn không hỗ trợ định vị GPS.');
-        }
         return;
       }
-      setIsLocatingUser(true);
-      if (!isAutoStartup) setLocationNotice(null);
 
+      if (!isAutoStartup) {
+        setIsLocatingUser(true);
+      }
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setIsLocatingUser(false);
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
+          // Luôn cắm ghim đúng 100% vị trí thực tế bạn đang đứng (VD: Phúc Yên)
           setUserCoords({ lat, lng });
           setLayerVisibility((prev) => ({ ...prev, userLocation: true }));
 
-          const isNearXuanHoa =
-            lng >= XUANHOA_MAX_BOUNDS[0][0] &&
-            lng <= XUANHOA_MAX_BOUNDS[1][0] &&
-            lat >= XUANHOA_MAX_BOUNDS[0][1] &&
-            lat <= XUANHOA_MAX_BOUNDS[1][1];
-
-          // Khi mới mở trang (isAutoStartup = true), chỉ tự động bay camera nếu người dùng chưa kéo bản đồ và đang ở khu vực Xuân Hòa, không bật banner tọa độ gây rối mắt
-          if (!isAutoStartup || (isNearXuanHoa && !hasUserInteractedRef.current)) {
-            flyToCoordinates(lat, lng, 16.2, '📍 Vị trí hiện tại của bạn', 0.0045);
-            if (!isAutoStartup) {
-              setLocationNotice('📍 Đã định vị đúng vị trí hiện tại của bạn');
-              setTimeout(() => setLocationNotice(null), 2200);
-            }
-          }
-        },
-        (err) => {
-          setIsLocatingUser(false);
+          // Chỉ bay camera ra chỗ bạn đứng khi bạn chủ động bấm nút Định vị GPS
           if (!isAutoStartup) {
-            if (err.code === err.PERMISSION_DENIED) {
-              setLocationNotice(
-                'Bạn đang chặn quyền Vị trí trên trình duyệt. Hãy bấm biểu tượng ổ khóa trên thanh địa chỉ và chọn "Cho phép Vị trí (Allow Location)" để bản đồ định vị đúng chỗ bạn đứng.'
-              );
-            } else {
-              setLocationNotice('Không thể lấy tín hiệu GPS hiện tại. Vui lòng thử lại.');
-            }
+            flyToCoordinates(lat, lng, 15.8, 'Vị trí hiện tại của bạn', 0.0045);
           }
+          scheduleCanvasRender();
         },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+        () => {
+          setIsLocatingUser(false);
+          scheduleCanvasRender();
+        },
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 10000 }
       );
     },
-    [flyToCoordinates]
+    [flyToCoordinates, scheduleCanvasRender]
   );
 
-  // Tự động kích hoạt hộp thoại xin quyền Định vị GPS ngay khi mở bản đồ trên PC / Điện thoại + Theo dõi realtime (watchPosition)
+  // Tự động lấy tọa độ GPS thực tế ngầm khi mở trang (cắm ghim đúng chỗ bạn đứng nhưng giữ camera ở Trung tâm Xuân Hòa)
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
 
-    const timer = setTimeout(() => {
-      handleLocateUser(true);
-    }, 600);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserCoords({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+        setLayerVisibility((prev) => ({ ...prev, userLocation: true }));
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 10000 }
+    );
 
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -2718,64 +3019,123 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         });
+        setLayerVisibility((prev) => ({ ...prev, userLocation: true }));
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000 }
     );
 
     return () => {
-      clearTimeout(timer);
       navigator.geolocation.clearWatch(watchId);
     };
-  }, [handleLocateUser]);
+  }, []);
+
+  const populateAdminFormFromPlace = useCallback((target: PlaceLocation | null) => {
+    setAdminTargetPlace(target);
+    if (!target) {
+      setAdminEditName('');
+      setAdminEditCategory('public');
+      setAdminEditAddress('Phường Xuân Hòa');
+      setAdminEditTagline('');
+      setAdminEditPhone('');
+      setAdminEditHours('07:30 - 17:30');
+      setAdminMapsUrlInput('');
+      setAdminLatInput('');
+      setAdminLngInput('');
+      return;
+    }
+    setAdminEditName(target.name || '');
+    setAdminEditCategory(target.category || 'public');
+    setAdminEditAddress(target.address || 'Phường Xuân Hòa');
+    setAdminEditTagline(target.metadata?.subType || '');
+    setAdminEditPhone(target.phone || '');
+    setAdminEditHours(target.openHours || '07:30 - 17:30');
+    setAdminMapsUrlInput(target.metadata?.mapsUrl || '');
+    setAdminLatInput(target.lat !== null ? String(target.lat) : '');
+    setAdminLngInput(target.lng !== null ? String(target.lng) : '');
+  }, []);
 
   const openAdminCoordinateModal = useCallback(
     (place?: PlaceLocation) => {
       if (!isAdminUser) {
-        setLocationNotice('Chỉ Quản trị viên đã xác thực mới có quyền cập nhật tọa độ địa điểm.');
+        setLocationNotice('Chỉ Quản trị viên đã xác thực mới có quyền chỉnh sửa địa điểm.');
         return;
       }
-      const target = place || unverifiedCatalogPlaces[0] || verifiedMapMarkers[0] || null;
-      setAdminTargetPlace(target);
-      setAdminLatInput(target?.lat ? String(target.lat) : '');
-      setAdminLngInput(target?.lng ? String(target.lng) : '');
+      const target = place || selectedPlace || verifiedMapMarkers[0] || unverifiedCatalogPlaces[0] || null;
+      setIsAdminCreatingNew(false);
+      populateAdminFormFromPlace(target);
       setAdminCoordSource('admin_verified');
       setNominatimSuggestions([]);
       setAdminFeedback(null);
       setIsAdminCoordModalOpen(true);
     },
-    [isAdminUser, unverifiedCatalogPlaces, verifiedMapMarkers]
+    [isAdminUser, selectedPlace, verifiedMapMarkers, unverifiedCatalogPlaces, populateAdminFormFromPlace]
   );
 
+  const openAdminCreatePlaceModal = useCallback(() => {
+    if (!isAdminUser) {
+      setLocationNotice('Chỉ Quản trị viên đã xác thực mới có quyền thêm địa điểm mới.');
+      return;
+    }
+    const center = mapInstanceRef.current?.getCenter();
+    const lat = center ? Number(center.lat.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lat;
+    const lng = center ? Number(center.lng.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lng;
+    setIsAdminCreatingNew(true);
+    setAdminTargetPlace(null);
+    setAdminEditName('');
+    setAdminEditCategory('public');
+    setAdminEditAddress('Phường Xuân Hòa');
+    setAdminEditTagline('');
+    setAdminEditPhone('');
+    setAdminEditHours('07:30 - 17:30');
+    setAdminMapsUrlInput('');
+    setAdminLatInput(String(lat));
+    setAdminLngInput(String(lng));
+    setAdminCoordSource('admin_verified');
+    setNominatimSuggestions([]);
+    setAdminFeedback('💡 Nhập tên địa danh / trụ sở / quán mới, hoặc bấm "Chấm trực tiếp trên Bản đồ" để lấy tọa độ.');
+    setIsAdminCoordModalOpen(true);
+  }, [isAdminUser]);
+
   const handleSuggestFromOsm = async () => {
-    if (!adminTargetPlace) return;
+    const query = `${adminMapsUrlInput.trim() || adminEditAddress.trim() || adminEditName.trim()}`;
+    if (!query) return;
+
+    const parsed = parseCoordinatesFromInputOrUrl(query);
+    if (parsed) {
+      setAdminLatInput(String(parsed.lat));
+      setAdminLngInput(String(parsed.lng));
+      flyToCoordinates(parsed.lat, parsed.lng, 16.8);
+      setAdminFeedback(`✅ Đã trích xuất tọa độ (${parsed.lat}, ${parsed.lng}) từ link / Plus Code!`);
+      return;
+    }
+
     setIsGeocoding(true);
     setAdminFeedback(null);
     try {
-      const query = `${adminTargetPlace.address || adminTargetPlace.name}`;
       const list = await geocodeAddressWithNominatim(query);
       setNominatimSuggestions(list);
 
-      const matchedRoad = findSuggestedRoadForAddress(adminTargetPlace.address, osmRoads);
+      const matchedRoad = findSuggestedRoadForAddress(query, osmRoads);
       if (list.length === 0 && matchedRoad) {
         setNominatimSuggestions([
           {
-            displayName: `Tâm tuyến đường OSM khớp địa chỉ: ${matchedRoad.name} (${matchedRoad.osmId})`,
+            displayName: `Tâm tuyến đường khớp địa chỉ: ${matchedRoad.name}`,
             lat: matchedRoad.lat,
             lng: matchedRoad.lng,
           },
         ]);
       } else if (list.length === 0) {
         setAdminFeedback(
-          'Nominatim chưa tìm thấy tọa độ khớp tự động cho địa chỉ này. Bạn có thể bấm "Chấm trực tiếp trên Bản đồ".'
+          'Chưa tìm thấy tự động. Bạn có thể bấm "🎯 Chấm trực tiếp trên Bản đồ" để click đúng vị trí!'
         );
       }
     } catch {
-      const matchedRoad = findSuggestedRoadForAddress(adminTargetPlace.address, osmRoads);
+      const matchedRoad = findSuggestedRoadForAddress(query, osmRoads);
       if (matchedRoad) {
         setNominatimSuggestions([
           {
-            displayName: `Tâm tuyến đường OSM khớp địa chỉ: ${matchedRoad.name} (${matchedRoad.osmId})`,
+            displayName: `Tâm tuyến đường khớp địa chỉ: ${matchedRoad.name}`,
             lat: matchedRoad.lat,
             lng: matchedRoad.lng,
           },
@@ -2790,24 +3150,202 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
   const handleSaveAdminCoordinates = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdminUser || !adminTargetPlace) return;
+    if (!isAdminUser) return;
     try {
       const lat = parseFloat(adminLatInput);
       const lng = parseFloat(adminLngInput);
-      updatePlaceCoordinates(adminTargetPlace.id, {
+      const saved = saveLandmarkOrPlaceFromMap({
+        id: isAdminCreatingNew ? undefined : adminTargetPlace?.id,
+        name: adminEditName,
+        category: adminEditCategory,
+        address: adminEditAddress,
+        tagline: adminEditTagline,
+        phone: adminEditPhone,
+        openHours: adminEditHours,
         lat,
         lng,
-        coordinateVerified: true,
-        coordinateSource: adminCoordSource,
-        placeName: adminTargetPlace.name,
+        mapsUrl: adminMapsUrlInput,
       });
+      setShowCommercialShops(true);
+      setSelectedCategories((prev) =>
+        prev.includes(adminEditCategory) ? prev : [...prev, adminEditCategory]
+      );
       setSyncTick((t) => t + 1);
-      setAdminFeedback(`Đã xác minh & lưu tọa độ cho "${adminTargetPlace.name}" thành công!`);
-      flyToCoordinates(lat, lng, 16.5, adminTargetPlace.name, 0.0042);
+      setAdminFeedback(`✅ Đã lưu cập nhật "${adminEditName.trim()}" (${saved.lat}, ${saved.lng}) thành công!`);
+      setLocationNotice(`✅ Đã lưu địa điểm: "${adminEditName.trim()}"`);
+      flyToCoordinates(saved.lat, saved.lng, 16.6, adminEditName.trim(), 0.0042);
+      setTimeout(() => {
+        setIsAdminCoordModalOpen(false);
+      }, 650);
     } catch (err: any) {
-      setAdminFeedback(err?.message || 'Lỗi lưu tọa độ.');
+      setAdminFeedback(err?.message || 'Lỗi lưu thông tin địa điểm.');
     }
   };
+
+  const handleDeleteAdminPlace = () => {
+    if (!isAdminUser || !adminTargetPlace) return;
+    hideLandmarkOrPlaceFromMap(adminTargetPlace.id, adminEditName || adminTargetPlace.name);
+    if (selectedPlace?.id === adminTargetPlace.id) {
+      setSelectedPlace(null);
+    }
+    setSyncTick((t) => t + 1);
+    setIsAdminCoordModalOpen(false);
+    setLocationNotice(`🗑️ Đã ẩn "${adminEditName || adminTargetPlace.name}" khỏi Bản đồ 2D & 3D.`);
+  };
+
+  const handleRestoreAdminPlaceDefault = () => {
+    if (!isAdminUser || !adminTargetPlace) return;
+    restoreLandmarkOrPlaceDefault(adminTargetPlace.id);
+    setSyncTick((t) => t + 1);
+    setIsAdminCoordModalOpen(false);
+    setLocationNotice(`↺ Đã khôi phục "${adminTargetPlace.name}" về dữ liệu gốc mặc định.`);
+  };
+
+  // Mở khung cài đặt / thay đổi "Chỗ bạn sinh sống (Nhà của bạn)"
+  const handleOpenHomeEditor = useCallback(
+    (sourceHome?: UserHomeLocation | null) => {
+      const target = sourceHome !== undefined ? sourceHome : userHome;
+      const center = mapInstanceRef.current?.getCenter();
+      const defaultLat =
+        target?.lat ??
+        userCoords?.lat ??
+        (center ? Number(center.lat.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lat);
+      const defaultLng =
+        target?.lng ??
+        userCoords?.lng ??
+        (center ? Number(center.lng.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lng);
+      setHomeLabelInput(target?.label || 'Nhà của bạn');
+      setHomeAddressInput(target?.address || 'Phường Xuân Hòa');
+      setHomeMapsInput('');
+      setHomeLatInput(String(defaultLat));
+      setHomeLngInput(String(defaultLng));
+      setHomeFeedback(null);
+      setHomeModalMode('edit');
+    },
+    [userHome, userCoords]
+  );
+
+  // Khi ấn vào biểu tượng ngôi nhà (🏠) trên thanh công cụ dọc
+  const handleClickHomeButton = useCallback(() => {
+    triggerFeedback('tap');
+    if (userHome) {
+      flyToCoordinates(
+        userHome.lat,
+        userHome.lng,
+        16.8,
+        userHome.label || 'Nhà của bạn',
+        0.0038
+      );
+      setHomeModalMode('view');
+    } else {
+      handleOpenHomeEditor(null);
+    }
+  }, [userHome, flyToCoordinates, handleOpenHomeEditor]);
+
+  // Tìm tọa độ từ link Google Maps / Plus Code / Địa chỉ cho Nhà của bạn
+  const handleSuggestHomeCoords = async () => {
+    const query = homeMapsInput.trim() || homeAddressInput.trim();
+    if (!query) return;
+
+    const parsed = parseCoordinatesFromInputOrUrl(query);
+    if (parsed) {
+      setHomeLatInput(String(parsed.lat));
+      setHomeLngInput(String(parsed.lng));
+      flyToCoordinates(parsed.lat, parsed.lng, 16.8, homeLabelInput || 'Nhà của bạn');
+      setHomeFeedback(`Đã trích xuất tọa độ (${parsed.lat}, ${parsed.lng}) từ định vị Maps!`);
+      return;
+    }
+
+    setIsGeocoding(true);
+    setHomeFeedback(null);
+    try {
+      const list = await geocodeAddressWithNominatim(query);
+      if (list.length > 0) {
+        const best = list[0];
+        setHomeLatInput(String(best.lat));
+        setHomeLngInput(String(best.lng));
+        if (!homeAddressInput.trim() || homeAddressInput === 'Phường Xuân Hòa') {
+          setHomeAddressInput(best.displayName.split(',').slice(0, 2).join(','));
+        }
+        flyToCoordinates(best.lat, best.lng, 16.8, homeLabelInput || 'Nhà của bạn');
+        setHomeFeedback(`Đã định vị: ${best.displayName}`);
+        return;
+      }
+      const matchedRoad = findSuggestedRoadForAddress(query, osmRoads);
+      if (matchedRoad) {
+        setHomeLatInput(String(matchedRoad.lat));
+        setHomeLngInput(String(matchedRoad.lng));
+        flyToCoordinates(matchedRoad.lat, matchedRoad.lng, 16.8, matchedRoad.name);
+        setHomeFeedback(`Đã khớp tuyến đường: ${matchedRoad.name}. Hãy bấm lưu hoặc chấm chính xác ngôi nhà.`);
+      } else {
+        setHomeFeedback('Chưa tìm thấy tự động. Hãy bấm "Chấm vị trí nhà trên bản đồ" để chạm đúng ngôi nhà của bạn.');
+      }
+    } catch {
+      const matchedRoad = findSuggestedRoadForAddress(query, osmRoads);
+      if (matchedRoad) {
+        setHomeLatInput(String(matchedRoad.lat));
+        setHomeLngInput(String(matchedRoad.lng));
+        flyToCoordinates(matchedRoad.lat, matchedRoad.lng, 16.8, matchedRoad.name);
+        setHomeFeedback(`Đã khớp tuyến đường: ${matchedRoad.name}.`);
+      } else {
+        setHomeFeedback('Hãy bấm "Chấm vị trí nhà trên bản đồ" để chạm đúng vị trí nhà bạn.');
+      }
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  // Lưu Chỗ bạn sinh sống (Nhà của bạn) cho tài khoản hiện tại
+  const handleSaveUserHome = useCallback(
+    (payload: { label: string; address: string; lat: number; lng: number }) => {
+      const saved = saveUserHomeForUser(userAccountKey, payload);
+      if (saved) {
+        setUserHome(saved);
+        userHomeRef.current = saved;
+        flyToCoordinates(saved.lat, saved.lng, 16.8, saved.label, 0.0038);
+        setHomeModalMode('view');
+        setLocationNotice(`🏠 Đã lưu "${saved.label}" tại ${saved.address}`);
+        window.setTimeout(() => setLocationNotice(null), 3000);
+      }
+    },
+    [userAccountKey, flyToCoordinates]
+  );
+
+  // Xóa Chỗ bạn sinh sống đã lưu
+  const handleClearUserHome = useCallback(() => {
+    clearUserHomeForUser(userAccountKey);
+    setUserHome(null);
+    userHomeRef.current = null;
+    setHomeModalMode('closed');
+    scheduleCanvasRender();
+    setLocationNotice('Đã xóa vị trí nhà đã lưu. Bấm biểu tượng 🏠 để định vị lại bất cứ lúc nào.');
+    window.setTimeout(() => setLocationNotice(null), 3000);
+  }, [userAccountKey, scheduleCanvasRender]);
+
+  // Chỉ đường về Nhà của bạn
+  const handleRouteToUserHome = useCallback(
+    (homeTarget: UserHomeLocation) => {
+      const syntheticHomePlace: PlaceLocation = {
+        id: 'user_saved_home',
+        name: homeTarget.label || 'Nhà của bạn',
+        category: 'public',
+        address: homeTarget.address || 'Chỗ bạn sinh sống tại Xuân Hòa',
+        lat: homeTarget.lat,
+        lng: homeTarget.lng,
+        coordStatus: 'verified',
+        coordSource: 'admin_verified',
+        accuracyLevel: 'exact',
+        insideWard: true,
+        openHours: '24/7',
+        metadata: {
+          subType: 'Địa chỉ nhà / chỗ sinh sống đã lưu của bạn',
+        },
+      };
+      setHomeModalMode('closed');
+      handleDrawRouteToPlace(syntheticHomePlace, 'motorbike');
+    },
+    [handleDrawRouteToPlace]
+  );
 
   return (
     <div
@@ -2840,7 +3378,10 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         ref={mapContainerRef}
         className="absolute inset-0 w-full h-full z-[2]"
         style={{
-          cursor: isPickingOnMap || merchantPickingForPlace ? 'crosshair' : 'grab',
+          cursor:
+            isPickingOnMap || merchantPickingForPlace || homeModalMode === 'picking'
+              ? 'crosshair'
+              : 'grab',
           background: 'transparent',
         }}
       />
@@ -2866,11 +3407,43 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           >
             <div className="relative -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-0.5 rounded-full bg-[#39B980] text-white border-2 border-[#403064] text-[10.5px] leading-snug font-extrabold whitespace-nowrap shadow-md">
-                📍 Bạn đang ở đây
+                Bạn đang ở đây
               </div>
               <span className="absolute w-11 h-11 rounded-full bg-[#39B980]/35 animate-ping" />
               <span className="w-4 h-4 rounded-full bg-[#39B980] border-2 border-[#FFFFFF] ring-2 ring-[#403064] shadow-md" />
             </div>
+          </div>
+        )}
+
+        {/* Marker Chỗ bạn sinh sống / Nhà của bạn (User Home Location) */}
+        {userHome && (
+          <div
+            ref={(el) => {
+              userHomeMarkerElRef.current = el;
+            }}
+            style={{
+              transform: 'translate3d(-9999px, -9999px, 0)',
+              zIndex: 48,
+              willChange: 'transform',
+            }}
+            className="absolute top-0 left-0 pointer-events-auto"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                flyToCoordinates(userHome.lat, userHome.lng, 16.8, userHome.label, 0.0038);
+                setHomeModalMode('view');
+              }}
+              title={`${userHome.label}: ${userHome.address}`}
+              className="group relative -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer focus:outline-none"
+            >
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-0.5 rounded-xl bg-[#FEF3C7] text-[#92400E] border-2 border-[#D97706] text-[10.5px] leading-snug font-extrabold whitespace-nowrap shadow-md">
+                🏠 {userHome.label}
+              </div>
+              <div className="w-8 h-8 rounded-2xl bg-[#D97706] text-white border-2 border-white ring-2 ring-[#92400E] flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform text-xs font-extrabold">
+                🏠
+              </div>
+            </button>
           </div>
         )}
 
@@ -2920,6 +3493,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           const cat = MAP_CATEGORY_BY_ID[loc.category];
           const isSelected = selectedPlace?.id === loc.id;
           const isHovered = hoveredPlaceId === loc.id;
+          const isSavedMarker = savedPlaceIds.includes(loc.id);
 
           return (
             <div
@@ -2933,7 +3507,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               }}
               style={{
                 transform: 'translate3d(-9999px, -9999px, 0)',
-                zIndex: isSelected ? 45 : isHovered ? 35 : 20,
+                zIndex: isSelected ? 45 : isHovered ? 35 : isSavedMarker ? 28 : 20,
                 willChange: 'transform',
               }}
               className="absolute top-0 left-0 pointer-events-auto"
@@ -2959,22 +3533,22 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                   }}
                   className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-0.5 rounded-xl border-2 text-[10.5px] sm:text-[11px] leading-snug font-extrabold whitespace-nowrap max-w-[175px] sm:max-w-[200px] truncate shadow-sm pointer-events-none"
                   style={{
-                    backgroundColor: isSelected ? '#403064' : '#FFFDF9',
-                    borderColor: '#403064',
+                    backgroundColor: isSelected ? '#403064' : isSavedMarker ? '#FEF3C7' : '#FFFDF9',
+                    borderColor: isSavedMarker ? '#D97706' : '#403064',
                     color: isSelected ? '#FFFFFF' : '#2D2246',
                   }}
                 >
-                  {loc.name}
+                  {isSavedMarker ? `★ ${loc.name}` : loc.name}
                 </div>
 
                 {/* Huy hiệu Icon neo chính xác 100% vào tọa độ [lng, lat] */}
                 <div
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-2xl border-2 flex items-center justify-center text-white transition-transform shadow-[0_5px_12px_rgba(64,48,100,0.22)]"
+                  className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-2xl border-2 flex items-center justify-center text-white transition-transform shadow-[0_5px_12px_rgba(64,48,100,0.22)]"
                   style={{
                     backgroundColor: isSelected
                       ? '#403064'
                       : cat?.markerBg || '#39B980',
-                    borderColor: isSelected ? '#39B980' : '#403064',
+                    borderColor: isSelected ? '#39B980' : isSavedMarker ? '#F59E0B' : '#403064',
                     transform: isSelected
                       ? 'scale(1.16)'
                       : isHovered
@@ -2983,6 +3557,11 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                   }}
                 >
                   {cat ? renderCategoryIcon(cat.iconName, 14) : <MapPin size={14} />}
+                  {isSavedMarker && (
+                    <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-[#F59E0B] text-white border border-white text-[8px] font-black flex items-center justify-center shadow-xs">
+                      ★
+                    </span>
+                  )}
                 </div>
               </button>
             </div>
@@ -2990,265 +3569,259 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         })}
       </div>
 
-      {/* 3. LỚP GIAO DIỆN ĐIỀU KHIỂN TRÊN CÙNG — CÂN ĐỐI CHUẨN GOOGLE MAPS SANG TRỌNG */}
-      <div className="absolute top-3 left-3 right-3 z-30 flex flex-col gap-1.5 pointer-events-none">
-        <div className="flex flex-wrap items-center justify-between gap-2 pointer-events-auto">
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-[260px] max-w-2xl">
-            <button
-              type="button"
-              onClick={onBackToHome}
-              aria-label="Quay lại trang chủ Xuân Hòa Có Gì"
-              title="Quay lại trang chủ Xuân Hòa Có Gì"
-              className="hidden md:flex px-3.5 h-10 rounded-full bg-white/95 border border-slate-200/90 text-slate-800 hover:bg-slate-100 font-extrabold text-xs leading-snug items-center justify-center gap-1.5 shadow-[0_6px_20px_rgba(15,23,42,0.10)] backdrop-blur-md shrink-0 cursor-pointer transition"
-            >
-              <ArrowLeft size={15} />
-              <span>Trang chủ</span>
-            </button>
+      {/* 3. LỚP GIAO DIỆN ĐIỀU KHIỂN TRÊN CÙNG — GỌN GÀNG CHUẨN GOOGLE MAPS (MOBILE & WEB) */}
+      <div className="absolute top-2.5 sm:top-3 left-2.5 sm:left-3 right-2.5 sm:right-3 z-30 flex flex-col gap-1.5 pointer-events-none">
+        <div className="relative flex items-center gap-1.5 sm:gap-2 pointer-events-auto max-w-xl">
+          <button
+            type="button"
+            onClick={onBackToHome}
+            aria-label="Quay lại trang chủ Xuân Hòa Có Gì"
+            title="Quay lại trang chủ Xuân Hòa Có Gì"
+            className="hidden md:flex px-3.5 h-9 sm:h-10 rounded-full bg-white/96 border border-slate-200/90 text-slate-800 hover:bg-slate-100 font-extrabold text-xs leading-snug items-center justify-center shadow-[0_6px_20px_rgba(15,23,42,0.10)] backdrop-blur-md shrink-0 cursor-pointer transition"
+          >
+            <span>Trang chủ</span>
+          </button>
 
-            <MapSearchBar
-              verifiedPlaces={verifiedMapMarkers}
-              unverifiedPlaces={unverifiedCatalogPlaces}
-              roads={osmRoads}
-              gameAssets={DEMO_GAME_ASSETS}
-              selectedCategories={selectedCategories}
-              isCategoryDrawerOpen={isCategoryDrawerOpen}
-              onToggleCategoryDrawer={() => setIsCategoryDrawerOpen((v) => !v)}
-              onSelectVerifiedPlace={handleSelectVerifiedPlace}
-              onSelectUnverifiedPlace={handleSelectUnverifiedPlace}
-              onSelectRoad={handleSelectRoad}
-              onSelectGameAsset={handleSelectGameAsset}
-              onSelectPreset={handleSelectPresetArea}
-              isGameLayerEnabled={layerVisibility.gameAssets}
-              onToggleGameLayer={() =>
-                setLayerVisibility((prev) => ({ ...prev, gameAssets: !prev.gameAssets }))
-              }
-              isAdminUser={isAdminUser}
-              onOpenAdminCoordTool={openAdminCoordinateModal}
-              userCoords={userCoords}
-              onDrawRouteToPlace={handleDrawRouteToPlace}
-              onOpenMerchantPortal={(tab) => handleOpenMerchantPortal(tab)}
-              pendingApprovalCount={pendingApprovalCount}
-              activePresetId={activePresetId}
-              hasClaimedPlaces={hasClaimedPlaces}
-              claimedPlaceName={claimedPlaceName}
-            />
-          </div>
+          <MapSearchBar
+            verifiedPlaces={verifiedMapMarkers}
+            unverifiedPlaces={unverifiedCatalogPlaces}
+            roads={osmRoads}
+            gameAssets={DEMO_GAME_ASSETS}
+            selectedCategories={selectedCategories}
+            isCategoryDrawerOpen={isCategoryDropdown2DOpen}
+            onToggleCategoryDrawer={() => {
+              setIsCategoryDropdown2DOpen((v) => !v);
+              setIsSavedDropdown2DOpen(false);
+            }}
+            savedPlaceIds={savedPlaceIds}
+            isSavedDrawerOpen={isSavedDropdown2DOpen}
+            onToggleSavedDrawer={() => {
+              setIsSavedDropdown2DOpen((v) => !v);
+              setIsCategoryDropdown2DOpen(false);
+            }}
+            activeCategoryLabel="Danh mục"
+            onSelectVerifiedPlace={handleSelectVerifiedPlace}
+            onSelectUnverifiedPlace={handleSelectUnverifiedPlace}
+            onSelectRoad={handleSelectRoad}
+            onSelectGameAsset={handleSelectGameAsset}
+            onSelectPreset={handleSelectPresetArea}
+            isGameLayerEnabled={layerVisibility.gameAssets}
+            onToggleGameLayer={() =>
+              setLayerVisibility((prev) => ({ ...prev, gameAssets: !prev.gameAssets }))
+            }
+            isAdminUser={isAdminUser}
+            onOpenAdminCoordTool={openAdminCoordinateModal}
+            userCoords={userCoords}
+            onDrawRouteToPlace={handleDrawRouteToPlace}
+            onOpenMerchantPortal={(tab) => handleOpenMerchantPortal(tab)}
+            pendingApprovalCount={pendingApprovalCount}
+            activePresetId={activePresetId}
+            hasClaimedPlaces={hasClaimedPlaces}
+            claimedPlaceName={claimedPlaceName}
+          />
 
-          {/* Cụm Pill Lựa Chọn Danh Mục Cân Đối Chuẩn Google Maps */}
-          <div className="hidden lg:flex items-center gap-1.5 rounded-full bg-white/92 border border-slate-200/90 p-1 shadow-[0_6px_20px_rgba(15,23,42,0.10)] backdrop-blur-md">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCategories(['all']);
-                setShowCommercialShops(true);
-              }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                selectedCategories.includes('all') && showCommercialShops
-                  ? 'bg-[#1E1633] text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              ✨ Tất cả
-            </button>
+          {/* Bảng Bật / Tắt từng Danh mục xổ xuống gọn gàng (Auto: Hành chính + Trường học) */}
+          {isCategoryDropdown2DOpen && (
+            <div className="absolute top-11 left-0 md:left-24 z-50 w-[250px] sm:w-[270px] rounded-2xl bg-white/98 backdrop-blur-md border border-slate-200/90 shadow-[0_14px_34px_rgba(15,23,42,0.18)] p-2 flex flex-col gap-1">
+              <div className="px-2 py-1 flex items-center justify-between border-b border-slate-100">
+                <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-slate-500">
+                  Bật / Tắt danh mục
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCommercialShops(false);
+                      setSelectedCategories(['public', 'school']);
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] text-[10px] font-extrabold cursor-pointer"
+                    title="Khôi phục mặc định: chỉ bật Hành chính + Trường học"
+                  >
+                    Mặc định
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCategoryDropdown2DOpen(false)}
+                    className="px-1.5 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCategories(['public', 'school']);
-              }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                !selectedCategories.includes('all') &&
-                (selectedCategories.includes('public') || selectedCategories.includes('school'))
-                  ? 'bg-[#059669] text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              🏛️ Cơ quan & Trường
-            </button>
+              {(
+                [
+                  {
+                    key: 'public',
+                    cats: ['public', 'medical'] as MapCategoryKey[],
+                    label: 'Hành chính & Công cộng',
+                    activeBg: 'bg-[#059669] text-white',
+                    isDefault: true,
+                  },
+                  {
+                    key: 'school',
+                    cats: ['school'] as MapCategoryKey[],
+                    label: 'Trường học & Giảng đường',
+                    activeBg: 'bg-[#10B981] text-white',
+                    isDefault: true,
+                  },
+                  {
+                    key: 'food',
+                    cats: ['food'] as MapCategoryKey[],
+                    label: 'Quán ăn',
+                    activeBg: 'bg-[#E11D48] text-white',
+                    isDefault: false,
+                  },
+                  {
+                    key: 'pub',
+                    cats: ['pub'] as MapCategoryKey[],
+                    label: 'Quán nhậu & Lẩu',
+                    activeBg: 'bg-[#D97706] text-white',
+                    isDefault: false,
+                  },
+                  {
+                    key: 'cafe',
+                    cats: ['cafe'] as MapCategoryKey[],
+                    label: 'Cafe & Trà',
+                    activeBg: 'bg-[#0284C7] text-white',
+                    isDefault: false,
+                  },
+                  {
+                    key: 'snack',
+                    cats: ['snack'] as MapCategoryKey[],
+                    label: 'Ăn vặt',
+                    activeBg: 'bg-[#9333EA] text-white',
+                    isDefault: false,
+                  },
+                  {
+                    key: 'service',
+                    cats: [
+                      'service',
+                      'grocery',
+                      'supermarket',
+                      'phone',
+                      'billiards',
+                      'game',
+                      'entertainment',
+                    ] as MapCategoryKey[],
+                    label: 'Dịch vụ & Tiện ích',
+                    activeBg: 'bg-[#475569] text-white',
+                    isDefault: false,
+                  },
+                ] as const
+              ).map((tab) => {
+                const isActive = tab.cats.some((c) => selectedCategories.includes(c));
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategories((prev) => {
+                        const base = prev.filter((c) => c !== 'all');
+                        const hasAny = tab.cats.some((c) => base.includes(c));
+                        if (hasAny) {
+                          return base.filter((c) => !tab.cats.includes(c));
+                        }
+                        return [...base, ...tab.cats];
+                      });
+                    }}
+                    className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between transition cursor-pointer ${
+                      isActive ? tab.activeBg : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                        isActive ? 'bg-black/20 text-white' : 'bg-slate-200/80 text-slate-600'
+                      }`}
+                    >
+                      {isActive ? 'Đang bật' : 'Tắt'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-            <button
-              type="button"
-              onClick={() => {
-                if (!showCommercialShops) {
-                  setShowCommercialShops(true);
-                  setSelectedCategories(['food', 'cafe', 'snack', 'pub']);
-                } else {
-                  setShowCommercialShops(false);
-                  setSelectedCategories(['all']);
-                }
-              }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                showCommercialShops
-                  ? 'bg-[#E11D48] text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100'
-              }`}
-              title="Bật / Tắt hiển thị Quán ăn, Cafe & Dịch vụ trên bản đồ"
-            >
-              🍜 Ẩm thực & Quán
-            </button>
+          {/* Bảng Địa điểm đã lưu (★) theo đúng tài khoản (nick) của khách */}
+          {isSavedDropdown2DOpen && (
+            <div className="absolute top-11 left-0 md:left-24 z-50 w-[275px] sm:w-[310px] rounded-2xl bg-white/98 backdrop-blur-md border border-[#F59E0B]/70 shadow-[0_14px_34px_rgba(15,23,42,0.18)] p-2.5 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-extrabold text-[#B45309]">
+                    ★ Địa điểm đã lưu ({savedPlaceObjects.length})
+                  </div>
+                  <div className="text-[10px] font-semibold text-slate-500 truncate">
+                    Nick: {userAccountLabel}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSavedDropdown2DOpen(false)}
+                  className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10.5px] font-bold cursor-pointer shrink-0"
+                >
+                  Đóng
+                </button>
+              </div>
 
-            <button
-              type="button"
-              onClick={() => setIsCity3DOpen(true)}
-              aria-label="Mở Sa bàn 3D Phường Xuân Hòa"
-              title="Mở Sa bàn 3D Phường Xuân Hòa"
-              className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-[#059669] to-[#047857] hover:from-[#047857] hover:to-[#065F46] text-white font-extrabold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
-            >
-              <span>🏢</span>
-              <span>Sa Bàn 3D</span>
-            </button>
-          </div>
+              {savedPlaceObjects.length === 0 ? (
+                <div className="py-4 px-2 text-center text-[11px] text-slate-500 space-y-1">
+                  <div className="font-bold text-slate-700">Chưa có địa điểm nào được lưu</div>
+                  <div>
+                    Hãy bấm nút <strong className="text-[#B45309]">☆ Lưu</strong> trên thông tin địa điểm bất kỳ để lưu lại cho lần mở sau.
+                  </div>
+                </div>
+              ) : (
+                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 pr-0.5">
+                  {savedPlaceObjects.map((item) => (
+                    <div
+                      key={item.id}
+                      className="py-1.5 px-1.5 flex items-center justify-between gap-1.5 hover:bg-amber-50/60 rounded-xl transition"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSavedDropdown2DOpen(false);
+                          handleSelectVerifiedPlace(item);
+                        }}
+                        className="min-w-0 flex-1 text-left cursor-pointer"
+                      >
+                        <div className="text-[11.5px] font-extrabold text-slate-800 truncate">
+                          ★ {item.name}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate">
+                          {item.address}
+                        </div>
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsSavedDropdown2DOpen(false);
+                            handleDrawRouteToPlace(item, 'motorbike');
+                          }}
+                          className="px-2 py-1 rounded-lg bg-[#059669] hover:bg-[#047857] text-white text-[10px] font-extrabold cursor-pointer"
+                        >
+                          Đi tới
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSavePlace(item)}
+                          title="Bỏ lưu địa điểm này"
+                          className="px-1.5 py-1 rounded-lg bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#B45309] text-[10px] font-extrabold cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* THANH QUẢN LÝ NHANH DÀNH CHO CHỦ QUÁN, QUẢN LÝ MAPS & QUẢN TRỊ VIÊN */}
-        {!merchantPickingForPlace && (hasClaimedPlaces || isMapManagerUser || isAdminUser) && (
-          <div className="flex flex-wrap items-center gap-1.5 pointer-events-auto">
-            {hasClaimedPlaces && primaryMerchantPlace && !isMapManagerUser && (
-              <div className="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-2xl bg-[#FFFDF9]/95 border-2 border-[#39B980] shadow-md text-xs">
-                <span className="inline-flex items-center gap-1 font-extrabold text-[#1D7A52]">
-                  <span>🏪</span>
-                  <span className="truncate max-w-[160px] sm:max-w-[220px]">
-                    {primaryMerchantPlace.place.name}
-                  </span>
-                </span>
-                {claimedPlaceCode && (
-                  <span className="px-1.5 py-0.5 rounded-md bg-[#E6F7EF] border border-[#39B980]/40 text-[#047857] font-mono text-[10px] font-black">
-                    {claimedPlaceCode}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerFeedback('pin');
-                    setMerchantPickingForPlace({
-                      placeId: primaryMerchantPlace.place.id,
-                      placeName: primaryMerchantPlace.place.name,
-                    });
-                  }}
-                  className="px-2.5 py-1 rounded-xl bg-[#39B980] hover:bg-[#2FA36E] active:scale-95 transition-transform text-white font-extrabold text-[11px] flex items-center gap-1 cursor-pointer shadow-xs"
-                >
-                  <Crosshair size={12} />
-                  <span>Cập nhật vị trí</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerFeedback('tap');
-                    setMerchantPortalTab('merchant');
-                    setIsMerchantPortalOpen(true);
-                  }}
-                  className="px-2.5 py-1 rounded-xl bg-[#403064] hover:bg-[#2D2246] active:scale-95 transition-transform text-white font-extrabold text-[11px] flex items-center gap-1 cursor-pointer shadow-xs"
-                >
-                  <Store size={12} />
-                  <span>Thông tin & Thực đơn</span>
-                </button>
-              </div>
-            )}
-
-            {isMapManagerUser && !isAdminUser && (
-              <div className="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-2xl bg-[#FFFDF9]/95 border-2 border-[#39B980] shadow-md text-xs">
-                <span className="inline-flex items-center gap-1 font-extrabold text-[#047857]">
-                  <span>🗺️</span>
-                  <span>Quản lý Maps</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerFeedback('tap');
-                    setMerchantPortalTab('create_new');
-                    setIsMerchantPortalOpen(true);
-                  }}
-                  className="px-2.5 py-1 rounded-xl bg-[#10B981] hover:bg-[#059669] active:scale-95 transition-transform text-white font-extrabold text-[11px] flex items-center gap-1 cursor-pointer shadow-xs"
-                >
-                  <Plus size={12} />
-                  <span>Thêm địa điểm mới</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerFeedback('tap');
-                    setMerchantPortalTab('merchant');
-                    setIsMerchantPortalOpen(true);
-                  }}
-                  className="px-2.5 py-1 rounded-xl bg-[#403064] hover:bg-[#2D2246] active:scale-95 transition-transform text-white font-extrabold text-[11px] flex items-center gap-1 cursor-pointer shadow-xs"
-                >
-                  <Crosshair size={12} />
-                  <span>Cập nhật định vị quán</span>
-                </button>
-              </div>
-            )}
-
-            {isAdminUser && (
-              <div className="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-2xl bg-[#FFFDF9]/95 border-2 border-[#F59E0B] text-[#78350F] shadow-md text-[11px]">
-                <span className="font-extrabold text-[#B45309] flex items-center gap-1">
-                  Quản trị:
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerFeedback('tap');
-                    setMerchantPortalTab('create_new');
-                    setIsMerchantPortalOpen(true);
-                  }}
-                  className="px-2.5 py-1 rounded-xl bg-[#10B981] hover:bg-[#059669] active:scale-95 transition-transform text-white font-extrabold flex items-center gap-1 cursor-pointer shadow-xs"
-                  title="Tạo mới địa điểm hoặc đơn vị hành chính theo danh mục tag"
-                >
-                  <Plus size={12} />
-                  <span>Thêm địa điểm mới</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerFeedback('approve');
-                    const nextMode =
-                      mapAccessStatus.mode === 'public_open'
-                        ? 'merchants_and_admin_only'
-                        : 'public_open';
-                    setMapAccessMode(nextMode);
-                    setSyncTick((t) => t + 1);
-                    setLocationNotice(
-                      nextMode === 'public_open'
-                        ? 'Đã chuyển Bản đồ số sang chế độ: Mở công khai.'
-                        : 'Đã chuyển Bản đồ số sang chế độ: Đang phát triển (Dành cho Chủ quán).'
-                    );
-                  }}
-                  className={`px-2.5 py-1 rounded-xl font-extrabold flex items-center gap-1 active:scale-95 transition-transform cursor-pointer border ${
-                    mapAccessStatus.mode === 'public_open'
-                      ? 'bg-[#39B980] text-white border-[#1D7A52]'
-                      : 'bg-[#FEF3C7] text-[#92400E] border-[#F59E0B]'
-                  }`}
-                  title="Chuyển đổi quyền truy cập Bản đồ số"
-                >
-                  {mapAccessStatus.mode === 'public_open' ? (
-                    <>
-                      <Unlock size={12} />
-                      <span>Chế độ: Công khai</span>
-                    </>
-                  ) : (
-                    <>
-                      <Lock size={12} />
-                      <span>Chế độ: Nội bộ Chủ quán</span>
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerFeedback('tap');
-                    setPreviewGuestLock(true);
-                  }}
-                  className="px-2.5 py-1 rounded-xl bg-[#F3EFE6] hover:bg-[#E5DEC9] active:scale-95 transition-transform text-[#403064] border border-[#D8CFC0] font-extrabold flex items-center gap-1 cursor-pointer"
-                  title="Xem giao diện thông báo dành cho khách"
-                >
-                  <Eye size={12} />
-                  <span>Giao diện chờ</span>
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Cụm nút điều khiển nổi góc phải dưới (GPS, 3D, Lớp bản đồ, Về trung tâm) */}
+        {/* Cụm nút điều khiển nổi góc phải (3D, GPS, Lớp bản đồ, Về trung tâm) */}
         <MapControls
           onZoomIn={() => mapInstanceRef.current?.zoomIn()}
           onZoomOut={() => mapInstanceRef.current?.zoomOut()}
@@ -3259,7 +3832,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               XUANHOA_DEFAULT_CENTER.lat,
               XUANHOA_DEFAULT_CENTER.lng,
               XUANHOA_DEFAULT_CENTER.zoom,
-              '🎓 Khu ĐH Sư Phạm 2',
+              'Khu ĐH Sư Phạm 2',
               0.0044
             );
           }}
@@ -3275,12 +3848,29 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           is3DMode={is3DMode}
           onToggle3DMode={handleToggle3DMode}
           onOpenCity3D={() => setIsCity3DOpen(true)}
+          onClickHomeButton={handleClickHomeButton}
+          hasSavedHome={Boolean(userHome)}
         />
+
+        {/* Banner hướng dẫn khi khách hàng đang chạm chọn vị trí Nhà của bạn trên bản đồ */}
+        {homeModalMode === 'picking' && (
+          <div className="pointer-events-auto self-start px-3.5 py-2 rounded-2xl bg-[#FFFDF9] text-[#1E293B] border-2 border-[#D97706] shadow-lg text-xs leading-snug font-extrabold flex items-center gap-2">
+            <span>
+              Chạm vào đúng vị trí ngôi nhà / ngõ bạn đang sinh sống trên bản đồ để ghim Nhà của bạn
+            </span>
+            <button
+              type="button"
+              onClick={() => setHomeModalMode('edit')}
+              className="px-2 py-0.5 rounded-lg bg-[#FEF3C7] text-[#92400E] border border-[#D97706] text-[10.5px] font-extrabold cursor-pointer shrink-0"
+            >
+              Quay lại
+            </button>
+          </div>
+        )}
 
         {/* Banner hướng dẫn ở trên khi Chủ quán đang ngắm tâm ghim mặt tiền quán */}
         {merchantPickingForPlace && (
           <div className="pointer-events-auto self-start px-3.5 py-2 rounded-2xl bg-[#FFFDF9] text-[#1E293B] border-2 border-[#39B980] shadow-lg text-xs leading-snug font-bold flex items-center gap-2">
-            <Store size={15} className="text-[#39B980] animate-bounce shrink-0" />
             <span>
               Kéo bản đồ hoặc chạm điểm bất kỳ để đặt tâm ghim vào mặt tiền{' '}
               <strong className="text-[#1D7A52]">"{merchantPickingForPlace.placeName}"</strong>
@@ -3288,39 +3878,215 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           </div>
         )}
 
-        {/* Banner Dẫn đường trực tiếp trên Bản đồ Số Xuân Hòa */}
-        {activeRoute && (
-          <div className="pointer-events-auto self-start px-3.5 py-2 rounded-2xl bg-[#FFFDF9]/95 border-2 border-[#3B82F6] text-[#2D2246] shadow-lg text-xs leading-snug flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#EFF6FF] text-[#1D4ED8] font-extrabold">
-              <Navigation size={13} /> Dẫn đường
-            </span>
-            <span className="font-bold">
-              Từ <span className="text-[#1D7A52]">{activeRoute.originLabel}</span> →{' '}
-              <strong className="text-[#403064]">{activeRoute.targetPlace.name}</strong>
-            </span>
-            <span className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] text-[#1D7A52] font-extrabold">
-              📍 {activeRoute.distanceText} · 🛵 {activeRoute.motorbikeMinutes} phút · 🚶{' '}
-              {activeRoute.walkMinutes} phút
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveRoute(null);
-                activeRouteRef.current = null;
-                scheduleCanvasRender();
-              }}
-              className="ml-auto px-2 py-0.5 rounded-lg bg-[#F1ECE1] hover:bg-[#FEE2E2] text-[#403064] hover:text-[#991B1B] font-bold text-[11px] cursor-pointer flex items-center gap-1"
-            >
-              <X size={12} /> Tắt đường đi
-            </button>
-          </div>
-        )}
+        {/* Thanh Dẫn đường Gọn Gàng Chuẩn Google Maps ở trên cùng bản đồ */}
+        {activeRoute && (() => {
+          const modeLabelMap: Record<TravelMode, string> = {
+            car: 'Ô tô',
+            motorbike: 'Xe máy',
+            bicycle: 'Xe đạp',
+            walk: 'Đi bộ',
+          };
+          const activeTimeText =
+            activeRoute.travelMode === 'car'
+              ? activeRoute.eta.carText
+              : activeRoute.travelMode === 'motorbike'
+              ? activeRoute.eta.bikeText
+              : activeRoute.travelMode === 'bicycle'
+              ? activeRoute.eta.bicycleText
+              : activeRoute.eta.walkText;
+          const contactPhone = activeRoute.targetPlace.phone || '0211 3863 203';
+          const openStatus = evaluatePlaceOpenStatus(
+            activeRoute.targetPlace.openHours,
+            activeRoute.targetPlace.metadata?.liveStatus,
+            activeRoute.targetPlace.metadata?.liveStatusNote
+          );
+          const remText =
+            activeRoute.remainingDistanceMeters < 1000
+              ? `${activeRoute.remainingDistanceMeters} m`
+              : `${(activeRoute.remainingDistanceMeters / 1000).toFixed(1)} km`;
+
+          return (
+            <div className="pointer-events-auto self-start w-full max-w-md rounded-2xl bg-[#FFFDF9]/98 border-2 border-[#2563EB] text-[#1E293B] shadow-[0_10px_28px_rgba(15,23,42,0.18)] p-2.5 text-[11px] leading-snug space-y-1.5">
+              {/* Hàng 1: Trạng thái + Tên điểm đến + Quãng đường/Thời gian + Nút SĐT/Thông tin + Nút Tắt */}
+              <div className="flex items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className={`px-2 py-0.5 rounded-lg font-extrabold text-[10px] shrink-0 ${
+                      activeRoute.hasArrived
+                        ? 'bg-[#059669] text-white'
+                        : 'bg-[#2563EB] text-white'
+                    }`}
+                  >
+                    {activeRoute.hasArrived ? 'Đã đến nơi' : modeLabelMap[activeRoute.travelMode]}
+                  </span>
+                  <strong className="text-[12px] font-extrabold text-[#0F172A] truncate">
+                    {activeRoute.targetPlace.name}
+                  </strong>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] text-[#047857] font-extrabold text-[10.5px]">
+                    {activeRoute.eta.distanceText} · {activeTimeText}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveRoute((prev) =>
+                        prev ? { ...prev, isInfoExpanded: !prev.isInfoExpanded } : null
+                      )
+                    }
+                    className={`px-2 py-0.5 rounded-lg font-extrabold text-[10.5px] border cursor-pointer transition ${
+                      activeRoute.isInfoExpanded
+                        ? 'bg-[#403064] text-white border-[#403064]'
+                        : 'bg-[#EFF6FF] text-[#1D4ED8] border-[#3B82F6]/40 hover:bg-[#DBEAFE]'
+                    }`}
+                  >
+                    {activeRoute.isInfoExpanded ? 'Ẩn TT' : 'TT & SĐT'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveRoute(null);
+                      activeRouteRef.current = null;
+                      scheduleCanvasRender();
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold text-[10.5px] cursor-pointer"
+                  >
+                    {activeRoute.hasArrived ? 'Đã đến • Tắt' : 'Tắt'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Hàng 2: Chuyển đổi nhanh 4 loại phương tiện (Ô tô | Xe máy | Xe đạp | Đi bộ) */}
+              <div className="grid grid-cols-4 gap-1">
+                {(
+                  [
+                    { id: 'car', label: 'Ô tô', time: activeRoute.eta.carText },
+                    { id: 'motorbike', label: 'Xe máy', time: activeRoute.eta.bikeText },
+                    { id: 'bicycle', label: 'Xe đạp', time: activeRoute.eta.bicycleText },
+                    { id: 'walk', label: 'Đi bộ', time: activeRoute.eta.walkText },
+                  ] as Array<{ id: TravelMode; label: string; time: string }>
+                ).map((m) => {
+                  const isCurrent = activeRoute.travelMode === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => handleSwitchRouteMode(m.id)}
+                      className={`py-1 px-1.5 rounded-xl border text-center transition cursor-pointer ${
+                        isCurrent
+                          ? 'bg-[#1E293B] text-white border-[#1E293B] font-extrabold'
+                          : 'bg-[#F8FAFC] text-[#334155] border-[#CBD5E1] hover:bg-[#EFF6FF] font-bold'
+                      }`}
+                    >
+                      <span className="block text-[10.5px] leading-tight">{m.label}</span>
+                      <span
+                        className={`block text-[9.5px] leading-tight ${
+                          isCurrent ? 'text-[#6EE7B7]' : 'text-[#047857]'
+                        }`}
+                      >
+                        {m.time}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Hàng 3: Tiến trình đường đi thực tế hoặc Thông báo Đã đến nơi */}
+              {activeRoute.hasArrived ? (
+                <div className="px-2.5 py-1.5 rounded-xl bg-[#ECFDF5] border border-[#10B981] text-[#065F46] flex items-center justify-between gap-2">
+                  <span className="font-extrabold text-[11px]">
+                    Bạn đã đến {activeRoute.targetPlace.name}. Bấm nút bên phải để tắt dẫn đường.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveRoute(null);
+                      activeRouteRef.current = null;
+                      scheduleCanvasRender();
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-[#059669] hover:bg-[#047857] text-white font-extrabold text-[10.5px] shrink-0 cursor-pointer"
+                  >
+                    Tắt khi đã đến
+                  </button>
+                </div>
+              ) : (
+                <div className="px-2.5 py-1 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between gap-2 text-[10.5px]">
+                  <span className="text-[#334155] font-semibold truncate">
+                    Lộ trình:{' '}
+                    <strong className="text-[#0F172A]">
+                      {activeRoute.roadNames.length > 0
+                        ? activeRoute.roadNames.slice(0, 2).join(' → ')
+                        : 'Trục đường nội khu Xuân Hòa'}
+                    </strong>{' '}
+                    · Còn <strong className="text-[#2563EB]">{remText}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveRoute((prev) => {
+                        if (!prev) return null;
+                        const lastIdx = Math.max(0, prev.pathLngLat.length - 1);
+                        const next = {
+                          ...prev,
+                          progressIndex: lastIdx,
+                          currentPos: prev.pathLngLat[lastIdx],
+                          remainingDistanceMeters: 0,
+                          hasArrived: true,
+                        };
+                        activeRouteRef.current = next;
+                        scheduleCanvasRender();
+                        return next;
+                      })
+                    }
+                    className="px-2 py-0.5 rounded-md bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] font-extrabold text-[10px] shrink-0 cursor-pointer"
+                  >
+                    Đã tới nơi
+                  </button>
+                </div>
+              )}
+
+              {/* Hàng 4 (Mở rộng khi bấm TT & SĐT): Địa chỉ, giờ mở cửa, mô tả & Nút gọi điện trực tiếp */}
+              {activeRoute.isInfoExpanded && (
+                <div className="pt-1.5 border-t border-[#E2E8F0] space-y-1.5 text-[11px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[#475569] font-medium truncate">
+                      Đ/c: <strong className="text-[#0F172A]">{activeRoute.targetPlace.address}</strong>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-[#F1F5F9] text-[#0F172A] font-bold text-[10px] shrink-0">
+                      {openStatus.badgeText}
+                    </span>
+                  </div>
+                  {activeRoute.targetPlace.metadata?.subType && (
+                    <div className="text-[10.5px] text-[#475569]">
+                      {activeRoute.targetPlace.metadata.subType}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <a
+                      href={`tel:${contactPhone.replace(/[^0-9+]/g, '')}`}
+                      className="flex-1 py-1.5 px-3 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-extrabold text-[11px] text-center shadow-xs"
+                    >
+                      Gọi SĐT: {contactPhone}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPlace(activeRoute.targetPlace)}
+                      className="py-1.5 px-2.5 rounded-xl bg-[#F1ECE1] hover:bg-[#E5DEC9] text-[#403064] font-bold text-[10.5px] cursor-pointer"
+                    >
+                      Chi tiết
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {isPickingOnMap && (
           <div className="pointer-events-auto self-start px-3.5 py-2 rounded-2xl bg-[#FFFDF9] text-[#1E293B] border-2 border-[#39B980] shadow-lg text-xs leading-snug font-bold flex items-center gap-2">
-            <Crosshair size={15} className="text-[#39B980] animate-pulse shrink-0" />
             <span>
-              Chạm vào đúng mặt tiền của "{adminTargetPlace?.name}" trên bản đồ...
+              Chạm vào đúng vị trí của "{adminEditName || adminTargetPlace?.name || 'Địa điểm mới'}" trên bản đồ...
             </span>
             <button
               type="button"
@@ -3337,7 +4103,6 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
         {isOffline && (
           <div className="pointer-events-auto self-start px-3 py-1.5 rounded-2xl bg-[#FEF2F2] border-2 border-[#EF4444] text-[#991B1B] text-xs leading-snug font-bold flex items-center gap-2 shadow-sm">
-            <WifiOff size={14} className="shrink-0" />
             <span>Đang ngoại tuyến — Bản đồ vẫn hiển thị dữ liệu Xuân Hòa đã lưu.</span>
           </div>
         )}
@@ -3350,7 +4115,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               onClick={() => setLocationNotice(null)}
               className="text-[#65587F] hover:text-[#2D2246] cursor-pointer shrink-0"
             >
-              <X size={14} />
+              ×
             </button>
           </div>
         )}
@@ -3361,10 +4126,145 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           selectedAsset={selectedGameAsset}
           onSelectAsset={setSelectedGameAsset}
           onToggleEnable={() =>
-                setLayerVisibility((prev) => ({ ...prev, gameAssets: !prev.gameAssets }))
+            setLayerVisibility((prev) => ({ ...prev, gameAssets: !prev.gameAssets }))
           }
         />
       </div>
+
+      {/* 3-BOTTOM. THANH ĐIỀU KHIỂN ADMIN / CHỦ QUÁN GỌN GÀNG Ở ĐÁY BẢN ĐỒ */}
+      {!merchantPickingForPlace && (hasClaimedPlaces || isMapManagerUser || isAdminUser) && (
+        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center justify-center gap-1.5 pointer-events-auto max-w-[calc(100vw-20px)]">
+          {hasClaimedPlaces && primaryMerchantPlace && !isMapManagerUser && (
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/95 border border-[#39B980] shadow-md text-[11px] whitespace-nowrap">
+              <span className="font-extrabold text-[#1D7A52] truncate max-w-[110px] sm:max-w-[180px]">
+                {primaryMerchantPlace.place.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('pin');
+                  setMerchantPickingForPlace({
+                    placeId: primaryMerchantPlace.place.id,
+                    placeName: primaryMerchantPlace.place.name,
+                  });
+                }}
+                className="px-2 py-0.5 rounded-full bg-[#39B980] hover:bg-[#2FA36E] text-white font-extrabold text-[10.5px] cursor-pointer"
+              >
+                Vị trí
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setMerchantPortalTab('merchant');
+                  setIsMerchantPortalOpen(true);
+                }}
+                className="px-2 py-0.5 rounded-full bg-[#403064] hover:bg-[#2D2246] text-white font-extrabold text-[10.5px] cursor-pointer"
+              >
+                Thực đơn
+              </button>
+            </div>
+          )}
+
+          {isMapManagerUser && !isAdminUser && (
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/95 border border-[#39B980] shadow-md text-[11px] whitespace-nowrap">
+              <span className="font-extrabold text-[#047857]">Quản lý Maps</span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setMerchantPortalTab('create_new');
+                  setIsMerchantPortalOpen(true);
+                }}
+                className="px-2 py-0.5 rounded-full bg-[#10B981] hover:bg-[#059669] text-white font-extrabold text-[10.5px] cursor-pointer"
+              >
+                Thêm mới
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setMerchantPortalTab('merchant');
+                  setIsMerchantPortalOpen(true);
+                }}
+                className="px-2 py-0.5 rounded-full bg-[#403064] hover:bg-[#2D2246] text-white font-extrabold text-[10.5px] cursor-pointer"
+              >
+                Định vị quán
+              </button>
+            </div>
+          )}
+
+          {isAdminUser && (
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/96 border border-amber-300 text-[#78350F] shadow-[0_6px_20px_rgba(15,23,42,0.14)] backdrop-blur-md text-[11px] whitespace-nowrap">
+              <span className="font-extrabold text-[#B45309] pl-1">Admin</span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  openAdminCreatePlaceModal();
+                }}
+                className="px-2.5 py-1 rounded-full bg-[#059669] hover:bg-[#047857] text-white font-extrabold cursor-pointer transition"
+                title="Thêm mới trụ sở, địa danh hoặc hàng quán trực tiếp lên bản đồ"
+              >
+                Thêm mới
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  openAdminCoordinateModal(selectedPlace || undefined);
+                }}
+                className="px-2.5 py-1 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#F59E0B] font-extrabold cursor-pointer transition"
+                title="Chỉnh sửa tên, chức năng, địa chỉ, tọa độ hoặc ẩn địa danh / quán"
+              >
+                Sửa địa điểm
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setMerchantPortalTab('admin_approvals');
+                  setIsMerchantPortalOpen(true);
+                }}
+                className="px-2.5 py-1 rounded-full bg-[#F3EFE6] hover:bg-[#E5DEC9] text-[#403064] border border-[#D8CFC0] font-extrabold flex items-center gap-1 cursor-pointer transition"
+                title="Mở bảng quản trị duyệt quán & tạo mã chủ quán"
+              >
+                <span>Quản trị</span>
+                {pendingApprovalCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-[#E11D48] text-white text-[10px] font-black">
+                    {pendingApprovalCount}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('approve');
+                  const nextMode =
+                    mapAccessStatus.mode === 'public_open'
+                      ? 'merchants_and_admin_only'
+                      : 'public_open';
+                  setMapAccessMode(nextMode);
+                  setSyncTick((t) => t + 1);
+                  setLocationNotice(
+                    nextMode === 'public_open'
+                      ? 'Đã chuyển Bản đồ số sang chế độ: Mở công khai.'
+                      : 'Đã chuyển Bản đồ số sang chế độ: Đang phát triển (Dành cho Chủ quán).'
+                  );
+                }}
+                className={`px-2 py-1 rounded-full font-extrabold cursor-pointer border transition ${
+                  mapAccessStatus.mode === 'public_open'
+                    ? 'bg-[#E6F7EF] text-[#047857] border-[#39B980]'
+                    : 'bg-[#FEF3C7] text-[#92400E] border-[#F59E0B]'
+                }`}
+                title="Chuyển đổi quyền truy cập Bản đồ số"
+              >
+                {mapAccessStatus.mode === 'public_open' ? 'Công khai' : 'Nội bộ'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 3A-PIN. TÂM NGẮM GHIM QUÁN 3D GIỮA MÀN HÌNH + THANH CHỐT VỊ TRÍ CHUẨN GRAB / GOOGLE MAPS */}
       {merchantPickingForPlace && (
@@ -3493,7 +4393,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       )}
 
       {/* 4. POPUP THÔNG TIN ĐỊA ĐIỂM HOẶC DANH SÁCH CỤM GẦN NHAU Ở ĐÁY BẢN ĐỒ */}
-      <div className="absolute left-2.5 right-14 sm:left-3 sm:right-16 bottom-20 md:bottom-6 z-30 pointer-events-none flex flex-col items-start gap-2">
+      <div className="absolute left-2.5 right-12 sm:left-3 sm:right-14 bottom-12 md:bottom-12 z-30 pointer-events-none flex flex-col items-start gap-2">
         {clusterSelectionList && clusterSelectionList.length > 1 && (
           <div className="pointer-events-auto w-full max-w-sm rounded-3xl bg-[#FFFDF9] border-2 border-[#403064] shadow-xl p-3.5 text-xs text-[#2D2246]">
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E5DEC9]">
@@ -3542,6 +4442,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               isAdminUser={isAdminUser}
               onEditCoordinates={(loc) => openAdminCoordinateModal(loc)}
               userCoords={userCoords}
+              activeRouteDistanceMeters={activeRoute?.totalDistanceMeters ?? null}
               onDrawRouteToPlace={handleDrawRouteToPlace}
               onClearRoute={() => {
                 setActiveRoute(null);
@@ -3550,22 +4451,31 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               }}
               isRouteActiveForThisPlace={activeRoute?.targetPlace.id === selectedPlace.id}
               onOpenMerchantPortal={() => handleOpenMerchantPortal('merchant')}
+              isSaved={savedPlaceIds.includes(selectedPlace.id)}
+              onToggleSave={handleToggleSavePlace}
             />
           </div>
         )}
       </div>
 
-      {/* 5. TRẠNG THÁI ĐANG TẢI HOẶC LỖI BẢN ĐỒ */}
-      {isMapLoading && (
-        <div className="absolute inset-0 z-40 bg-[#F8F5EE]/80 backdrop-blur-xs flex flex-col items-center justify-center p-4 text-center">
-          <div className="px-6 py-5 rounded-3xl bg-[#FFFDF9] border-2 border-[#403064] shadow-xl max-w-sm">
-            <Loader2 size={28} className="mx-auto animate-spin text-[#39B980]" />
-            <h2 className="mt-3 text-sm font-extrabold text-[#2D2246]">
-              Đang tải Bản đồ Địa lý Phường Xuân Hòa...
-            </h2>
-            <p className="mt-1 text-xs text-[#65587F]">
-              Đang đồng bộ hệ thống đường phố, ngõ nhỏ & địa danh Phường Xuân Hòa.
-            </p>
+      {/* 5. THÔNG BÁO GỌN GÀNG KHI ĐANG VÀO BẢN ĐỒ SỐ PHƯỜNG XUÂN HÒA */}
+      {(isMapLoading || showWelcomeBanner) && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+          <div className="pointer-events-auto inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#1E1633]/94 text-white border border-[#39B980]/60 shadow-[0_10px_28px_rgba(15,23,42,0.22)] backdrop-blur-md text-[11.5px] font-extrabold whitespace-nowrap">
+            {isMapLoading ? (
+              <Loader2 size={14} className="animate-spin text-[#39B980] shrink-0" />
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-[#39B980] shrink-0" />
+            )}
+            <span>Đang vào Bản đồ số Phường Xuân Hòa</span>
+            <button
+              type="button"
+              onClick={() => setShowWelcomeBanner(false)}
+              className="ml-1 text-white/70 hover:text-white text-xs font-bold cursor-pointer"
+              aria-label="Đóng thông báo"
+            >
+              ×
+            </button>
           </div>
         </div>
       )}
@@ -3853,88 +4763,213 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         </div>
       )}
 
-      {/* 8. MODAL QUẢN TRỊ TỌA ĐỘ ĐỊA ĐIỂM DÀNH RIÊNG CHO ADMIN */}
+      {/* 8. MODAL QUẢN TRỊ ĐỊA DANH, TRỤ SỞ, HÀNG QUÁN & TỌA ĐỘ DÀNH RIÊNG CHO ADMIN */}
       {isAdminCoordModalOpen && isAdminUser && (
         <div
-          className="fixed inset-0 z-50 bg-[#2D2246]/45 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-[#2D2246]/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
           onClick={() => setIsAdminCoordModalOpen(false)}
         >
           <div
-            className="w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-3xl bg-[#FFFDF9] border-2 border-[#403064] shadow-2xl p-5 text-[#2D2246]"
+            className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl bg-[#FFFDF9] border-2 border-[#403064] shadow-2xl p-4 sm:p-5 text-[#2D2246]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-2 pb-3 border-b border-[#E5DEC9]">
               <div>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#FEF3C7] text-[#92400E] text-[10px] font-extrabold">
-                  QUẢN TRỊ TỌA ĐỘ XUHO CITY
+                  QUẢN TRỊ BẢN ĐỒ SỐ PHƯỜNG XUÂN HÒA
                 </span>
                 <h2 className="text-base font-extrabold text-[#2D2246] mt-1">
-                  Xác minh tọa độ thật cho địa điểm
+                  {isAdminCreatingNew
+                    ? 'Thêm địa danh, trụ sở hoặc hàng quán mới'
+                    : 'Chỉnh sửa địa danh, trụ sở & tọa độ'}
                 </h2>
+                <p className="text-[11px] text-[#65587F] mt-0.5">
+                  Đổi tên địa danh theo đơn vị hành chính mới, cập nhật chức năng, địa chỉ, tọa độ hoặc ẩn khỏi Bản đồ 2D & 3D.
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAdminCoordModalOpen(false)}
-                className="p-1.5 rounded-xl bg-[#F1ECE1] text-[#403064] cursor-pointer"
+                className="p-1.5 rounded-xl bg-[#F1ECE1] text-[#403064] cursor-pointer shrink-0"
               >
                 <X size={16} />
               </button>
             </div>
 
+            {/* Chuyển nhanh giữa Sửa địa điểm có sẵn & Thêm mới */}
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAdminCreatingNew(false);
+                  const fallback = selectedPlace || verifiedMapMarkers[0] || unverifiedCatalogPlaces[0] || null;
+                  populateAdminFormFromPlace(fallback);
+                  setAdminFeedback(null);
+                }}
+                className={`flex-1 py-2 px-3 rounded-xl font-extrabold text-xs border transition cursor-pointer ${
+                  !isAdminCreatingNew
+                    ? 'bg-[#403064] text-white border-[#403064]'
+                    : 'bg-[#F8F5EE] text-[#403064] border-[#D8CFC0] hover:bg-[#F1ECE1]'
+                }`}
+              >
+                Sửa địa danh / quán hiện có
+              </button>
+              <button
+                type="button"
+                onClick={() => openAdminCreatePlaceModal()}
+                className={`flex-1 py-2 px-3 rounded-xl font-extrabold text-xs border transition cursor-pointer ${
+                  isAdminCreatingNew
+                    ? 'bg-[#059669] text-white border-[#047857]'
+                    : 'bg-[#E6F7EF] text-[#047857] border-[#39B980] hover:bg-[#D1FAE5]'
+                }`}
+              >
+                Thêm địa điểm mới
+              </button>
+            </div>
+
             <form onSubmit={handleSaveAdminCoordinates} className="mt-3 space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-[#403064] mb-1">
-                  Chọn quán trong danh mục ({unverifiedCatalogPlaces.length} quán chưa xác minh):
-                </label>
-                <select
-                  value={adminTargetPlace?.id || ''}
-                  onChange={(e) => {
-                    const allCatalog = [...unverifiedCatalogPlaces, ...verifiedMapMarkers];
-                    const found = allCatalog.find((p) => p.id === e.target.value) || null;
-                    setAdminTargetPlace(found);
-                    setAdminLatInput(found?.lat ? String(found.lat) : '');
-                    setAdminLngInput(found?.lng ? String(found.lng) : '');
-                    setNominatimSuggestions([]);
-                    setAdminFeedback(null);
-                  }}
-                  className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] font-bold text-[#2D2246]"
-                >
-                  <optgroup label={`Chờ xác minh tọa độ (${unverifiedCatalogPlaces.length})`}>
-                    {unverifiedCatalogPlaces.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        [Chờ xác minh] {p.name} — {p.address}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label={`Đã có trên bản đồ (${verifiedMapMarkers.length})`}>
-                    {verifiedMapMarkers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        [{p.dataSource === 'openstreetmap' ? 'Địa danh' : 'Quán'}] {p.name} ({p.lat}, {p.lng})
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
+              {!isAdminCreatingNew && (
+                <div>
+                  <label className="block font-bold text-[#403064] mb-1">
+                    Chọn địa danh / trụ sở / hàng quán cần chỉnh sửa:
+                  </label>
+                  <select
+                    value={adminTargetPlace?.id || ''}
+                    onChange={(e) => {
+                      const allCatalog = [...verifiedMapMarkers, ...unverifiedCatalogPlaces];
+                      const found = allCatalog.find((p) => p.id === e.target.value) || null;
+                      populateAdminFormFromPlace(found);
+                      setNominatimSuggestions([]);
+                      setAdminFeedback(null);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] font-bold text-[#2D2246]"
+                  >
+                    <optgroup label={`Đang hiển thị trên Bản đồ (${verifiedMapMarkers.length})`}>
+                      {verifiedMapMarkers.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          [{p.dataSource === 'openstreetmap' ? 'Địa danh / Cơ quan' : 'Hàng quán'}] {p.name} ({p.lat}, {p.lng})
+                        </option>
+                      ))}
+                    </optgroup>
+                    {unverifiedCatalogPlaces.length > 0 && (
+                      <optgroup label={`Chờ xác minh tọa độ (${unverifiedCatalogPlaces.length})`}>
+                        {unverifiedCatalogPlaces.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            [Chờ xác minh] {p.name} — {p.address}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+              )}
+
+              {/* Tên địa danh / trụ sở mới & Danh mục */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-[#403064] mb-1">
+                    Tên địa danh / trụ sở / cơ quan / quán *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={adminEditName}
+                    onChange={(e) => setAdminEditName(e.target.value)}
+                    placeholder="VD: Trụ sở Công an Phường Xuân Hòa / Nhà văn hóa..."
+                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] font-extrabold text-[#2D2246] text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-[#403064] mb-1">Phân loại danh mục</label>
+                  <select
+                    value={adminEditCategory}
+                    onChange={(e) =>
+                      setAdminEditCategory(
+                        e.target.value as Exclude<MapCategoryKey, 'all' | 'game_asset'>
+                      )
+                    }
+                    className="w-full px-2.5 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] font-bold text-[#2D2246] text-xs"
+                  >
+                    <option value="public">Cơ quan / Trụ sở / Công cộng</option>
+                    <option value="school">Trường học / Giáo dục</option>
+                    <option value="food">Quán ăn / Nhà hàng</option>
+                    <option value="cafe">Quán Cafe / Trà sữa</option>
+                    <option value="snack">Ăn vặt</option>
+                    <option value="pub">Nhậu / Bia</option>
+                    <option value="billiards">Bi-a / Giải trí</option>
+                    <option value="game">Game / Net</option>
+                    <option value="phone">Điện thoại / Dịch vụ</option>
+                  </select>
+                </div>
               </div>
 
-              {adminTargetPlace && (
-                <div className="p-3 rounded-2xl bg-[#F8F5EE] border border-[#E5DEC9] space-y-1.5">
-                  <div className="font-extrabold text-[#2D2246]">{adminTargetPlace.name}</div>
-                  <div className="text-[11px] text-[#65587F]">
-                    Địa chỉ gốc: <strong>{adminTargetPlace.address}</strong>
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-1">
+              {/* Địa chỉ & Mô tả chức năng mới */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-bold text-[#403064] mb-1">
+                    Địa chỉ hiển thị (Số nhà, Ngõ, Đường, Khu vực)
+                  </label>
+                  <input
+                    type="text"
+                    value={adminEditAddress}
+                    onChange={(e) => setAdminEditAddress(e.target.value)}
+                    placeholder="VD: Đường Nguyễn Văn Linh, Phường Xuân Hòa"
+                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-[#403064] mb-1">
+                    Mô tả chức năng / Ghi chú hiển thị trên thẻ
+                  </label>
+                  <input
+                    type="text"
+                    value={adminEditTagline}
+                    onChange={(e) => setAdminEditTagline(e.target.value)}
+                    placeholder="VD: Trụ sở làm việc mới / Điểm tiếp dân..."
+                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Giờ mở cửa & SĐT */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-bold text-[#403064] mb-1">Giờ hoạt động</label>
+                  <input
+                    type="text"
+                    value={adminEditHours}
+                    onChange={(e) => setAdminEditHours(e.target.value)}
+                    placeholder="VD: 07:30 - 17:00"
+                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-[#403064] mb-1">Số điện thoại liên hệ</label>
+                  <input
+                    type="text"
+                    value={adminEditPhone}
+                    onChange={(e) => setAdminEditPhone(e.target.value)}
+                    placeholder="VD: 0987..."
+                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Dán Link Google Maps / Plus Code + Chấm trực tiếp */}
+              <div className="p-3 rounded-2xl bg-[#F8F5EE] border border-[#E5DEC9] space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-extrabold text-[#2D2246]">
+                    Vị trí & Tọa độ trên Bản đồ 2D / 3D
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
                     <button
                       type="button"
                       onClick={handleSuggestFromOsm}
                       disabled={isGeocoding}
-                      className="px-3 py-1.5 rounded-xl bg-[#E6F7EF] text-[#1D7A52] border border-[#39B980] font-bold flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-xl bg-[#E6F7EF] text-[#1D7A52] border border-[#39B980] font-bold flex items-center gap-1 cursor-pointer text-[11px]"
                     >
-                      {isGeocoding ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <SearchIcon size={13} />
-                      )}
-                      <span>Đề xuất tọa độ từ OSM</span>
+                      {isGeocoding && <Loader2 size={12} className="animate-spin" />}
+                      <span>Trích xuất / Gợi ý tọa độ</span>
                     </button>
 
                     <button
@@ -3943,19 +4978,63 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                         setIsAdminCoordModalOpen(false);
                         setIsPickingOnMap(true);
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-[#403064] text-white font-bold flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-xl bg-[#403064] text-white font-bold cursor-pointer text-[11px]"
                     >
-                      <Crosshair size={13} />
                       <span>Chấm trực tiếp trên Bản đồ</span>
                     </button>
                   </div>
                 </div>
-              )}
+
+                <div>
+                  <input
+                    type="text"
+                    value={adminMapsUrlInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAdminMapsUrlInput(val);
+                      const parsed = parseCoordinatesFromInputOrUrl(val);
+                      if (parsed) {
+                        setAdminLatInput(String(parsed.lat));
+                        setAdminLngInput(String(parsed.lng));
+                      }
+                    }}
+                    placeholder="Dán Link Google Maps, Plus Code (VD: 7PQ6+VFP) hoặc tọa độ 21.289, 105.711..."
+                    className="w-full px-3 py-1.5 rounded-xl bg-[#FFFDF9] border border-[#D8CFC0] text-[11px]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block font-bold text-[#403064] mb-1">Vĩ độ (Latitude)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      placeholder="VD: 21.281850"
+                      value={adminLatInput}
+                      onChange={(e) => setAdminLatInput(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl bg-[#FFFDF9] border border-[#403064] font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-[#403064] mb-1">Kinh độ (Longitude)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      placeholder="VD: 105.726210"
+                      value={adminLngInput}
+                      onChange={(e) => setAdminLngInput(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl bg-[#FFFDF9] border border-[#403064] font-mono text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
 
               {nominatimSuggestions.length > 0 && (
                 <div className="p-2.5 rounded-2xl bg-[#E6F7EF]/60 border border-[#39B980]/40 space-y-1.5">
                   <div className="text-[11px] font-extrabold text-[#1D7A52]">
-                    Tọa độ đề xuất (Bấm chọn để điền vào ô xác nhận):
+                    Tọa độ đề xuất (Bấm chọn để điền):
                   </div>
                   {nominatimSuggestions.map((sug, idx) => (
                     <button
@@ -3978,56 +5057,34 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block font-bold text-[#403064] mb-1">Vĩ độ (Latitude)</label>
-                  <input
-                    type="number"
-                    step="any"
-                    required
-                    placeholder="VD: 21.281850"
-                    value={adminLatInput}
-                    onChange={(e) => setAdminLatInput(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] font-mono text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-[#403064] mb-1">Kinh độ (Longitude)</label>
-                  <input
-                    type="number"
-                    step="any"
-                    required
-                    placeholder="VD: 105.726210"
-                    value={adminLngInput}
-                    onChange={(e) => setAdminLngInput(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] font-mono text-xs"
-                  />
-                </div>
-              </div>
-
               {adminFeedback && (
                 <div className="p-2.5 rounded-xl bg-[#E6F7EF] text-[#1D7A52] font-bold text-[11px]">
                   {adminFeedback}
                 </div>
               )}
 
-              <div className="pt-2 flex items-center justify-between gap-2">
-                {adminTargetPlace?.coordinateVerified && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!adminTargetPlace) return;
-                      clearPlaceCoordinates(adminTargetPlace.id, adminTargetPlace.name);
-                      setSyncTick((t) => t + 1);
-                      setAdminLatInput('');
-                      setAdminLngInput('');
-                      setAdminFeedback('Đã xóa tọa độ và đưa quán về trạng thái chờ xác minh.');
-                    }}
-                    className="px-3 py-2 rounded-xl bg-[#FEE2E2] text-[#991B1B] font-bold cursor-pointer"
-                  >
-                    Hủy xác minh
-                  </button>
+              <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[#E5DEC9]">
+                {!isAdminCreatingNew && adminTargetPlace && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleDeleteAdminPlace}
+                      className="px-3 py-2 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold cursor-pointer text-[11px]"
+                      title="Ẩn / xóa địa danh hoặc quán này khỏi Bản đồ 2D & 3D"
+                    >
+                      Ẩn / Xóa khỏi bản đồ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRestoreAdminPlaceDefault}
+                      className="px-2.5 py-2 rounded-xl bg-[#F3EFE6] hover:bg-[#E5DEC9] text-[#403064] font-bold cursor-pointer text-[11px]"
+                      title="Khôi phục tên và tọa độ gốc ban đầu"
+                    >
+                      Khôi phục gốc
+                    </button>
+                  </div>
                 )}
+
                 <div className="flex items-center gap-2 ml-auto">
                   <button
                     type="button"
@@ -4038,10 +5095,9 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-xl bg-[#39B980] hover:bg-[#2FA36E] text-white border-2 border-[#403064] font-extrabold flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-[#059669] hover:bg-[#047857] text-white border-2 border-[#403064] font-extrabold cursor-pointer shadow-sm"
                   >
-                    <CheckCircle2 size={14} />
-                    <span>Xác nhận & Lưu tọa độ</span>
+                    <span>{isAdminCreatingNew ? 'Tạo & Ghim lên Bản đồ' : 'Lưu cập nhật Địa điểm'}</span>
                   </button>
                 </div>
               </div>
@@ -4079,6 +5135,268 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         onOpenLogin={onOpenLogin}
       />
 
+      {/* 9B. HỘP THOẠI ĐỊNH VỊ & QUẢN LÝ "CHỖ BẠN SINH SỐNG (NHÀ CỦA BẠN)" KHI BẤM BIỂU TƯỢNG NGÔI NHÀ */}
+      {(homeModalMode === 'view' || homeModalMode === 'edit') && (
+        <div
+          className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
+          onClick={() => setHomeModalMode('closed')}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-2xl overflow-hidden text-[#1E293B]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 bg-[#FEF3C7]/85 border-b border-[#E5DEC9] flex items-center justify-between">
+              <div className="min-w-0">
+                <h3 className="text-sm font-extrabold text-[#92400E] leading-snug">
+                  {homeModalMode === 'view' && userHome
+                    ? `🏠 ${userHome.label}`
+                    : userHome
+                    ? 'Thay đổi chỗ bạn sinh sống'
+                    : 'Định vị chỗ bạn sinh sống'}
+                </h3>
+                <p className="text-[11px] font-semibold text-[#65587F] truncate">
+                  Nick: {userAccountLabel}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHomeModalMode('closed')}
+                className="px-2.5 py-1 rounded-xl bg-white hover:bg-[#F1ECE1] border border-[#E5DEC9] text-[#403064] text-xs font-extrabold cursor-pointer shrink-0"
+              >
+                Đóng
+              </button>
+            </div>
+
+            {homeModalMode === 'view' && userHome ? (
+              <div className="p-4 space-y-3 text-xs">
+                <div className="p-3 rounded-xl bg-[#F8F5EE] border border-[#E5DEC9] space-y-1">
+                  <div className="text-[11px] font-bold text-[#65587F]">
+                    Địa chỉ sinh sống hiện tại của bạn:
+                  </div>
+                  <div className="text-[13px] font-extrabold text-[#1E293B]">
+                    {userHome.address}
+                  </div>
+                  <div className="text-[10.5px] font-semibold text-[#047857]">
+                    Tọa độ ghim: {userHome.lat.toFixed(6)}, {userHome.lng.toFixed(6)}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleRouteToUserHome(userHome)}
+                    className="col-span-3 py-2.5 px-3 rounded-xl bg-[#059669] hover:bg-[#047857] text-white font-extrabold text-xs shadow-xs cursor-pointer"
+                  >
+                    Chỉ đường về nhà bạn
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      flyToCoordinates(
+                        userHome.lat,
+                        userHome.lng,
+                        17.1,
+                        userHome.label,
+                        0.0035
+                      )
+                    }
+                    className="py-2 px-2.5 rounded-xl bg-[#F1ECE1] hover:bg-[#E5DEC9] text-[#403064] font-extrabold text-[11.5px] cursor-pointer"
+                  >
+                    Đứng tại nhà
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenHomeEditor(userHome)}
+                    className="py-2 px-2.5 rounded-xl bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#F59E0B] font-extrabold text-[11.5px] cursor-pointer"
+                  >
+                    Thay đổi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearUserHome}
+                    className="py-2 px-2.5 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold text-[11.5px] cursor-pointer"
+                  >
+                    Xóa
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const lat = parseFloat(homeLatInput);
+                  const lng = parseFloat(homeLngInput);
+                  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                    setHomeFeedback('Vui lòng chấm vị trí trên bản đồ hoặc nhập tọa độ hợp lệ.');
+                    return;
+                  }
+                  handleSaveUserHome({
+                    label: homeLabelInput.trim() || 'Nhà của bạn',
+                    address: homeAddressInput.trim() || 'Phường Xuân Hòa',
+                    lat,
+                    lng,
+                  });
+                }}
+                className="p-4 space-y-3 text-xs"
+              >
+                <div className="p-2.5 rounded-xl bg-[#FEF3C7]/60 border border-[#F59E0B]/60 text-[11px] font-semibold text-[#78350F] leading-snug">
+                  Hãy định vị chỗ bạn đang sinh sống. Sau khi lưu, mỗi lần bấm biểu tượng ngôi nhà 🏠 bản đồ sẽ đứng đúng tại địa chỉ nhà bạn cho đến khi bạn thay đổi hoặc xóa.
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setHomeModalMode('picking')}
+                    className="py-2 px-2.5 rounded-xl bg-[#D97706] hover:bg-[#B45309] text-white font-extrabold text-[11px] shadow-xs cursor-pointer"
+                  >
+                    Chấm vị trí nhà trên bản đồ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (userCoords) {
+                        setHomeLatInput(String(userCoords.lat));
+                        setHomeLngInput(String(userCoords.lng));
+                        flyToCoordinates(userCoords.lat, userCoords.lng, 16.8, 'Nhà của bạn');
+                        setHomeFeedback(
+                          `Đã lấy theo GPS hiện tại (${userCoords.lat.toFixed(5)}, ${userCoords.lng.toFixed(5)})!`
+                        );
+                      } else {
+                        handleLocateUser(true);
+                        setHomeFeedback('Đang lấy tín hiệu GPS hiện tại của bạn...');
+                      }
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] border border-[#10B981]/50 font-extrabold text-[11px] cursor-pointer"
+                  >
+                    Lấy theo GPS hiện tại
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#475569] mb-1">
+                      Tên gọi chỗ ở
+                    </label>
+                    <input
+                      type="text"
+                      value={homeLabelInput}
+                      onChange={(e) => setHomeLabelInput(e.target.value)}
+                      placeholder="VD: Nhà của bạn, Phòng trọ..."
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#475569] mb-1">
+                      Địa chỉ / Số nhà / Ngõ
+                    </label>
+                    <input
+                      type="text"
+                      value={homeAddressInput}
+                      onChange={(e) => setHomeAddressInput(e.target.value)}
+                      placeholder="VD: Ngõ 29 Nguyễn Văn Linh, Xuân Hòa"
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#475569] mb-1">
+                    Dán link Google Maps / Plus Code hoặc tìm đường
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={homeMapsInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setHomeMapsInput(val);
+                        const parsed = parseCoordinatesFromInputOrUrl(val);
+                        if (parsed) {
+                          setHomeLatInput(String(parsed.lat));
+                          setHomeLngInput(String(parsed.lng));
+                          flyToCoordinates(parsed.lat, parsed.lng, 16.8, homeLabelInput || 'Nhà của bạn');
+                          setHomeFeedback(`Đã nhận tọa độ (${parsed.lat}, ${parsed.lng}) từ link Maps!`);
+                        }
+                      }}
+                      placeholder="Dán link Google Maps hoặc nhập tên đường..."
+                      className="flex-1 px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSuggestHomeCoords}
+                      disabled={isGeocoding}
+                      className="px-3 py-1.5 rounded-xl bg-[#1E293B] hover:bg-[#0F172A] text-white font-extrabold text-[11px] cursor-pointer shrink-0"
+                    >
+                      {isGeocoding ? 'Đang tìm...' : 'Tìm'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-[#64748B] mb-0.5">
+                      Vĩ độ (Lat)
+                    </label>
+                    <input
+                      type="text"
+                      value={homeLatInput}
+                      onChange={(e) => setHomeLatInput(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-[#64748B] mb-0.5">
+                      Kinh độ (Lng)
+                    </label>
+                    <input
+                      type="text"
+                      value={homeLngInput}
+                      onChange={(e) => setHomeLngInput(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] text-xs font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                {homeFeedback && (
+                  <div className="p-2 rounded-xl bg-[#E6F7EF] text-[#047857] text-[11px] font-bold">
+                    {homeFeedback}
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-[#E5DEC9] flex items-center justify-between gap-2">
+                  {userHome ? (
+                    <button
+                      type="button"
+                      onClick={handleClearUserHome}
+                      className="px-3 py-2 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold text-[11px] cursor-pointer"
+                    >
+                      Xóa nhà đã lưu
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHomeModalMode(userHome ? 'view' : 'closed')}
+                      className="px-3 py-2 rounded-xl bg-[#F1ECE1] text-[#403064] font-bold text-xs cursor-pointer"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-xl bg-[#059669] hover:bg-[#047857] text-white font-extrabold text-xs shadow-xs cursor-pointer"
+                    >
+                      Lưu chỗ bạn sống
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 10. SA BÀN 3D TOÀN PHƯỜNG XUÂN HÒA (37.787 CÔNG TRÌNH, MÁI NGÓI, INSTANCED TREES, BÓNG NẮNG) */}
       {isCity3DOpen && (
         <City3DView
@@ -4097,7 +5415,15 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
             window.location.hash = '#admin';
             window.dispatchEvent(new HashChangeEvent('hashchange'));
           }}
-          onClose={() => setIsCity3DOpen(false)}
+          onClose={(centerFrom3D) => {
+            setIsCity3DOpen(false);
+            if (centerFrom3D && mapInstanceRef.current) {
+              mapInstanceRef.current.jumpTo({
+                center: [centerFrom3D.lng, centerFrom3D.lat],
+              });
+              scheduleCanvasRender();
+            }
+          }}
           onOpenPlace={(loc) => {
             if (loc.originalPlace) {
               setModalPlace(loc.originalPlace);
@@ -4107,6 +5433,45 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
             setIsCity3DOpen(false);
             handleSelectVerifiedPlace(loc);
           }}
+          userCoords={userCoords}
+          isLocatingUser={isLocatingUser}
+          onLocateUser={() => handleLocateUser(false)}
+          activeRoute={activeRoute}
+          onDrawRouteToPlace={handleDrawRouteToPlace}
+          onSwitchRouteMode={handleSwitchRouteMode}
+          onClearRoute={() => {
+            setActiveRoute(null);
+            activeRouteRef.current = null;
+            scheduleCanvasRender();
+          }}
+          onArriveRoute={() =>
+            setActiveRoute((prev) => {
+              if (!prev) return null;
+              const lastIdx = Math.max(0, prev.pathLngLat.length - 1);
+              const next = {
+                ...prev,
+                progressIndex: lastIdx,
+                currentPos: prev.pathLngLat[lastIdx],
+                remainingDistanceMeters: 0,
+                hasArrived: true,
+              };
+              activeRouteRef.current = next;
+              scheduleCanvasRender();
+              return next;
+            })
+          }
+          onToggleRouteInfo={() =>
+            setActiveRoute((prev) =>
+              prev ? { ...prev, isInfoExpanded: !prev.isInfoExpanded } : null
+            )
+          }
+          savedPlaceIds={savedPlaceIds}
+          userAccountLabel={userAccountLabel}
+          onToggleSavePlace={handleToggleSavePlace}
+          userHome={userHome}
+          onSaveUserHome={handleSaveUserHome}
+          onClearUserHome={handleClearUserHome}
+          onRouteToHome={handleRouteToUserHome}
         />
       )}
     </div>

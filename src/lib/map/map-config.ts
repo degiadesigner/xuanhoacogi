@@ -51,11 +51,11 @@ export const XUANHOA_WARD_OVERVIEW = {
 } as const;
 
 /**
- * Giới hạn điều hướng hợp lý (cho phép xem toàn bộ Xuân Hòa mới + vùng lân cận Phúc Yên, Bình Xuyên, Sóc Sơn)
+ * Giới hạn điều hướng hợp lý (cho phép xem toàn bộ Xuân Hòa mới + Phúc Yên, Bình Xuyên, Sóc Sơn, Mê Linh)
  */
 export const XUANHOA_MAX_BOUNDS: [[number, number], [number, number]] = [
-  [105.60, 21.20], // Southwest [lng, lat]
-  [105.86, 21.45], // Northeast [lng, lat]
+  [105.45, 21.05], // Southwest [lng, lat]
+  [105.98, 21.52], // Northeast [lng, lat]
 ];
 
 export const DEFAULT_LAYER_VISIBILITY: MapLayerVisibility = {

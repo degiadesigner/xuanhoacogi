@@ -2392,7 +2392,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
   // Lọc danh sách marker đã xác minh theo danh mục đang bật (mặc định auto bật Hành chính + Trường học; nếu tắt "Hiện ghim định vị" thì không hiện ghim nào ngoài địa điểm đang chọn)
   const filteredVerifiedMarkers = useMemo(() => {
-    if (!layerVisibility.realPois || !layerVisibility.verifiedMarkers) {
+    if (!layerVisibility.realPois) {
       return selectedPlace
         ? verifiedMapMarkers.filter((loc) => loc.id === selectedPlace.id)
         : [];
@@ -2407,7 +2407,6 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     verifiedMapMarkers,
     selectedCategories,
     layerVisibility.realPois,
-    layerVisibility.verifiedMarkers,
     selectedPlace,
     savedPlaceIds,
   ]);
@@ -3332,9 +3331,10 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         address: homeTarget.address || 'Chỗ bạn sinh sống tại Xuân Hòa',
         lat: homeTarget.lat,
         lng: homeTarget.lng,
-        coordStatus: 'verified',
-        coordSource: 'admin_verified',
-        accuracyLevel: 'exact',
+        coordinateSource: 'admin_verified',
+        coordinateVerified: true,
+        dataSource: 'admin_custom',
+        lastVerifiedAt: null,
         insideWard: true,
         openHours: '24/7',
         metadata: {
@@ -3717,7 +3717,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                     type="button"
                     onClick={() => {
                       setSelectedCategories((prev) => {
-                        const base = prev.filter((c) => c !== 'all');
+                        const base: MapCategoryKey[] = prev.filter((c) => c !== 'all');
                         const hasAny = tab.cats.some((c) => base.includes(c));
                         if (hasAny) {
                           return base.filter((c) => !tab.cats.includes(c));

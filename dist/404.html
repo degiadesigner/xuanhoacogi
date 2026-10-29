@@ -34,7 +34,11 @@
             }
             window.history.replaceState(null, document.title, '/');
           } else if (p === '/quanly' || p === '/quanly/' || p === '/admin' || p === '/admin/' || p === '/quan-tri') {
-            window.history.replaceState(null, document.title, '/#/quanly');
+            window.location.replace('/#/quanly');
+            return;
+          } else if (p === '/bandoso' || p === '/bandoso/' || p === '/ban-do' || p === '/ban-do/') {
+            window.location.replace('/#/bandoso');
+            return;
           }
         } catch (err) {}
       })();

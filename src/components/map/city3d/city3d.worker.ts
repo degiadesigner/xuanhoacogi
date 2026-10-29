@@ -493,12 +493,12 @@ function ringToLocalCCW(coords: number[][]): number[] {
 }
 
 const ROAD_STYLE: Record<string, { hw: number; color: RGB; casing: number; order: number }> = {
-  major: { hw: 6.5, color: hexToRgb(CITY3D_COLORS.roadMajor), casing: 1.6, order: 5 },
-  secondary: { hw: 4.5, color: hexToRgb(CITY3D_COLORS.roadSecondary), casing: 1.2, order: 4 },
-  minor: { hw: 3.1, color: hexToRgb(CITY3D_COLORS.roadMinor), casing: 0.7, order: 3 },
-  service: { hw: 2.1, color: hexToRgb(CITY3D_COLORS.roadService), casing: 0.4, order: 2 },
-  track: { hw: 1.8, color: hexToRgb(CITY3D_COLORS.roadTrack), casing: 0.3, order: 1 },
-  path: { hw: 1.4, color: hexToRgb(CITY3D_COLORS.roadPath), casing: 0.25, order: 0 },
+  major: { hw: 6.2, color: hexToRgb(CITY3D_COLORS.roadMajor), casing: 1.4, order: 5 },
+  secondary: { hw: 4.4, color: hexToRgb(CITY3D_COLORS.roadSecondary), casing: 1.1, order: 4 },
+  minor: { hw: 2.55, color: hexToRgb(CITY3D_COLORS.roadMinor), casing: 0.45, order: 3 },
+  service: { hw: 1.55, color: hexToRgb(CITY3D_COLORS.roadService), casing: 0.25, order: 2 },
+  track: { hw: 1.35, color: hexToRgb(CITY3D_COLORS.roadTrack), casing: 0.2, order: 1 },
+  path: { hw: 1.15, color: hexToRgb(CITY3D_COLORS.roadPath), casing: 0.18, order: 0 },
 };
 
 function roadStyleOf(p: any) {

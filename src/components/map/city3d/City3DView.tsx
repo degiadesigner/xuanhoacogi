@@ -315,7 +315,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
             ? 1750
             : rl.tier === 'minor'
             ? 980
-            : 520,
+            : 780,
       })),
     [roadLabels]
   );

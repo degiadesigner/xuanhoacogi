@@ -485,12 +485,12 @@ const landuseGeo = readJson(path.join(GEO, 'xuanhoa-landuse.geojson'));
 
 const roadHalfWidth = (p) => {
   const hw = p.highway || '';
-  if (p.tier === 'major') return 6.5 + 1.6;
-  if (p.tier === 'secondary') return 4.5 + 1.2;
-  if (p.tier === 'minor') return 3.0 + 0.6;
-  if (hw === 'service' || hw === 'living_street') return 2.0 + 0.3;
-  if (hw === 'track' || hw === 'construction') return 1.6 + 0.2;
-  return 1.0 + 0.2;
+  if (p.tier === 'major') return 6.2 + 1.2;
+  if (p.tier === 'secondary') return 4.4 + 1.0;
+  if (p.tier === 'minor') return 2.55 + 0.35;
+  if (p.tier === 'alley' || hw === 'service' || hw === 'living_street') return 1.55 + 0.2;
+  if (hw === 'track' || hw === 'construction') return 1.4 + 0.2;
+  return 1.1 + 0.15;
 };
 
 const segGrid = new Grid(25);

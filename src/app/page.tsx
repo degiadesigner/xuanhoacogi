@@ -74,6 +74,9 @@ import {
   getMemberRestrictionStatus,
   initAdminCloudSync,
   getPrimaryClaimedPlaceForUser,
+  getEffectiveAdminRoleInfo,
+  getLoggedAdminSession,
+  ensureCloudPermissionsSyncedForEmail,
 } from '@/lib/admin-store';
 
 export type AppView = 'spin' | 'dishes' | 'places' | 'map' | 'guide' | 'about' | 'coming-soon' | 'admin';
@@ -188,15 +191,26 @@ export default function Home() {
     }
 
     // Kiểm tra kết quả chuyển hướng từ Google (dành cho mọi trình duyệt Mobile & PC)
-    checkRedirectAuthResult().then((user) => {
+    checkRedirectAuthResult().then(async (user) => {
       if (user) {
         setAuthUser(user);
         syncUserToAdminRegistry(user, profile.dishesCount, profile.level);
+        await ensureCloudPermissionsSyncedForEmail(user.email);
+        setAdminSyncTick(t => t + 1);
         const justLogged = consumeJustLoggedInFlag();
         if (justLogged) {
           setAuthToastMsg(`Đã kết nối Google: ${user.email || user.nickname}`);
           setTimeout(() => setAuthToastMsg(''), 4000);
-          if (!user.isFirstTimeSetupDone) {
+          if (parseHashToView() === 'admin') {
+            const roleInfo = getEffectiveAdminRoleInfo(getLoggedAdminSession(), user);
+            if (!roleInfo.isAuthenticated) {
+              if (typeof window !== 'undefined') {
+                window.history.replaceState(null, '', '/#/');
+                window.location.hash = '#/';
+              }
+              setCurrentView('spin');
+            }
+          } else if (!user.isFirstTimeSetupDone) {
             setAuthModalStep(2);
             setIsAuthModalOpen(true);
           }

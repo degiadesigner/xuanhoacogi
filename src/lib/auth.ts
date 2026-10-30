@@ -510,15 +510,24 @@ if (typeof window !== 'undefined') {
         sessionStorage.removeItem('xuanhoa_oauth_hash');
       } catch {}
 
+      const savedReturnUrl = localStorage.getItem('xuanhoa_oauth_return_url') || '/';
+      try {
+        localStorage.removeItem('xuanhoa_oauth_return_url');
+      } catch {}
+
       if (
         window.location.pathname.startsWith('/__/auth/handler') ||
         window.location.hash.includes('access_token=') ||
         window.location.hash.includes('id_token=')
       ) {
-        window.history.replaceState(null, document.title, '/');
+        window.history.replaceState(null, document.title, savedReturnUrl);
       }
     } else if (window.location.pathname.startsWith('/__/auth/handler')) {
-      window.history.replaceState(null, document.title, '/');
+      const savedReturnUrl = localStorage.getItem('xuanhoa_oauth_return_url') || '/';
+      try {
+        localStorage.removeItem('xuanhoa_oauth_return_url');
+      } catch {}
+      window.history.replaceState(null, document.title, savedReturnUrl);
     }
   } catch (err) {
     console.warn('Lỗi xử lý đồng bộ OAuth hash:', err);
@@ -573,6 +582,10 @@ export function redirectToGoogleOAuthDirect(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(LOGGED_OUT_KEY);
+    const currentUrl = (window.location.pathname || '/') + (window.location.hash || '');
+    if (!currentUrl.startsWith('/__/auth/handler')) {
+      localStorage.setItem('xuanhoa_oauth_return_url', currentUrl);
+    }
   } catch {}
 
   window.location.assign(buildDirectGoogleOAuthUrl());
@@ -801,6 +814,12 @@ export async function signInWithGoogleService(): Promise<{
   // Mở cửa sổ popup OAuth với redirect_uri=https://xuanhoacogi.com/__/auth/handler (đã được cấp phép trong Authorized Redirect URIs)
   // giúp không bao giờ gặp Lỗi 400: origin_mismatch của postmessage!
   if (host === 'xuanhoacogi.com' || host.endsWith('.xuanhoacogi.com')) {
+    try {
+      const currentUrl = (window.location.pathname || '/') + (window.location.hash || '');
+      if (!currentUrl.startsWith('/__/auth/handler')) {
+        localStorage.setItem('xuanhoa_oauth_return_url', currentUrl);
+      }
+    } catch {}
     const oauthUrl = buildDirectGoogleOAuthUrl();
     const w = 500;
     const h = 620;
@@ -871,16 +890,26 @@ export async function signInWithGoogleService(): Promise<{
             return;
           }
           if (popup.closed && !settled) {
-            settled = true;
-            cleanup();
-            reject(new Error('Người dùng đã đóng cửa sổ Google'));
+            setTimeout(() => {
+              if (settled) return;
+              try {
+                const lateHash = localStorage.getItem('xuanhoa_oauth_popup_hash');
+                if (lateHash) {
+                  handleHashResult(lateHash);
+                  return;
+                }
+              } catch {}
+              settled = true;
+              cleanup();
+              reject(new Error('Người dùng đã đóng cửa sổ Google'));
+            }, 250);
           }
         } catch {}
-      }, 400);
+      }, 350);
     });
   }
 
-  // 2. Trên môi trường Demo Localhost (127.0.0.1 / localhost):
+  // 2. Trên môi trường Localhost (127.0.0.1 / localhost):
   if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 5) {
     try {
       const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -898,16 +927,14 @@ export async function signInWithGoogleService(): Promise<{
       createOrUpdateAuthUserFromGoogle(googleUser);
       return googleUser;
     } catch (err: any) {
-      console.warn('Localhost Firebase popup fallback:', err?.code || err?.message);
-      // Nếu trên bản Demo Localhost bị chặn domain hoặc đóng popup, tự động đăng nhập tài khoản Demo để test mượt mà
-      const demoUser = {
-        uid: 'demo_admin_' + Date.now(),
-        email: 'marcel.vietnam@gmail.com',
-        displayName: 'Marcel Vietnam',
-        photoURL: undefined,
-      };
-      createOrUpdateAuthUserFromGoogle(demoUser);
-      return demoUser;
+      const code = String(err?.code || '');
+      if (
+        code.includes('popup-closed-by-user') ||
+        code.includes('cancelled-popup-request')
+      ) {
+        throw new Error('Người dùng đã đóng cửa sổ Google');
+      }
+      throw new Error(err?.message || 'Không thể kết nối Google OAuth');
     }
   }
 

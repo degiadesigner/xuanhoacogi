@@ -1,4 +1,4 @@
-import { set, update, remove } from 'firebase/database';
+import { set, update, remove, get } from 'firebase/database';
 import { firebaseConfig, getRealtimeDb, ref, onValue } from './firebase';
 import { Food } from './foods';
 import { Place, xuanHoaPlaces, getPlaceStyleGroup } from './places-xuanhoa';
@@ -241,6 +241,7 @@ const ADMIN_AUTH_LOCAL_KEY = 'xuanhoa_admin_logged_account_v1';
 const ADMIN_AUTH_SESSION_KEY = 'xuanhoa_admin_logged_session_v1';
 
 const DEFAULT_ADMIN_EMAILS = [
+  'truongtuanminh.91@gmail.com',
   'marcel.vietnam@gmail.com',
   'admin@xuanhoacogi.com',
   'minhtt@xuanhoacogi.com',
@@ -282,7 +283,7 @@ function createInitialAdminState(): AdminState {
     fontScale: 'normal',
     requirePinOnOpen: false,
     mapAccessMode: 'public_open',
-    updatedAt: Date.now(),
+    updatedAt: 0,
   };
 }
 
@@ -788,8 +789,83 @@ export function syncUserToAdminRegistry(user: UserAuthProfile, spinsCount = 0, l
     );
   }
   pushMemberToCloudRealtime(member, false);
-  saveAdminState(state);
+  saveAdminState(state, false);
   return member;
+}
+
+// Đảm bảo kiểm tra trực tiếp quyền Quản lý Web / Quản lý Maps mới nhất của Gmail từ Cloud Firebase trước khi phân luồng tại /quanly
+export async function ensureCloudPermissionsSyncedForEmail(email?: string | null): Promise<void> {
+  if (typeof window === 'undefined' || !firebaseConfig.apiKey || !email) return;
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail.includes('@')) return;
+  try {
+    const rtdb = getRealtimeDb();
+    if (!rtdb) return;
+    const safeKey = encodeRtdbKey(cleanEmail);
+    const [regSnap, globalMemSnap, globalEmailsSnap] = await Promise.all([
+      get(ref(rtdb, `xuanhoa_admin/members_registry/${safeKey}`)).catch(() => null),
+      get(ref(rtdb, `xuanhoa_admin/global_state/members/${safeKey}`)).catch(() => null),
+      get(ref(rtdb, `xuanhoa_admin/global_state/adminEmails`)).catch(() => null),
+    ]);
+
+    const state = getAdminState();
+    let changed = false;
+
+    if (globalEmailsSnap && globalEmailsSnap.exists()) {
+      const cloudEmails = globalEmailsSnap.val();
+      if (Array.isArray(cloudEmails) && cloudEmails.length > 0) {
+        state.adminEmails = Array.from(new Set([...DEFAULT_ADMIN_EMAILS, ...cloudEmails]));
+        changed = true;
+      }
+    }
+
+    const regVal = regSnap && regSnap.exists() ? (regSnap.val() as Partial<ManagedMember>) : null;
+    const globalVal =
+      globalMemSnap && globalMemSnap.exists() ? (globalMemSnap.val() as Partial<ManagedMember>) : null;
+
+    if (regVal || globalVal) {
+      const existing = state.members[cleanEmail];
+      const merged: ManagedMember = {
+        ...(existing || {
+          uid: `uid_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
+          email: cleanEmail,
+          displayName: cleanEmail.split('@')[0],
+          nickname: cleanEmail.split('@')[0],
+          avatar: '🐭',
+          avatarId: 'm_ty',
+          gender: 'male',
+          residentType: 'student_sp2',
+          status: 'active',
+          spinsCount: 0,
+          level: 1,
+          reviewsCount: 0,
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        }),
+        ...(globalVal || {}),
+        ...(regVal || {}),
+        uid: `uid_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
+        email: cleanEmail,
+        status:
+          regVal?.status === 'admin' || globalVal?.status === 'admin' || existing?.status === 'admin'
+            ? 'admin'
+            : regVal?.status || globalVal?.status || existing?.status || 'active',
+        canManageWeb: Boolean(
+          regVal?.canManageWeb || globalVal?.canManageWeb || existing?.canManageWeb
+        ),
+        canManageMaps: Boolean(
+          regVal?.canManageMaps || globalVal?.canManageMaps || existing?.canManageMaps
+        ),
+      };
+      state.members[cleanEmail] = merged;
+      changed = true;
+    }
+
+    if (changed) {
+      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(state));
+      window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: state }));
+    }
+  } catch {}
 }
 
 export function getMemberRestrictionStatus(user?: UserAuthProfile | null): {
@@ -2111,7 +2187,8 @@ export function getEffectiveAdminRoleInfo(
   if (effectiveUser && effectiveUser.isLoggedIn && effectiveUser.email) {
     const cleanEmail = effectiveUser.email.trim().toLowerCase();
     const isSuperEmail = Boolean(
-      state.adminEmails?.some(e => e.trim().toLowerCase() === cleanEmail)
+      DEFAULT_ADMIN_EMAILS.includes(cleanEmail) ||
+        state.adminEmails?.some(e => e.trim().toLowerCase() === cleanEmail)
     );
     if (isSuperEmail) {
       return {

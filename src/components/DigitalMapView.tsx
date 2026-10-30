@@ -100,6 +100,13 @@ interface DigitalMapViewProps {
   onBackToHome: () => void;
   authUser?: UserAuthProfile | null;
   onOpenLogin?: () => void;
+  embeddedInAdmin?: boolean;
+  adminSelectedPlaceId?: string | null;
+  adminPreviewLat?: number | null;
+  adminPreviewLng?: number | null;
+  adminPreviewName?: string;
+  onAdminPickCoordinates?: (lat: number, lng: number) => void;
+  onAdminSelectPlace?: (placeId: string) => void;
 }
 
 interface ScreenClusterItem {
@@ -145,6 +152,13 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   onBackToHome,
   authUser = null,
   onOpenLogin,
+  embeddedInAdmin = false,
+  adminSelectedPlaceId = null,
+  adminPreviewLat = null,
+  adminPreviewLng = null,
+  adminPreviewName = '',
+  onAdminPickCoordinates,
+  onAdminSelectPlace,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const vectorCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -162,6 +176,12 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   const gameAssetElsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
   const userMarkerElRef = useRef<HTMLDivElement | null>(null);
   const userHomeMarkerElRef = useRef<HTMLDivElement | null>(null);
+  const adminPreviewMarkerElRef = useRef<HTMLDivElement | null>(null);
+  const adminPreviewCoordsRef = useRef<{ lat: number | null; lng: number | null }>({
+    lat: adminPreviewLat,
+    lng: adminPreviewLng,
+  });
+  adminPreviewCoordsRef.current = { lat: adminPreviewLat, lng: adminPreviewLng };
   const filteredVerifiedMarkersRef = useRef<PlaceLocation[]>([]);
   const userCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const userHomeRef = useRef<UserHomeLocation | null>(null);
@@ -200,7 +220,9 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   const [osmRoadMatchedCatalog, setOsmRoadMatchedCatalog] = useState<
     Record<string, { lat: number; lng: number; roadName: string; osmId: string }>
   >({});
-  const [selectedCategories, setSelectedCategories] = useState<MapCategoryKey[]>(['public', 'school']);
+  const [selectedCategories, setSelectedCategories] = useState<MapCategoryKey[]>(
+    embeddedInAdmin ? ['all'] : ['public', 'school']
+  );
   const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState<boolean>(false);
   const [isCategoryDropdown2DOpen, setIsCategoryDropdown2DOpen] = useState<boolean>(false);
   const [isSavedDropdown2DOpen, setIsSavedDropdown2DOpen] = useState<boolean>(false);
@@ -1674,6 +1696,24 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         }
       }
 
+      if (
+        adminPreviewMarkerElRef.current &&
+        typeof adminPreviewCoordsRef.current.lat === 'number' &&
+        typeof adminPreviewCoordsRef.current.lng === 'number' &&
+        !Number.isNaN(adminPreviewCoordsRef.current.lat) &&
+        !Number.isNaN(adminPreviewCoordsRef.current.lng)
+      ) {
+        const pt = projPt(adminPreviewCoordsRef.current.lng, adminPreviewCoordsRef.current.lat);
+        if (adminPreviewMarkerElRef.current.style.display !== 'block') {
+          adminPreviewMarkerElRef.current.style.display = 'block';
+        }
+        adminPreviewMarkerElRef.current.style.transform = `translate3d(${pt.x.toFixed(1)}px, ${pt.y.toFixed(1)}px, 0)`;
+      } else if (adminPreviewMarkerElRef.current) {
+        if (adminPreviewMarkerElRef.current.style.display !== 'none') {
+          adminPreviewMarkerElRef.current.style.display = 'none';
+        }
+      }
+
       // 6b. Nhãn phụ ký hiệu tòa nhà nội khu (S1, S2, A1, Giảng đường A...) — chỉ hiện khi zoom thật gần (>= 16.4) và không trùng ghim
       if (!isMoving && zoom >= 16.4 && vis.buildings && geo.landmarkBuildings) {
         ctx.font = `700 9.5px ${CANVAS_FONT_STACK}`;
@@ -2587,6 +2627,18 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       const pickedLat = Number(e.lngLat.lat.toFixed(6));
       const pickedLng = Number(e.lngLat.lng.toFixed(6));
 
+      if (embeddedInAdmin && onAdminPickCoordinates) {
+        triggerFeedback('pin');
+        onAdminPickCoordinates(pickedLat, pickedLng);
+        map.easeTo({
+          center: [pickedLng, pickedLat],
+          zoom: Math.max(map.getZoom(), 16.5),
+          duration: 280,
+        });
+        scheduleCanvasRender();
+        return;
+      }
+
       if (merchantPickingForPlace) {
         triggerFeedback('pin');
         setLivePickCoords({ lat: pickedLat, lng: pickedLng });
@@ -2646,6 +2698,8 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     isPickingOnMap,
     isAdminUser,
     merchantPickingForPlace,
+    embeddedInAdmin,
+    onAdminPickCoordinates,
     scheduleCanvasRender,
   ]);
 
@@ -2704,6 +2758,9 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       setSelectedGameAsset(null);
       setClusterSelectionList(null);
       setSelectedPlace(place);
+      if (embeddedInAdmin && onAdminSelectPlace) {
+        onAdminSelectPlace(place.id);
+      }
       if (place.lat !== null && place.lng !== null) {
         flyToCoordinates(
           place.lat,
@@ -2714,8 +2771,33 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         );
       }
     },
-    [flyToCoordinates, currentZoom]
+    [flyToCoordinates, currentZoom, embeddedInAdmin, onAdminSelectPlace]
   );
+
+  // Tự động di chuyển Bản đồ số nhúng trong Cột 3 của Quản lý Maps tới tọa độ quán đang chọn
+  useEffect(() => {
+    if (!embeddedInAdmin) return;
+    if (
+      typeof adminPreviewLat === 'number' &&
+      typeof adminPreviewLng === 'number' &&
+      !Number.isNaN(adminPreviewLat) &&
+      !Number.isNaN(adminPreviewLng) &&
+      adminPreviewLat >= 20 &&
+      adminPreviewLat <= 23 &&
+      adminPreviewLng >= 104 &&
+      adminPreviewLng <= 107
+    ) {
+      flyToCoordinates(
+        adminPreviewLat,
+        adminPreviewLng,
+        16.6,
+        adminPreviewName || 'Đang định vị',
+        0.0042
+      );
+    } else {
+      scheduleCanvasRender();
+    }
+  }, [embeddedInAdmin, adminSelectedPlaceId, adminPreviewLat, adminPreviewLng, adminPreviewName, flyToCoordinates, scheduleCanvasRender]);
 
   // Vẽ đường đi Google Maps-style từ vị trí thực tế của khách hàng (GPS thật, VD: Phúc Yên) đến đúng địa chỉ tại Xuân Hòa
   const handleDrawRouteToPlace = useCallback(
@@ -3366,7 +3448,11 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
   return (
     <div
-      className="xuho-light-map-root relative w-full h-[calc(100dvh-60px)] md:h-dvh overflow-hidden select-none"
+      className={
+        embeddedInAdmin
+          ? 'xuho-light-map-root relative w-full h-full overflow-hidden select-none rounded-xl'
+          : 'xuho-light-map-root relative w-full h-[calc(100dvh-60px)] md:h-dvh overflow-hidden select-none'
+      }
       style={{
         backgroundColor: '#F8F5EE',
         colorScheme: 'light',
@@ -3396,7 +3482,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         className="absolute inset-0 w-full h-full z-[2]"
         style={{
           cursor:
-            isPickingOnMap || merchantPickingForPlace || homeModalMode === 'picking'
+            embeddedInAdmin || isPickingOnMap || merchantPickingForPlace || homeModalMode === 'picking'
               ? 'crosshair'
               : 'grab',
           background: 'transparent',
@@ -3408,6 +3494,33 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         ref={markerOverlayRef}
         className="absolute inset-0 pointer-events-none overflow-hidden z-10"
       >
+        {/* Marker Vị trí đang chấm / đang sửa trực tiếp trong Cột 3 Quản lý Maps */}
+        {embeddedInAdmin &&
+          typeof adminPreviewLat === 'number' &&
+          typeof adminPreviewLng === 'number' &&
+          !Number.isNaN(adminPreviewLat) &&
+          !Number.isNaN(adminPreviewLng) && (
+            <div
+              ref={(el) => {
+                adminPreviewMarkerElRef.current = el;
+              }}
+              style={{
+                transform: 'translate3d(-9999px, -9999px, 0)',
+                zIndex: 65,
+                willChange: 'transform',
+              }}
+              className="absolute top-0 left-0 pointer-events-none"
+            >
+              <div className="relative -translate-x-1/2 -translate-y-full flex flex-col items-center">
+                <div className="mb-1 px-2.5 py-1 rounded-lg bg-[#DC2626] text-white border-2 border-white text-[11px] font-extrabold whitespace-nowrap shadow-lg">
+                  📍 {adminPreviewName || 'Vị trí đang chọn'}
+                </div>
+                <div className="w-7 h-7 rounded-full bg-[#DC2626] text-white border-2 border-white ring-2 ring-[#991B1B] flex items-center justify-center shadow-lg">
+                  <MapPin size={15} />
+                </div>
+              </div>
+            </div>
+          )}
         {/* Marker Vị trí người dùng (User Location Layer) */}
         {userCoords && layerVisibility.userLocation && (
           <div

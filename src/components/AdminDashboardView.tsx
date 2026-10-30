@@ -78,8 +78,19 @@ import {
   getEffectiveAdminRoleInfo,
   approvePendingPlaceItem,
   rejectPendingPlaceItem,
+  syncUserToAdminRegistry,
+  ensureCloudPermissionsSyncedForEmail,
 } from '@/lib/admin-store';
-import { UserAuthProfile, saveAuthUser } from '@/lib/auth';
+import {
+  UserAuthProfile,
+  saveAuthUser,
+  getStoredAuthUser,
+  clearAuthUser,
+  signInWithGoogleService,
+  createOrUpdateAuthUserFromGoogle,
+} from '@/lib/auth';
+import { GoogleGIcon } from '@/components/GoogleGIcon';
+import { DigitalMapView } from '@/components/DigitalMapView';
 import { Place } from '@/lib/places-xuanhoa';
 import { MerchantPortalModal } from '@/components/map/MerchantPortalModal';
 import { triggerFeedback, FeedbackSoundType } from '@/lib/ui-feedback';
@@ -236,8 +247,13 @@ export function AdminDashboardView({
 
   // =========================================================================
   // ĐĂNG NHẬP ADMIN ĐÀNG HOÀNG (CÓ NICK + MẬT KHẨU + TÍCH LƯU ĐĂNG NHẬP)
+  // HOẶC ĐĂNG NHẬP TRỰC TIẾP BẰNG GOOGLE (GMAIL) NHƯ WEB CHÍNH
   // =========================================================================
   const [loggedAdmin, setLoggedAdmin] = useState<AdminAccount | null>(() => getLoggedAdminSession());
+  const [localAuthUser, setLocalAuthUser] = useState<UserAuthProfile | null>(
+    () => authUser || getStoredAuthUser()
+  );
+  const [isGoogleAuthLoading, setIsGoogleAuthLoading] = useState(false);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginRememberMe, setLoginRememberMe] = useState(true);
@@ -260,7 +276,6 @@ export function AdminDashboardView({
   const [mapSearch, setMapSearch] = useState('');
   const [mapCatFilter, setMapCatFilter] = useState<string>('all');
   const [mapCoordFilter, setMapCoordFilter] = useState<'all' | 'verified' | 'unverified' | 'locked'>('all');
-  const [gmailLoginInput, setGmailLoginInput] = useState('');
 
   // Thêm nhanh phân khu ngành nghề ngay trong cài đặt của Quán
   const [isAddingSectorInline, setIsAddingSectorInline] = useState(false);
@@ -379,18 +394,34 @@ export function AdminDashboardView({
   };
 
   useEffect(() => {
+    if (authUser) {
+      setLocalAuthUser(authUser);
+    }
+  }, [authUser]);
+
+  useEffect(() => {
     initAdminCloudSync();
     seedDemoMembersIfEmpty();
     const onSync = () => setRefreshTick(t => t + 1);
+    const onAuthChange = (e: Event) => {
+      const customEvt = e as CustomEvent<UserAuthProfile | null>;
+      setLocalAuthUser(customEvt.detail || getStoredAuthUser());
+      setRefreshTick(t => t + 1);
+    };
     window.addEventListener('xuanhoa_admin_sync', onSync);
-    return () => window.removeEventListener('xuanhoa_admin_sync', onSync);
+    window.addEventListener('xuanhoa_auth_change', onAuthChange);
+    return () => {
+      window.removeEventListener('xuanhoa_admin_sync', onSync);
+      window.removeEventListener('xuanhoa_auth_change', onAuthChange);
+    };
   }, []);
 
+  const effectiveAuthUser = authUser || localAuthUser;
   const adminState = useMemo(() => getAdminState(), [refreshTick]);
   const adminAccounts = useMemo(() => getAdminAccounts(), [refreshTick]);
   const roleInfo = useMemo(
-    () => getEffectiveAdminRoleInfo(loggedAdmin, authUser),
-    [loggedAdmin, authUser, refreshTick]
+    () => getEffectiveAdminRoleInfo(loggedAdmin, effectiveAuthUser),
+    [loggedAdmin, effectiveAuthUser, refreshTick]
   );
   const isSuperAdmin = roleInfo.isSuperAdmin;
   const canManageWeb = roleInfo.canManageWeb;
@@ -634,20 +665,38 @@ export function AdminDashboardView({
     return allPlaces.reduce((acc, item) => acc + (item.fullMenu?.length || 0), 0);
   }, [allPlaces]);
 
-  // Xử lý đăng nhập Admin (theo Nick + Mật khẩu) hoặc Quản lý (nếu gõ trực tiếp Gmail đã được cấp quyền vào ô tài khoản)
-  const handleAdminLoginSubmit = (e: React.FormEvent) => {
+  const redirectToCustomerHome = () => {
+    if (typeof window !== 'undefined') {
+      if (
+        window.location.pathname === '/quanly' ||
+        window.location.pathname === '/quanly/' ||
+        window.location.pathname === '/admin' ||
+        window.location.pathname === '/admin/'
+      ) {
+        window.history.replaceState(null, '', '/#/');
+      }
+      window.location.hash = '#/';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    }
+    onBackToApp();
+  };
+
+  // Xử lý đăng nhập Admin (theo Nick + Mật khẩu) hoặc Quản lý (nếu gõ trực tiếp Gmail vào ô tài khoản)
+  const handleAdminLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     const cleanInput = loginUsername.trim().toLowerCase();
     if (cleanInput.includes('@')) {
-      const member = adminState.members?.[cleanInput];
+      await ensureCloudPermissionsSyncedForEmail(cleanInput);
+      const freshState = getAdminState();
+      const member = freshState.members?.[cleanInput];
       const isSuperEmail = Boolean(
-        adminState.adminEmails?.some(em => em.trim().toLowerCase() === cleanInput)
+        freshState.adminEmails?.some(em => em.trim().toLowerCase() === cleanInput)
       );
       if (isSuperEmail || (member && (member.canManageWeb || member.canManageMaps || member.status === 'admin'))) {
         saveAuthUser({
           isLoggedIn: true,
-          uid: member?.uid || `mgr_${Date.now()}`,
+          uid: member?.uid || `uid_${cleanInput.replace(/[^a-z0-9]/g, '_')}`,
           email: cleanInput,
           displayName: member?.displayName || member?.nickname || cleanInput,
           nickname: member?.nickname || member?.displayName || cleanInput,
@@ -659,16 +708,17 @@ export function AdminDashboardView({
           createdAt: member?.createdAt || Date.now(),
         });
         setRefreshTick(t => t + 1);
-        showToast(`Xin chào ${member?.nickname || cleanInput}! Đã vào bằng Gmail được cấp quyền.`);
+        showToast(`Xin chào ${member?.nickname || cleanInput}!`);
         return;
       }
-      setLoginError('Gmail này chưa được Admin tích cấp quyền Quản lý Quán hoặc Quản lý Maps!');
+      // Không được cấp quyền quản lý -> đẩy thẳng ra trang chính dùng như khách hàng
+      redirectToCustomerHome();
       return;
     }
 
     const res = loginAdminWithCredentials(loginUsername, loginPassword, loginRememberMe);
     if (!res.ok || !res.account) {
-      setLoginError(res.message || 'Sai tên đăng nhập hoặc mật khẩu Admin');
+      setLoginError(res.message || 'Sai tài khoản hoặc mật khẩu');
       return;
     }
     setLoggedAdmin(res.account);
@@ -676,14 +726,43 @@ export function AdminDashboardView({
     showToast(`Xin chào ${res.account.displayName}!`);
   };
 
+  const handleGoogleOAuthLoginInAdmin = async () => {
+    setLoginError('');
+    setIsGoogleAuthLoading(true);
+    try {
+      const googleInfo = await signInWithGoogleService();
+      if (!googleInfo) {
+        return;
+      }
+      const user = createOrUpdateAuthUserFromGoogle(googleInfo);
+      setLocalAuthUser(user);
+      syncUserToAdminRegistry(user);
+      await ensureCloudPermissionsSyncedForEmail(user.email);
+      setRefreshTick(t => t + 1);
+      const latestRole = getEffectiveAdminRoleInfo(loggedAdmin, user);
+      if (latestRole.isAuthenticated) {
+        showToast(`Xin chào ${user.nickname || user.displayName || user.email}!`);
+      } else {
+        // Nếu Gmail không có quyền quản lý -> đẩy thẳng ra trang chính dùng Quay Món & Bản Đồ Số như khách hàng
+        redirectToCustomerHome();
+      }
+    } catch (err: any) {
+      if (err?.message && !String(err.message).includes('Đã hủy') && !String(err.message).includes('đóng cửa sổ')) {
+        setLoginError(err.message);
+      }
+    } finally {
+      setIsGoogleAuthLoading(false);
+    }
+  };
+
   const handleAdminLogout = () => {
     logoutAdminSession();
     setLoggedAdmin(null);
+    clearAuthUser();
+    setLocalAuthUser(null);
     setIsSettingsModalOpen(false);
+    setRefreshTick(t => t + 1);
     showToast('Đã thoát khỏi phiên Quản trị');
-    if (!loggedAdmin) {
-      onBackToApp();
-    }
   };
 
   // Lưu thay đổi của Quán & Thực đơn
@@ -1077,44 +1156,9 @@ export function AdminDashboardView({
   const boostedPlacesCount = allPlaces.filter(p => p.priorityBoost > 1).length;
 
   // ===========================================================================
-  // NẾU CHƯA ĐĂNG NHẬP TÀI KHOẢN QUẢN LÝ HOẶC GMAIL ĐƯỢC CẤP QUYỀN -> HIỆN TRANG ĐĂNG NHẬP
+  // NẾU CHƯA ĐĂNG NHẬP TÀI KHOẢN QUẢN LÝ HOẶC GMAIL ĐƯỢC CẤP QUYỀN -> HIỆN TRANG ĐĂNG NHẬP TINH GỌN
   // ===========================================================================
   if (!roleInfo.isAuthenticated) {
-    const handleGmailQuickAuth = (e: React.FormEvent) => {
-      e.preventDefault();
-      setLoginError('');
-      const cleanEmail = gmailLoginInput.trim().toLowerCase();
-      if (!cleanEmail || !cleanEmail.includes('@')) {
-        setLoginError('Vui lòng nhập đúng địa chỉ Gmail đã đăng ký.');
-        return;
-      }
-      const member = adminState.members?.[cleanEmail];
-      const isSuperEmail = Boolean(
-        adminState.adminEmails?.some(em => em.trim().toLowerCase() === cleanEmail)
-      );
-      if (!isSuperEmail && (!member || (!member.canManageWeb && !member.canManageMaps && member.status !== 'admin'))) {
-        setLoginError(
-          'Gmail này chưa được Admin tích cấp quyền Quản lý Web hoặc Quản lý Maps trong bảng Quản lý Thành viên!'
-        );
-        return;
-      }
-      saveAuthUser({
-        isLoggedIn: true,
-        uid: member?.uid || `mgr_${Date.now()}`,
-        email: cleanEmail,
-        displayName: member?.displayName || member?.nickname || cleanEmail,
-        nickname: member?.nickname || member?.displayName || cleanEmail,
-        gender: member?.gender || 'male',
-        avatar: member?.avatar || '🛡️',
-        avatarId: member?.avatarId || 'm_ty',
-        hasCompletedProfile: true,
-        isFirstTimeSetupDone: true,
-        createdAt: member?.createdAt || Date.now(),
-      });
-      setRefreshTick(t => t + 1);
-      showToast(`Xin chào ${member?.nickname || cleanEmail}! Đã xác thực quyền quản lý qua Gmail.`);
-    };
-
     return (
       <div
         className="xh-admin-shell"
@@ -1125,54 +1169,98 @@ export function AdminDashboardView({
           fontFamily: "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif",
           minHeight: '100vh',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
-          padding: '16px',
+          justifyContent: 'space-between',
+          padding: '24px 16px 18px',
         }}
       >
+        <div />
+
         <div
           style={{
             width: '100%',
-            maxWidth: '390px',
+            maxWidth: '370px',
             background: theme.bgCard,
             borderRadius: '18px',
             border: `1px solid ${theme.border}`,
-            padding: '28px 24px 22px',
+            padding: '26px 22px 20px',
             boxShadow: '0 16px 40px rgba(0,0,0,0.06)',
           }}
         >
-          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '18px' }}>
             <div
               style={{
-                width: '44px',
-                height: '44px',
+                width: '42px',
+                height: '42px',
                 borderRadius: '12px',
                 background: theme.accentSoft,
                 color: theme.accent,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: '10px',
+                marginBottom: '8px',
               }}
             >
-              <Shield size={22} />
+              <Shield size={21} />
             </div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, letterSpacing: '-0.01em' }}>
               Đăng nhập Quản trị
             </h2>
-            <div style={{ fontSize: '12px', color: theme.textMuted, marginTop: '3px' }}>
-              Admin Tối Cao • Quản lý Web • Quản lý Maps
-            </div>
           </div>
 
-          <form onSubmit={handleAdminLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* 1 NÚT KẾT NỐI GMAIL DUY NHẤT: ĐƯỢC CẤP QUYỀN THÌ VÀO, KHÔNG THÌ ĐẨY RA TRANG CHÍNH */}
+          <button
+            type="button"
+            onClick={handleGoogleOAuthLoginInAdmin}
+            disabled={isGoogleAuthLoading}
+            style={{
+              width: '100%',
+              padding: '11px 14px',
+              borderRadius: '11px',
+              border: `1.5px solid ${theme.border}`,
+              background: '#FFFFFF',
+              color: '#18181B',
+              fontSize: '13.5px',
+              fontWeight: 800,
+              cursor: isGoogleAuthLoading ? 'wait' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+              marginBottom: '16px',
+            }}
+          >
+            <GoogleGIcon size={18} />
+            <span>
+              {isGoogleAuthLoading ? 'Đang kết nối Gmail...' : 'Kết nối bằng Gmail'}
+            </span>
+          </button>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              marginBottom: '14px',
+            }}
+          >
+            <div style={{ flex: 1, height: '1px', background: theme.border }} />
+            <span style={{ fontSize: '10.5px', fontWeight: 700, color: theme.textMuted }}>
+              HOẶC TÀI KHOẢN ADMIN
+            </span>
+            <div style={{ flex: 1, height: '1px', background: theme.border }} />
+          </div>
+
+          <form onSubmit={handleAdminLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
             <div>
-              <label style={compactLabelStyle(theme)}>Tài khoản Admin / Quản lý</label>
+              <label style={compactLabelStyle(theme)}>Tài khoản</label>
               <input
                 type="text"
                 value={loginUsername}
                 onChange={e => setLoginUsername(e.target.value)}
-                placeholder="Nhập tên tài khoản"
+                placeholder="Nhập tài khoản..."
                 autoComplete="username"
                 style={compactInputStyle(theme)}
               />
@@ -1185,7 +1273,7 @@ export function AdminDashboardView({
                   type={showLoginPass ? 'text' : 'password'}
                   value={loginPassword}
                   onChange={e => setLoginPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu"
+                  placeholder="Nhập mật khẩu..."
                   autoComplete="current-password"
                   style={{ ...compactInputStyle(theme), paddingRight: '38px' }}
                 />
@@ -1215,7 +1303,7 @@ export function AdminDashboardView({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                fontSize: '12.5px',
+                fontSize: '12px',
                 fontWeight: 600,
                 color: theme.textSecondary,
                 cursor: 'pointer',
@@ -1226,7 +1314,7 @@ export function AdminDashboardView({
                 type="checkbox"
                 checked={loginRememberMe}
                 onChange={e => setLoginRememberMe(e.target.checked)}
-                style={{ width: '15px', height: '15px', accentColor: theme.accent, cursor: 'pointer' }}
+                style={{ width: '14px', height: '14px', accentColor: theme.accent, cursor: 'pointer' }}
               />
               <span>Ghi nhớ đăng nhập</span>
             </label>
@@ -1271,43 +1359,47 @@ export function AdminDashboardView({
 
           <div
             style={{
-              marginTop: '16px',
-              paddingTop: '14px',
+              marginTop: '14px',
+              paddingTop: '12px',
               borderTop: `1px dashed ${theme.border}`,
+              display: 'flex',
+              justifyContent: 'center',
             }}
           >
-            <form onSubmit={handleGmailQuickAuth} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={compactLabelStyle(theme)}>
-                Hoặc vào bằng Gmail đã được Admin cấp quyền Quản lý:
-              </label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type="email"
-                  value={gmailLoginInput}
-                  onChange={e => setGmailLoginInput(e.target.value)}
-                  placeholder="Nhập Gmail của bạn..."
-                  style={{ ...compactInputStyle(theme), flex: 1 }}
-                />
-                <button
-                  type="submit"
-                  style={{
-                    padding: '0 13px',
-                    borderRadius: '8px',
-                    border: `1px solid ${theme.accentBorder}`,
-                    background: theme.accentSoft,
-                    color: theme.accent,
-                    fontSize: '12px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Vào ngay
-                </button>
-              </div>
-            </form>
+            <button
+              type="button"
+              onClick={redirectToCustomerHome}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: theme.textSecondary,
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <ArrowLeft size={14} /> Trang chủ Xuân Hòa Có Gì
+            </button>
           </div>
         </div>
+
+        {/* BẢN QUYỀN DƯỚI CHÂN WEB ĐẸP & TINH TẾ */}
+        <footer
+          style={{
+            textAlign: 'center',
+            fontSize: '12px',
+            color: theme.textMuted,
+            fontWeight: 600,
+            paddingTop: '16px',
+            letterSpacing: '0.01em',
+          }}
+        >
+          © 2026 <strong style={{ color: theme.textSecondary }}>Xuân Hòa Có Gì</strong> • Bản đồ số & Ẩm thực Xuân Hòa. Designed by{' '}
+          <strong style={{ color: theme.accent }}>MinhTT</strong>. All Rights Reserved.
+        </footer>
       </div>
     );
   }
@@ -2882,10 +2974,10 @@ export function AdminDashboardView({
           {/* =================================================================== */}
           {/* 2B. QUẢN LÝ MAPS — BỐ CỤC 3 CỘT ĐỒNG BỘ:                            */}
           {/*     CỘT 1 (DANH SÁCH & DUYỆT MAPS) | CỘT 2 (THÔNG TIN ĐỊNH VỊ) |    */}
-          {/*     CỘT 3 (SA BÀN CHẤM TỌA ĐỘ TRỰC QUAN & ĐỐI CHIẾU LÂN CẬN)        */}
+          {/*     CỘT 3 (BẢN ĐỒ SỐ TRỰC TIẾP NGAY TRONG TRANG QUẢN LÝ)           */}
           {/* =================================================================== */}
           {activeSection === 'maps' && canManageMaps && (
-            <div className="xh-three-col-layout">
+            <div className="xh-three-col-layout xh-maps-three-col">
               {/* CỘT 1: DANH SÁCH ĐỊA ĐIỂM MAPS + TAB DUYỆT MAPS */}
               <div
                 className={`xh-places-list-pane ${mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
@@ -3501,7 +3593,7 @@ export function AdminDashboardView({
                 </div>
               ) : null}
 
-              {/* CỘT 3 CỦA QUẢN LÝ MAPS: SA BÀN TỌA ĐỘ TƯƠNG TÁC & ĐỐI CHIẾU LÂN CẬN */}
+              {/* CỘT 3 CỦA QUẢN LÝ MAPS: BẢN ĐỒ SỐ XUÂN HÒA HIỆN LUÔN TRỰC TIẾP TẠI ĐÂY */}
               {selectedPlaceItem ? (
                 <div
                   className={`xh-col-right-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
@@ -3510,10 +3602,13 @@ export function AdminDashboardView({
                     borderRadius: '14px',
                     border: `1px solid ${theme.border}`,
                     boxShadow: theme.shadow,
-                    padding: '16px',
+                    padding: '10px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '12px',
+                    gap: '8px',
+                    height: 'calc(100vh - 86px)',
+                    minHeight: '580px',
+                    overflow: 'hidden',
                   }}
                 >
                   <div
@@ -3521,207 +3616,105 @@ export function AdminDashboardView({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      paddingBottom: '10px',
+                      gap: '8px',
+                      padding: '2px 4px 6px',
                       borderBottom: `1px solid ${theme.border}`,
+                      flexShrink: 0,
                     }}
                   >
-                    <span style={{ fontSize: '14.5px', fontWeight: 800 }}>
-                      3. Sa bàn Tọa độ & Đối chiếu
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (editPlaceLat && editPlaceLng) {
-                          jumpToMapUrl(
-                            `#/ban-do?flyLat=${editPlaceLat}&flyLng=${editPlaceLng}&flyLabel=${encodeURIComponent(
-                              editPlaceName
-                            )}`
-                          );
-                        } else {
-                          jumpToMapUrl(
-                            `#/ban-do?pick=${encodeURIComponent(
-                              selectedPlaceItem.place.id
-                            )}&pickName=${encodeURIComponent(editPlaceName)}`
-                          );
-                        }
-                      }}
-                      style={{
-                        ...smallRowBtnStyle(theme),
-                        background: theme.accentSoft,
-                        color: theme.accent,
-                        borderColor: theme.accentBorder,
-                      }}
-                    >
-                      <MapPin size={12} /> Mở Bản đồ Số
-                    </button>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '13.5px', fontWeight: 800 }}>
+                        3. Bản đồ số Xuân Hòa (Chấm & Tìm trực tiếp)
+                      </div>
+                      <div style={{ fontSize: '11px', color: theme.textSecondary }}>
+                        Tìm đường/quán ngay trên Bản đồ số hoặc bấm vào vị trí bất kỳ để lấy tọa độ
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleSavePlaceAndMenu(undefined, 'Đã lưu định vị Bản đồ')}
+                        style={{
+                          ...smallRowBtnStyle(theme),
+                          background: '#047857',
+                          color: '#FFFFFF',
+                          borderColor: '#047857',
+                        }}
+                      >
+                        <Save size={12} /> Lưu Định Vị
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editPlaceLat && editPlaceLng) {
+                            jumpToMapUrl(
+                              `#/ban-do?flyLat=${editPlaceLat}&flyLng=${editPlaceLng}&flyLabel=${encodeURIComponent(
+                                editPlaceName
+                              )}`
+                            );
+                          } else {
+                            jumpToMapUrl(
+                              `#/ban-do?pick=${encodeURIComponent(
+                                selectedPlaceItem.place.id
+                              )}&pickName=${encodeURIComponent(editPlaceName)}`
+                            );
+                          }
+                        }}
+                        style={{
+                          ...smallRowBtnStyle(theme),
+                          background: theme.accentSoft,
+                          color: theme.accent,
+                          borderColor: theme.accentBorder,
+                        }}
+                        title="Phóng toàn màn hình Bản đồ Số"
+                      >
+                        <ExternalLink size={12} /> Toàn màn hình
+                      </button>
+                    </div>
                   </div>
 
-                  {/* KHUNG CHẤM TỌA ĐỘ NHANH TRỰC QUAN TRONG CỘT 3 */}
-                  {(() => {
-                    const minLat = 21.278;
-                    const maxLat = 21.302;
-                    const minLng = 105.698;
-                    const maxLng = 105.726;
-                    const curLat = Number(editPlaceLat) || 21.2897;
-                    const curLng = Number(editPlaceLng) || 105.7112;
-                    const pctX = Math.max(4, Math.min(96, ((curLng - minLng) / (maxLng - minLng)) * 100));
-                    const pctY = Math.max(4, Math.min(96, ((maxLat - curLat) / (maxLat - minLat)) * 100));
-
-                    return (
-                      <div>
-                        <div style={{ fontSize: '11.5px', color: theme.textSecondary, marginBottom: '6px' }}>
-                          Bấm trực tiếp lên khung lưới tọa độ Xuân Hòa bên dưới để dời ghim nhanh:
-                        </div>
-                        <div
-                          onClick={e => {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            const rx = (e.clientX - rect.left) / rect.width;
-                            const ry = (e.clientY - rect.top) / rect.height;
-                            const nextLng = Number((minLng + rx * (maxLng - minLng)).toFixed(6));
-                            const nextLat = Number((maxLat - ry * (maxLat - minLat)).toFixed(6));
-                            setEditPlaceLat(String(nextLat));
-                            setEditPlaceLng(String(nextLng));
-                            showToast(`📍 Đã chấm tọa độ: ${nextLat}, ${nextLng} (Bấm Lưu Định Vị để áp dụng)`);
-                          }}
-                          style={{
-                            position: 'relative',
-                            height: '190px',
-                            borderRadius: '12px',
-                            border: `1.5px solid ${theme.accentBorder}`,
-                            background:
-                              'radial-gradient(circle at 50% 50%, #F0FDF4 0%, #E0F2FE 100%)',
-                            cursor: 'crosshair',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          {/* LƯỚI TỌA ĐỘ TRỰC QUAN */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              inset: 0,
-                              backgroundImage:
-                                'linear-gradient(to right, rgba(15,23,42,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(15,23,42,0.06) 1px, transparent 1px)',
-                              backgroundSize: '24px 24px',
-                            }}
-                          />
-                          {/* TRỤC ĐHSP2 MỐC TRUNG TÂM */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: '48%',
-                              top: '51%',
-                              transform: 'translate(-50%, -50%)',
-                              fontSize: '10px',
-                              fontWeight: 800,
-                              color: '#0369A1',
-                              background: 'rgba(255,255,255,0.85)',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              pointerEvents: 'none',
-                            }}
-                          >
-                            🎓 Tâm ĐHSP2
-                          </div>
-
-                          {/* GHIM HIỆN TẠI */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: `${pctX}%`,
-                              top: `${pctY}%`,
-                              transform: 'translate(-50%, -100%)',
-                              pointerEvents: 'none',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: '10px',
-                                fontWeight: 800,
-                                background: '#18181B',
-                                color: '#FFF',
-                                padding: '2px 6px',
-                                borderRadius: '5px',
-                                whiteSpace: 'nowrap',
-                                marginBottom: '2px',
-                              }}
-                            >
-                              {editPlaceName}
-                            </span>
-                            <MapPin size={22} style={{ color: '#DC2626', fill: '#FEE2E2' }} />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* DANH SÁCH ĐỊA ĐIỂM LÂN CẬN ĐỂ KIỂM TRA TRÙNG LẶP GHIM */}
+                  {/* BẢN ĐỒ SỐ THẬT NHÚNG TRỰC TIẾP TRONG CỘT 3 */}
                   <div
                     style={{
-                      padding: '10px 12px',
-                      borderRadius: '10px',
-                      background: theme.bgElevated,
-                      border: `1px solid ${theme.border}`,
+                      position: 'relative',
+                      flex: 1,
+                      width: '100%',
+                      minHeight: '480px',
+                      borderRadius: '11px',
+                      overflow: 'hidden',
+                      border: `1.5px solid ${theme.accentBorder}`,
                     }}
                   >
-                    <div style={{ fontSize: '12px', fontWeight: 800, marginBottom: '6px' }}>
-                      Các điểm đã ghim gần vị trí này:
-                    </div>
-                    {(() => {
-                      const curLat = Number(editPlaceLat);
-                      const curLng = Number(editPlaceLng);
-                      if (!curLat || !curLng) {
-                        return (
-                          <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
-                            Chưa có tọa độ Lat/Lng để đối chiếu khoảng cách lân cận.
-                          </div>
-                        );
+                    <DigitalMapView
+                      authUser={effectiveAuthUser}
+                      onBackToHome={onBackToApp}
+                      embeddedInAdmin={true}
+                      adminSelectedPlaceId={selectedPlaceItem.place.id}
+                      adminPreviewLat={
+                        editPlaceLat.trim() !== '' && !Number.isNaN(Number(editPlaceLat))
+                          ? Number(editPlaceLat)
+                          : null
                       }
-                      const nearby = allPlaces
-                        .filter(p => p.place.id !== selectedPlaceItem.place.id)
-                        .map(p => {
-                          const ov = adminState.places?.[p.place.id];
-                          if (typeof ov?.lat !== 'number' || typeof ov?.lng !== 'number') return null;
-                          const distMeters = Math.round(
-                            Math.hypot((ov.lat - curLat) * 111320, (ov.lng - curLng) * 103000)
-                          );
-                          return { name: p.place.name, distMeters, lat: ov.lat, lng: ov.lng };
-                        })
-                        .filter((x): x is NonNullable<typeof x> => Boolean(x))
-                        .sort((a, b) => a.distMeters - b.distMeters)
-                        .slice(0, 4);
-
-                      if (nearby.length === 0) {
-                        return (
-                          <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
-                            Chưa có địa điểm lân cận nào khác.
-                          </div>
-                        );
+                      adminPreviewLng={
+                        editPlaceLng.trim() !== '' && !Number.isNaN(Number(editPlaceLng))
+                          ? Number(editPlaceLng)
+                          : null
                       }
-
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                          {nearby.map((nb, i) => (
-                            <div
-                              key={i}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                fontSize: '11.5px',
-                                padding: '4px 6px',
-                                borderRadius: '6px',
-                                background: theme.bgCard,
-                              }}
-                            >
-                              <span style={{ fontWeight: 600 }}>{nb.name}</span>
-                              <span style={{ color: theme.accent, fontWeight: 800 }}>~{nb.distMeters}m</span>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
+                      adminPreviewName={editPlaceName || selectedPlaceItem.place.name}
+                      onAdminPickCoordinates={(pickedLat, pickedLng) => {
+                        setEditPlaceLat(String(pickedLat));
+                        setEditPlaceLng(String(pickedLng));
+                        showToast(
+                          `📍 Đã chấm trên Bản đồ số: ${pickedLat}, ${pickedLng} — Bấm "Lưu Định Vị" để lưu!`
+                        );
+                      }}
+                      onAdminSelectPlace={pickedPlaceId => {
+                        const found = allPlaces.find(p => p.place.id === pickedPlaceId);
+                        if (found) {
+                          selectPlaceForEdit(found);
+                        }
+                      }}
+                    />
                   </div>
                 </div>
               ) : null}
@@ -4236,6 +4229,29 @@ export function AdminDashboardView({
               </div>
             </div>
           )}
+          {/* CHÂN TRANG BẢN QUYỀN TRONG WEB QUẢN TRỊ */}
+          <footer
+            style={{
+              marginTop: '22px',
+              paddingTop: '14px',
+              borderTop: `1px solid ${theme.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '8px',
+              fontSize: '11.5px',
+              color: theme.textMuted,
+              fontWeight: 600,
+            }}
+          >
+            <span>
+              © 2026 <strong style={{ color: theme.textSecondary }}>Xuân Hòa Có Gì</strong> • Bản đồ số & Ẩm thực Xuân Hòa
+            </span>
+            <span>
+              Designed & Developed by <strong style={{ color: theme.accent }}>MinhTT</strong> • All Rights Reserved.
+            </span>
+          </footer>
         </main>
       </div>
 
@@ -4379,7 +4395,43 @@ export function AdminDashboardView({
                 </div>
               </div>
 
-              {/* HÀNG 4: TÀI KHOẢN HIỆN TẠI & NÚT THOÁT (ĐĂNG XUẤT) ĐƯỢC GOM VÀO CÀI ĐẶT */}
+              {/* HÀNG 4: KẾT NỐI / ĐỔI GMAIL GOOGLE TRỰC TIẾP */}
+              <div
+                style={{
+                  ...settingRowBoxStyle(theme),
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 700 }}>
+                    Gmail đang kết nối:{' '}
+                    <span style={{ color: theme.accent }}>
+                      {effectiveAuthUser?.email || 'Chưa kết nối Gmail'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: theme.textMuted }}>
+                    Đăng nhập bằng Google (Gmail) để đồng bộ 1 nick duy nhất
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGoogleOAuthLoginInAdmin}
+                  style={{
+                    ...smallRowBtnStyle(theme),
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <GoogleGIcon size={13} />
+                  <span>{effectiveAuthUser?.email ? 'Đổi Gmail' : 'Đăng nhập Gmail'}</span>
+                </button>
+              </div>
+
+              {/* HÀNG 5: TÀI KHOẢN HIỆN TẠI & NÚT THOÁT (ĐĂNG XUẤT) ĐƯỢC GOM VÀO CÀI ĐẶT */}
               <div
                 style={{
                   ...settingRowBoxStyle(theme),
@@ -4946,6 +4998,9 @@ export function AdminDashboardView({
           grid-template-columns: 295px minmax(350px, 1.15fr) minmax(320px, 1fr);
           gap: 14px;
           align-items: start;
+        }
+        .xh-three-col-layout.xh-maps-three-col {
+          grid-template-columns: 265px minmax(330px, 0.92fr) minmax(440px, 1.45fr);
         }
         .xh-places-master-detail {
           display: grid;

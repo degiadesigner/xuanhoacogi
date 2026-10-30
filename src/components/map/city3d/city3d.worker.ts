@@ -14,6 +14,8 @@ import {
   TREE_PALETTE,
   WALL_PALETTE,
   hexToRgb,
+  isInsideLizardHillClearZone,
+  localToLngLat,
   type BuildingChunk,
   type BuildingLabel,
   type City3DOrigin,
@@ -666,6 +668,8 @@ async function init(baseUrl: string) {
       const dy = py - z.y;
       if (dx * dx + dy * dy <= z.r2) return true;
     }
+    const [lng, lat] = localToLngLat(origin, px, py);
+    if (isInsideLizardHillClearZone(lng, lat)) return true;
     return false;
   };
   for (let i = 0; i < nB; i++) {

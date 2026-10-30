@@ -81,6 +81,7 @@ import {
   haversineDistanceMeters,
   parseCoordinatesFromInputOrUrl,
   saveLandmarkOrPlaceFromMap,
+  blockLandmarkOrPlaceFromMap,
   hideLandmarkOrPlaceFromMap,
   restoreLandmarkOrPlaceDefault,
   type DistanceAndEtaResult,
@@ -2611,7 +2612,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         return;
       }
 
-      if (isPickingOnMap && isAdminUser) {
+      if (isPickingOnMap && (isAdminUser || isMapManagerUser)) {
         triggerFeedback('pin');
         setAdminLatInput(String(pickedLat));
         setAdminLngInput(String(pickedLng));
@@ -3056,8 +3057,8 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
   const openAdminCoordinateModal = useCallback(
     (place?: PlaceLocation) => {
-      if (!isAdminUser) {
-        setLocationNotice('Chỉ Quản trị viên đã xác thực mới có quyền chỉnh sửa địa điểm.');
+      if (!isAdminUser && !isMapManagerUser) {
+        setLocationNotice('Chỉ Quản trị viên hoặc Quản lý Maps mới có quyền chỉnh sửa địa điểm.');
         return;
       }
       const target = place || selectedPlace || verifiedMapMarkers[0] || unverifiedCatalogPlaces[0] || null;
@@ -3068,12 +3069,12 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       setAdminFeedback(null);
       setIsAdminCoordModalOpen(true);
     },
-    [isAdminUser, selectedPlace, verifiedMapMarkers, unverifiedCatalogPlaces, populateAdminFormFromPlace]
+    [isAdminUser, isMapManagerUser, selectedPlace, verifiedMapMarkers, unverifiedCatalogPlaces, populateAdminFormFromPlace]
   );
 
   const openAdminCreatePlaceModal = useCallback(() => {
-    if (!isAdminUser) {
-      setLocationNotice('Chỉ Quản trị viên đã xác thực mới có quyền thêm địa điểm mới.');
+    if (!isAdminUser && !isMapManagerUser) {
+      setLocationNotice('Chỉ Quản trị viên hoặc Quản lý Maps mới có quyền thêm địa điểm mới.');
       return;
     }
     const center = mapInstanceRef.current?.getCenter();
@@ -3092,9 +3093,9 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     setAdminLngInput(String(lng));
     setAdminCoordSource('admin_verified');
     setNominatimSuggestions([]);
-    setAdminFeedback('💡 Nhập tên địa danh / trụ sở / quán mới, hoặc bấm "Chấm trực tiếp trên Bản đồ" để lấy tọa độ.');
+    setAdminFeedback('💡 Nhập tên địa điểm / hàng quán mới, hoặc bấm "Chấm trực tiếp trên Bản đồ" để lấy tọa độ.');
     setIsAdminCoordModalOpen(true);
-  }, [isAdminUser]);
+  }, [isAdminUser, isMapManagerUser]);
 
   const handleSuggestFromOsm = async () => {
     const query = `${adminMapsUrlInput.trim() || adminEditAddress.trim() || adminEditName.trim()}`;
@@ -3149,7 +3150,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
   const handleSaveAdminCoordinates = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdminUser) return;
+    if (!isAdminUser && !isMapManagerUser) return;
     try {
       const lat = parseFloat(adminLatInput);
       const lng = parseFloat(adminLngInput);
@@ -3170,8 +3171,11 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         prev.includes(adminEditCategory) ? prev : [...prev, adminEditCategory]
       );
       setSyncTick((t) => t + 1);
-      setAdminFeedback(`✅ Đã lưu cập nhật "${adminEditName.trim()}" (${saved.lat}, ${saved.lng}) thành công!`);
-      setLocationNotice(`✅ Đã lưu địa điểm: "${adminEditName.trim()}"`);
+      const nextNotice = isAdminUser
+        ? `✅ Đã lưu địa điểm: "${adminEditName.trim()}"`
+        : `✅ Đã ghim "${adminEditName.trim()}" lên Bản đồ & gửi sang mục Duyệt Maps (Cột 1) cho Admin!`;
+      setAdminFeedback(nextNotice);
+      setLocationNotice(nextNotice);
       flyToCoordinates(saved.lat, saved.lng, 16.6, adminEditName.trim(), 0.0042);
       setTimeout(() => {
         setIsAdminCoordModalOpen(false);
@@ -3179,6 +3183,19 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     } catch (err: any) {
       setAdminFeedback(err?.message || 'Lỗi lưu thông tin địa điểm.');
     }
+  };
+
+  const handleBlockAdminPlace = () => {
+    if ((!isAdminUser && !isMapManagerUser) || !adminTargetPlace) return;
+    blockLandmarkOrPlaceFromMap(adminTargetPlace.id, adminEditName || adminTargetPlace.name);
+    if (selectedPlace?.id === adminTargetPlace.id) {
+      setSelectedPlace(null);
+    }
+    setSyncTick((t) => t + 1);
+    setIsAdminCoordModalOpen(false);
+    setLocationNotice(
+      `🔒 Đã Block (tạm khóa) "${adminEditName || adminTargetPlace.name}" khỏi Bản đồ 2D & 3D.`
+    );
   };
 
   const handleDeleteAdminPlace = () => {
@@ -3189,11 +3206,11 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     }
     setSyncTick((t) => t + 1);
     setIsAdminCoordModalOpen(false);
-    setLocationNotice(`🗑️ Đã ẩn "${adminEditName || adminTargetPlace.name}" khỏi Bản đồ 2D & 3D.`);
+    setLocationNotice(`🗑️ Đã xóa "${adminEditName || adminTargetPlace.name}" khỏi Bản đồ 2D & 3D.`);
   };
 
   const handleRestoreAdminPlaceDefault = () => {
-    if (!isAdminUser || !adminTargetPlace) return;
+    if ((!isAdminUser && !isMapManagerUser) || !adminTargetPlace) return;
     restoreLandmarkOrPlaceDefault(adminTargetPlace.id);
     setSyncTick((t) => t + 1);
     setIsAdminCoordModalOpen(false);
@@ -3620,21 +3637,21 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
             claimedPlaceName={claimedPlaceName}
           />
 
-          {/* Bảng Bật / Tắt từng Danh mục xổ xuống gọn gàng (Auto: Hành chính + Trường học) */}
+          {/* Bảng Bật / Tắt từng Danh mục xổ xuống gọn gàng (Chuẩn OCD: 1 dòng thẳng hàng, không rơi chữ) */}
           {isCategoryDropdown2DOpen && (
-            <div className="absolute top-11 left-0 md:left-24 z-50 w-[250px] sm:w-[270px] rounded-2xl bg-white/98 backdrop-blur-md border border-slate-200/90 shadow-[0_14px_34px_rgba(15,23,42,0.18)] p-2 flex flex-col gap-1">
-              <div className="px-2 py-1 flex items-center justify-between border-b border-slate-100">
-                <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-slate-500">
+            <div className="absolute top-11 left-0 md:left-24 z-50 w-[288px] sm:w-[304px] rounded-2xl bg-white/98 backdrop-blur-md border border-slate-200/90 shadow-[0_14px_34px_rgba(15,23,42,0.18)] p-2.5 flex flex-col gap-1">
+              <div className="px-1.5 pb-1.5 mb-0.5 flex items-center justify-between gap-2 border-b border-slate-100">
+                <span className="text-[11px] font-extrabold uppercase tracking-wide text-slate-600 whitespace-nowrap">
                   Bật / Tắt danh mục
                 </span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
                     onClick={() => {
                       setShowCommercialShops(false);
                       setSelectedCategories(['public', 'school']);
                     }}
-                    className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] text-[10px] font-extrabold cursor-pointer"
+                    className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] text-[10.5px] font-extrabold whitespace-nowrap cursor-pointer transition"
                     title="Khôi phục mặc định: chỉ bật Hành chính + Trường học"
                   >
                     Mặc định
@@ -3642,7 +3659,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsCategoryDropdown2DOpen(false)}
-                    className="px-1.5 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold cursor-pointer"
+                    className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10.5px] font-bold whitespace-nowrap cursor-pointer transition"
                   >
                     Đóng
                   </button>
@@ -3655,42 +3672,42 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                     key: 'public',
                     cats: ['public', 'medical'] as MapCategoryKey[],
                     label: 'Hành chính & Công cộng',
-                    activeBg: 'bg-[#059669] text-white',
+                    activeBg: 'bg-[#059669] text-white shadow-xs',
                     isDefault: true,
                   },
                   {
                     key: 'school',
                     cats: ['school'] as MapCategoryKey[],
                     label: 'Trường học & Giảng đường',
-                    activeBg: 'bg-[#10B981] text-white',
+                    activeBg: 'bg-[#10B981] text-white shadow-xs',
                     isDefault: true,
                   },
                   {
                     key: 'food',
                     cats: ['food'] as MapCategoryKey[],
                     label: 'Quán ăn',
-                    activeBg: 'bg-[#E11D48] text-white',
+                    activeBg: 'bg-[#E11D48] text-white shadow-xs',
                     isDefault: false,
                   },
                   {
                     key: 'pub',
                     cats: ['pub'] as MapCategoryKey[],
                     label: 'Quán nhậu & Lẩu',
-                    activeBg: 'bg-[#D97706] text-white',
+                    activeBg: 'bg-[#D97706] text-white shadow-xs',
                     isDefault: false,
                   },
                   {
                     key: 'cafe',
                     cats: ['cafe'] as MapCategoryKey[],
                     label: 'Cafe & Trà',
-                    activeBg: 'bg-[#0284C7] text-white',
+                    activeBg: 'bg-[#0284C7] text-white shadow-xs',
                     isDefault: false,
                   },
                   {
                     key: 'snack',
                     cats: ['snack'] as MapCategoryKey[],
                     label: 'Ăn vặt',
-                    activeBg: 'bg-[#9333EA] text-white',
+                    activeBg: 'bg-[#9333EA] text-white shadow-xs',
                     isDefault: false,
                   },
                   {
@@ -3705,7 +3722,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                       'entertainment',
                     ] as MapCategoryKey[],
                     label: 'Dịch vụ & Tiện ích',
-                    activeBg: 'bg-[#475569] text-white',
+                    activeBg: 'bg-[#475569] text-white shadow-xs',
                     isDefault: false,
                   },
                 ] as const
@@ -3725,13 +3742,13 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                         return [...base, ...tab.cats];
                       });
                     }}
-                    className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between transition cursor-pointer ${
+                    className={`w-full h-9 px-3 rounded-xl text-[12px] font-bold flex items-center justify-between gap-2 transition cursor-pointer ${
                       isActive ? tab.activeBg : 'text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <span>{tab.label}</span>
+                    <span className="whitespace-nowrap truncate">{tab.label}</span>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                      className={`min-w-[58px] text-center px-2 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap shrink-0 ${
                         isActive ? 'bg-black/20 text-white' : 'bg-slate-200/80 text-slate-600'
                       }`}
                     >
@@ -4167,16 +4184,28 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           )}
 
           {isMapManagerUser && !isAdminUser && (
-            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/95 border border-[#39B980] shadow-md text-[11px] whitespace-nowrap">
-              <span className="font-extrabold text-[#047857]">Quản lý Maps</span>
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/96 border border-[#39B980] shadow-md text-[11px] whitespace-nowrap">
+              <span className="font-extrabold text-[#047857] pl-1">Quản lý Maps</span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('pin');
+                  openAdminCreatePlaceModal();
+                  setIsAdminCoordModalOpen(false);
+                  setIsPickingOnMap(true);
+                }}
+                className="px-2.5 py-1 rounded-full bg-[#403064] hover:bg-[#2D2246] text-white font-extrabold cursor-pointer transition"
+                title="Chạm lên bản đồ để chấm ghim vị trí mới ngay trên điện thoại"
+              >
+                Chấm Maps +
+              </button>
               <button
                 type="button"
                 onClick={() => {
                   triggerFeedback('tap');
-                  setMerchantPortalTab('create_new');
-                  setIsMerchantPortalOpen(true);
+                  openAdminCreatePlaceModal();
                 }}
-                className="px-2 py-0.5 rounded-full bg-[#10B981] hover:bg-[#059669] text-white font-extrabold text-[10.5px] cursor-pointer"
+                className="px-2.5 py-1 rounded-full bg-[#059669] hover:bg-[#047857] text-white font-extrabold cursor-pointer transition"
               >
                 Thêm mới
               </button>
@@ -4184,12 +4213,24 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                 type="button"
                 onClick={() => {
                   triggerFeedback('tap');
-                  setMerchantPortalTab('merchant');
-                  setIsMerchantPortalOpen(true);
+                  openAdminCoordinateModal(selectedPlace || undefined);
                 }}
-                className="px-2 py-0.5 rounded-full bg-[#403064] hover:bg-[#2D2246] text-white font-extrabold text-[10.5px] cursor-pointer"
+                className="px-2.5 py-1 rounded-full bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#F59E0B] font-extrabold cursor-pointer transition"
               >
-                Định vị quán
+                Sửa vị trí
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  if (typeof window !== 'undefined') {
+                    window.location.hash = '#/quanly';
+                    window.dispatchEvent(new HashChangeEvent('hashchange'));
+                  }
+                }}
+                className="px-2.5 py-1 rounded-full bg-[#F3EFE6] hover:bg-[#E5DEC9] text-[#403064] border border-[#D8CFC0] font-extrabold cursor-pointer transition"
+              >
+                Web Quản lý
               </button>
             </div>
           )}
@@ -4197,6 +4238,19 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           {isAdminUser && (
             <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/96 border border-amber-300 text-[#78350F] shadow-[0_6px_20px_rgba(15,23,42,0.14)] backdrop-blur-md text-[11px] whitespace-nowrap">
               <span className="font-extrabold text-[#B45309] pl-1">Admin</span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerFeedback('pin');
+                  openAdminCreatePlaceModal();
+                  setIsAdminCoordModalOpen(false);
+                  setIsPickingOnMap(true);
+                }}
+                className="px-2.5 py-1 rounded-full bg-[#403064] hover:bg-[#2D2246] text-white font-extrabold cursor-pointer transition"
+                title="Chạm lên bản đồ để chấm ghim vị trí mới"
+              >
+                Chấm Maps +
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -4223,11 +4277,13 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                 type="button"
                 onClick={() => {
                   triggerFeedback('tap');
-                  setMerchantPortalTab('admin_approvals');
-                  setIsMerchantPortalOpen(true);
+                  if (typeof window !== 'undefined') {
+                    window.location.hash = '#/quanly';
+                    window.dispatchEvent(new HashChangeEvent('hashchange'));
+                  }
                 }}
                 className="px-2.5 py-1 rounded-full bg-[#F3EFE6] hover:bg-[#E5DEC9] text-[#403064] border border-[#D8CFC0] font-extrabold flex items-center gap-1 cursor-pointer transition"
-                title="Mở bảng quản trị duyệt quán & tạo mã chủ quán"
+                title="Mở bảng quản trị 3 cột (/quanly)"
               >
                 <span>Quản trị</span>
                 {pendingApprovalCount > 0 && (
@@ -4235,31 +4291,6 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                     {pendingApprovalCount}
                   </span>
                 )}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  triggerFeedback('approve');
-                  const nextMode =
-                    mapAccessStatus.mode === 'public_open'
-                      ? 'merchants_and_admin_only'
-                      : 'public_open';
-                  setMapAccessMode(nextMode);
-                  setSyncTick((t) => t + 1);
-                  setLocationNotice(
-                    nextMode === 'public_open'
-                      ? 'Đã chuyển Bản đồ số sang chế độ: Mở công khai.'
-                      : 'Đã chuyển Bản đồ số sang chế độ: Đang phát triển (Dành cho Chủ quán).'
-                  );
-                }}
-                className={`px-2 py-1 rounded-full font-extrabold cursor-pointer border transition ${
-                  mapAccessStatus.mode === 'public_open'
-                    ? 'bg-[#E6F7EF] text-[#047857] border-[#39B980]'
-                    : 'bg-[#FEF3C7] text-[#92400E] border-[#F59E0B]'
-                }`}
-                title="Chuyển đổi quyền truy cập Bản đồ số"
-              >
-                {mapAccessStatus.mode === 'public_open' ? 'Công khai' : 'Nội bộ'}
               </button>
             </div>
           )}
@@ -4439,7 +4470,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                   setModalPlace(loc.originalPlace);
                 }
               }}
-              isAdminUser={isAdminUser}
+              isAdminUser={isAdminUser || isMapManagerUser}
               onEditCoordinates={(loc) => openAdminCoordinateModal(loc)}
               userCoords={userCoords}
               activeRouteDistanceMeters={activeRoute?.totalDistanceMeters ?? null}
@@ -4763,8 +4794,8 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         </div>
       )}
 
-      {/* 8. MODAL QUẢN TRỊ ĐỊA DANH, TRỤ SỞ, HÀNG QUÁN & TỌA ĐỘ DÀNH RIÊNG CHO ADMIN */}
-      {isAdminCoordModalOpen && isAdminUser && (
+      {/* 8. MODAL QUẢN TRỊ ĐỊA DANH, TRỤ SỞ, HÀNG QUÁN & TỌA ĐỘ DÀNH RIÊNG CHO ADMIN & QUẢN LÝ MAPS */}
+      {isAdminCoordModalOpen && (isAdminUser || isMapManagerUser) && (
         <div
           className="fixed inset-0 z-50 bg-[#2D2246]/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
           onClick={() => setIsAdminCoordModalOpen(false)}
@@ -4775,16 +4806,26 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           >
             <div className="flex items-start justify-between gap-2 pb-3 border-b border-[#E5DEC9]">
               <div>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#FEF3C7] text-[#92400E] text-[10px] font-extrabold">
-                  QUẢN TRỊ BẢN ĐỒ SỐ PHƯỜNG XUÂN HÒA
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
+                    isAdminUser
+                      ? 'bg-[#FEF3C7] text-[#92400E]'
+                      : 'bg-[#E6F7EF] text-[#047857]'
+                  }`}
+                >
+                  {isAdminUser
+                    ? 'ADMIN • QUẢN TRỊ BẢN ĐỒ SỐ PHƯỜNG XUÂN HÒA'
+                    : 'QUẢN LÝ MAPS • XỬ LÝ TRỰC TIẾP TRÊN ĐIỆN THOẠI / BẢN ĐỒ'}
                 </span>
                 <h2 className="text-base font-extrabold text-[#2D2246] mt-1">
                   {isAdminCreatingNew
-                    ? 'Thêm địa danh, trụ sở hoặc hàng quán mới'
-                    : 'Chỉnh sửa địa danh, trụ sở & tọa độ'}
+                    ? 'Thêm vị trí, hàng quán hoặc địa danh mới'
+                    : 'Chỉnh sửa vị trí, hàng quán & chấm Maps'}
                 </h2>
                 <p className="text-[11px] text-[#65587F] mt-0.5">
-                  Đổi tên địa danh theo đơn vị hành chính mới, cập nhật chức năng, địa chỉ, tọa độ hoặc ẩn khỏi Bản đồ 2D & 3D.
+                  {isAdminUser
+                    ? 'Đổi tên địa danh, cập nhật hàng quán, địa chỉ, chấm tọa độ, Block hoặc xóa khỏi Bản đồ 2D & 3D.'
+                    : 'Bạn có thể thêm mới vị trí/hàng quán, chấm tọa độ Maps hoặc Block trực tiếp tại đây. Mọi cập nhật sẽ tự động gửi về mục Duyệt Maps (Cột 1) để Admin duyệt.'}
                 </p>
               </div>
               <button
@@ -5065,15 +5106,29 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
               <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[#E5DEC9]">
                 {!isAdminCreatingNew && adminTargetPlace && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={handleDeleteAdminPlace}
-                      className="px-3 py-2 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold cursor-pointer text-[11px]"
-                      title="Ẩn / xóa địa danh hoặc quán này khỏi Bản đồ 2D & 3D"
+                      onClick={handleBlockAdminPlace}
+                      className="px-3 py-2 rounded-xl bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#F59E0B] font-extrabold cursor-pointer text-[11px]"
+                      title="Block (Tạm khóa) địa điểm này trên Bản đồ 2D & 3D"
                     >
-                      Ẩn / Xóa khỏi bản đồ
+                      Block (Tạm khóa)
                     </button>
+                    {isAdminUser ? (
+                      <button
+                        type="button"
+                        onClick={handleDeleteAdminPlace}
+                        className="px-3 py-2 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold cursor-pointer text-[11px]"
+                        title="Chỉ Admin tối cao mới có quyền xóa địa điểm khỏi Bản đồ"
+                      >
+                        Xóa khỏi bản đồ
+                      </button>
+                    ) : (
+                      <span className="px-2.5 py-1.5 rounded-xl bg-[#F1ECE1] text-[#65587F] font-bold text-[10.5px]">
+                        🔒 Xóa: Chỉ Admin
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={handleRestoreAdminPlaceDefault}
@@ -5097,7 +5152,15 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                     type="submit"
                     className="px-4 py-2 rounded-xl bg-[#059669] hover:bg-[#047857] text-white border-2 border-[#403064] font-extrabold cursor-pointer shadow-sm"
                   >
-                    <span>{isAdminCreatingNew ? 'Tạo & Ghim lên Bản đồ' : 'Lưu cập nhật Địa điểm'}</span>
+                    <span>
+                      {isAdminCreatingNew
+                        ? isAdminUser
+                          ? 'Tạo & Ghim lên Bản đồ'
+                          : 'Ghim lên Maps & Gửi Admin duyệt'
+                        : isAdminUser
+                        ? 'Lưu cập nhật Địa điểm'
+                        : 'Lưu vị trí & Gửi Admin duyệt'}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -5410,9 +5473,10 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           }
           places={verifiedMapMarkers}
           isAdminUser={isAdminUser}
+          isMapManagerUser={isMapManagerUser}
           onDataChanged={() => setSyncTick((t) => t + 1)}
           onOpenWebAdmin={() => {
-            window.location.hash = '#admin';
+            window.location.hash = '#/quanly';
             window.dispatchEvent(new HashChangeEvent('hashchange'));
           }}
           onClose={(centerFrom3D) => {

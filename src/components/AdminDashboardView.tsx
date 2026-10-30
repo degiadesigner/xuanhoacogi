@@ -72,6 +72,10 @@ import {
   simulateMerchantDemoSubmission,
   assignMerchantOwnerByEmail,
   setMapAccessMode,
+  updateMemberManagerPermissions,
+  getEffectiveAdminRoleInfo,
+  approvePendingPlaceItem,
+  rejectPendingPlaceItem,
 } from '@/lib/admin-store';
 import { UserAuthProfile, saveAuthUser } from '@/lib/auth';
 import { Place } from '@/lib/places-xuanhoa';
@@ -99,7 +103,7 @@ interface AdminDashboardViewProps {
   onOpenAuthModal?: () => void;
 }
 
-type AdminSection = 'overview' | 'places' | 'members' | 'reviews' | 'logs';
+type AdminSection = 'overview' | 'places' | 'maps' | 'members' | 'reviews' | 'logs';
 
 interface ThemeTokens {
   id: AdminThemeMode;
@@ -220,12 +224,20 @@ export function AdminDashboardView({
   // Bảng Cài đặt gọn gàng ở góc phải
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // Quản lý Quán (Cột 2 & Cột 3 cao bằng nhau, xếp A-Z, 2 ô lọc sổ xuống ngang hàng)
+  // Quản lý Quán (3 cột: Cột 1 Danh sách & Duyệt Quán | Cột 2 Thông tin | Cột 3 Thực đơn)
+  const [placeListTab, setPlaceListTab] = useState<'all' | 'pending_web'>('all');
   const [placeSearch, setPlaceSearch] = useState('');
   const [placeSectorFilter, setPlaceSectorFilter] = useState<string>('all');
   const [placeStatusFilter, setPlaceStatusFilter] = useState<'all' | 'active' | 'boosted' | 'locked' | 'deleted'>('all');
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [mobileShowDetailPane, setMobileShowDetailPane] = useState(false);
+
+  // Quản lý Maps (3 cột: Cột 1 Danh sách & Duyệt Maps | Cột 2 Định vị & Địa danh | Cột 3 Bản đồ tương tác & Kiểm tra)
+  const [mapListTab, setMapListTab] = useState<'all' | 'pending_maps'>('all');
+  const [mapSearch, setMapSearch] = useState('');
+  const [mapCatFilter, setMapCatFilter] = useState<string>('all');
+  const [mapCoordFilter, setMapCoordFilter] = useState<'all' | 'verified' | 'unverified' | 'locked'>('all');
+  const [gmailLoginInput, setGmailLoginInput] = useState('');
 
   // Thêm nhanh phân khu ngành nghề ngay trong cài đặt của Quán
   const [isAddingSectorInline, setIsAddingSectorInline] = useState(false);
@@ -310,6 +322,8 @@ export function AdminDashboardView({
     password: '',
     displayName: '',
     role: 'manager' as 'superadmin' | 'manager',
+    canManageWeb: true,
+    canManageMaps: false,
   });
 
   const [isMerchantModalOpen, setIsMerchantModalOpen] = useState(false);
@@ -350,6 +364,29 @@ export function AdminDashboardView({
 
   const adminState = useMemo(() => getAdminState(), [refreshTick]);
   const adminAccounts = useMemo(() => getAdminAccounts(), [refreshTick]);
+  const roleInfo = useMemo(
+    () => getEffectiveAdminRoleInfo(loggedAdmin, authUser),
+    [loggedAdmin, authUser, refreshTick]
+  );
+  const isSuperAdmin = roleInfo.isSuperAdmin;
+  const canManageWeb = roleInfo.canManageWeb;
+  const canManageMaps = roleInfo.canManageMaps;
+
+  // Đảm bảo khi Quản lý đăng nhập chỉ vào đúng mảng được cấp quyền
+  useEffect(() => {
+    if (!roleInfo.isAuthenticated) return;
+    if (!isSuperAdmin) {
+      if (activeSection === 'overview' || activeSection === 'members' || activeSection === 'reviews' || activeSection === 'logs') {
+        if (canManageWeb) setActiveSection('places');
+        else if (canManageMaps) setActiveSection('maps');
+      } else if (activeSection === 'places' && !canManageWeb && canManageMaps) {
+        setActiveSection('maps');
+      } else if (activeSection === 'maps' && !canManageMaps && canManageWeb) {
+        setActiveSection('places');
+      }
+    }
+  }, [roleInfo.isAuthenticated, isSuperAdmin, canManageWeb, canManageMaps, activeSection]);
+
   const allPlaces = useMemo(() => getAllAdminPlaceAndLandmarkItems(), [refreshTick]);
   const managedOsmLandmarks = useMemo(() => getManagedOsmLandmarks(true), [refreshTick]);
   const allDishes = useMemo(() => getAllManagedDishes(), [refreshTick]);
@@ -358,6 +395,25 @@ export function AdminDashboardView({
     () => getAllMerchantSubmissions().filter(s => s.status === 'pending'),
     [refreshTick]
   );
+
+  // Danh sách chờ Admin duyệt ở cột 1 của Quản lý Quán và Quản lý Maps
+  const pendingWebPlaces = useMemo(() => {
+    return allPlaces.filter(item => {
+      const ov = adminState.places?.[item.place.id];
+      const hasSub = pendingMerchantSubmissions.some(s => s.placeId === item.place.id);
+      return Boolean(ov?.pendingWebApproval) || hasSub;
+    });
+  }, [allPlaces, adminState, pendingMerchantSubmissions]);
+
+  const pendingMapPlaces = useMemo(() => {
+    return allPlaces.filter(item => {
+      const ov = adminState.places?.[item.place.id];
+      const hasMapSub = pendingMerchantSubmissions.some(
+        s => s.placeId === item.place.id && s.proposed.lat !== null
+      );
+      return Boolean(ov?.pendingMapApproval) || hasMapSub;
+    });
+  }, [allPlaces, adminState, pendingMerchantSubmissions]);
   const allMembers = useMemo(() => {
     return Object.values(adminState.members || {}).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
   }, [adminState]);
@@ -446,10 +502,11 @@ export function AdminDashboardView({
     setIsAddingDishRow(false);
   };
 
-  // Lọc và sắp xếp danh sách quán theo đúng bảng chữ cái A -> B -> C -> D
+  // Lọc và sắp xếp danh sách quán theo đúng bảng chữ cái A -> B -> C -> D (hoặc tab Duyệt Quán)
   const filteredPlaces = useMemo(() => {
     const q = placeSearch.trim().toLowerCase();
-    const list = allPlaces.filter(item => {
+    const sourceList = placeListTab === 'pending_web' ? pendingWebPlaces : allPlaces;
+    const list = sourceList.filter(item => {
       if (placeSectorFilter !== 'all' && item.sectorTag !== placeSectorFilter) return false;
       if (placeStatusFilter === 'boosted') {
         if (item.priorityBoost <= 1) return false;
@@ -473,7 +530,47 @@ export function AdminDashboardView({
 
     // Luôn xếp chuẩn theo bảng chữ cái A -> B -> C -> D
     return [...list].sort((a, b) => a.place.name.localeCompare(b.place.name, 'vi'));
-  }, [allPlaces, placeSearch, placeSectorFilter, placeStatusFilter]);
+  }, [allPlaces, pendingWebPlaces, placeListTab, placeSearch, placeSectorFilter, placeStatusFilter]);
+
+  // Lọc danh sách Địa điểm cho mục Quản lý Maps (Cột 1 của Quản lý Maps)
+  const getResolvedPlaceCoordsAndCat = (item: AdminPlaceItem) => {
+    const ov = adminState.places?.[item.place.id];
+    const osmItem = managedOsmLandmarks.find(l => l.id === item.place.id);
+    const lat = typeof ov?.lat === 'number' ? ov.lat : osmItem?.lat ?? null;
+    const lng = typeof ov?.lng === 'number' ? ov.lng : osmItem?.lng ?? null;
+    const hasCoords = typeof lat === 'number' && typeof lng === 'number';
+    const mapCat = (ov?.mapCategory ||
+      osmItem?.category ||
+      (item.sectorTag === 'dia-danh'
+        ? 'public'
+        : item.sectorTag === 'nhau-lau'
+        ? 'pub'
+        : item.sectorTag === 'uong'
+        ? 'cafe'
+        : item.sectorTag === 'an-vat'
+        ? 'snack'
+        : 'food')) as EditableMapCategory;
+    return { lat, lng, hasCoords, mapCat };
+  };
+
+  const filteredMapPlaces = useMemo(() => {
+    const q = mapSearch.trim().toLowerCase();
+    const sourceList = mapListTab === 'pending_maps' ? pendingMapPlaces : allPlaces;
+    const list = sourceList.filter(item => {
+      const { hasCoords, mapCat } = getResolvedPlaceCoordsAndCat(item);
+      if (mapCatFilter !== 'all' && mapCat !== mapCatFilter) return false;
+      if (mapCoordFilter === 'verified' && !hasCoords) return false;
+      if (mapCoordFilter === 'unverified' && hasCoords) return false;
+      if (mapCoordFilter === 'locked' && item.status !== 'locked') return false;
+      if (!q) return true;
+      return (
+        item.place.name.toLowerCase().includes(q) ||
+        item.place.address.toLowerCase().includes(q) ||
+        (item.place.phone || '').toLowerCase().includes(q)
+      );
+    });
+    return [...list].sort((a, b) => a.place.name.localeCompare(b.place.name, 'vi'));
+  }, [allPlaces, pendingMapPlaces, mapListTab, mapSearch, mapCatFilter, mapCoordFilter, adminState, managedOsmLandmarks]);
 
   const getMatchedDishPreview = (item: AdminPlaceItem): string | null => {
     const q = placeSearch.trim().toLowerCase();
@@ -505,13 +602,41 @@ export function AdminDashboardView({
     return allPlaces.reduce((acc, item) => acc + (item.fullMenu?.length || 0), 0);
   }, [allPlaces]);
 
-  // Xử lý đăng nhập Admin
+  // Xử lý đăng nhập Admin (theo Nick + Mật khẩu) hoặc Quản lý (nếu gõ trực tiếp Gmail đã được cấp quyền vào ô tài khoản)
   const handleAdminLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
+    const cleanInput = loginUsername.trim().toLowerCase();
+    if (cleanInput.includes('@')) {
+      const member = adminState.members?.[cleanInput];
+      const isSuperEmail = Boolean(
+        adminState.adminEmails?.some(em => em.trim().toLowerCase() === cleanInput)
+      );
+      if (isSuperEmail || (member && (member.canManageWeb || member.canManageMaps || member.status === 'admin'))) {
+        saveAuthUser({
+          isLoggedIn: true,
+          uid: member?.uid || `mgr_${Date.now()}`,
+          email: cleanInput,
+          displayName: member?.displayName || member?.nickname || cleanInput,
+          nickname: member?.nickname || member?.displayName || cleanInput,
+          gender: member?.gender || 'male',
+          avatar: member?.avatar || '🛡️',
+          avatarId: member?.avatarId || 'm_ty',
+          hasCompletedProfile: true,
+          isFirstTimeSetupDone: true,
+          createdAt: member?.createdAt || Date.now(),
+        });
+        setRefreshTick(t => t + 1);
+        showToast(`Xin chào ${member?.nickname || cleanInput}! Đã vào bằng Gmail được cấp quyền.`);
+        return;
+      }
+      setLoginError('Gmail này chưa được Admin tích cấp quyền Quản lý Quán hoặc Quản lý Maps!');
+      return;
+    }
+
     const res = loginAdminWithCredentials(loginUsername, loginPassword, loginRememberMe);
     if (!res.ok || !res.account) {
-      setLoginError(res.message || 'Sai tên đăng nhập hoặc mật khẩu');
+      setLoginError(res.message || 'Sai tên đăng nhập hoặc mật khẩu Admin');
       return;
     }
     setLoggedAdmin(res.account);
@@ -522,7 +647,11 @@ export function AdminDashboardView({
   const handleAdminLogout = () => {
     logoutAdminSession();
     setLoggedAdmin(null);
-    showToast('Đã đăng xuất khỏi tài khoản Quản trị');
+    setIsSettingsModalOpen(false);
+    showToast('Đã thoát khỏi phiên Quản trị');
+    if (!loggedAdmin) {
+      onBackToApp();
+    }
   };
 
   // Lưu thay đổi của Quán & Thực đơn
@@ -553,6 +682,9 @@ export function AdminDashboardView({
       numLat <= 22.0 &&
       numLng >= 105.0 &&
       numLng <= 106.5;
+
+    const prevOv = adminState.places?.[selectedPlaceItem.place.id];
+    const isEditingMapsSection = activeSection === 'maps';
 
     savePlaceAdminOverride(
       selectedPlaceItem.place.id,
@@ -589,13 +721,43 @@ export function AdminDashboardView({
               coordinateSource: 'admin_verified',
             }
           : {}),
+        ...(!isSuperAdmin
+          ? isEditingMapsSection
+            ? {
+                pendingMapApproval: {
+                  submittedBy: roleInfo.identifier || 'quanlymaps',
+                  submittedByName: roleInfo.displayName || 'Quản lý Maps',
+                  submittedAt: Date.now(),
+                  actionSummary: hasValidCoords
+                    ? `Cập nhật định vị (${Number(numLat!.toFixed(5))}, ${Number(numLng!.toFixed(5))})`
+                    : 'Cập nhật thông tin địa điểm Maps',
+                  previousLat: prevOv?.lat ?? null,
+                  previousLng: prevOv?.lng ?? null,
+                },
+              }
+            : {
+                pendingWebApproval: {
+                  submittedBy: roleInfo.identifier || 'quanlyweb',
+                  submittedByName: roleInfo.displayName || 'Quản lý Web',
+                  submittedAt: Date.now(),
+                  actionSummary: customMenuOverride
+                    ? `Cập nhật thực đơn (${menuToSave.length} món)`
+                    : 'Cập nhật thông tin quán',
+                },
+              }
+          : {}),
       },
       toastLabel || `Cập nhật "${editPlaceName}"`
     );
     setRefreshTick(t => t + 1);
     setJustSavedPlace(true);
     setTimeout(() => setJustSavedPlace(false), 2000);
-    showToast(toastLabel || `✅ Đã lưu cập nhật quán "${editPlaceName}"!`, 'approve');
+    showToast(
+      !isSuperAdmin
+        ? `✅ Đã lưu và gửi vào mục ${isEditingMapsSection ? 'Duyệt Maps' : 'Duyệt Quán'} chờ Admin duyệt!`
+        : toastLabel || `✅ Đã lưu cập nhật "${editPlaceName}"!`,
+      'approve'
+    );
   };
 
   const handleChangePriorityBoost = (nextBoost: 1 | 2 | 3) => {
@@ -734,6 +896,7 @@ export function AdminDashboardView({
       !Number.isNaN(numLat) &&
       !Number.isNaN(numLng);
 
+    const isFromMapsSection = activeSection === 'maps';
     savePlaceAdminOverride(newId, {
       sectorTag: newPlaceForm.sectorTag,
       mapCategory: newPlaceForm.mapCategory,
@@ -745,12 +908,37 @@ export function AdminDashboardView({
             coordinateSource: 'admin_verified',
           }
         : {}),
+      ...(!isSuperAdmin
+        ? isFromMapsSection
+          ? {
+              pendingMapApproval: {
+                submittedBy: roleInfo.identifier || 'quanlymaps',
+                submittedByName: roleInfo.displayName || 'Quản lý Maps',
+                submittedAt: Date.now(),
+                actionSummary: 'Thêm địa điểm định vị mới',
+                previousLat: null,
+                previousLng: null,
+                isNewPlace: true,
+              },
+            }
+          : {
+              pendingWebApproval: {
+                submittedBy: roleInfo.identifier || 'quanlyweb',
+                submittedByName: roleInfo.displayName || 'Quản lý Web',
+                submittedAt: Date.now(),
+                actionSummary: 'Thêm quán mới vào hệ thống',
+                isNewPlace: true,
+              },
+            }
+        : {}),
     });
     setIsNewPlaceModalOpen(false);
     setRefreshTick(t => t + 1);
     setSelectedPlaceId(newId);
     showToast(
-      hasCoords
+      !isSuperAdmin
+        ? `✅ Đã tạo "${created.name}" và đưa vào danh sách chờ Admin duyệt!`
+        : hasCoords
         ? `✅ Đã tạo & cắm ghim lên Bản đồ: ${created.name}`
         : `✅ Đã thêm địa điểm mới: ${created.name}`,
       'approve'
@@ -768,9 +956,19 @@ export function AdminDashboardView({
       password: adminAccForm.password,
       displayName: adminAccForm.displayName || adminAccForm.username,
       role: adminAccForm.role,
+      canManageWeb: adminAccForm.role === 'superadmin' ? true : adminAccForm.canManageWeb,
+      canManageMaps: adminAccForm.role === 'superadmin' ? true : adminAccForm.canManageMaps,
     });
     setIsAdminAccModalOpen(false);
-    setAdminAccForm({ id: '', username: '', password: '', displayName: '', role: 'manager' });
+    setAdminAccForm({
+      id: '',
+      username: '',
+      password: '',
+      displayName: '',
+      role: 'manager',
+      canManageWeb: true,
+      canManageMaps: false,
+    });
     setRefreshTick(t => t + 1);
     showToast(`✅ Đã lưu tài khoản quản lý @${adminAccForm.username}`, 'approve');
   };
@@ -845,9 +1043,44 @@ export function AdminDashboardView({
   const boostedPlacesCount = allPlaces.filter(p => p.priorityBoost > 1).length;
 
   // ===========================================================================
-  // NẾU CHƯA ĐĂNG NHẬP TÀI KHOẢN QUẢN LÝ -> HIỆN TRANG ĐĂNG NHẬP ADMIN ĐÀNG HOÀNG
+  // NẾU CHƯA ĐĂNG NHẬP TÀI KHOẢN QUẢN LÝ HOẶC GMAIL ĐƯỢC CẤP QUYỀN -> HIỆN TRANG ĐĂNG NHẬP
   // ===========================================================================
-  if (!loggedAdmin) {
+  if (!roleInfo.isAuthenticated) {
+    const handleGmailQuickAuth = (e: React.FormEvent) => {
+      e.preventDefault();
+      setLoginError('');
+      const cleanEmail = gmailLoginInput.trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        setLoginError('Vui lòng nhập đúng địa chỉ Gmail đã đăng ký.');
+        return;
+      }
+      const member = adminState.members?.[cleanEmail];
+      const isSuperEmail = Boolean(
+        adminState.adminEmails?.some(em => em.trim().toLowerCase() === cleanEmail)
+      );
+      if (!isSuperEmail && (!member || (!member.canManageWeb && !member.canManageMaps && member.status !== 'admin'))) {
+        setLoginError(
+          'Gmail này chưa được Admin tích cấp quyền Quản lý Web hoặc Quản lý Maps trong bảng Quản lý Thành viên!'
+        );
+        return;
+      }
+      saveAuthUser({
+        isLoggedIn: true,
+        uid: member?.uid || `mgr_${Date.now()}`,
+        email: cleanEmail,
+        displayName: member?.displayName || member?.nickname || cleanEmail,
+        nickname: member?.nickname || member?.displayName || cleanEmail,
+        gender: member?.gender || 'male',
+        avatar: member?.avatar || '🛡️',
+        avatarId: member?.avatarId || 'm_ty',
+        hasCompletedProfile: true,
+        isFirstTimeSetupDone: true,
+        createdAt: member?.createdAt || Date.now(),
+      });
+      setRefreshTick(t => t + 1);
+      showToast(`Xin chào ${member?.nickname || cleanEmail}! Đã xác thực quyền quản lý qua Gmail.`);
+    };
+
     return (
       <div
         className="xh-admin-shell"
@@ -866,15 +1099,15 @@ export function AdminDashboardView({
         <div
           style={{
             width: '100%',
-            maxWidth: '380px',
+            maxWidth: '390px',
             background: theme.bgCard,
             borderRadius: '18px',
             border: `1px solid ${theme.border}`,
-            padding: '30px 26px 24px',
+            padding: '28px 24px 22px',
             boxShadow: '0 16px 40px rgba(0,0,0,0.06)',
           }}
         >
-          <div style={{ textAlign: 'center', marginBottom: '22px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
             <div
               style={{
                 width: '44px',
@@ -893,14 +1126,14 @@ export function AdminDashboardView({
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, letterSpacing: '-0.01em' }}>
               Đăng nhập Quản trị
             </h2>
-            <div style={{ fontSize: '12.5px', color: theme.textMuted, marginTop: '3px' }}>
-              Xuân Hòa Có Gì
+            <div style={{ fontSize: '12px', color: theme.textMuted, marginTop: '3px' }}>
+              Admin Tối Cao • Quản lý Web • Quản lý Maps
             </div>
           </div>
 
-          <form onSubmit={handleAdminLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <form onSubmit={handleAdminLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
-              <label style={compactLabelStyle(theme)}>Tài khoản</label>
+              <label style={compactLabelStyle(theme)}>Tài khoản Admin / Quản lý</label>
               <input
                 type="text"
                 value={loginUsername}
@@ -983,12 +1216,12 @@ export function AdminDashboardView({
               type="submit"
               style={{
                 marginTop: '2px',
-                padding: '11px',
+                padding: '10px',
                 borderRadius: '10px',
                 border: 'none',
                 background: theme.accent,
                 color: '#FFFFFF',
-                fontSize: '13.5px',
+                fontSize: '13px',
                 fontWeight: 800,
                 cursor: 'pointer',
                 display: 'flex',
@@ -997,10 +1230,49 @@ export function AdminDashboardView({
                 gap: '6px',
               }}
             >
-              <LogIn size={16} />
+              <LogIn size={15} />
               <span>Đăng nhập</span>
             </button>
           </form>
+
+          <div
+            style={{
+              marginTop: '16px',
+              paddingTop: '14px',
+              borderTop: `1px dashed ${theme.border}`,
+            }}
+          >
+            <form onSubmit={handleGmailQuickAuth} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={compactLabelStyle(theme)}>
+                Hoặc vào bằng Gmail đã được Admin cấp quyền Quản lý:
+              </label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="email"
+                  value={gmailLoginInput}
+                  onChange={e => setGmailLoginInput(e.target.value)}
+                  placeholder="Nhập Gmail của bạn..."
+                  style={{ ...compactInputStyle(theme), flex: 1 }}
+                />
+                <button
+                  type="submit"
+                  style={{
+                    padding: '0 13px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.accentBorder}`,
+                    background: theme.accentSoft,
+                    color: theme.accent,
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Vào ngay
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     );
@@ -1044,7 +1316,7 @@ export function AdminDashboardView({
         </div>
       )}
 
-      {/* TOPBAR TRÊN CÙNG — GỌN 1 HÀNG TRÊN CẢ MOBILE & PC */}
+      {/* TOPBAR TRÊN CÙNG — ĐÃ LÀM GỌN TỐI ĐA: CHỈ CÒN BẢN ĐỒ + TÊN/QUYỀN + CÀI ĐẶT */}
       <header
         className="xh-admin-topbar"
         style={{
@@ -1072,32 +1344,19 @@ export function AdminDashboardView({
             <span className="xh-topbar-title" style={{ fontSize: '14px', fontWeight: 800, whiteSpace: 'nowrap' }}>
               QUẢN TRỊ <span className="xh-hide-mobile">XUÂN HÒA CÓ GÌ</span>
             </span>
-            <span
-              className="xh-hide-mobile"
-              style={{
-                fontSize: '11px',
-                fontWeight: 700,
-                padding: '2px 7px',
-                borderRadius: '6px',
-                background: theme.accentSoft,
-                color: theme.accent,
-              }}
-            >
-              Hệ thống Quản lý Độc lập
-            </span>
           </div>
         </div>
 
-        {/* GÓC PHẢI: BẢN ĐỒ SỐ + DUYỆT CHỦ QUÁN + MÃ CODE + NICK ĐANG ĐĂNG NHẬP + CÀI ĐẶT + THOÁT (GỌN 1 HÀNG) */}
-        <div className="xh-topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+        {/* GÓC PHẢI GỌN GÀNG: BẢN ĐỒ + TÀI KHOẢN ĐANG ĐĂNG NHẬP + CÀI ĐẶT (THOÁT NẰM TRONG CÀI ĐẶT) */}
+        <div className="xh-topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <button
             type="button"
-            onClick={() => jumpToMapUrl('#/ban-do')}
+            onClick={() => jumpToMapUrl('#/bandoso')}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '5px',
-              padding: '6px 10px',
+              padding: '6px 11px',
               borderRadius: '8px',
               border: '1px solid #10B981',
               background: '#E6F7EF',
@@ -1110,127 +1369,10 @@ export function AdminDashboardView({
             title="Mở Bản Đồ Số Xuân Hòa"
           >
             <MapPin size={14} />
-            <span className="xh-hide-mobile">Bản đồ</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              triggerFeedback('tap');
-              setMerchantModalTab('admin_approvals');
-              setIsMerchantModalOpen(true);
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '6px 10px',
-              borderRadius: '8px',
-              border:
-                pendingMerchantSubmissions.length > 0
-                  ? '1.5px solid #EF4444'
-                  : `1px solid ${theme.border}`,
-              background:
-                pendingMerchantSubmissions.length > 0
-                  ? 'rgba(239, 68, 68, 0.1)'
-                  : theme.bgElevated,
-              color: pendingMerchantSubmissions.length > 0 ? '#B91C1C' : theme.textPrimary,
-              fontSize: '12px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-            title="Duyệt thay đổi định vị & thông tin do Chủ quán gửi lên"
-          >
-            <Bell
-              size={14}
-              style={{
-                color: pendingMerchantSubmissions.length > 0 ? '#EF4444' : theme.accent,
-              }}
-            />
-            <span>
-              Duyệt
-              <span className="xh-hide-mobile"> Chủ Quán</span> ({pendingMerchantSubmissions.length})
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              triggerFeedback('tap');
-              setMerchantModalTab('admin_codes');
-              setIsMerchantModalOpen(true);
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '6px 10px',
-              borderRadius: '8px',
-              border: `1px solid ${theme.accentBorder}`,
-              background: theme.accentSoft,
-              color: theme.accent,
-              fontSize: '12px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-            title="Danh sách Mã Code duy nhất cấp cho từng Chủ quán"
-          >
-            <KeyRound size={14} />
-            <span className="xh-hide-mobile">Mã Code Quán</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              const currentMode = adminState.mapAccessMode || 'merchants_and_admin_only';
-              const nextMode =
-                currentMode === 'public_open' ? 'merchants_and_admin_only' : 'public_open';
-              setMapAccessMode(nextMode);
-              setRefreshTick((t) => t + 1);
-              showToast(
-                nextMode === 'public_open'
-                  ? '🌍 Đã MỞ CỬA Bản Đồ Số công khai cho toàn bộ Khách!'
-                  : '🔒 Đã bật chế độ: Chỉ Chủ Quán (có Mã Code) & Admin mới vào được Bản Đồ Số!',
-                'approve'
-              );
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '6px 10px',
-              borderRadius: '8px',
-              border: `1px solid ${
-                adminState.mapAccessMode === 'public_open' ? '#10B981' : '#F59E0B'
-              }`,
-              background:
-                adminState.mapAccessMode === 'public_open' ? '#E6F7EF' : '#FEF3C7',
-              color:
-                adminState.mapAccessMode === 'public_open' ? '#047857' : '#92400E',
-              fontSize: '12px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-            title="Công tắc Mở/Khóa Bản Đồ Số cho khách thường (Chủ quán có Mã Code & Admin luôn vào thẳng)"
-          >
-            {adminState.mapAccessMode === 'public_open' ? (
-              <>
-                <Unlock size={14} />
-                <span className="xh-hide-mobile">Maps: Đang mở Khách</span>
-              </>
-            ) : (
-              <>
-                <Lock size={14} />
-                <span className="xh-hide-mobile">Maps: Chỉ Quán & Admin</span>
-              </>
-            )}
+            <span>Bản đồ</span>
           </button>
 
           <div
-            className="xh-hide-mobile"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1244,18 +1386,30 @@ export function AdminDashboardView({
             }}
           >
             <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981' }} />
-            <span>{loggedAdmin.displayName}</span>
-            <span style={{ color: theme.textMuted, fontWeight: 500 }}>(@{loggedAdmin.username})</span>
+            <span>{roleInfo.displayName}</span>
+            <span
+              className="xh-hide-mobile"
+              style={{
+                fontSize: '10.5px',
+                fontWeight: 800,
+                padding: '1px 6px',
+                borderRadius: '5px',
+                background: isSuperAdmin ? theme.accentSoft : '#E0F2FE',
+                color: isSuperAdmin ? theme.accent : '#0369A1',
+              }}
+            >
+              {roleInfo.roleBadgeLabel}
+            </span>
           </div>
 
           <button
             onClick={() => setIsSettingsModalOpen(true)}
-            title="Cài đặt giao diện & sao lưu"
+            title="Cài đặt giao diện, sao lưu & đăng xuất"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '5px',
-              padding: '6px 10px',
+              padding: '6px 11px',
               borderRadius: '8px',
               border: `1px solid ${theme.border}`,
               background: theme.bgElevated,
@@ -1267,41 +1421,12 @@ export function AdminDashboardView({
             }}
           >
             <Settings size={14} style={{ color: theme.accent }} />
-            <span className="xh-hide-mobile">Cài đặt</span>
-            <span
-              style={{
-                width: '7px',
-                height: '7px',
-                borderRadius: '50%',
-                background: theme.dotColor,
-              }}
-            />
-          </button>
-
-          <button
-            onClick={handleAdminLogout}
-            title="Đăng xuất khỏi trang Quản trị"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '6px 9px',
-              borderRadius: '8px',
-              border: `1px solid ${theme.border}`,
-              background: theme.bgElevated,
-              color: '#B91C1C',
-              fontSize: '12px',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            <LogOut size={14} />
-            <span className="xh-hide-mobile">Thoát</span>
+            <span>Cài đặt</span>
           </button>
         </div>
       </header>
 
-      {/* THÂN TRANG: CỘT 1 TRÁI (MENU THEO ĐÚNG THỨ TỰ: TỔNG QUAN - QUẢN LÝ QUÁN - THÀNH VIÊN - ĐÁNH GIÁ - NHẬT KÝ) */}
+      {/* THÂN TRANG: CỘT MENU TRÁI (PHÂN QUYỀN THEO VAI TRÒ ADMIN / QUẢN LÝ WEB / QUẢN LÝ MAPS) */}
       <div className="xh-admin-body">
         <aside
           className="xh-admin-sidebar"
@@ -1313,35 +1438,63 @@ export function AdminDashboardView({
           <nav className="xh-sidebar-nav">
             {(
               [
-                {
-                  id: 'overview',
-                  label: 'Tổng quan',
-                  icon: Eye,
-                },
-                {
-                  id: 'places',
-                  label: 'Quản lý Quán',
-                  icon: Store,
-                  badge: String(allPlaces.length),
-                },
-                {
-                  id: 'members',
-                  label: 'Quản lý Thành viên',
-                  icon: Users,
-                  badge: String(realMembersCount),
-                },
-                {
-                  id: 'reviews',
-                  label: 'Đánh giá & Bình luận',
-                  icon: MessageSquare,
-                  badge: String(allReviews.length),
-                },
-                {
-                  id: 'logs',
-                  label: 'Nhật ký',
-                  icon: Activity,
-                },
-              ] as const
+                ...(isSuperAdmin
+                  ? [
+                      {
+                        id: 'overview' as const,
+                        label: 'Tổng quan',
+                        icon: Eye,
+                      },
+                    ]
+                  : []),
+                ...(isSuperAdmin || canManageWeb
+                  ? [
+                      {
+                        id: 'places' as const,
+                        label: 'Quản lý Quán',
+                        icon: Store,
+                        badge:
+                          pendingWebPlaces.length > 0
+                            ? `${allPlaces.length} • ${pendingWebPlaces.length} duyệt`
+                            : String(allPlaces.length),
+                      },
+                    ]
+                  : []),
+                ...(isSuperAdmin || canManageMaps
+                  ? [
+                      {
+                        id: 'maps' as const,
+                        label: 'Quản lý Maps',
+                        icon: MapPin,
+                        badge:
+                          pendingMapPlaces.length > 0
+                            ? `${allPlaces.length} • ${pendingMapPlaces.length} duyệt`
+                            : String(allPlaces.length),
+                      },
+                    ]
+                  : []),
+                ...(isSuperAdmin
+                  ? [
+                      {
+                        id: 'members' as const,
+                        label: 'Quản lý Thành viên',
+                        icon: Users,
+                        badge: String(realMembersCount),
+                      },
+                      {
+                        id: 'reviews' as const,
+                        label: 'Đánh giá & Bình luận',
+                        icon: MessageSquare,
+                        badge: String(allReviews.length),
+                      },
+                      {
+                        id: 'logs' as const,
+                        label: 'Nhật ký',
+                        icon: Activity,
+                      },
+                    ]
+                  : []),
+              ]
             ).map(item => {
               const Icon = item.icon;
               const active = activeSection === item.id;
@@ -1510,11 +1663,12 @@ export function AdminDashboardView({
           )}
 
           {/* =================================================================== */}
-          {/* 2. QUẢN LÝ QUÁN (CỘT 2 VÀ CỘT 3 CAO BẰNG NHAU CÂN ĐỐI, XẾP A-Z)      */}
+          {/* 2. QUẢN LÝ QUÁN — BỐ CỤC 3 CỘT: CỘT 1 (DANH SÁCH & DUYỆT QUÁN) |   */}
+          {/*    CỘT 2 (THÔNG TIN QUÁN) | CỘT 3 (THỰC ĐƠN MÓN ĂN)                 */}
           {/* =================================================================== */}
-          {activeSection === 'places' && (
-            <div className="xh-places-master-detail">
-              {/* CỘT 2: DANH SÁCH QUÁN XẾP THEO CHỮ CÁI A-B-C-D + 2 Ô SỔ XUỐNG NGANG HÀNG */}
+          {activeSection === 'places' && canManageWeb && (
+            <div className="xh-three-col-layout">
+              {/* CỘT 1: DANH SÁCH QUÁN + TAB DUYỆT QUÁN */}
               <div
                 className={`xh-places-list-pane ${mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
                 style={{
@@ -1524,37 +1678,98 @@ export function AdminDashboardView({
                   boxShadow: theme.shadow,
                 }}
               >
-                <div style={{ padding: '14px', borderBottom: `1px solid ${theme.border}` }}>
+                <div style={{ padding: '12px', borderBottom: `1px solid ${theme.border}` }}>
+                  {/* NÚT CHUYỂN TAB TRÊN ĐẦU CỘT 1: DANH SÁCH QUÁN | DUYỆT QUÁN */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '4px',
+                      padding: '3px',
+                      borderRadius: '10px',
+                      background: theme.bgInput,
+                      border: `1px solid ${theme.border}`,
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPlaceListTab('all')}
+                      style={{
+                        padding: '7px 8px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: placeListTab === 'all' ? theme.bgCard : 'transparent',
+                        color: placeListTab === 'all' ? theme.textPrimary : theme.textMuted,
+                        fontWeight: 800,
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        boxShadow: placeListTab === 'all' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                      }}
+                    >
+                      Danh sách ({allPlaces.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlaceListTab('pending_web')}
+                      style={{
+                        padding: '7px 8px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background:
+                          placeListTab === 'pending_web'
+                            ? '#FEF3C7'
+                            : pendingWebPlaces.length > 0
+                            ? 'rgba(245, 158, 11, 0.1)'
+                            : 'transparent',
+                        color:
+                          placeListTab === 'pending_web' || pendingWebPlaces.length > 0
+                            ? '#B45309'
+                            : theme.textMuted,
+                        fontWeight: 800,
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      {!isSuperAdmin && <Lock size={11} />}
+                      <span>Duyệt Quán ({pendingWebPlaces.length})</span>
+                    </button>
+                  </div>
+
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      marginBottom: '10px',
+                      marginBottom: '8px',
                     }}
                   >
-                    <div>
-                      <span style={{ fontSize: '14px', fontWeight: 800 }}>
-                        Danh sách Quán A–Z ({filteredPlaces.length})
-                      </span>
-                    </div>
+                    <span style={{ fontSize: '13px', fontWeight: 800 }}>
+                      {placeListTab === 'pending_web'
+                        ? `Chờ Admin duyệt (${filteredPlaces.length})`
+                        : `Quán A–Z (${filteredPlaces.length})`}
+                    </span>
                     <button
                       onClick={() => setIsNewPlaceModalOpen(true)}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '4px',
-                        padding: '6px 11px',
+                        padding: '5px 10px',
                         borderRadius: '8px',
                         border: 'none',
                         background: theme.accent,
                         color: '#FFFFFF',
-                        fontSize: '12px',
+                        fontSize: '11.5px',
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
                     >
-                      <Plus size={14} /> Thêm Quán
+                      <Plus size={13} /> Thêm Quán
                     </button>
                   </div>
 
@@ -1564,25 +1779,25 @@ export function AdminDashboardView({
                       display: 'flex',
                       alignItems: 'center',
                       gap: '7px',
-                      padding: '8px 11px',
+                      padding: '7px 10px',
                       borderRadius: '9px',
                       background: theme.bgInput,
                       border: `1px solid ${theme.border}`,
-                      marginBottom: '8px',
+                      marginBottom: '7px',
                     }}
                   >
-                    <Search size={14} style={{ color: theme.textMuted, flexShrink: 0 }} />
+                    <Search size={13} style={{ color: theme.textMuted, flexShrink: 0 }} />
                     <input
                       type="text"
                       value={placeSearch}
                       onChange={e => setPlaceSearch(e.target.value)}
-                      placeholder="Tìm tên quán (A-Z), SĐT, hoặc món ăn..."
+                      placeholder="Tìm tên quán, SĐT, món ăn..."
                       style={{
                         border: 'none',
                         background: 'transparent',
                         outline: 'none',
                         width: '100%',
-                        fontSize: '12.5px',
+                        fontSize: '12px',
                         color: theme.textPrimary,
                       }}
                     />
@@ -1603,143 +1818,183 @@ export function AdminDashboardView({
                   </div>
 
                   {/* 2 Ô LỰA CHỌN SỔ RA NẰM NGANG HÀNG NHAU (PHÂN KHU + TRẠNG THÁI) */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                    <select
-                      value={placeSectorFilter}
-                      onChange={e => setPlaceSectorFilter(e.target.value)}
-                      style={lightSelectStyle(theme)}
-                    >
-                      <option value="all">Tất cả phân khu ({allPlaces.length})</option>
-                      {sectorTags.map(sec => {
-                        const cnt = allPlaces.filter(p => p.sectorTag === sec.id).length;
-                        return (
-                          <option key={sec.id} value={sec.id}>
-                            {sec.label.split(' (')[0]} ({cnt})
-                          </option>
-                        );
-                      })}
-                    </select>
+                  {placeListTab === 'all' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
+                      <select
+                        value={placeSectorFilter}
+                        onChange={e => setPlaceSectorFilter(e.target.value)}
+                        style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
+                      >
+                        <option value="all">Tất cả phân khu</option>
+                        {sectorTags.map(sec => {
+                          const cnt = allPlaces.filter(p => p.sectorTag === sec.id).length;
+                          return (
+                            <option key={sec.id} value={sec.id}>
+                              {sec.label.split(' (')[0]} ({cnt})
+                            </option>
+                          );
+                        })}
+                      </select>
 
-                    <select
-                      value={placeStatusFilter}
-                      onChange={e => setPlaceStatusFilter(e.target.value as any)}
-                      style={lightSelectStyle(theme)}
-                    >
-                      <option value="all">Tất cả trạng thái</option>
-                      <option value="active">Đang mở ({allPlaces.filter(p => p.status === 'active').length})</option>
-                      <option value="boosted">★ Đang Ưu tiên ({boostedPlacesCount})</option>
-                      <option value="locked">Tạm khóa ({allPlaces.filter(p => p.status === 'locked').length})</option>
-                      <option value="deleted">Đã ẩn ({allPlaces.filter(p => p.status === 'deleted').length})</option>
-                    </select>
-                  </div>
+                      <select
+                        value={placeStatusFilter}
+                        onChange={e => setPlaceStatusFilter(e.target.value as any)}
+                        style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
+                      >
+                        <option value="all">Mọi trạng thái</option>
+                        <option value="active">Đang mở ({allPlaces.filter(p => p.status === 'active').length})</option>
+                        <option value="boosted">★ Ưu tiên ({boostedPlacesCount})</option>
+                        <option value="locked">Tạm khóa ({allPlaces.filter(p => p.status === 'locked').length})</option>
+                        {isSuperAdmin && (
+                          <option value="deleted">Đã xóa ({allPlaces.filter(p => p.status === 'deleted').length})</option>
+                        )}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
-                {/* DANH SÁCH THẺ QUÁN XẾP THEO A -> B -> C -> D */}
+                {/* DANH SÁCH THẺ QUÁN */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
-                  {filteredPlaces.map(item => {
-                    const isSelected = selectedPlaceId === item.place.id;
-                    const matchedDish = getMatchedDishPreview(item);
-                    return (
-                      <div
-                        key={item.place.id}
-                        onClick={() => {
-                          selectPlaceForEdit(item);
-                          setMobileShowDetailPane(true);
-                        }}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '10px',
-                          marginBottom: '6px',
-                          cursor: 'pointer',
-                          border: isSelected
-                            ? `1.5px solid ${theme.accent}`
-                            : `1px solid ${theme.border}`,
-                          background: isSelected ? theme.accentSoft : theme.bgElevated,
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                          <span style={{ fontSize: '13px', fontWeight: 700, color: theme.textPrimary }}>
-                            {item.place.name}
-                          </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-                            {item.priorityBoost > 1 && (
-                              <span
-                                style={{
-                                  fontSize: '10px',
-                                  fontWeight: 800,
-                                  padding: '1px 6px',
-                                  borderRadius: '4px',
-                                  background: theme.accent,
-                                  color: '#FFF',
-                                }}
-                              >
-                                ★ x{item.priorityBoost}
-                              </span>
-                            )}
-                            <span
-                              style={{
-                                width: '8px',
-                                height: '8px',
-                                borderRadius: '50%',
-                                background:
-                                  item.status === 'active'
-                                    ? '#10B981'
-                                    : item.status === 'locked'
-                                    ? '#F59E0B'
-                                    : '#EF4444',
-                              }}
-                              title={item.status === 'active' ? 'Đang mở' : 'Tạm khóa / Đã ẩn'}
-                            />
-                          </div>
-                        </div>
-
+                  {filteredPlaces.length === 0 ? (
+                    <div style={{ padding: '24px 12px', textAlign: 'center', fontSize: '12px', color: theme.textMuted }}>
+                      {placeListTab === 'pending_web'
+                        ? 'Hiện không có quán nào chờ Admin duyệt.'
+                        : 'Không tìm thấy quán phù hợp.'}
+                    </div>
+                  ) : (
+                    filteredPlaces.map(item => {
+                      const isSelected = selectedPlaceId === item.place.id;
+                      const matchedDish = getMatchedDishPreview(item);
+                      const ov = adminState.places?.[item.place.id];
+                      const pendingWeb = ov?.pendingWebApproval;
+                      return (
                         <div
+                          key={item.place.id}
+                          onClick={() => {
+                            selectPlaceForEdit(item);
+                            setMobileShowDetailPane(true);
+                          }}
                           style={{
-                            fontSize: '11.5px',
-                            color: theme.textMuted,
-                            marginTop: '3px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            flexWrap: 'wrap',
+                            padding: '9px 11px',
+                            borderRadius: '10px',
+                            marginBottom: '6px',
+                            cursor: 'pointer',
+                            border: isSelected
+                              ? `1.5px solid ${theme.accent}`
+                              : pendingWeb
+                              ? '1px solid #F59E0B'
+                              : `1px solid ${theme.border}`,
+                            background: isSelected
+                              ? theme.accentSoft
+                              : pendingWeb
+                              ? 'rgba(254, 243, 199, 0.45)'
+                              : theme.bgElevated,
                           }}
                         >
-                          <span style={{ color: theme.accent, fontWeight: 700 }}>
-                            {getSectorShortLabel(item.sectorTag)}
-                          </span>
-                          <span>•</span>
-                          <span>{item.fullMenu.length} món</span>
-                          {item.place.phone && (
-                            <>
-                              <span>•</span>
-                              <span>{item.place.phone}</span>
-                            </>
-                          )}
-                        </div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                            <span style={{ fontSize: '12.5px', fontWeight: 700, color: theme.textPrimary }}>
+                              {item.place.name}
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                              {pendingWeb && (
+                                <span
+                                  style={{
+                                    fontSize: '9.5px',
+                                    fontWeight: 800,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: '#FEF3C7',
+                                    color: '#B45309',
+                                    border: '1px solid #FCD34D',
+                                  }}
+                                >
+                                  Chờ duyệt
+                                </span>
+                              )}
+                              {item.priorityBoost > 1 && (
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: 800,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: theme.accent,
+                                    color: '#FFF',
+                                  }}
+                                >
+                                  ★x{item.priorityBoost}
+                                </span>
+                              )}
+                              <span
+                                style={{
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  background:
+                                    item.status === 'active'
+                                      ? '#10B981'
+                                      : item.status === 'locked'
+                                      ? '#F59E0B'
+                                      : '#EF4444',
+                                }}
+                              />
+                            </div>
+                          </div>
 
-                        {matchedDish && (
                           <div
                             style={{
-                              marginTop: '5px',
                               fontSize: '11px',
-                              fontWeight: 700,
-                              color: '#047857',
+                              color: theme.textMuted,
+                              marginTop: '3px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              flexWrap: 'wrap',
                             }}
                           >
-                            Khớp món: {matchedDish}
+                            <span style={{ color: theme.accent, fontWeight: 700 }}>
+                              {getSectorShortLabel(item.sectorTag)}
+                            </span>
+                            <span>•</span>
+                            <span>{item.fullMenu.length} món</span>
+                            {item.place.phone && (
+                              <>
+                                <span>•</span>
+                                <span>{item.place.phone}</span>
+                              </>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+
+                          {pendingWeb && (
+                            <div style={{ marginTop: '4px', fontSize: '10.5px', fontWeight: 700, color: '#B45309' }}>
+                              📝 {pendingWeb.submittedByName}: {pendingWeb.actionSummary}
+                            </div>
+                          )}
+
+                          {matchedDish && (
+                            <div
+                              style={{
+                                marginTop: '4px',
+                                fontSize: '10.5px',
+                                fontWeight: 700,
+                                color: '#047857',
+                              }}
+                            >
+                              Khớp món: {matchedDish}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
-              {/* CỘT 3: CHI TIẾT QUÁN & MÓN (CAO CÂN ĐỐI BẰNG CỘT 2) */}
+              {/* CỘT 2: THÔNG TIN CHI TIẾT QUÁN (TÁCH BIỆT GỌN GÀNG, BỎ MÃ CODE & BỎ MAPS) */}
               {selectedPlaceItem ? (
                 <div
-                  className={`xh-places-detail-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
-                  style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+                  className={`xh-col-middle-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
                 >
                   <button
                     className="xh-show-mobile-only"
@@ -1748,53 +2003,144 @@ export function AdminDashboardView({
                       display: 'none',
                       alignItems: 'center',
                       gap: '6px',
-                      padding: '9px 13px',
+                      padding: '8px 12px',
                       borderRadius: '9px',
                       border: `1px solid ${theme.border}`,
                       background: theme.bgCard,
                       color: theme.textPrimary,
                       fontWeight: 700,
-                      fontSize: '12.5px',
+                      fontSize: '12px',
                       cursor: 'pointer',
                     }}
                   >
-                    <ArrowLeft size={15} /> Danh sách Quán ({filteredPlaces.length})
+                    <ArrowLeft size={14} /> Quay lại Danh sách ({filteredPlaces.length})
                   </button>
 
-                  {/* =============================================================== */}
-                  {/* KHỐI 1 (Ở TRÊN): THÔNG TIN QUÁN GỌN GÀNG + NÚT ƯU TIÊN XUẤT HIỆN */}
-                  {/* =============================================================== */}
                   <div
                     style={{
                       background: theme.bgCard,
                       borderRadius: '14px',
                       border: `1px solid ${theme.border}`,
                       boxShadow: theme.shadow,
-                      padding: '18px 20px',
+                      padding: '16px 18px',
                     }}
                   >
-                    {/* THANH TIÊU ĐỀ QUÁN + Ô CHỌN ƯU TIÊN (BOOST) + TẠM KHÓA + LƯU */}
+                    {/* KHUNG DUYỆT QUÁN (CHỈ ADMIN ĐƯỢC DUYỆT, QUẢN LÝ BỊ KHÓA) */}
+                    {(() => {
+                      const ov = adminState.places?.[selectedPlaceItem.place.id];
+                      const pending = ov?.pendingWebApproval;
+                      if (!pending) return null;
+                      return (
+                        <div
+                          style={{
+                            padding: '11px 13px',
+                            borderRadius: '10px',
+                            background: '#FFFBEB',
+                            border: '1.5px solid #F59E0B',
+                            marginBottom: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: '#B45309' }}>
+                              ⏳ Đang chờ Admin duyệt thay đổi Quán
+                            </div>
+                            <div style={{ fontSize: '11.5px', color: '#92400E', marginTop: '2px' }}>
+                              Người gửi: <strong>{pending.submittedByName}</strong> ({pending.submittedBy}) •{' '}
+                              {pending.actionSummary}
+                            </div>
+                          </div>
+
+                          {isSuperAdmin ? (
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  approvePendingPlaceItem(selectedPlaceItem.place.id, 'web');
+                                  setRefreshTick(t => t + 1);
+                                  showToast(`✅ Đã duyệt chính thức quán "${selectedPlaceItem.place.name}"!`, 'approve');
+                                }}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  border: 'none',
+                                  background: '#059669',
+                                  color: '#FFFFFF',
+                                  fontSize: '12px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                ✓ Duyệt Quán
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  rejectPendingPlaceItem(selectedPlaceItem.place.id, 'web');
+                                  setRefreshTick(t => t + 1);
+                                  showToast(`Đã từ chối bản cập nhật của "${selectedPlaceItem.place.name}"`, 'warn');
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #FCA5A5',
+                                  background: '#FEF2F2',
+                                  color: '#B91C1C',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Từ chối
+                              </button>
+                            </div>
+                          ) : (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '5px 10px',
+                                borderRadius: '7px',
+                                background: '#FEF3C7',
+                                color: '#92400E',
+                                fontSize: '11.5px',
+                                fontWeight: 800,
+                              }}
+                            >
+                              <Lock size={12} /> Chờ Admin duyệt (Đã khóa với Quản lý)
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* THANH TIÊU ĐỀ CỘT 2: TÊN QUÁN + TẦN SUẤT + BLOCK (TẠM KHÓA) + XÓA (CHỈ ADMIN) + LƯU */}
                     <div
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        gap: '10px',
+                        gap: '8px',
                         paddingBottom: '12px',
                         borderBottom: `1px solid ${theme.border}`,
                         marginBottom: '14px',
                         flexWrap: 'wrap',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '16px', fontWeight: 800 }}>
-                          {selectedPlaceItem.place.name}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 800 }}>
+                          2. Thông tin Quán
                         </span>
                         <span
                           style={{
                             fontSize: '11px',
                             fontWeight: 700,
-                            padding: '2px 8px',
+                            padding: '2px 7px',
                             borderRadius: '6px',
                             background:
                               selectedPlaceItem.status === 'active'
@@ -1804,98 +2150,115 @@ export function AdminDashboardView({
                               selectedPlaceItem.status === 'active' ? '#047857' : '#B45309',
                           }}
                         >
-                          {selectedPlaceItem.status === 'active' ? 'Đang mở' : 'Tạm khóa'}
+                          {selectedPlaceItem.status === 'active' ? 'Đang mở' : 'Đã Block (Khóa)'}
                         </span>
                       </div>
 
-                      {/* CÁC NÚT ĐIỀU KHIỂN: ĐỘ ƯU TIÊN (BOOST QUÁN & MÓN) + KHÓA + LƯU */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        {/* Ô SỔ RA CHỌN MỨC ƯU TIÊN XUẤT HIỆN (QUÁN & MÓN) */}
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <Sparkles size={14} style={{ color: theme.accent }} />
-                          <select
-                            value={editPlacePriorityBoost}
-                            onChange={e => handleChangePriorityBoost(Number(e.target.value) as 1 | 2 | 3)}
-                            style={{
-                              ...lightSelectStyle(theme),
-                              width: 'auto',
-                              fontWeight: 700,
-                              color: editPlacePriorityBoost > 1 ? theme.accent : theme.textSecondary,
-                              borderColor: editPlacePriorityBoost > 1 ? theme.accent : theme.border,
-                              backgroundColor: editPlacePriorityBoost > 1 ? theme.accentSoft : theme.bgElevated,
-                            }}
-                            title="Khi bật Ưu tiên, cả Quán này và các Món ăn của quán đều xuất hiện nhiều hơn trên vòng quay"
-                          >
-                            <option value={1}>Tần suất: Bình thường (1x)</option>
-                            <option value={2}>★ Ưu tiên vừa (x2 Quán & Món)</option>
-                            <option value={3}>★★ Ưu tiên cao (x3 Quán & Món)</option>
-                          </select>
-                        </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                        <select
+                          value={editPlacePriorityBoost}
+                          onChange={e => handleChangePriorityBoost(Number(e.target.value) as 1 | 2 | 3)}
+                          style={{
+                            ...lightSelectStyle(theme),
+                            width: 'auto',
+                            padding: '5px 8px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            color: editPlacePriorityBoost > 1 ? theme.accent : theme.textSecondary,
+                          }}
+                        >
+                          <option value={1}>Tần suất: 1x</option>
+                          <option value={2}>★ Ưu tiên x2</option>
+                          <option value={3}>★★ Ưu tiên x3</option>
+                        </select>
 
+                        {/* NÚT BLOCK (TẠM KHÓA): CẢ QUẢN LÝ WEB VÀ ADMIN ĐỀU ĐƯỢC QUYỀN BLOCK */}
                         <button
                           onClick={() => {
                             const nextStatus = selectedPlaceItem.status === 'active' ? 'locked' : 'active';
                             savePlaceAdminOverride(
                               selectedPlaceItem.place.id,
                               { status: nextStatus },
-                              nextStatus === 'locked' ? 'Tạm khóa quán' : 'Mở khóa quán'
+                              nextStatus === 'locked' ? 'Block (Tạm khóa) quán' : 'Mở khóa quán'
                             );
                             setRefreshTick(t => t + 1);
-                            showToast(nextStatus === 'locked' ? 'Đã tạm khóa quán' : 'Đã mở hoạt động quán');
+                            showToast(nextStatus === 'locked' ? 'Đã Block (Tạm khóa) quán' : 'Đã mở hoạt động quán');
                           }}
                           style={{
                             ...actionBtnStyle(theme, false),
+                            padding: '6px 10px',
+                            fontSize: '11.5px',
                             color: selectedPlaceItem.status === 'active' ? '#B45309' : '#047857',
                           }}
                         >
-                          {selectedPlaceItem.status === 'active' ? <Lock size={13} /> : <Unlock size={13} />}
-                          <span>{selectedPlaceItem.status === 'active' ? 'Tạm khóa' : 'Mở lại'}</span>
+                          {selectedPlaceItem.status === 'active' ? <Lock size={12} /> : <Unlock size={12} />}
+                          <span>{selectedPlaceItem.status === 'active' ? 'Block' : 'Mở khóa'}</span>
                         </button>
 
-                        <button
-                          onClick={() => {
-                            savePlaceAdminOverride(
-                              selectedPlaceItem.place.id,
-                              { status: 'deleted' },
-                              'Ẩn quán'
-                            );
-                            setRefreshTick(t => t + 1);
-                            showToast('Đã ẩn quán khỏi web chính');
-                          }}
-                          style={{ ...actionBtnStyle(theme, false), color: '#B91C1C' }}
-                        >
-                          <Trash2 size={13} />
-                          <span>Ẩn</span>
-                        </button>
+                        {/* NÚT XÓA: CHỈ SUPER ADMIN MỚI CÓ QUYỀN XÓA */}
+                        {isSuperAdmin ? (
+                          <button
+                            onClick={() => {
+                              savePlaceAdminOverride(
+                                selectedPlaceItem.place.id,
+                                { status: 'deleted' },
+                                'Xóa quán khỏi hệ thống'
+                              );
+                              setRefreshTick(t => t + 1);
+                              showToast('Đã xóa quán khỏi hệ thống');
+                            }}
+                            style={{
+                              ...actionBtnStyle(theme, false),
+                              padding: '6px 10px',
+                              fontSize: '11.5px',
+                              color: '#B91C1C',
+                            }}
+                          >
+                            <Trash2 size={12} />
+                            <span>Xóa</span>
+                          </button>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: '10.5px',
+                              fontWeight: 700,
+                              padding: '5px 8px',
+                              borderRadius: '7px',
+                              background: theme.bgElevated,
+                              border: `1px solid ${theme.border}`,
+                              color: theme.textMuted,
+                            }}
+                            title="Quản lý Web chỉ có quyền thêm/sửa và Block, không có quyền Xóa"
+                          >
+                            🔒 Xóa: Chỉ Admin
+                          </span>
+                        )}
 
                         <button
                           onClick={() => handleSavePlaceAndMenu()}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '6px',
-                            padding: '7px 14px',
+                            gap: '5px',
+                            padding: '6px 12px',
                             borderRadius: '8px',
                             border: 'none',
                             background: justSavedPlace ? '#059669' : theme.accent,
                             color: '#FFFFFF',
-                            fontSize: '12.5px',
+                            fontSize: '12px',
                             fontWeight: 800,
                             cursor: 'pointer',
-                            boxShadow: justSavedPlace
-                              ? '0 4px 12px rgba(5,150,105,0.35)'
-                              : '0 2px 6px rgba(200,75,49,0.25)',
                           }}
                         >
-                          {justSavedPlace ? <Check size={14} /> : <Save size={14} />}
-                          <span>{justSavedPlace ? '✓ Đã Lưu!' : 'Lưu Thay Đổi'}</span>
+                          {justSavedPlace ? <Check size={13} /> : <Save size={13} />}
+                          <span>{justSavedPlace ? 'Đã Lưu' : 'Lưu Quán'}</span>
                         </button>
                       </div>
                     </div>
 
-                    {/* THÔNG TIN CHÍNH CỦA QUÁN: TÊN, SĐT, GIỜ MỞ CỬA, ĐỊA CHỈ, MAPS, PHÂN KHU */}
+                    {/* FORM THÔNG TIN QUÁN GỌN GÀNG TRONG CỘT 2 */}
                     <div className="xh-compact-grid">
-                      <div>
+                      <div className="xh-col-span-2">
                         <label style={compactLabelStyle(theme)}>Tên Quán</label>
                         <input
                           type="text"
@@ -1906,10 +2269,7 @@ export function AdminDashboardView({
                       </div>
 
                       <div>
-                        <label style={compactLabelStyle(theme)}>
-                          <Phone size={12} style={{ display: 'inline', marginRight: 4 }} />
-                          Số điện thoại liên hệ
-                        </label>
+                        <label style={compactLabelStyle(theme)}>Số điện thoại liên hệ</label>
                         <input
                           type="text"
                           value={editPlacePhone}
@@ -1920,10 +2280,7 @@ export function AdminDashboardView({
                       </div>
 
                       <div>
-                        <label style={compactLabelStyle(theme)}>
-                          <Clock size={12} style={{ display: 'inline', marginRight: 4 }} />
-                          Giờ mở cửa – đóng cửa
-                        </label>
+                        <label style={compactLabelStyle(theme)}>Giờ mở cửa – đóng cửa</label>
                         <input
                           type="text"
                           value={editPlaceHours}
@@ -1933,11 +2290,8 @@ export function AdminDashboardView({
                         />
                       </div>
 
-                      <div>
-                        <label style={compactLabelStyle(theme)}>
-                          <MapPin size={12} style={{ display: 'inline', marginRight: 4 }} />
-                          Địa chỉ quán
-                        </label>
+                      <div className="xh-col-span-2">
+                        <label style={compactLabelStyle(theme)}>Địa chỉ quán</label>
                         <input
                           type="text"
                           value={editPlaceAddress}
@@ -1946,482 +2300,7 @@ export function AdminDashboardView({
                         />
                       </div>
 
-                      {/* ĐỊNH VỊ GOOGLE MAPS / PLUS CODE / ĐỊA CHỈ & ICON BẢN ĐỒ 2D/3D */}
-                      <div className="xh-col-span-2">
-                        <label style={compactLabelStyle(theme)}>
-                          Định vị Bản đồ 2D & Sa Bàn 3D (Dán link Google Maps, Plus Code VD: 7PQ6+VFP, tọa độ hoặc tìm theo địa chỉ)
-                        </label>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          <input
-                            type="text"
-                            value={editPlaceMapsUrl || editPlaceMapsQuery}
-                            onChange={e => {
-                              const val = e.target.value;
-                              if (val.startsWith('http')) {
-                                setEditPlaceMapsUrl(val);
-                              } else {
-                                setEditPlaceMapsUrl('');
-                                setEditPlaceMapsQuery(val);
-                              }
-                              const parsed = parseCoordinatesFromInputOrUrl(val);
-                              if (parsed) {
-                                setEditPlaceLat(String(parsed.lat));
-                                setEditPlaceLng(String(parsed.lng));
-                              }
-                            }}
-                            placeholder="Dán link Google Maps, Plus Code (7PQ6+VFP), tọa độ 21.289, 105.711 hoặc địa chỉ..."
-                            style={{ ...compactInputStyle(theme), flex: 1, minWidth: '210px' }}
-                          />
-                          <button
-                            type="button"
-                            disabled={isAdminGeocoding}
-                            onClick={async () => {
-                              const rawQ = (
-                                editPlaceMapsUrl ||
-                                editPlaceMapsQuery ||
-                                editPlaceAddress ||
-                                editPlaceName
-                              ).trim();
-                              const direct = parseCoordinatesFromInputOrUrl(rawQ);
-                              if (direct) {
-                                setEditPlaceLat(String(direct.lat));
-                                setEditPlaceLng(String(direct.lng));
-                                showToast(`📍 Đã trích xuất tọa độ: ${direct.lat}, ${direct.lng}`);
-                                return;
-                              }
-                              setIsAdminGeocoding(true);
-                              setAdminGeoSuggestions([]);
-                              try {
-                                const results = await geocodeAddressWithNominatim(
-                                  `${editPlaceAddress || editPlaceName}, Xuân Hòa, Phúc Yên`
-                                );
-                                if (results.length > 0) {
-                                  setAdminGeoSuggestions(results);
-                                  setEditPlaceLat(String(results[0].lat));
-                                  setEditPlaceLng(String(results[0].lng));
-                                  showToast(`📍 Đã tìm thấy tọa độ: ${results[0].lat}, ${results[0].lng}`);
-                                } else {
-                                  const road = findSuggestedRoadForAddress(
-                                    `${editPlaceAddress} ${editPlaceName}`,
-                                    VERIFIED_OSM_ROADS_SEED
-                                  );
-                                  if (road) {
-                                    const rLat = Number(road.lat.toFixed(6));
-                                    const rLng = Number(road.lng.toFixed(6));
-                                    setEditPlaceLat(String(rLat));
-                                    setEditPlaceLng(String(rLng));
-                                    showToast(`📍 Đã định vị theo tuyến đường ${road.name}: ${rLat}, ${rLng}`);
-                                  } else {
-                                    showToast('Chưa tìm thấy tự động — bạn có thể dán Plus Code hoặc chấm trên bản đồ', 'warn');
-                                  }
-                                }
-                              } finally {
-                                setIsAdminGeocoding(false);
-                              }
-                            }}
-                            style={{
-                              ...smallRowBtnStyle(theme),
-                              background: theme.accent,
-                              color: '#FFFFFF',
-                              borderColor: theme.accent,
-                              padding: '0 12px',
-                              height: '36px',
-                            }}
-                          >
-                            <MapPin size={13} />
-                            <span>{isAdminGeocoding ? 'Đang tìm...' : 'Tìm tọa độ từ Địa chỉ'}</span>
-                          </button>
-                          <a
-                            href={
-                              editPlaceMapsUrl.trim() ||
-                              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                                editPlaceMapsQuery || `${editPlaceName} Xuân Hòa Phúc Yên`
-                              )}`
-                            }
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                              padding: '0 11px',
-                              height: '36px',
-                              borderRadius: '8px',
-                              border: `1px solid ${theme.accentBorder}`,
-                              background: theme.accentSoft,
-                              color: theme.accent,
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              textDecoration: 'none',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            <ExternalLink size={13} /> Google Maps
-                          </a>
-                        </div>
-
-                        {adminGeoSuggestions.length > 1 && (
-                          <div
-                            style={{
-                              marginTop: '6px',
-                              padding: '6px 8px',
-                              borderRadius: '8px',
-                              background: theme.bgElevated,
-                              border: `1px solid ${theme.border}`,
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '4px',
-                            }}
-                          >
-                            {adminGeoSuggestions.slice(0, 3).map((sug, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => {
-                                  setEditPlaceLat(String(sug.lat));
-                                  setEditPlaceLng(String(sug.lng));
-                                  setAdminGeoSuggestions([]);
-                                  showToast(`Đã chọn tọa độ: ${sug.lat}, ${sug.lng}`);
-                                }}
-                                style={{
-                                  textAlign: 'left',
-                                  padding: '5px 8px',
-                                  borderRadius: '6px',
-                                  border: `1px solid ${theme.border}`,
-                                  background: theme.bgCard,
-                                  color: theme.textPrimary,
-                                  fontSize: '11.5px',
-                                  fontWeight: 600,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                📍 {sug.displayName} ({sug.lat}, {sug.lng})
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* HÀNG CHỌN ICON BẢN ĐỒ + TỌA ĐỘ LAT/LNG + NÚT MỞ BẢN ĐỒ */}
-                        <div
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '1.3fr 0.85fr 0.85fr auto',
-                            gap: '8px',
-                            marginTop: '8px',
-                            alignItems: 'end',
-                          }}
-                        >
-                          <div>
-                            <label style={compactLabelStyle(theme)}>Biểu tượng & Nhóm trên Bản đồ</label>
-                            <select
-                              value={editPlaceMapCategory}
-                              onChange={e => {
-                                const nextCat = e.target.value as EditableMapCategory;
-                                setEditPlaceMapCategory(nextCat);
-                                if (nextCat === 'public' || nextCat === 'school') {
-                                  setEditPlaceSectorTag('dia-danh');
-                                }
-                              }}
-                              style={{ ...lightSelectStyle(theme), height: '35px', fontWeight: 700 }}
-                            >
-                              {EDITABLE_MAP_CATEGORIES.map(c => (
-                                <option key={c.id} value={c.id}>
-                                  {c.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label style={compactLabelStyle(theme)}>Vĩ độ (Lat)</label>
-                            <input
-                              type="text"
-                              value={editPlaceLat}
-                              onChange={e => setEditPlaceLat(e.target.value)}
-                              placeholder="21.2897..."
-                              style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
-                            />
-                          </div>
-                          <div>
-                            <label style={compactLabelStyle(theme)}>Kinh độ (Lng)</label>
-                            <input
-                              type="text"
-                              value={editPlaceLng}
-                              onChange={e => setEditPlaceLng(e.target.value)}
-                              placeholder="105.7112..."
-                              style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (editPlaceLat && editPlaceLng) {
-                                jumpToMapUrl(
-                                  `#/ban-do?flyLat=${editPlaceLat}&flyLng=${editPlaceLng}&flyLabel=${encodeURIComponent(
-                                    editPlaceName
-                                  )}`
-                                );
-                              } else {
-                                jumpToMapUrl(
-                                  `#/ban-do?pick=${encodeURIComponent(
-                                    selectedPlaceItem.place.id
-                                  )}&pickName=${encodeURIComponent(editPlaceName)}`
-                                );
-                              }
-                            }}
-                            style={{
-                              ...smallRowBtnStyle(theme),
-                              height: '35px',
-                              padding: '0 11px',
-                              fontWeight: 700,
-                            }}
-                            title="Mở Bản đồ để xem vị trí hoặc chấm ghim trực tiếp"
-                          >
-                            <MapPin size={13} />
-                            <span>{editPlaceLat && editPlaceLng ? 'Xem trên Bản đồ' : 'Chấm trên Bản đồ'}</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* MÃ CODE CHỦ QUÁN TỰ ĐÁNH DẤU ĐỊNH VỊ BẢN ĐỒ SỐ (CHỈ ADMIN CẤP) */}
-                      {(() => {
-                        const code = getOrGenerateMerchantCode(selectedPlaceItem.place.id);
-                        const ov = adminState.places?.[selectedPlaceItem.place.id];
-                        const claimedEmail = ov?.claimedByEmail;
-                        const claimedName = ov?.claimedByName;
-                        const hasVerifiedCoords =
-                          Boolean(ov?.coordinateVerified) &&
-                          typeof ov?.lat === 'number' &&
-                          typeof ov?.lng === 'number';
-                        return (
-                          <div
-                            className="xh-col-span-2"
-                            style={{
-                              padding: '11px 14px',
-                              borderRadius: '10px',
-                              background: theme.accentSoft,
-                              border: `1.5px dashed ${theme.accentBorder}`,
-                              display: 'flex',
-                              flexWrap: 'wrap',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '10px',
-                            }}
-                          >
-                            <div>
-                              <div
-                                style={{
-                                  fontSize: '12px',
-                                  fontWeight: 800,
-                                  color: theme.accent,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '5px',
-                                }}
-                              >
-                                <KeyRound size={13} />
-                                <span>
-                                  Mã Code Chủ Quán tự cắm định vị Bản đồ số (Chỉ Admin cấp):
-                                </span>
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: '11.5px',
-                                  color: theme.textSecondary,
-                                  marginTop: '3px',
-                                }}
-                              >
-                                {claimedEmail ? (
-                                  <span>
-                                    Đã liên kết Gmail:{' '}
-                                    <strong>
-                                      {claimedName ? `${claimedName} (${claimedEmail})` : claimedEmail}
-                                    </strong>
-                                  </span>
-                                ) : (
-                                  <span>
-                                    Chưa có chủ quán nhận mã • Chủ quán cần đăng nhập Gmail và dán mã này vào Bản đồ số
-                                  </span>
-                                )}
-                                {' • '}
-                                {hasVerifiedCoords ? (
-                                  <span style={{ color: '#047857', fontWeight: 700 }}>
-                                    📍 Đã có ghim trên Bản đồ ({ov?.lat}, {ov?.lng})
-                                  </span>
-                                ) : (
-                                  <span style={{ color: '#B45309', fontWeight: 700 }}>
-                                    ⏳ Chưa có tọa độ trên Bản đồ số
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              <span
-                                style={{
-                                  padding: '5px 11px',
-                                  borderRadius: '8px',
-                                  background: '#18181B',
-                                  color: '#FBBF24',
-                                  fontFamily: 'monospace',
-                                  fontSize: '13px',
-                                  fontWeight: 900,
-                                  letterSpacing: '0.06em',
-                                }}
-                              >
-                                {code}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (navigator.clipboard) {
-                                    navigator.clipboard.writeText(code);
-                                    setCopiedBtnKey('code');
-                                    window.setTimeout(() => setCopiedBtnKey(null), 1600);
-                                    showToast(`Đã copy mã "${code}" của quán ${selectedPlaceItem.place.name}`);
-                                  }
-                                }}
-                                style={{
-                                  ...smallRowBtnStyle(theme),
-                                  ...(copiedBtnKey === 'code'
-                                    ? { background: '#059669', color: '#FFFFFF', borderColor: '#059669' }
-                                    : {}),
-                                }}
-                              >
-                                {copiedBtnKey === 'code' ? <Check size={12} /> : <Copy size={12} />}
-                                {copiedBtnKey === 'code' ? '✓ Đã Copy!' : 'Copy Mã'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const msg = `Chào chủ quán "${selectedPlaceItem.place.name}", Admin Xuân Hòa Có Gì gửi bạn Mã Code định danh duy nhất của quán: ${code}\nBạn hãy đăng nhập bằng Gmail tại Bản Đồ Số Xuân Hòa (mục "Chủ quán"), dán mã này vào để tự ghim định vị chuẩn mặt tiền quán và cập nhật giờ mở cửa/menu nhé!`;
-                                  if (navigator.clipboard) {
-                                    navigator.clipboard.writeText(msg);
-                                    setCopiedBtnKey('zalo');
-                                    window.setTimeout(() => setCopiedBtnKey(null), 1600);
-                                    showToast('Đã copy tin nhắn hướng dẫn kèm Mã Code để gửi Zalo cho chủ quán!');
-                                  }
-                                }}
-                                style={{
-                                  ...smallRowBtnStyle(theme),
-                                  background: copiedBtnKey === 'zalo' ? '#059669' : theme.accent,
-                                  color: '#FFFFFF',
-                                  borderColor: copiedBtnKey === 'zalo' ? '#059669' : theme.accent,
-                                }}
-                              >
-                                {copiedBtnKey === 'zalo' ? <Check size={12} /> : <Copy size={12} />}
-                                {copiedBtnKey === 'zalo' ? '✓ Đã Copy Zalo!' : 'Copy gửi Zalo'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const nextCode = getOrGenerateMerchantCode(selectedPlaceItem.place.id, true);
-                                  setRefreshTick(t => t + 1);
-                                  showToast(`Đã cấp mã mới "${nextCode}" và thu hồi mã cũ!`);
-                                }}
-                                style={smallRowBtnStyle(theme)}
-                                title="Đổi sang mã code mới và gỡ liên kết Gmail cũ"
-                              >
-                                <RotateCcw size={12} /> Đổi mã
-                              </button>
-                            </div>
-
-                            {/* KHUNG TEST NHANH CHO ADMIN: ĐÓNG VAI NICK QUÁN HOẶC GIẢ LẬP GỬI DUYỆT 1 CHẠM */}
-                            <div
-                              style={{
-                                width: '100%',
-                                marginTop: '6px',
-                                paddingTop: '8px',
-                                borderTop: `1px dashed ${theme.accentBorder}`,
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                alignItems: 'center',
-                                gap: '6px',
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: '11px',
-                                  fontWeight: 800,
-                                  color: theme.textSecondary,
-                                  marginRight: '2px',
-                                }}
-                              >
-                                🧪 Test nhanh luồng Chủ Quán:
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const demoEmail =
-                                    authUser?.email || 'chuquan.xuanhoa@gmail.com';
-                                  assignMerchantOwnerByEmail(
-                                    selectedPlaceItem.place.id,
-                                    demoEmail,
-                                    selectedPlaceItem.place.name
-                                  );
-                                  saveAuthUser({
-                                    isLoggedIn: true,
-                                    uid: authUser?.uid || 'merchant_demo',
-                                    email: demoEmail,
-                                    displayName: selectedPlaceItem.place.name,
-                                    nickname: selectedPlaceItem.place.name,
-                                    gender: authUser?.gender || 'male',
-                                    avatar: '🏪',
-                                    avatarId: authUser?.avatarId || 'm_ty',
-                                    hasCompletedProfile: true,
-                                    isFirstTimeSetupDone: true,
-                                    isMerchantAccount: true,
-                                    merchantPlaceId: selectedPlaceItem.place.id,
-                                    merchantPlaceName: selectedPlaceItem.place.name,
-                                    merchantVerifiedCode: code,
-                                    createdAt: authUser?.createdAt || Date.now(),
-                                  });
-                                  jumpToMapUrl(
-                                    `#/ban-do?claim=${encodeURIComponent(code)}`
-                                  );
-                                }}
-                                style={{
-                                  ...smallRowBtnStyle(theme),
-                                  background: '#E6F7EF',
-                                  color: '#047857',
-                                  borderColor: '#10B981',
-                                }}
-                                title="Tự động đăng nhập Nick Quán này (🏪) và mở Bản Đồ Số để bạn bấm thử chấm định vị & sửa giá món"
-                              >
-                                <Store size={12} /> 🏪 Vào thử bằng Nick Quán này trên Bản Đồ
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const sub = simulateMerchantDemoSubmission(
-                                    selectedPlaceItem.place.id,
-                                    authUser
-                                  );
-                                  if (sub) {
-                                    setRefreshTick(t => t + 1);
-                                    setMerchantModalTab('admin_approvals');
-                                    setIsMerchantModalOpen(true);
-                                    showToast(
-                                      `🧪 Đã giả lập "${selectedPlaceItem.place.name}" cắm GPS & gửi duyệt! Hãy bấm Duyệt ngay trên bảng.`
-                                    );
-                                  }
-                                }}
-                                style={{
-                                  ...smallRowBtnStyle(theme),
-                                  background: '#EDE9FE',
-                                  color: '#403064',
-                                  borderColor: '#8B5CF6',
-                                }}
-                                title="Giả lập quán này vừa cắm định vị GPS và gửi yêu cầu thay đổi về cho Admin duyệt"
-                              >
-                                <Sparkles size={12} /> ⚡ Giả lập Quán gửi Định vị & Test Duyệt
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* PHÂN KHU NGÀNH NGHỀ (Ô SỔ RA GỌN GÀNG + NÚT THÊM NGÀNH MỚI NGAY TẠI QUÁN) */}
+                      {/* PHÂN KHU NGÀNH NGHỀ */}
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <label style={{ ...compactLabelStyle(theme), marginBottom: 0 }}>
@@ -2434,13 +2313,13 @@ export function AdminDashboardView({
                               border: 'none',
                               background: 'transparent',
                               color: theme.accent,
-                              fontSize: '11px',
+                              fontSize: '10.5px',
                               fontWeight: 700,
                               cursor: 'pointer',
                               padding: 0,
                             }}
                           >
-                            {isAddingSectorInline ? 'Đóng' : '+ Thêm phân khu mới'}
+                            {isAddingSectorInline ? 'Đóng' : '+ Thêm mới'}
                           </button>
                         </div>
 
@@ -2448,7 +2327,7 @@ export function AdminDashboardView({
                           <select
                             value={editPlaceSectorTag}
                             onChange={e => setEditPlaceSectorTag(e.target.value)}
-                            style={{ ...lightSelectStyle(theme), padding: '8px 11px', fontSize: '13px' }}
+                            style={{ ...lightSelectStyle(theme), padding: '8px 10px', fontSize: '12.5px' }}
                           >
                             {sectorTags.map(sec => (
                               <option key={sec.id} value={sec.id}>
@@ -2457,27 +2336,26 @@ export function AdminDashboardView({
                             ))}
                           </select>
                         ) : (
-                          <div style={{ display: 'flex', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '5px' }}>
                             <input
                               type="text"
                               value={inlineSectorLabel}
                               onChange={e => setInlineSectorLabel(e.target.value)}
-                              placeholder="Tên ngành mới (VD: Homestay, Bi-a...)"
+                              placeholder="Tên ngành mới..."
                               style={{ ...compactInputStyle(theme), flex: 1 }}
                             />
                             <button
                               type="button"
                               onClick={handleAddInlineSector}
                               style={{
-                                padding: '0 12px',
+                                padding: '0 10px',
                                 borderRadius: '8px',
                                 border: 'none',
                                 background: theme.accent,
                                 color: '#FFF',
-                                fontSize: '12px',
+                                fontSize: '11.5px',
                                 fontWeight: 700,
                                 cursor: 'pointer',
-                                whiteSpace: 'nowrap',
                               }}
                             >
                               Thêm
@@ -2486,13 +2364,13 @@ export function AdminDashboardView({
                         )}
                       </div>
 
-                      {/* HÌNH THỨC PHỤC VỤ (Ô SỔ RA NGANG HÀNG VỚI PHÂN KHU) */}
+                      {/* HÌNH THỨC PHỤC VỤ */}
                       <div>
                         <label style={compactLabelStyle(theme)}>Hình thức Phục vụ</label>
                         <select
                           value={editPlaceServiceMode}
                           onChange={e => setEditPlaceServiceMode(e.target.value as Place['serviceMode'])}
-                          style={{ ...lightSelectStyle(theme), padding: '8px 11px', fontSize: '13px' }}
+                          style={{ ...lightSelectStyle(theme), padding: '8px 10px', fontSize: '12.5px' }}
                         >
                           <option value="both">Ăn tại quán & Có nhận Ship</option>
                           <option value="dine_in_only">Chỉ phục vụ tại quán</option>
@@ -2523,14 +2401,14 @@ export function AdminDashboardView({
                         <span>
                           {showAdvancedPlaceFields
                             ? 'Thu gọn thông tin bổ sung'
-                            : 'Mở rộng: Mô tả, Tag tìm kiếm, Khoảng giá, Món tủ, Khu vực & Ảnh...'}
+                            : 'Mở rộng: Mô tả, Tag, Khoảng giá, Món tủ & Ảnh...'}
                         </span>
                       </button>
 
                       {showAdvancedPlaceFields && (
-                        <div className="xh-compact-grid" style={{ marginTop: '12px' }}>
+                        <div className="xh-compact-grid" style={{ marginTop: '10px' }}>
                           <div>
-                            <label style={compactLabelStyle(theme)}>Mô tả ngắn hiển thị dưới tên quán</label>
+                            <label style={compactLabelStyle(theme)}>Mô tả ngắn dưới tên quán</label>
                             <input
                               type="text"
                               value={editPlaceTagline}
@@ -2540,7 +2418,7 @@ export function AdminDashboardView({
                           </div>
 
                           <div>
-                            <label style={compactLabelStyle(theme)}>Các Tag tìm kiếm (cách nhau dấu phẩy)</label>
+                            <label style={compactLabelStyle(theme)}>Tag tìm kiếm (phẩy)</label>
                             <input
                               type="text"
                               value={editPlaceTagsText}
@@ -2551,7 +2429,7 @@ export function AdminDashboardView({
 
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
-                              <label style={compactLabelStyle(theme)}>Giá thấp nhất (k)</label>
+                              <label style={compactLabelStyle(theme)}>Giá thấp (k)</label>
                               <input
                                 type="number"
                                 value={editPlaceMinPrice}
@@ -2560,7 +2438,7 @@ export function AdminDashboardView({
                               />
                             </div>
                             <div>
-                              <label style={compactLabelStyle(theme)}>Giá cao nhất (k)</label>
+                              <label style={compactLabelStyle(theme)}>Giá cao (k)</label>
                               <input
                                 type="number"
                                 value={editPlaceMaxPrice}
@@ -2581,7 +2459,7 @@ export function AdminDashboardView({
                               />
                             </div>
                             <div>
-                              <label style={compactLabelStyle(theme)}>Giá Món Tủ (k)</label>
+                              <label style={compactLabelStyle(theme)}>Giá (k)</label>
                               <input
                                 type="number"
                                 value={editPlaceSigPrice}
@@ -2611,17 +2489,7 @@ export function AdminDashboardView({
                             />
                           </div>
 
-                          <div>
-                            <label style={compactLabelStyle(theme)}>Lời bình ngắn (Quip)</label>
-                            <input
-                              type="text"
-                              value={editPlaceQuip}
-                              onChange={e => setEditPlaceQuip(e.target.value)}
-                              style={compactInputStyle(theme)}
-                            />
-                          </div>
-
-                          <div>
+                          <div className="xh-col-span-2">
                             <label style={compactLabelStyle(theme)}>Link Ảnh Đại Diện</label>
                             <input
                               type="text"
@@ -2630,133 +2498,123 @@ export function AdminDashboardView({
                               style={compactInputStyle(theme)}
                             />
                           </div>
-
-                          {selectedPlaceItem.isModified && !selectedPlaceItem.isCustom && (
-                            <div className="xh-col-span-2" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  resetPlaceToDefault(selectedPlaceItem.place.id);
-                                  setRefreshTick(t => t + 1);
-                                  showToast('Đã khôi phục dữ liệu gốc của quán');
-                                }}
-                                style={actionBtnStyle(theme, false)}
-                              >
-                                <RotateCcw size={13} /> Khôi phục thông tin gốc ban đầu
-                              </button>
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>
                   </div>
+                </div>
+              ) : null}
 
-                  {/* =============================================================== */}
-                  {/* KHỐI 2 (Ở DƯỚI): THỰC ĐƠN MÓN CỦA QUÁN (BẢNG 1 DÒNG GỌN GÀNG)  */}
-                  {/* =============================================================== */}
+              {/* CỘT 3: THỰC ĐƠN CỦA QUÁN (NẰM RIÊNG BIỆT Ở CỘT THỨ 3 BÊN PHẢI) */}
+              {selectedPlaceItem ? (
+                <div
+                  className={`xh-col-right-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
+                  style={{
+                    background: theme.bgCard,
+                    borderRadius: '14px',
+                    border: `1px solid ${theme.border}`,
+                    boxShadow: theme.shadow,
+                    padding: '16px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxHeight: 'calc(100vh - 86px)',
+                  }}
+                >
                   <div
                     style={{
-                      background: theme.bgCard,
-                      borderRadius: '14px',
-                      border: `1px solid ${theme.border}`,
-                      boxShadow: theme.shadow,
-                      padding: '18px 20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      paddingBottom: '10px',
+                      borderBottom: `1px solid ${theme.border}`,
+                      marginBottom: '10px',
+                      flexWrap: 'wrap',
                     }}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '10px',
-                        marginBottom: '12px',
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <UtensilsCrossed size={16} style={{ color: theme.accent }} />
-                        <span style={{ fontSize: '15px', fontWeight: 800 }}>
-                          Thực đơn của Quán ({editPlaceMenu.length} món)
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 10px',
-                            borderRadius: '8px',
-                            background: theme.bgInput,
-                            border: `1px solid ${theme.border}`,
-                          }}
-                        >
-                          <Search size={13} style={{ color: theme.textMuted }} />
-                          <input
-                            type="text"
-                            value={dishSearchInPlace}
-                            onChange={e => setDishSearchInPlace(e.target.value)}
-                            placeholder="Tìm món trong quán..."
-                            style={{
-                              border: 'none',
-                              background: 'transparent',
-                              outline: 'none',
-                              fontSize: '12px',
-                              color: theme.textPrimary,
-                              width: '150px',
-                            }}
-                          />
-                        </div>
-
-                        <button
-                          onClick={() => setIsAddingDishRow(!isAddingDishRow)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            padding: '7px 12px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            background: theme.accent,
-                            color: '#FFFFFF',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <Plus size={14} /> Thêm Món Mới
-                        </button>
-                      </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <UtensilsCrossed size={15} style={{ color: theme.accent }} />
+                      <span style={{ fontSize: '14.5px', fontWeight: 800 }}>
+                        3. Thực đơn ({editPlaceMenu.length} món)
+                      </span>
                     </div>
 
-                    {isAddingDishRow && (
-                      <div
-                        style={{
-                          padding: '12px',
-                          borderRadius: '10px',
-                          background: theme.bgElevated,
-                          border: `1px solid ${theme.accentBorder}`,
-                          marginBottom: '12px',
-                          display: 'grid',
-                          gridTemplateColumns: '2fr 1fr 1fr auto auto',
-                          gap: '8px',
-                          alignItems: 'center',
-                        }}
-                        className="xh-quick-add-dish"
-                      >
-                        <input
-                          type="text"
-                          value={newMenuDishName}
-                          onChange={e => setNewMenuDishName(e.target.value)}
-                          placeholder="Tên món mới..."
-                          style={compactInputStyle(theme)}
-                        />
+                    <button
+                      onClick={() => setIsAddingDishRow(!isAddingDishRow)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: theme.accent,
+                        color: '#FFFFFF',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Plus size={13} /> Thêm Món
+                    </button>
+                  </div>
+
+                  {/* TÌM MÓN TRONG CỘT 3 */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 10px',
+                      borderRadius: '8px',
+                      background: theme.bgInput,
+                      border: `1px solid ${theme.border}`,
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <Search size={13} style={{ color: theme.textMuted }} />
+                    <input
+                      type="text"
+                      value={dishSearchInPlace}
+                      onChange={e => setDishSearchInPlace(e.target.value)}
+                      placeholder="Tìm món trong thực đơn..."
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        outline: 'none',
+                        fontSize: '12px',
+                        color: theme.textPrimary,
+                        width: '100%',
+                      }}
+                    />
+                  </div>
+
+                  {isAddingDishRow && (
+                    <div
+                      style={{
+                        padding: '10px',
+                        borderRadius: '10px',
+                        background: theme.bgElevated,
+                        border: `1px solid ${theme.accentBorder}`,
+                        marginBottom: '10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={newMenuDishName}
+                        onChange={e => setNewMenuDishName(e.target.value)}
+                        placeholder="Tên món mới..."
+                        style={compactInputStyle(theme)}
+                      />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: '6px' }}>
                         <input
                           type="number"
                           value={newMenuDishPrice}
                           onChange={e => setNewMenuDishPrice(e.target.value)}
-                          placeholder="Giá (.000đ)"
+                          placeholder="Giá (k)"
                           style={compactInputStyle(theme)}
                         />
                         <input
@@ -2769,190 +2627,172 @@ export function AdminDashboardView({
                         <button
                           onClick={handleAddMenuDishToPlace}
                           style={{
-                            padding: '8px 14px',
+                            padding: '0 12px',
                             borderRadius: '8px',
                             border: 'none',
                             background: theme.accent,
                             color: '#FFF',
                             fontWeight: 700,
-                            fontSize: '12px',
+                            fontSize: '11.5px',
                             cursor: 'pointer',
                           }}
                         >
-                          Lưu món
+                          Lưu
                         </button>
                         <button
                           onClick={() => setIsAddingDishRow(false)}
                           style={{
-                            padding: '8px 10px',
+                            padding: '0 8px',
                             borderRadius: '8px',
                             border: `1px solid ${theme.border}`,
                             background: 'transparent',
                             color: theme.textMuted,
-                            fontSize: '12px',
+                            fontSize: '11.5px',
                             cursor: 'pointer',
                           }}
                         >
                           Hủy
                         </button>
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    <div
-                      style={{
-                        borderRadius: '10px',
-                        border: `1px solid ${theme.border}`,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      {editPlaceMenu.map((dish, idx) => {
-                        if (
-                          dishSearchInPlace.trim() &&
-                          !dish.name.toLowerCase().includes(dishSearchInPlace.trim().toLowerCase()) &&
-                          !(dish.category || '').toLowerCase().includes(dishSearchInPlace.trim().toLowerCase())
-                        ) {
-                          return null;
-                        }
-                        const isEditingThis = editingDishIndex === idx;
+                  <div
+                    style={{
+                      flex: 1,
+                      overflowY: 'auto',
+                      borderRadius: '10px',
+                      border: `1px solid ${theme.border}`,
+                    }}
+                  >
+                    {editPlaceMenu.map((dish, idx) => {
+                      if (
+                        dishSearchInPlace.trim() &&
+                        !dish.name.toLowerCase().includes(dishSearchInPlace.trim().toLowerCase()) &&
+                        !(dish.category || '').toLowerCase().includes(dishSearchInPlace.trim().toLowerCase())
+                      ) {
+                        return null;
+                      }
+                      const isEditingThis = editingDishIndex === idx;
 
-                        return (
-                          <div
-                            key={dish.id || idx}
-                            style={{
-                              padding: '10px 14px',
-                              borderBottom:
-                                idx === editPlaceMenu.length - 1 ? 'none' : `1px solid ${theme.border}`,
-                              background: isEditingThis
-                                ? theme.accentSoft
-                                : dish.isLocked
-                                ? 'rgba(245, 158, 11, 0.05)'
-                                : idx % 2 === 0
-                                ? theme.bgCard
-                                : theme.bgElevated,
-                            }}
-                          >
-                            {!isEditingThis ? (
+                      return (
+                        <div
+                          key={dish.id || idx}
+                          style={{
+                            padding: '9px 11px',
+                            borderBottom:
+                              idx === editPlaceMenu.length - 1 ? 'none' : `1px solid ${theme.border}`,
+                            background: isEditingThis
+                              ? theme.accentSoft
+                              : dish.isLocked
+                              ? 'rgba(245, 158, 11, 0.05)'
+                              : idx % 2 === 0
+                              ? theme.bgCard
+                              : theme.bgElevated,
+                          }}
+                        >
+                          {!isEditingThis ? (
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '6px',
+                              }}
+                            >
                               <div
                                 style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: '10px',
-                                  flexWrap: 'wrap',
+                                  flex: 1,
+                                  minWidth: 0,
+                                  cursor: 'pointer',
                                 }}
+                                onClick={() => setEditingDishIndex(idx)}
                               >
                                 <div
                                   style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    flex: 1,
-                                    minWidth: '180px',
-                                    cursor: 'pointer',
+                                    fontSize: '12.5px',
+                                    fontWeight: 700,
+                                    color: dish.isLocked ? theme.textMuted : theme.textPrimary,
+                                    textDecoration: dish.isLocked ? 'line-through' : 'none',
                                   }}
-                                  onClick={() => setEditingDishIndex(idx)}
                                 >
-                                  <span
-                                    style={{
-                                      fontSize: '11px',
-                                      fontWeight: 700,
-                                      color: theme.textMuted,
-                                      minWidth: '22px',
-                                    }}
-                                  >
-                                    #{idx + 1}
-                                  </span>
-                                  <div>
-                                    <span
-                                      style={{
-                                        fontSize: '13.5px',
-                                        fontWeight: 700,
-                                        color: dish.isLocked ? theme.textMuted : theme.textPrimary,
-                                        textDecoration: dish.isLocked ? 'line-through' : 'none',
-                                      }}
-                                    >
-                                      {dish.name}
-                                    </span>
-                                    {dish.category && (
-                                      <span
-                                        style={{
-                                          marginLeft: '8px',
-                                          fontSize: '10.5px',
-                                          padding: '1px 6px',
-                                          borderRadius: '4px',
-                                          background: theme.bgInput,
-                                          color: theme.textSecondary,
-                                          fontWeight: 600,
-                                        }}
-                                      >
-                                        {dish.category}
-                                      </span>
-                                    )}
-                                  </div>
+                                  #{idx + 1}. {dish.name}
                                 </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {dish.category && (
                                   <span
                                     style={{
-                                      fontSize: '13.5px',
-                                      fontWeight: 800,
-                                      color: theme.accent,
-                                      minWidth: '68px',
-                                      textAlign: 'right',
+                                      fontSize: '10px',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      background: theme.bgInput,
+                                      color: theme.textSecondary,
+                                      fontWeight: 600,
                                     }}
                                   >
-                                    {dish.price}.000đ
+                                    {dish.category}
                                   </span>
+                                )}
+                              </div>
 
-                                  <button
-                                    onClick={() => setEditingDishIndex(idx)}
-                                    style={smallRowBtnStyle(theme)}
-                                  >
-                                    <Edit3 size={12} /> Sửa
-                                  </button>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                                <span
+                                  style={{
+                                    fontSize: '12.5px',
+                                    fontWeight: 800,
+                                    color: theme.accent,
+                                  }}
+                                >
+                                  {dish.price}k
+                                </span>
 
-                                  <button
-                                    onClick={() => handleToggleLockDishInPlace(idx)}
-                                    style={{
-                                      ...smallRowBtnStyle(theme),
-                                      color: dish.isLocked ? '#047857' : '#B45309',
-                                    }}
-                                  >
-                                    {dish.isLocked ? 'Mở bán' : 'Tạm hết'}
-                                  </button>
+                                <button
+                                  onClick={() => setEditingDishIndex(idx)}
+                                  style={{ ...smallRowBtnStyle(theme), padding: '3px 7px', fontSize: '11px' }}
+                                >
+                                  Sửa
+                                </button>
 
+                                <button
+                                  onClick={() => handleToggleLockDishInPlace(idx)}
+                                  style={{
+                                    ...smallRowBtnStyle(theme),
+                                    padding: '3px 7px',
+                                    fontSize: '11px',
+                                    color: dish.isLocked ? '#047857' : '#B45309',
+                                  }}
+                                >
+                                  {dish.isLocked ? 'Mở' : 'Khóa'}
+                                </button>
+
+                                {isSuperAdmin && (
                                   <button
                                     onClick={() => handleDeleteDishFromPlace(idx)}
                                     style={{
                                       ...smallRowBtnStyle(theme),
+                                      padding: '3px 6px',
                                       color: '#B91C1C',
                                     }}
+                                    title="Chỉ Admin có quyền xóa món"
                                   >
-                                    <Trash2 size={12} />
+                                    <Trash2 size={11} />
                                   </button>
-                                </div>
+                                )}
                               </div>
-                            ) : (
-                              <div
-                                className="xh-inline-dish-edit"
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '2fr 95px 1fr 1.5fr auto',
-                                  gap: '8px',
-                                  alignItems: 'center',
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <input
+                                type="text"
+                                value={dish.name}
+                                onChange={e => {
+                                  const next = [...editPlaceMenu];
+                                  next[idx] = { ...next[idx], name: e.target.value };
+                                  setEditPlaceMenu(next);
                                 }}
-                              >
-                                <input
-                                  type="text"
-                                  value={dish.name}
-                                  onChange={e => {
-                                    const next = [...editPlaceMenu];
-                                    next[idx] = { ...next[idx], name: e.target.value };
-                                    setEditPlaceMenu(next);
-                                  }}
-                                  placeholder="Tên món"
-                                  style={compactInputStyle(theme)}
-                                />
+                                placeholder="Tên món"
+                                style={compactInputStyle(theme)}
+                              />
+                              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr auto', gap: '6px' }}>
                                 <input
                                   type="number"
                                   value={dish.price}
@@ -2975,42 +2815,30 @@ export function AdminDashboardView({
                                   placeholder="Nhóm món"
                                   style={compactInputStyle(theme)}
                                 />
-                                <input
-                                  type="text"
-                                  value={dish.description || ''}
-                                  onChange={e => {
-                                    const next = [...editPlaceMenu];
-                                    next[idx] = { ...next[idx], description: e.target.value };
-                                    setEditPlaceMenu(next);
-                                  }}
-                                  placeholder="Mô tả ngắn"
-                                  style={compactInputStyle(theme)}
-                                />
                                 <button
                                   onClick={() => {
                                     setEditingDishIndex(null);
                                     handleSavePlaceAndMenu(editPlaceMenu, `Đã cập nhật món "${dish.name}"`);
                                   }}
                                   style={{
-                                    padding: '8px 14px',
+                                    padding: '0 12px',
                                     borderRadius: '8px',
                                     border: 'none',
                                     background: theme.accent,
                                     color: '#FFF',
-                                    fontSize: '12px',
+                                    fontSize: '11.5px',
                                     fontWeight: 700,
                                     cursor: 'pointer',
-                                    whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  Lưu món
+                                  Lưu
                                 </button>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}
@@ -3018,128 +2846,860 @@ export function AdminDashboardView({
           )}
 
           {/* =================================================================== */}
-          {/* 3. QUẢN LÝ THÀNH VIÊN (GỒM CẤP NICK + PASS QUẢN LÝ & THÀNH VIÊN THỰC) */}
+          {/* 2B. QUẢN LÝ MAPS — BỐ CỤC 3 CỘT ĐỒNG BỘ:                            */}
+          {/*     CỘT 1 (DANH SÁCH & DUYỆT MAPS) | CỘT 2 (THÔNG TIN ĐỊNH VỊ) |    */}
+          {/*     CỘT 3 (SA BÀN CHẤM TỌA ĐỘ TRỰC QUAN & ĐỐI CHIẾU LÂN CẬN)        */}
           {/* =================================================================== */}
-          {activeSection === 'members' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* KHỐI 1: DANH SÁCH TÀI KHOẢN QUẢN LÝ (CẤP NICK & MẬT KHẨU RIÊNG) */}
+          {activeSection === 'maps' && canManageMaps && (
+            <div className="xh-three-col-layout">
+              {/* CỘT 1: DANH SÁCH ĐỊA ĐIỂM MAPS + TAB DUYỆT MAPS */}
               <div
+                className={`xh-places-list-pane ${mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
                 style={{
                   background: theme.bgCard,
                   borderRadius: '14px',
                   border: `1px solid ${theme.border}`,
                   boxShadow: theme.shadow,
-                  padding: '16px 18px',
                 }}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '10px',
-                    marginBottom: '12px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <KeyRound size={16} style={{ color: theme.accent }} />
-                      <span>Tài khoản Ban Quản Lý Web ({adminAccounts.length} nick)</span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: theme.textMuted }}>
-                      Mỗi quản lý được cấp Nick đăng nhập và Mật khẩu riêng để vào trang /quanly
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setAdminAccForm({
-                        id: '',
-                        username: '',
-                        password: '',
-                        displayName: '',
-                        role: 'manager',
-                      });
-                      setIsAdminAccModalOpen(true);
-                    }}
+                <div style={{ padding: '12px', borderBottom: `1px solid ${theme.border}` }}>
+                  {/* NÚT CHUYỂN TAB TRÊN ĐẦU CỘT 1: ĐỊA ĐIỂM MAPS | DUYỆT MAPS */}
+                  <div
                     style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      padding: '7px 12px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      background: theme.accent,
-                      color: '#FFF',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '4px',
+                      padding: '3px',
+                      borderRadius: '10px',
+                      background: theme.bgInput,
+                      border: `1px solid ${theme.border}`,
+                      marginBottom: '10px',
                     }}
                   >
-                    <UserPlus size={14} /> Cấp Nick Quản Lý Mới
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setMapListTab('all')}
+                      style={{
+                        padding: '7px 8px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: mapListTab === 'all' ? theme.bgCard : 'transparent',
+                        color: mapListTab === 'all' ? theme.textPrimary : theme.textMuted,
+                        fontWeight: 800,
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        boxShadow: mapListTab === 'all' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                      }}
+                    >
+                      Địa điểm ({allPlaces.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMapListTab('pending_maps')}
+                      style={{
+                        padding: '7px 8px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background:
+                          mapListTab === 'pending_maps'
+                            ? '#FEF3C7'
+                            : pendingMapPlaces.length > 0
+                            ? 'rgba(245, 158, 11, 0.1)'
+                            : 'transparent',
+                        color:
+                          mapListTab === 'pending_maps' || pendingMapPlaces.length > 0
+                            ? '#B45309'
+                            : theme.textMuted,
+                        fontWeight: 800,
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      {!isSuperAdmin && <Lock size={11} />}
+                      <span>Duyệt Maps ({pendingMapPlaces.length})</span>
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <span style={{ fontSize: '13px', fontWeight: 800 }}>
+                      {mapListTab === 'pending_maps'
+                        ? `Chờ duyệt Maps (${filteredMapPlaces.length})`
+                        : `Định vị Maps (${filteredMapPlaces.length})`}
+                    </span>
+                    <button
+                      onClick={() => setIsNewPlaceModalOpen(true)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: theme.accent,
+                        color: '#FFFFFF',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Plus size={13} /> Thêm Định Vị
+                    </button>
+                  </div>
+
+                  {/* TÌM ĐỊA ĐIỂM TRÊN MAPS */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      padding: '7px 10px',
+                      borderRadius: '9px',
+                      background: theme.bgInput,
+                      border: `1px solid ${theme.border}`,
+                      marginBottom: '7px',
+                    }}
+                  >
+                    <Search size={13} style={{ color: theme.textMuted, flexShrink: 0 }} />
+                    <input
+                      type="text"
+                      value={mapSearch}
+                      onChange={e => setMapSearch(e.target.value)}
+                      placeholder="Tìm địa điểm, đường phố..."
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        outline: 'none',
+                        width: '100%',
+                        fontSize: '12px',
+                        color: theme.textPrimary,
+                      }}
+                    />
+                  </div>
+
+                  {mapListTab === 'all' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
+                      <select
+                        value={mapCatFilter}
+                        onChange={e => setMapCatFilter(e.target.value)}
+                        style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
+                      >
+                        <option value="all">Mọi nhóm bản đồ</option>
+                        {EDITABLE_MAP_CATEGORIES.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={mapCoordFilter}
+                        onChange={e => setMapCoordFilter(e.target.value as any)}
+                        style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
+                      >
+                        <option value="all">Mọi tọa độ</option>
+                        <option value="verified">📍 Đã ghim chuẩn</option>
+                        <option value="unverified">⏳ Chưa có tọa độ</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px' }}>
-                  {adminAccounts.map(acc => (
+                {/* DANH SÁCH ĐỊA ĐIỂM TRONG QUẢN LÝ MAPS */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+                  {filteredMapPlaces.length === 0 ? (
+                    <div style={{ padding: '24px 12px', textAlign: 'center', fontSize: '12px', color: theme.textMuted }}>
+                      {mapListTab === 'pending_maps'
+                        ? 'Hiện không có vị trí nào chờ Admin duyệt.'
+                        : 'Không tìm thấy địa điểm phù hợp.'}
+                    </div>
+                  ) : (
+                    filteredMapPlaces.map(item => {
+                      const isSelected = selectedPlaceId === item.place.id;
+                      const ov = adminState.places?.[item.place.id];
+                      const hasCoords =
+                        Boolean(ov?.coordinateVerified) &&
+                        typeof ov?.lat === 'number' &&
+                        typeof ov?.lng === 'number';
+                      const pendingMap = ov?.pendingMapApproval;
+                      return (
+                        <div
+                          key={item.place.id}
+                          onClick={() => {
+                            selectPlaceForEdit(item);
+                            setMobileShowDetailPane(true);
+                          }}
+                          style={{
+                            padding: '9px 11px',
+                            borderRadius: '10px',
+                            marginBottom: '6px',
+                            cursor: 'pointer',
+                            border: isSelected
+                              ? `1.5px solid ${theme.accent}`
+                              : pendingMap
+                              ? '1px solid #F59E0B'
+                              : `1px solid ${theme.border}`,
+                            background: isSelected
+                              ? theme.accentSoft
+                              : pendingMap
+                              ? 'rgba(254, 243, 199, 0.45)'
+                              : theme.bgElevated,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                            <span style={{ fontSize: '12.5px', fontWeight: 700, color: theme.textPrimary }}>
+                              {item.place.name}
+                            </span>
+                            {pendingMap ? (
+                              <span
+                                style={{
+                                  fontSize: '9.5px',
+                                  fontWeight: 800,
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  background: '#FEF3C7',
+                                  color: '#B45309',
+                                }}
+                              >
+                                Chờ duyệt
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  color: hasCoords ? '#047857' : '#B45309',
+                                }}
+                              >
+                                {hasCoords ? '📍 Đã ghim' : '⏳ Chưa ghim'}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '11px', color: theme.textMuted, marginTop: '3px' }}>
+                            {item.place.address || 'P. Xuân Hòa'}
+                          </div>
+                          {pendingMap && (
+                            <div style={{ marginTop: '4px', fontSize: '10.5px', fontWeight: 700, color: '#B45309' }}>
+                              📍 {pendingMap.submittedByName}: {pendingMap.actionSummary}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* CỘT 2: THÔNG TIN ĐỊNH VỊ & TỌA ĐỘ MAPS */}
+              {selectedPlaceItem ? (
+                <div
+                  className={`xh-col-middle-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+                >
+                  <div
+                    style={{
+                      background: theme.bgCard,
+                      borderRadius: '14px',
+                      border: `1px solid ${theme.border}`,
+                      boxShadow: theme.shadow,
+                      padding: '16px 18px',
+                    }}
+                  >
+                    {/* KHUNG DUYỆT MAPS (CHỈ ADMIN ĐƯỢC DUYỆT, QUẢN LÝ MAPS BỊ KHÓA) */}
+                    {(() => {
+                      const ov = adminState.places?.[selectedPlaceItem.place.id];
+                      const pending = ov?.pendingMapApproval;
+                      if (!pending) return null;
+                      return (
+                        <div
+                          style={{
+                            padding: '11px 13px',
+                            borderRadius: '10px',
+                            background: '#FFFBEB',
+                            border: '1.5px solid #F59E0B',
+                            marginBottom: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: '#B45309' }}>
+                              ⏳ Đang chờ Admin duyệt Định vị Bản đồ số
+                            </div>
+                            <div style={{ fontSize: '11.5px', color: '#92400E', marginTop: '2px' }}>
+                              Người gửi: <strong>{pending.submittedByName}</strong> ({pending.submittedBy}) •{' '}
+                              {pending.actionSummary}
+                            </div>
+                          </div>
+
+                          {isSuperAdmin ? (
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  approvePendingPlaceItem(selectedPlaceItem.place.id, 'maps');
+                                  setRefreshTick(t => t + 1);
+                                  showToast(`✅ Đã duyệt định vị "${selectedPlaceItem.place.name}"!`, 'approve');
+                                }}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  border: 'none',
+                                  background: '#059669',
+                                  color: '#FFFFFF',
+                                  fontSize: '12px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                ✓ Duyệt Maps
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  rejectPendingPlaceItem(selectedPlaceItem.place.id, 'maps');
+                                  setRefreshTick(t => t + 1);
+                                  showToast(`Đã hoàn tác định vị của "${selectedPlaceItem.place.name}"`, 'warn');
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #FCA5A5',
+                                  background: '#FEF2F2',
+                                  color: '#B91C1C',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Từ chối
+                              </button>
+                            </div>
+                          ) : (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '5px 10px',
+                                borderRadius: '7px',
+                                background: '#FEF3C7',
+                                color: '#92400E',
+                                fontSize: '11.5px',
+                                fontWeight: 800,
+                              }}
+                            >
+                              <Lock size={12} /> Chờ Admin duyệt (Đã khóa với Quản lý)
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     <div
-                      key={acc.id}
                       style={{
-                        padding: '11px 13px',
-                        borderRadius: '10px',
-                        background: theme.bgElevated,
-                        border: `1px solid ${theme.border}`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '8px',
+                        paddingBottom: '12px',
+                        borderBottom: `1px solid ${theme.border}`,
+                        marginBottom: '14px',
+                        flexWrap: 'wrap',
                       }}
                     >
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: 800 }}>
-                          {acc.displayName}
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
-                          Nick: <strong style={{ color: theme.accent }}>@{acc.username}</strong> • Pass:{' '}
-                          <code>{acc.password}</code>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '5px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 800 }}>
+                        2. Thông tin Định vị Bản đồ
+                      </span>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                        {/* NÚT BLOCK (TẠM KHÓA) TRÊN MAPS */}
                         <button
                           onClick={() => {
-                            setAdminAccForm({
-                              id: acc.id,
-                              username: acc.username,
-                              password: acc.password,
-                              displayName: acc.displayName,
-                              role: acc.role,
-                            });
-                            setIsAdminAccModalOpen(true);
+                            const nextStatus = selectedPlaceItem.status === 'active' ? 'locked' : 'active';
+                            savePlaceAdminOverride(
+                              selectedPlaceItem.place.id,
+                              { status: nextStatus },
+                              nextStatus === 'locked' ? 'Block địa điểm trên Maps' : 'Mở khóa địa điểm Maps'
+                            );
+                            setRefreshTick(t => t + 1);
+                            showToast(nextStatus === 'locked' ? 'Đã Block địa điểm' : 'Đã mở khóa địa điểm');
                           }}
-                          style={smallRowBtnStyle(theme)}
+                          style={{
+                            ...actionBtnStyle(theme, false),
+                            padding: '6px 10px',
+                            fontSize: '11.5px',
+                            color: selectedPlaceItem.status === 'active' ? '#B45309' : '#047857',
+                          }}
                         >
-                          <Edit3 size={12} /> Sửa
+                          {selectedPlaceItem.status === 'active' ? <Lock size={12} /> : <Unlock size={12} />}
+                          <span>{selectedPlaceItem.status === 'active' ? 'Block' : 'Mở khóa'}</span>
                         </button>
-                        {adminAccounts.length > 1 && (
+
+                        {isSuperAdmin ? (
                           <button
                             onClick={() => {
-                              deleteAdminAccount(acc.id);
+                              savePlaceAdminOverride(
+                                selectedPlaceItem.place.id,
+                                { status: 'deleted' },
+                                'Xóa địa điểm khỏi Maps'
+                              );
                               setRefreshTick(t => t + 1);
-                              showToast(`Đã xóa nick quản lý @${acc.username}`);
+                              showToast('Đã xóa địa điểm khỏi bản đồ');
                             }}
-                            style={{ ...smallRowBtnStyle(theme), color: '#B91C1C' }}
+                            style={{
+                              ...actionBtnStyle(theme, false),
+                              padding: '6px 10px',
+                              fontSize: '11.5px',
+                              color: '#B91C1C',
+                            }}
                           >
                             <Trash2 size={12} />
+                            <span>Xóa</span>
                           </button>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: '10.5px',
+                              fontWeight: 700,
+                              padding: '5px 8px',
+                              borderRadius: '7px',
+                              background: theme.bgElevated,
+                              border: `1px solid ${theme.border}`,
+                              color: theme.textMuted,
+                            }}
+                          >
+                            🔒 Xóa: Chỉ Admin
+                          </span>
                         )}
+
+                        <button
+                          onClick={() => handleSavePlaceAndMenu()}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: justSavedPlace ? '#059669' : theme.accent,
+                            color: '#FFFFFF',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {justSavedPlace ? <Check size={13} /> : <Save size={13} />}
+                          <span>{justSavedPlace ? 'Đã Lưu' : 'Lưu Định Vị'}</span>
+                        </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* KHỐI 2: DANH SÁCH THÀNH VIÊN NGƯỜI DÙNG THỰC TẾ (100% SỐ THỰC) */}
+                    <div className="xh-compact-grid">
+                      <div className="xh-col-span-2">
+                        <label style={compactLabelStyle(theme)}>Tên hiển thị trên Bản đồ 2D/3D</label>
+                        <input
+                          type="text"
+                          value={editPlaceName}
+                          onChange={e => setEditPlaceName(e.target.value)}
+                          style={compactInputStyle(theme)}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={compactLabelStyle(theme)}>Biểu tượng & Nhóm Bản đồ</label>
+                        <select
+                          value={editPlaceMapCategory}
+                          onChange={e => {
+                            const nextCat = e.target.value as EditableMapCategory;
+                            setEditPlaceMapCategory(nextCat);
+                            if (nextCat === 'public' || nextCat === 'school') {
+                              setEditPlaceSectorTag('dia-danh');
+                            }
+                          }}
+                          style={{ ...lightSelectStyle(theme), height: '36px', fontWeight: 700 }}
+                        >
+                          {EDITABLE_MAP_CATEGORIES.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={compactLabelStyle(theme)}>Số điện thoại liên hệ</label>
+                        <input
+                          type="text"
+                          value={editPlacePhone}
+                          onChange={e => setEditPlacePhone(e.target.value)}
+                          style={compactInputStyle(theme)}
+                        />
+                      </div>
+
+                      <div className="xh-col-span-2">
+                        <label style={compactLabelStyle(theme)}>Địa chỉ chi tiết</label>
+                        <input
+                          type="text"
+                          value={editPlaceAddress}
+                          onChange={e => setEditPlaceAddress(e.target.value)}
+                          style={compactInputStyle(theme)}
+                        />
+                      </div>
+
+                      <div className="xh-col-span-2">
+                        <label style={compactLabelStyle(theme)}>
+                          Dán link Google Maps, Plus Code (VD: 7PQ6+VFP) hoặc tìm tọa độ tự động
+                        </label>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <input
+                            type="text"
+                            value={editPlaceMapsUrl || editPlaceMapsQuery}
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val.startsWith('http')) setEditPlaceMapsUrl(val);
+                              else {
+                                setEditPlaceMapsUrl('');
+                                setEditPlaceMapsQuery(val);
+                              }
+                              const parsed = parseCoordinatesFromInputOrUrl(val);
+                              if (parsed) {
+                                setEditPlaceLat(String(parsed.lat));
+                                setEditPlaceLng(String(parsed.lng));
+                              }
+                            }}
+                            placeholder="Dán link Google Maps, Plus Code hoặc tọa độ..."
+                            style={{ ...compactInputStyle(theme), flex: 1 }}
+                          />
+                          <button
+                            type="button"
+                            disabled={isAdminGeocoding}
+                            onClick={async () => {
+                              const rawQ = (
+                                editPlaceMapsUrl ||
+                                editPlaceMapsQuery ||
+                                editPlaceAddress ||
+                                editPlaceName
+                              ).trim();
+                              const direct = parseCoordinatesFromInputOrUrl(rawQ);
+                              if (direct) {
+                                setEditPlaceLat(String(direct.lat));
+                                setEditPlaceLng(String(direct.lng));
+                                showToast(`📍 Đã trích xuất tọa độ: ${direct.lat}, ${direct.lng}`);
+                                return;
+                              }
+                              setIsAdminGeocoding(true);
+                              try {
+                                const results = await geocodeAddressWithNominatim(
+                                  `${editPlaceAddress || editPlaceName}, Xuân Hòa, Phúc Yên`
+                                );
+                                if (results.length > 0) {
+                                  setEditPlaceLat(String(results[0].lat));
+                                  setEditPlaceLng(String(results[0].lng));
+                                  showToast(`📍 Đã tìm thấy tọa độ: ${results[0].lat}, ${results[0].lng}`);
+                                } else {
+                                  const road = findSuggestedRoadForAddress(
+                                    `${editPlaceAddress} ${editPlaceName}`,
+                                    VERIFIED_OSM_ROADS_SEED
+                                  );
+                                  if (road) {
+                                    setEditPlaceLat(String(Number(road.lat.toFixed(6))));
+                                    setEditPlaceLng(String(Number(road.lng.toFixed(6))));
+                                    showToast(`📍 Định vị theo đường ${road.name}`);
+                                  } else {
+                                    showToast('Chưa tìm thấy tự động — hãy chấm trực tiếp ở Cột 3 bên phải', 'warn');
+                                  }
+                                }
+                              } finally {
+                                setIsAdminGeocoding(false);
+                              }
+                            }}
+                            style={{
+                              ...smallRowBtnStyle(theme),
+                              background: theme.accent,
+                              color: '#FFFFFF',
+                              borderColor: theme.accent,
+                              padding: '0 12px',
+                              height: '36px',
+                            }}
+                          >
+                            <MapPin size={13} />
+                            <span>{isAdminGeocoding ? 'Đang tìm...' : 'Tìm tọa độ'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={compactLabelStyle(theme)}>Vĩ độ (Lat)</label>
+                        <input
+                          type="text"
+                          value={editPlaceLat}
+                          onChange={e => setEditPlaceLat(e.target.value)}
+                          placeholder="21.2897..."
+                          style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={compactLabelStyle(theme)}>Kinh độ (Lng)</label>
+                        <input
+                          type="text"
+                          value={editPlaceLng}
+                          onChange={e => setEditPlaceLng(e.target.value)}
+                          placeholder="105.7112..."
+                          style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* CỘT 3 CỦA QUẢN LÝ MAPS: SA BÀN TỌA ĐỘ TƯƠNG TÁC & ĐỐI CHIẾU LÂN CẬN */}
+              {selectedPlaceItem ? (
+                <div
+                  className={`xh-col-right-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
+                  style={{
+                    background: theme.bgCard,
+                    borderRadius: '14px',
+                    border: `1px solid ${theme.border}`,
+                    boxShadow: theme.shadow,
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingBottom: '10px',
+                      borderBottom: `1px solid ${theme.border}`,
+                    }}
+                  >
+                    <span style={{ fontSize: '14.5px', fontWeight: 800 }}>
+                      3. Sa bàn Tọa độ & Đối chiếu
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editPlaceLat && editPlaceLng) {
+                          jumpToMapUrl(
+                            `#/ban-do?flyLat=${editPlaceLat}&flyLng=${editPlaceLng}&flyLabel=${encodeURIComponent(
+                              editPlaceName
+                            )}`
+                          );
+                        } else {
+                          jumpToMapUrl(
+                            `#/ban-do?pick=${encodeURIComponent(
+                              selectedPlaceItem.place.id
+                            )}&pickName=${encodeURIComponent(editPlaceName)}`
+                          );
+                        }
+                      }}
+                      style={{
+                        ...smallRowBtnStyle(theme),
+                        background: theme.accentSoft,
+                        color: theme.accent,
+                        borderColor: theme.accentBorder,
+                      }}
+                    >
+                      <MapPin size={12} /> Mở Bản đồ Số
+                    </button>
+                  </div>
+
+                  {/* KHUNG CHẤM TỌA ĐỘ NHANH TRỰC QUAN TRONG CỘT 3 */}
+                  {(() => {
+                    const minLat = 21.278;
+                    const maxLat = 21.302;
+                    const minLng = 105.698;
+                    const maxLng = 105.726;
+                    const curLat = Number(editPlaceLat) || 21.2897;
+                    const curLng = Number(editPlaceLng) || 105.7112;
+                    const pctX = Math.max(4, Math.min(96, ((curLng - minLng) / (maxLng - minLng)) * 100));
+                    const pctY = Math.max(4, Math.min(96, ((maxLat - curLat) / (maxLat - minLat)) * 100));
+
+                    return (
+                      <div>
+                        <div style={{ fontSize: '11.5px', color: theme.textSecondary, marginBottom: '6px' }}>
+                          Bấm trực tiếp lên khung lưới tọa độ Xuân Hòa bên dưới để dời ghim nhanh:
+                        </div>
+                        <div
+                          onClick={e => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const rx = (e.clientX - rect.left) / rect.width;
+                            const ry = (e.clientY - rect.top) / rect.height;
+                            const nextLng = Number((minLng + rx * (maxLng - minLng)).toFixed(6));
+                            const nextLat = Number((maxLat - ry * (maxLat - minLat)).toFixed(6));
+                            setEditPlaceLat(String(nextLat));
+                            setEditPlaceLng(String(nextLng));
+                            showToast(`📍 Đã chấm tọa độ: ${nextLat}, ${nextLng} (Bấm Lưu Định Vị để áp dụng)`);
+                          }}
+                          style={{
+                            position: 'relative',
+                            height: '190px',
+                            borderRadius: '12px',
+                            border: `1.5px solid ${theme.accentBorder}`,
+                            background:
+                              'radial-gradient(circle at 50% 50%, #F0FDF4 0%, #E0F2FE 100%)',
+                            cursor: 'crosshair',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {/* LƯỚI TỌA ĐỘ TRỰC QUAN */}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              inset: 0,
+                              backgroundImage:
+                                'linear-gradient(to right, rgba(15,23,42,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(15,23,42,0.06) 1px, transparent 1px)',
+                              backgroundSize: '24px 24px',
+                            }}
+                          />
+                          {/* TRỤC ĐHSP2 MỐC TRUNG TÂM */}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: '48%',
+                              top: '51%',
+                              transform: 'translate(-50%, -50%)',
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              color: '#0369A1',
+                              background: 'rgba(255,255,255,0.85)',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            🎓 Tâm ĐHSP2
+                          </div>
+
+                          {/* GHIM HIỆN TẠI */}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: `${pctX}%`,
+                              top: `${pctY}%`,
+                              transform: 'translate(-50%, -100%)',
+                              pointerEvents: 'none',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 800,
+                                background: '#18181B',
+                                color: '#FFF',
+                                padding: '2px 6px',
+                                borderRadius: '5px',
+                                whiteSpace: 'nowrap',
+                                marginBottom: '2px',
+                              }}
+                            >
+                              {editPlaceName}
+                            </span>
+                            <MapPin size={22} style={{ color: '#DC2626', fill: '#FEE2E2' }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* DANH SÁCH ĐỊA ĐIỂM LÂN CẬN ĐỂ KIỂM TRA TRÙNG LẶP GHIM */}
+                  <div
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      background: theme.bgElevated,
+                      border: `1px solid ${theme.border}`,
+                    }}
+                  >
+                    <div style={{ fontSize: '12px', fontWeight: 800, marginBottom: '6px' }}>
+                      Các điểm đã ghim gần vị trí này:
+                    </div>
+                    {(() => {
+                      const curLat = Number(editPlaceLat);
+                      const curLng = Number(editPlaceLng);
+                      if (!curLat || !curLng) {
+                        return (
+                          <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
+                            Chưa có tọa độ Lat/Lng để đối chiếu khoảng cách lân cận.
+                          </div>
+                        );
+                      }
+                      const nearby = allPlaces
+                        .filter(p => p.place.id !== selectedPlaceItem.place.id)
+                        .map(p => {
+                          const ov = adminState.places?.[p.place.id];
+                          if (typeof ov?.lat !== 'number' || typeof ov?.lng !== 'number') return null;
+                          const distMeters = Math.round(
+                            Math.hypot((ov.lat - curLat) * 111320, (ov.lng - curLng) * 103000)
+                          );
+                          return { name: p.place.name, distMeters, lat: ov.lat, lng: ov.lng };
+                        })
+                        .filter((x): x is NonNullable<typeof x> => Boolean(x))
+                        .sort((a, b) => a.distMeters - b.distMeters)
+                        .slice(0, 4);
+
+                      if (nearby.length === 0) {
+                        return (
+                          <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
+                            Chưa có địa điểm lân cận nào khác.
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          {nearby.map((nb, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                fontSize: '11.5px',
+                                padding: '4px 6px',
+                                borderRadius: '6px',
+                                background: theme.bgCard,
+                              }}
+                            >
+                              <span style={{ fontWeight: 600 }}>{nb.name}</span>
+                              <span style={{ color: theme.accent, fontWeight: 800 }}>~{nb.distMeters}m</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          {/* =================================================================== */}
+          {/* 3. QUẢN LÝ THÀNH VIÊN (CẤP QUYỀN QUẢN LÝ MAPS / QUẢN LÝ WEB THEO GMAIL) */}
+          {/* =================================================================== */}
+          {activeSection === 'members' && isSuperAdmin && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* KHỐI 1: DANH SÁCH THÀNH VIÊN ĐĂNG KÝ QUA GMAIL — TÍCH CẤP QUYỀN TRỰC TIẾP */}
               <div
                 style={{
                   background: theme.bgCard,
@@ -3161,11 +3721,13 @@ export function AdminDashboardView({
                 >
                   <div>
                     <div style={{ fontSize: '15px', fontWeight: 800 }}>
-                      Thành viên Người dùng thực tế ({realMembersCount} người)
+                      Bảng Quản lý Thành viên Gmail ({realMembersCount} người)
                       {seederMembersCount > 0 ? ` (+ ${seederMembersCount} nick phụ)` : ''}
                     </div>
                     <div style={{ fontSize: '12px', color: theme.textMuted }}>
-                      100% người dùng đăng ký thực qua Gmail trên hệ thống
+                      Khi người mới đăng ký bằng Gmail sẽ hiện lên bảng này. Admin biết ai có thể tích cấp quyền{' '}
+                      <strong style={{ color: theme.accent }}>Quản lý Web (Quán)</strong> hoặc{' '}
+                      <strong style={{ color: '#047857' }}>Quản lý Maps</strong> (cấp 1 hoặc cả 2 chức vụ).
                     </div>
                   </div>
 
@@ -3224,13 +3786,13 @@ export function AdminDashboardView({
                         cursor: 'pointer',
                       }}
                     >
-                      <Plus size={13} /> Tạo nick phụ đánh giá
+                      <Plus size={13} /> Thêm Gmail / Nick mới
                     </button>
                   </div>
                 </div>
 
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '720px' }}>
                     <thead>
                       <tr
                         style={{
@@ -3242,87 +3804,299 @@ export function AdminDashboardView({
                           textTransform: 'uppercase',
                         }}
                       >
-                        <th style={{ padding: '10px 14px' }}>Thành viên</th>
-                        <th style={{ padding: '10px 14px' }}>Phân loại</th>
+                        <th style={{ padding: '10px 14px' }}>Thành viên & Gmail</th>
+                        <th style={{ padding: '10px 14px' }}>Cấp quyền Quản lý (Admin tích chọn 1 hoặc cả 2)</th>
                         <th style={{ padding: '10px 14px' }}>Trạng thái</th>
                         <th style={{ padding: '10px 14px', textAlign: 'right' }}>Thao tác</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredMembers.map(member => (
-                        <tr key={member.email} style={{ borderBottom: `1px solid ${theme.border}` }}>
-                          <td style={{ padding: '10px 14px' }}>
-                            <div style={{ fontWeight: 700, fontSize: '13px' }}>{member.nickname}</div>
-                            <div style={{ fontSize: '11.5px', color: theme.textMuted }}>{member.email}</div>
-                          </td>
-                          <td style={{ padding: '10px 14px', fontSize: '12px' }}>
-                            {member.isTestAccount ? 'Nick phụ (Đánh giá)' : 'Gmail Thực Tế'}
-                          </td>
-                          <td style={{ padding: '10px 14px', fontSize: '12px', fontWeight: 700 }}>
-                            {member.status === 'admin'
-                              ? 'Quản trị viên'
-                              : member.status === 'active'
-                              ? 'Hoạt động'
-                              : member.status === 'muted'
-                              ? 'Đang Mute'
-                              : 'Đã chặn (Ban)'}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', gap: '6px' }}>
-                              {member.status !== 'active' && (
-                                <button
-                                  onClick={() => {
-                                    updateMemberStatusInAdmin(member.email, 'active');
-                                    setRefreshTick(t => t + 1);
-                                    showToast(`Đã mở khóa ${member.nickname}`);
+                      {filteredMembers.map(member => {
+                        const hasWeb = Boolean(member.canManageWeb);
+                        const hasMaps = Boolean(member.canManageMaps);
+                        return (
+                          <tr key={member.email} style={{ borderBottom: `1px solid ${theme.border}` }}>
+                            <td style={{ padding: '10px 14px' }}>
+                              <div style={{ fontWeight: 700, fontSize: '13px' }}>{member.nickname}</div>
+                              <div style={{ fontSize: '11.5px', color: theme.textMuted }}>{member.email}</div>
+                            </td>
+
+                            {/* CỘT TÍCH CẤP QUYỀN QUẢN LÝ WEB & QUẢN LÝ MAPS */}
+                            <td style={{ padding: '10px 14px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                <label
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '5px 10px',
+                                    borderRadius: '8px',
+                                    border: hasWeb ? `1.5px solid ${theme.accent}` : `1px solid ${theme.border}`,
+                                    background: hasWeb ? theme.accentSoft : theme.bgElevated,
+                                    color: hasWeb ? theme.accent : theme.textSecondary,
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
                                   }}
-                                  style={smallRowBtnStyle(theme)}
                                 >
-                                  <UserCheck size={12} /> Mở
-                                </button>
-                              )}
-                              {member.status !== 'muted' && member.status !== 'admin' && (
-                                <button
-                                  onClick={() => {
-                                    updateMemberStatusInAdmin(member.email, 'muted');
-                                    setRefreshTick(t => t + 1);
-                                    showToast(`Đã Mute ${member.nickname}`);
+                                  <input
+                                    type="checkbox"
+                                    checked={hasWeb}
+                                    onChange={e => {
+                                      const nextVal = e.target.checked;
+                                      updateMemberManagerPermissions(member.email, { canManageWeb: nextVal });
+                                      setRefreshTick(t => t + 1);
+                                      showToast(
+                                        nextVal
+                                          ? `✅ Đã cấp quyền Quản lý Web (Quán) cho ${member.nickname} (${member.email})`
+                                          : `Đã gỡ quyền Quản lý Web của ${member.nickname}`
+                                      );
+                                    }}
+                                    style={{ accentColor: theme.accent, cursor: 'pointer' }}
+                                  />
+                                  <span>Quản lý Web (Quán)</span>
+                                </label>
+
+                                <label
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '5px 10px',
+                                    borderRadius: '8px',
+                                    border: hasMaps ? '1.5px solid #10B981' : `1px solid ${theme.border}`,
+                                    background: hasMaps ? 'rgba(16, 185, 129, 0.12)' : theme.bgElevated,
+                                    color: hasMaps ? '#047857' : theme.textSecondary,
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
                                   }}
-                                  style={{ ...smallRowBtnStyle(theme), color: '#B45309' }}
                                 >
-                                  <VolumeX size={12} /> Mute
-                                </button>
+                                  <input
+                                    type="checkbox"
+                                    checked={hasMaps}
+                                    onChange={e => {
+                                      const nextVal = e.target.checked;
+                                      updateMemberManagerPermissions(member.email, { canManageMaps: nextVal });
+                                      setRefreshTick(t => t + 1);
+                                      showToast(
+                                        nextVal
+                                          ? `📍 Đã cấp quyền Quản lý Maps cho ${member.nickname} (${member.email})`
+                                          : `Đã gỡ quyền Quản lý Maps của ${member.nickname}`
+                                      );
+                                    }}
+                                    style={{ accentColor: '#059669', cursor: 'pointer' }}
+                                  />
+                                  <span>Quản lý Maps</span>
+                                </label>
+                              </div>
+                            </td>
+
+                            <td style={{ padding: '10px 14px', fontSize: '12px', fontWeight: 700 }}>
+                              {hasWeb && hasMaps ? (
+                                <span style={{ color: '#047857' }}>Quản lý Web & Maps</span>
+                              ) : hasWeb ? (
+                                <span style={{ color: theme.accent }}>Quản lý Web</span>
+                              ) : hasMaps ? (
+                                <span style={{ color: '#047857' }}>Quản lý Maps</span>
+                              ) : member.status === 'active' ? (
+                                'Thành viên'
+                              ) : member.status === 'muted' ? (
+                                'Đang Mute'
+                              ) : (
+                                'Đã chặn (Ban)'
                               )}
-                              {member.status !== 'banned' && member.status !== 'admin' && (
-                                <button
-                                  onClick={() => {
-                                    updateMemberStatusInAdmin(member.email, 'banned');
-                                    setRefreshTick(t => t + 1);
-                                    showToast(`Đã Ban ${member.nickname}`);
-                                  }}
-                                  style={{ ...smallRowBtnStyle(theme), color: '#B91C1C' }}
-                                >
-                                  <Ban size={12} /> Ban
-                                </button>
-                              )}
-                              {member.status !== 'admin' && (
-                                <button
-                                  onClick={() => {
-                                    deleteMemberAndPurgeReviews(member.email);
-                                    setRefreshTick(t => t + 1);
-                                    showToast(`Đã xóa ${member.nickname}`);
-                                  }}
-                                  style={{ ...smallRowBtnStyle(theme), color: '#B91C1C' }}
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+
+                            <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                {member.status !== 'active' && (
+                                  <button
+                                    onClick={() => {
+                                      updateMemberStatusInAdmin(member.email, 'active');
+                                      setRefreshTick(t => t + 1);
+                                      showToast(`Đã mở khóa ${member.nickname}`);
+                                    }}
+                                    style={smallRowBtnStyle(theme)}
+                                  >
+                                    <UserCheck size={12} /> Mở
+                                  </button>
+                                )}
+                                {member.status !== 'muted' && member.status !== 'admin' && (
+                                  <button
+                                    onClick={() => {
+                                      updateMemberStatusInAdmin(member.email, 'muted');
+                                      setRefreshTick(t => t + 1);
+                                      showToast(`Đã Mute ${member.nickname}`);
+                                    }}
+                                    style={{ ...smallRowBtnStyle(theme), color: '#B45309' }}
+                                  >
+                                    <VolumeX size={12} /> Mute
+                                  </button>
+                                )}
+                                {member.status !== 'banned' && member.status !== 'admin' && (
+                                  <button
+                                    onClick={() => {
+                                      updateMemberStatusInAdmin(member.email, 'banned');
+                                      setRefreshTick(t => t + 1);
+                                      showToast(`Đã Ban ${member.nickname}`);
+                                    }}
+                                    style={{ ...smallRowBtnStyle(theme), color: '#B91C1C' }}
+                                  >
+                                    <Ban size={12} /> Ban
+                                  </button>
+                                )}
+                                {member.status !== 'admin' && (
+                                  <button
+                                    onClick={() => {
+                                      deleteMemberAndPurgeReviews(member.email);
+                                      setRefreshTick(t => t + 1);
+                                      showToast(`Đã xóa ${member.nickname}`);
+                                    }}
+                                    style={{ ...smallRowBtnStyle(theme), color: '#B91C1C' }}
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              {/* KHỐI 2: TÀI KHOẢN QUẢN LÝ CẤP BẰNG NICK & MẬT KHẨU RIÊNG */}
+              <div
+                style={{
+                  background: theme.bgCard,
+                  borderRadius: '14px',
+                  border: `1px solid ${theme.border}`,
+                  boxShadow: theme.shadow,
+                  padding: '16px 18px',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    marginBottom: '12px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <KeyRound size={16} style={{ color: theme.accent }} />
+                      <span>Tài khoản Ban Quản Lý theo Nick & Mật khẩu ({adminAccounts.length} nick)</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: theme.textMuted }}>
+                      Ngoài việc cấp quyền theo Gmail ở bảng trên, bạn có thể tạo Nick & Mật khẩu riêng cho Quản lý
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setAdminAccForm({
+                        id: '',
+                        username: '',
+                        password: '',
+                        displayName: '',
+                        role: 'manager',
+                        canManageWeb: true,
+                        canManageMaps: false,
+                      });
+                      setIsAdminAccModalOpen(true);
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '7px 12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: theme.accent,
+                      color: '#FFF',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <UserPlus size={14} /> Cấp Nick Quản Lý Mới
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px' }}>
+                  {adminAccounts.map(acc => (
+                    <div
+                      key={acc.id}
+                      style={{
+                        padding: '11px 13px',
+                        borderRadius: '10px',
+                        background: theme.bgElevated,
+                        border: `1px solid ${theme.border}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 800 }}>
+                          {acc.displayName}
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
+                          Nick: <strong style={{ color: theme.accent }}>@{acc.username}</strong> • Pass:{' '}
+                          <code>{acc.password}</code>
+                        </div>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#047857', marginTop: '3px' }}>
+                          {acc.role === 'superadmin'
+                            ? '★ Admin Tối Cao (Toàn quyền)'
+                            : acc.canManageWeb && acc.canManageMaps
+                            ? 'Quản lý Web & Maps'
+                            : acc.canManageMaps
+                            ? 'Quản lý Maps'
+                            : 'Quản lý Web (Quán)'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <button
+                          onClick={() => {
+                            setAdminAccForm({
+                              id: acc.id,
+                              username: acc.username,
+                              password: acc.password,
+                              displayName: acc.displayName,
+                              role: acc.role,
+                              canManageWeb: acc.canManageWeb ?? true,
+                              canManageMaps: acc.canManageMaps ?? false,
+                            });
+                            setIsAdminAccModalOpen(true);
+                          }}
+                          style={smallRowBtnStyle(theme)}
+                        >
+                          <Edit3 size={12} /> Sửa
+                        </button>
+                        {adminAccounts.length > 1 && (
+                          <button
+                            onClick={() => {
+                              deleteAdminAccount(acc.id);
+                              setRefreshTick(t => t + 1);
+                              showToast(`Đã xóa nick quản lý @${acc.username}`);
+                            }}
+                            style={{ ...smallRowBtnStyle(theme), color: '#B91C1C' }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -3570,6 +4344,49 @@ export function AdminDashboardView({
                   </label>
                 </div>
               </div>
+
+              {/* HÀNG 4: TÀI KHOẢN HIỆN TẠI & NÚT THOÁT (ĐĂNG XUẤT) ĐƯỢC GOM VÀO CÀI ĐẶT */}
+              <div
+                style={{
+                  ...settingRowBoxStyle(theme),
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  borderColor: 'rgba(220, 38, 38, 0.22)',
+                  background: 'rgba(254, 242, 242, 0.6)',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: theme.textPrimary }}>
+                    {roleInfo.displayName} ({roleInfo.roleBadgeLabel})
+                  </div>
+                  <div style={{ fontSize: '11px', color: theme.textMuted }}>
+                    Đăng xuất khỏi phiên Quản trị hiện tại
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsSettingsModalOpen(false);
+                    handleAdminLogout();
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '7px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(220, 38, 38, 0.35)',
+                    background: '#DC2626',
+                    color: '#FFFFFF',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <LogOut size={13} /> Thoát Quản trị
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3582,7 +4399,7 @@ export function AdminDashboardView({
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: '400px',
+              maxWidth: '410px',
               background: theme.bgCard,
               color: theme.textPrimary,
               borderRadius: '16px',
@@ -3624,6 +4441,66 @@ export function AdminDashboardView({
                   placeholder="Nhập mật khẩu..."
                   style={compactInputStyle(theme)}
                 />
+              </div>
+              <div>
+                <label style={compactLabelStyle(theme)}>
+                  Phân quyền mảng quản lý (Tích chọn 1 hoặc cả 2)
+                </label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                  <label
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 11px',
+                      borderRadius: '8px',
+                      border: adminAccForm.canManageWeb
+                        ? `1.5px solid ${theme.accent}`
+                        : `1px solid ${theme.border}`,
+                      background: adminAccForm.canManageWeb ? theme.accentSoft : theme.bgElevated,
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={adminAccForm.canManageWeb}
+                      onChange={e =>
+                        setAdminAccForm({ ...adminAccForm, canManageWeb: e.target.checked })
+                      }
+                    />
+                    <span>Quản lý Web (Quán)</span>
+                  </label>
+
+                  <label
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 11px',
+                      borderRadius: '8px',
+                      border: adminAccForm.canManageMaps
+                        ? '1.5px solid #10B981'
+                        : `1px solid ${theme.border}`,
+                      background: adminAccForm.canManageMaps
+                        ? 'rgba(16, 185, 129, 0.12)'
+                        : theme.bgElevated,
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={adminAccForm.canManageMaps}
+                      onChange={e =>
+                        setAdminAccForm({ ...adminAccForm, canManageMaps: e.target.checked })
+                      }
+                    />
+                    <span>Quản lý Maps</span>
+                  </label>
+                </div>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
@@ -4024,12 +4901,18 @@ export function AdminDashboardView({
         }
         .xh-admin-main {
           flex: 1;
-          padding: 16px 18px 40px 18px;
-          max-width: 1440px;
+          padding: 16px 16px 40px 16px;
+          max-width: 1580px;
           width: 100%;
           overflow-x: hidden;
         }
-        /* CỘT 2 (DANH SÁCH QUÁN) VÀ CỘT 3 (CHI TIẾT QUÁN) BẮT ĐẦU CÙNG MÉP TRÊN VÀ CAO CÂN ĐỐI */
+        /* BỐ CỤC 3 CỘT CHO QUẢN LÝ QUÁN VÀ QUẢN LÝ MAPS */
+        .xh-three-col-layout {
+          display: grid;
+          grid-template-columns: 295px minmax(350px, 1.15fr) minmax(320px, 1fr);
+          gap: 14px;
+          align-items: start;
+        }
         .xh-places-master-detail {
           display: grid;
           grid-template-columns: 330px 1fr;
@@ -4040,6 +4923,11 @@ export function AdminDashboardView({
           display: flex;
           flex-direction: column;
           height: calc(100vh - 86px);
+          position: sticky;
+          top: 68px;
+          align-self: start;
+        }
+        .xh-col-right-pane {
           position: sticky;
           top: 68px;
           align-self: start;
@@ -4056,6 +4944,16 @@ export function AdminDashboardView({
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
           gap: 12px;
+        }
+
+        @media (max-width: 1180px) {
+          .xh-three-col-layout {
+            grid-template-columns: 280px 1fr;
+          }
+          .xh-col-right-pane {
+            grid-column: 2;
+            position: static;
+          }
         }
 
         @media (max-width: 960px) {
@@ -4097,8 +4995,14 @@ export function AdminDashboardView({
           .xh-admin-main {
             padding: 12px 10px 50px 10px;
           }
+          .xh-three-col-layout,
           .xh-places-master-detail {
             grid-template-columns: 1fr;
+          }
+          .xh-col-right-pane {
+            grid-column: 1;
+            position: static;
+            max-height: none !important;
           }
           .xh-places-list-pane {
             position: static;

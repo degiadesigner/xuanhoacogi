@@ -38,6 +38,7 @@ import {
   evaluatePlaceOpenStatus,
   findSuggestedRoadForAddress,
   geocodeAddressWithNominatim,
+  blockLandmarkOrPlaceFromMap,
   hideLandmarkOrPlaceFromMap,
   parseCoordinatesFromInputOrUrl,
   restoreLandmarkOrPlaceDefault,
@@ -58,6 +59,7 @@ import { renderCategoryIcon } from '@/components/map/MapCategoryPanel';
 import {
   CITY3D_COLORS,
   TREE_PALETTE,
+  getLizardHillElevationAtLngLat,
   lngLatToLocal,
   localToLngLat,
   type BuildingChunk,
@@ -105,6 +107,8 @@ export interface City3DViewProps {
   onShowPlaceIn2D?: (place: PlaceLocation) => void;
   /** Trạng thái quyền Admin từ ngoài truyền vào */
   isAdminUser?: boolean;
+  /** Trạng thái quyền Quản lý Maps từ ngoài truyền vào */
+  isMapManagerUser?: boolean;
   /** Báo hiệu dữ liệu địa danh/quán đã thay đổi để 2D & Admin đồng bộ tức thì */
   onDataChanged?: () => void;
   /** Mở thẳng trang Web Admin (#admin) */
@@ -143,6 +147,7 @@ interface Stats {
 interface PrecomputedPin {
   place: PlaceLocation;
   lx: number;
+  ly: number;
   lz: number;
   halfW: number;
 }
@@ -204,6 +209,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
   onOpenPlace,
   onShowPlaceIn2D,
   isAdminUser: propIsAdmin,
+  isMapManagerUser: propIsMapManager,
   onDataChanged,
   onOpenWebAdmin,
   userCoords = null,
@@ -284,13 +290,17 @@ export const City3DView: React.FC<City3DViewProps> = ({
   });
   const [selected, setSelected] = useState<PlaceLocation | null>(null);
 
-  // Quyền Admin & Chỉnh sửa trực tiếp trên Sa Bàn 3D
+  // Quyền Admin & Quản lý Maps chỉnh sửa trực tiếp trên Sa Bàn 3D
   const [hasAdminAccess, setHasAdminAccess] = useState<boolean>(() =>
-    Boolean(propIsAdmin || isAdminAuthenticated() || isMapManagerAuthenticated())
+    Boolean(propIsAdmin || propIsMapManager || isAdminAuthenticated() || isMapManagerAuthenticated())
+  );
+  const isStrictSuperAdmin = useMemo(
+    () => Boolean(propIsAdmin || isAdminAuthenticated()),
+    [propIsAdmin]
   );
   useEffect(() => {
-    if (propIsAdmin) setHasAdminAccess(true);
-  }, [propIsAdmin]);
+    if (propIsAdmin || propIsMapManager) setHasAdminAccess(true);
+  }, [propIsAdmin, propIsMapManager]);
 
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginUser, setLoginUser] = useState('admin');
@@ -395,9 +405,19 @@ export const City3DView: React.FC<City3DViewProps> = ({
     for (const p of placesWithCoords) {
       if (p.lat === null || p.lng === null) continue;
       const [x, y] = lngLatToLocal(originState, p.lng, p.lat);
+      const hillY = getLizardHillElevationAtLngLat(p.lng, p.lat);
+      const monumentBoost =
+        p.id === 'osm_historic_bot_than_lan'
+          ? 12.5
+          : p.id === 'osm_landmark_nui_than_lan'
+            ? 10.0
+            : hillY > 0.5
+              ? 6.0
+              : 0;
       list.push({
         place: p,
         lx: x,
+        ly: 6 + hillY + monumentBoost,
         lz: -y,
         halfW: Math.min(82, p.name.length * 3.1 + 16),
       });
@@ -720,7 +740,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
       if (draftEl) {
         if (draftCoord && o) {
           const [dx, dy] = lngLatToLocal(o, draftCoord.lng, draftCoord.lat);
-          tmpV.set(dx, 6, -dy).project(camera);
+          const draftHillY = getLizardHillElevationAtLngLat(draftCoord.lng, draftCoord.lat);
+          tmpV.set(dx, 6 + draftHillY, -dy).project(camera);
           if (tmpV.z <= 1 && Math.abs(tmpV.x) <= 1.15 && Math.abs(tmpV.y) <= 1.15) {
             const sx = (tmpV.x * 0.5 + 0.5) * w;
             const sy = (-tmpV.y * 0.5 + 0.5) * h;
@@ -743,7 +764,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
       if (userEl) {
         if (curUser && o) {
           const [ux, uy] = lngLatToLocal(o, curUser.lng, curUser.lat);
-          tmpV.set(ux, 2.5, -uy).project(camera);
+          const userHillY = getLizardHillElevationAtLngLat(curUser.lng, curUser.lat);
+          tmpV.set(ux, 2.5 + userHillY, -uy).project(camera);
           if (tmpV.z <= 1 && Math.abs(tmpV.x) <= 1.15 && Math.abs(tmpV.y) <= 1.15) {
             const sx = (tmpV.x * 0.5 + 0.5) * w;
             const sy = (-tmpV.y * 0.5 + 0.5) * h;
@@ -763,7 +785,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
       if (homeEl) {
         if (curHome && o) {
           const [hx, hy] = lngLatToLocal(o, curHome.lng, curHome.lat);
-          tmpV.set(hx, 6, -hy).project(camera);
+          const homeHillY = getLizardHillElevationAtLngLat(curHome.lng, curHome.lat);
+          tmpV.set(hx, 6 + homeHillY, -hy).project(camera);
           if (tmpV.z <= 1 && Math.abs(tmpV.x) <= 1.15 && Math.abs(tmpV.y) <= 1.15) {
             const sx = (tmpV.x * 0.5 + 0.5) * w;
             const sy = (-tmpV.y * 0.5 + 0.5) * h;
@@ -783,7 +806,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
         const item = pins[i];
         const el = pinElsRef.current.get(item.place.id);
         if (!el) continue;
-        tmpV.set(item.lx, 6, item.lz).project(camera);
+        tmpV.set(item.lx, item.ly, item.lz).project(camera);
         if (tmpV.z > 1 || tmpV.x < -1.12 || tmpV.x > 1.12 || tmpV.y < -1.12 || tmpV.y > 1.12) {
           setElVis(el, false);
           continue;
@@ -1340,9 +1363,10 @@ export const City3DView: React.FC<City3DViewProps> = ({
     const eng = engineRef.current;
     if (!eng?.origin) return;
     const [x, y] = lngLatToLocal(eng.origin, lng, lat);
+    const hillY = getLizardHillElevationAtLngLat(lng, lat);
     const off = eng.camera.position.clone().sub(eng.controls.target);
     off.setLength(Math.min(off.length(), targetDist));
-    eng.animateTo(new THREE.Vector3(x, 0, -y), off, 700);
+    eng.animateTo(new THREE.Vector3(x, hillY, -y), off, 700);
   }, []);
 
   // Vẽ tuyến đường dẫn đường 3D bám sát mặt đường khi activeRoute hoạt động (đồng bộ 100% giữa 2D và 3D)
@@ -1380,7 +1404,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
     for (let i = 0; i < coordsToDraw.length; i++) {
       const [lng, lat] = coordsToDraw[i];
       const [lx, ly] = lngLatToLocal(originState, lng, lat);
-      pts3D.push(new THREE.Vector3(lx, 0.65, -ly));
+      const hillY = getLizardHillElevationAtLngLat(lng, lat);
+      pts3D.push(new THREE.Vector3(lx, hillY + 0.65, -ly));
     }
 
     if (pts3D.length >= 2) {
@@ -1406,7 +1431,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
         color: activeRoute.hasArrived ? 0x059669 : 0xef4444,
       });
       const endMesh = new THREE.Mesh(endGeo, endMat);
-      endMesh.position.set(endPt.x, 1.0, endPt.z);
+      endMesh.position.set(endPt.x, endPt.y + 0.35, endPt.z);
       group.add(endMesh);
     }
 
@@ -1421,7 +1446,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
       const eng = engineRef.current;
       if (eng?.origin) {
         const [x, y] = lngLatToLocal(eng.origin, p.lng, p.lat);
-        // Tự động xoay góc nhìn chuẩn trực diện từ mặt đường chính cho 3 công trình biểu tượng
+        // Tự động xoay góc nhìn chuẩn trực diện từ mặt đường chính cho các công trình biểu tượng & danh thắng 3D
         if (p.id === 'osm_landmark_quang_truong_chim_xanh') {
           // Nhìn từ Đường Nguyễn Văn Linh (Đông Bắc) vào thẳng Quảng trường Con Chim Xanh (Tây Nam)
           eng.animateTo(new THREE.Vector3(x, 0, -y), new THREE.Vector3(44, 46, -46), 720);
@@ -1435,6 +1460,18 @@ export const City3DView: React.FC<City3DViewProps> = ({
         if (p.id === 'osm_landmark_nha_trang_xuan_hoa') {
           // Nhìn từ ngã giao Vòng tròn 1 vào thẳng mặt tiền Màn hình LED & Mái vòm vàng Nhà Trắng
           eng.animateTo(new THREE.Vector3(x, 0, -y), new THREE.Vector3(-14, 42, 68), 720);
+          return;
+        }
+        if (p.id === 'osm_historic_bot_than_lan') {
+          // Nhìn trực diện vào Khu Di tích Lịch sử Bốt Pháp, Bốt tròn cổ, Nhà bia & Kỳ đài trên đỉnh Bắc Đồi Thằn Lằn
+          const hillY = getLizardHillElevationAtLngLat(p.lng, p.lat);
+          eng.animateTo(new THREE.Vector3(x, hillY + 4, -y), new THREE.Vector3(56, 48, 68), 780);
+          return;
+        }
+        if (p.id === 'osm_landmark_nui_than_lan') {
+          // Nhìn bao quát Đài Vọng Cảnh Đỉnh Nam, đường leo đồi và toàn bộ sống lưng Đồi Thằn Lằn
+          const hillY = getLizardHillElevationAtLngLat(p.lng, p.lat);
+          eng.animateTo(new THREE.Vector3(x, hillY + 3, -y), new THREE.Vector3(82, 68, 95), 780);
           return;
         }
       }
@@ -1613,22 +1650,36 @@ export const City3DView: React.FC<City3DViewProps> = ({
       setIsPicking3DGround(false);
       setLiveState({
         busy: false,
-        message: `✅ Đã lưu địa danh "${editName.trim()}" (${saved.lat}, ${saved.lng})!`,
+        message: isStrictSuperAdmin
+          ? `✅ Đã lưu địa danh "${editName.trim()}" (${saved.lat}, ${saved.lng})!`
+          : `✅ Đã ghim "${editName.trim()}" lên 3D & gửi sang mục Duyệt Maps (Cột 1) cho Admin!`,
       });
     } catch (err: any) {
       setEditNotice({ text: err?.message || 'Lỗi khi lưu địa danh.', isError: true });
     }
   };
 
-  const handleDeletePlace = () => {
+  const handleBlockPlace = () => {
     if (!editId) return;
+    blockLandmarkOrPlaceFromMap(editId, editName);
+    onDataChanged?.();
+    setIsEditingPlace(false);
+    setSelected(null);
+    setLiveState({
+      busy: false,
+      message: `🔒 Đã Block (tạm khóa) "${editName}" trên Bản đồ 2D & 3D.`,
+    });
+  };
+
+  const handleDeletePlace = () => {
+    if (!editId || !isStrictSuperAdmin) return;
     hideLandmarkOrPlaceFromMap(editId, editName);
     onDataChanged?.();
     setIsEditingPlace(false);
     setSelected(null);
     setLiveState({
       busy: false,
-      message: `🗑️ Đã ẩn "${editName}" khỏi Bản đồ 2D & 3D.`,
+      message: `🗑️ Đã xóa "${editName}" khỏi Bản đồ 2D & 3D.`,
     });
   };
 
@@ -1646,7 +1697,32 @@ export const City3DView: React.FC<City3DViewProps> = ({
   const handleAdminQuickLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginErr(null);
-    // Hỗ trợ đăng nhập bằng tài khoản Admin (VD: admin / 123) hoặc mã Quản lý Maps (XH-MAPS-8899)
+    const cleanInput = loginUser.trim().toLowerCase();
+    // 1. Hỗ trợ Quản lý Maps nhập trực tiếp Gmail đã được Admin cấp quyền
+    if (cleanInput.includes('@')) {
+      const roleCheck = isMapManagerAuthenticated({
+        isLoggedIn: true,
+        uid: 'check',
+        email: cleanInput,
+        displayName: cleanInput,
+        nickname: cleanInput,
+        gender: 'male',
+        avatar: '🗺️',
+        avatarId: 'm_ty',
+        hasCompletedProfile: true,
+        isFirstTimeSetupDone: true,
+        createdAt: Date.now(),
+      });
+      if (roleCheck) {
+        setHasAdminAccess(true);
+        setIsLoginModalOpen(false);
+        if (selected) openEditForPlace(selected);
+        return;
+      }
+      setLoginErr('Gmail này chưa được Admin tích cấp quyền Quản lý Maps!');
+      return;
+    }
+    // 2. Hỗ trợ đăng nhập bằng tài khoản Nick Admin (VD: admin / 123, minhtt / 123) hoặc mã Quản lý Maps
     const res = loginAdminWithCredentials(loginUser, loginPass, true);
     if (res.ok) {
       setHasAdminAccess(true);
@@ -1661,7 +1737,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
       setIsLoginModalOpen(false);
       return;
     }
-    setLoginErr(res.message || 'Tài khoản hoặc mật khẩu Admin chưa đúng!');
+    setLoginErr(res.message || 'Tài khoản Nick Admin hoặc Gmail Quản lý Maps chưa đúng!');
   };
 
   useEffect(() => {
@@ -1926,28 +2002,28 @@ export const City3DView: React.FC<City3DViewProps> = ({
             </button>
           )}
 
-          {/* BẢNG BẬT / TẮT TỪNG DANH MỤC GỌN GÀNG (AUTO: HÀNH CHÍNH + TRƯỜNG HỌC) */}
+          {/* BẢNG BẬT / TẮT TỪNG DANH MỤC GỌN GÀNG (CHUẨN OCD: 1 DÒNG THẲNG HÀNG, KHÔNG RƠI CHỮ) */}
           {isFilterMenuOpen && (
-            <div className="absolute left-0 top-full mt-2 w-64 sm:w-72 rounded-2xl bg-white/98 border border-slate-200 shadow-[0_16px_40px_rgba(15,23,42,0.18)] p-2 z-50 space-y-1 backdrop-blur-md">
-              <div className="px-2 py-1 flex items-center justify-between border-b border-slate-100">
-                <span className="text-[10.5px] font-extrabold text-slate-500 uppercase tracking-wider">
+            <div className="absolute left-0 top-full mt-2 w-[288px] sm:w-[304px] rounded-2xl bg-white/98 border border-slate-200 shadow-[0_16px_40px_rgba(15,23,42,0.18)] p-2.5 z-50 flex flex-col gap-1 backdrop-blur-md">
+              <div className="px-1.5 pb-1.5 mb-0.5 flex items-center justify-between gap-2 border-b border-slate-100">
+                <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wide whitespace-nowrap">
                   Bật / Tắt danh mục
                 </span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
                     onClick={() => {
                       setSelectedCategories3D(['public', 'school']);
                       setActiveShopGroup('none');
                     }}
-                    className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] text-[10px] font-extrabold cursor-pointer"
+                    className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] text-[10.5px] font-extrabold whitespace-nowrap cursor-pointer transition"
                   >
                     Mặc định
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsFilterMenuOpen(false)}
-                    className="px-1.5 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold cursor-pointer"
+                    className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10.5px] font-bold whitespace-nowrap cursor-pointer transition"
                   >
                     Đóng
                   </button>
@@ -1960,37 +2036,37 @@ export const City3DView: React.FC<City3DViewProps> = ({
                     key: 'public',
                     cats: ['public', 'medical'] as MapCategoryKey[],
                     label: 'Hành chính & Công cộng',
-                    activeBg: 'bg-[#059669] text-white',
+                    activeBg: 'bg-[#059669] text-white shadow-xs',
                   },
                   {
                     key: 'school',
                     cats: ['school'] as MapCategoryKey[],
                     label: 'Trường học & Giảng đường',
-                    activeBg: 'bg-[#10B981] text-white',
+                    activeBg: 'bg-[#10B981] text-white shadow-xs',
                   },
                   {
                     key: 'food',
                     cats: ['food'] as MapCategoryKey[],
                     label: 'Quán ăn',
-                    activeBg: 'bg-[#E11D48] text-white',
+                    activeBg: 'bg-[#E11D48] text-white shadow-xs',
                   },
                   {
                     key: 'pub',
                     cats: ['pub'] as MapCategoryKey[],
                     label: 'Quán nhậu & Lẩu',
-                    activeBg: 'bg-[#D97706] text-white',
+                    activeBg: 'bg-[#D97706] text-white shadow-xs',
                   },
                   {
                     key: 'cafe',
                     cats: ['cafe'] as MapCategoryKey[],
                     label: 'Cafe & Trà',
-                    activeBg: 'bg-[#0284C7] text-white',
+                    activeBg: 'bg-[#0284C7] text-white shadow-xs',
                   },
                   {
                     key: 'snack',
                     cats: ['snack'] as MapCategoryKey[],
                     label: 'Ăn vặt',
-                    activeBg: 'bg-[#9333EA] text-white',
+                    activeBg: 'bg-[#9333EA] text-white shadow-xs',
                   },
                   {
                     key: 'service',
@@ -2004,7 +2080,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
                       'entertainment',
                     ] as MapCategoryKey[],
                     label: 'Dịch vụ & Tiện ích',
-                    activeBg: 'bg-[#475569] text-white',
+                    activeBg: 'bg-[#475569] text-white shadow-xs',
                   },
                 ] as const
               ).map((tab) => {
@@ -2022,13 +2098,13 @@ export const City3DView: React.FC<City3DViewProps> = ({
                         return [...prev, ...tab.cats];
                       });
                     }}
-                    className={`w-full flex items-center justify-between rounded-xl px-3 py-1.5 text-left text-[12px] font-bold transition cursor-pointer ${
+                    className={`w-full h-9 flex items-center justify-between gap-2 rounded-xl px-3 text-left text-[12px] font-bold transition cursor-pointer ${
                       isActive ? tab.activeBg : 'text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <span>{tab.label}</span>
+                    <span className="whitespace-nowrap truncate">{tab.label}</span>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                      className={`min-w-[58px] text-center px-2 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap shrink-0 ${
                         isActive ? 'bg-black/20 text-white' : 'bg-slate-200/80 text-slate-600'
                       }`}
                     >
@@ -2038,13 +2114,13 @@ export const City3DView: React.FC<City3DViewProps> = ({
                 );
               })}
 
-              <div className="my-1 border-t border-slate-100" />
+              <div className="my-0.5 border-t border-slate-100" />
 
               <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                 <button
                   type="button"
                   onClick={() => setShowRoadNames((v) => !v)}
-                  className={`rounded-xl px-2.5 py-1.5 text-center text-[11.5px] font-bold transition cursor-pointer border ${
+                  className={`rounded-xl px-2.5 py-1.5 text-center text-[11.5px] font-bold whitespace-nowrap transition cursor-pointer border ${
                     showRoadNames
                       ? 'bg-[#FEF3C7] text-[#92400E] border-[#F59E0B]/60'
                       : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -2056,7 +2132,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShadowsOn((v) => !v)}
-                  className={`rounded-xl px-2.5 py-1.5 text-center text-[11.5px] font-bold transition cursor-pointer border ${
+                  className={`rounded-xl px-2.5 py-1.5 text-center text-[11.5px] font-bold whitespace-nowrap transition cursor-pointer border ${
                     shadowsOn
                       ? 'bg-amber-100 text-amber-900 border-amber-300/70'
                       : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -2593,6 +2669,18 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
           <button
             type="button"
+            onClick={() =>
+              flyToCoordinates3D(XUANHOA_DEFAULT_CENTER.lat, XUANHOA_DEFAULT_CENTER.lng, 260)
+            }
+            aria-label="Trở về trung tâm Xuân Hòa (Trường ĐHSP Hà Nội 2)"
+            title="Trở về trung tâm Xuân Hòa (Trường ĐH Sư Phạm Hà Nội 2)"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-[#0284C7] hover:bg-[#E0F2FE] transition-colors border-b border-[#E5DEC9] cursor-pointer"
+          >
+            <Compass size={15} />
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIs3DLayerMenuOpen((v) => !v)}
             aria-label="Tùy chỉnh lớp bản đồ 3D"
             title="Tùy chỉnh lớp bản đồ & Ánh sáng 3D"
@@ -3030,11 +3118,24 @@ export const City3DView: React.FC<City3DViewProps> = ({
         </div>
       )}
 
-      {/* THANH ĐIỀU KHIỂN ADMIN ĐẶT GỌN Ở DƯỚI ĐÁY BẢN ĐỒ (Dễ bấm bằng ngón cái trên Mobile, không icon thừa) */}
+      {/* THANH ĐIỀU KHIỂN ADMIN / QUẢN LÝ MAPS ĐẶT GỌN Ở DƯỚI ĐÁY BẢN ĐỒ (Dễ bấm bằng ngón cái trên Mobile, không icon thừa) */}
       {hasAdminAccess ? (
         <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-20 max-w-[96vw] pointer-events-auto">
           <div className="flex items-center gap-1 rounded-full bg-white/95 border border-amber-300 px-2 py-1 shadow-[0_6px_20px_rgba(15,23,42,0.12)] backdrop-blur-md whitespace-nowrap">
-            <span className="text-[10.5px] font-extrabold text-amber-800 px-1.5">Admin</span>
+            <span className="text-[10.5px] font-extrabold text-amber-800 px-1.5">
+              {isStrictSuperAdmin ? 'Admin' : 'Quản lý Maps'}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                openCreateNewModal();
+                setIsPicking3DGround(true);
+              }}
+              className="rounded-full bg-[#403064] hover:bg-[#2D2246] text-white px-2.5 py-1 text-[10.5px] font-bold transition cursor-pointer"
+              title="Chạm lên mặt đất 3D để chấm ghim vị trí mới"
+            >
+              Chấm 3D +
+            </button>
             <button
               type="button"
               onClick={openCreateNewModal}
@@ -3062,7 +3163,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
                 onClick={() => onOpenWebAdmin(selected?.id)}
                 className="rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 px-2.5 py-1 text-[10.5px] font-bold cursor-pointer transition"
               >
-                Quản trị
+                {isStrictSuperAdmin ? 'Quản trị' : 'Web Quản lý'}
               </button>
             )}
           </div>
@@ -3295,15 +3396,29 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
             <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1">
               {!isCreatingNew && editId && (
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1">
                   <button
                     type="button"
-                    onClick={handleDeletePlace}
-                    className="rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] px-2.5 py-1.5 text-[11px] font-bold text-[#991B1B] cursor-pointer"
-                    title="Ẩn địa danh này khỏi bản đồ"
+                    onClick={handleBlockPlace}
+                    className="rounded-xl bg-[#FEF3C7] hover:bg-[#FDE68A] border border-[#F59E0B] px-2.5 py-1.5 text-[11px] font-bold text-[#92400E] cursor-pointer"
+                    title="Block (tạm khóa) địa điểm này trên bản đồ"
                   >
-                    Ẩn
+                    Block
                   </button>
+                  {isStrictSuperAdmin ? (
+                    <button
+                      type="button"
+                      onClick={handleDeletePlace}
+                      className="rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] px-2.5 py-1.5 text-[11px] font-bold text-[#991B1B] cursor-pointer"
+                      title="Chỉ Admin mới có quyền xóa địa điểm khỏi bản đồ"
+                    >
+                      Xóa
+                    </button>
+                  ) : (
+                    <span className="rounded-xl bg-[#F1F5F9] px-2 py-1.5 text-[10px] font-bold text-[#64748B]">
+                      🔒 Xóa: Chỉ Admin
+                    </span>
+                  )}
                   {isOsmSeedSelected && (
                     <button
                       type="button"
@@ -3332,7 +3447,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   type="submit"
                   className="rounded-xl bg-[#059669] hover:bg-[#047857] px-3.5 py-1.5 text-xs font-extrabold text-white shadow-md cursor-pointer"
                 >
-                  Lưu cập nhật
+                  {isStrictSuperAdmin ? 'Lưu cập nhật' : 'Lưu & Gửi Admin duyệt'}
                 </button>
               </div>
             </div>

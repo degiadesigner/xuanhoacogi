@@ -69,6 +69,22 @@ export interface PlaceOverride {
   claimedAt?: number;
   liveStatus?: 'open_normal' | 'busy_hot' | 'closed_today'; // Trạng thái mở bán trực tiếp trong ngày của chủ quán
   liveStatusNote?: string;
+  pendingWebApproval?: {
+    submittedBy: string;
+    submittedByName: string;
+    submittedAt: number;
+    actionSummary: string;
+    isNewPlace?: boolean;
+  } | null;
+  pendingMapApproval?: {
+    submittedBy: string;
+    submittedByName: string;
+    submittedAt: number;
+    actionSummary: string;
+    previousLat?: number | null;
+    previousLng?: number | null;
+    isNewPlace?: boolean;
+  } | null;
   updatedAt: number;
   isCustom?: boolean;
   customPlaceData?: Place;
@@ -119,6 +135,8 @@ export interface AdminAccount {
   password: string;
   displayName: string;
   role: 'superadmin' | 'manager';
+  canManageWeb?: boolean;
+  canManageMaps?: boolean;
   createdAt: number;
 }
 
@@ -153,6 +171,8 @@ export interface ManagedMember {
   photoURL?: string;
   status: MemberStatus;
   banReason?: string;
+  canManageWeb?: boolean;
+  canManageMaps?: boolean;
   spinsCount?: number;
   level?: number;
   reviewsCount?: number;
@@ -519,6 +539,8 @@ export function syncUserToAdminRegistry(user: UserAuthProfile, spinsCount = 0, l
     photoURL: user.photoURL || existing?.photoURL,
     status: existing?.status || 'active',
     banReason: existing?.banReason,
+    canManageWeb: existing?.canManageWeb,
+    canManageMaps: existing?.canManageMaps,
     spinsCount: Math.max(spinsCount, existing?.spinsCount || 0),
     level: Math.max(level, existing?.level || 1),
     reviewsCount: existing?.reviewsCount || 0,
@@ -580,6 +602,32 @@ export function updateMemberStatusInAdmin(
   state.auditLogs = addAdminAuditLog(
     state,
     statusLabel,
+    `${target.nickname} (${target.email})`,
+    'user'
+  );
+  saveAdminState(state);
+}
+
+export function updateMemberManagerPermissions(
+  memberKey: string,
+  patch: { canManageWeb?: boolean; canManageMaps?: boolean }
+): void {
+  const state = getAdminState();
+  const key = memberKey.trim().toLowerCase();
+  const target = state.members[key];
+  if (!target) return;
+
+  if (patch.canManageWeb !== undefined) target.canManageWeb = patch.canManageWeb;
+  if (patch.canManageMaps !== undefined) target.canManageMaps = patch.canManageMaps;
+  target.lastActiveAt = Date.now();
+
+  const roles: string[] = [];
+  if (target.canManageWeb) roles.push('Quản lý Web (Quán)');
+  if (target.canManageMaps) roles.push('Quản lý Maps');
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    roles.length > 0 ? `Cấp quyền: ${roles.join(' + ')}` : 'Thu hồi quyền Quản lý Web/Maps',
     `${target.nickname} (${target.email})`,
     'user'
   );
@@ -742,15 +790,25 @@ export function seedDemoMembersIfEmpty(): void {
   const state = getAdminState();
   let changed = false;
 
-  // 1. Xóa bỏ hoàn toàn 3 tài khoản mẫu (demo) cũ để đảm bảo 100% là số người đăng ký THỰC TẾ
+  // 1. Xóa bỏ hoàn toàn các tài khoản mẫu / mô phỏng để đảm bảo 100% là số người đăng ký THỰC TẾ
   const fakeDemoEmails = [
     'minhanh.sp2@gmail.com',
     'hoangnam.xuanhoa@gmail.com',
     'nickao.phaquay99@gmail.com',
+    'nguoimoi.xuanhoa@gmail.com',
+    'quanlyweb.xh@gmail.com',
+    'quanlymaps.xh@gmail.com',
+    'kiemnhiem.xh@gmail.com',
   ];
   for (const fakeEmail of fakeDemoEmails) {
     if (state.members[fakeEmail]) {
       delete state.members[fakeEmail];
+      changed = true;
+    }
+  }
+  for (const existingKey of Object.keys(state.members)) {
+    if (/^thanhvien\.\d+@gmail\.com$/i.test(existingKey)) {
+      delete state.members[existingKey];
       changed = true;
     }
   }
@@ -768,7 +826,7 @@ export function seedDemoMembersIfEmpty(): void {
         const parsedUser = JSON.parse(rawUser);
         if (parsedUser && parsedUser.email) {
           const emailKey = parsedUser.email.trim().toLowerCase();
-          if (fakeDemoEmails.includes(emailKey)) continue;
+          if (fakeDemoEmails.includes(emailKey) || /^thanhvien\.\d+@gmail\.com$/i.test(emailKey)) continue;
           const isAdminEmail = (state.adminEmails || DEFAULT_ADMIN_EMAILS).includes(emailKey);
           if (!state.members[emailKey]) {
             state.members[emailKey] = {
@@ -1483,15 +1541,8 @@ export function getLoggedAdminSession(): AdminAccount | null {
 }
 
 export function isAdminAuthenticated(authUser?: UserAuthProfile | null): boolean {
-  if (getLoggedAdminSession()) return true;
-  if (authUser && authUser.isLoggedIn && authUser.email) {
-    const state = getAdminState();
-    const emailLower = authUser.email.trim().toLowerCase();
-    return Boolean(
-      state.adminEmails?.some((e) => e.trim().toLowerCase() === emailLower)
-    );
-  }
-  return false;
+  const roleInfo = getEffectiveAdminRoleInfo(undefined, authUser);
+  return roleInfo.isSuperAdmin;
 }
 
 export function loginAdminWithCredentials(
@@ -1552,6 +1603,8 @@ export function upsertAdminAccount(account: {
   password: string;
   displayName: string;
   role?: 'superadmin' | 'manager';
+  canManageWeb?: boolean;
+  canManageMaps?: boolean;
 }): void {
   const state = getAdminState();
   const currentList = getAdminAccounts();
@@ -1570,6 +1623,8 @@ export function upsertAdminAccount(account: {
       password: account.password.trim(),
       displayName: account.displayName.trim() || cleanUsername,
       role: account.role || nextList[existingIdx].role,
+      canManageWeb: account.canManageWeb ?? nextList[existingIdx].canManageWeb ?? true,
+      canManageMaps: account.canManageMaps ?? nextList[existingIdx].canManageMaps ?? false,
     };
   } else {
     const created: AdminAccount = {
@@ -1578,6 +1633,8 @@ export function upsertAdminAccount(account: {
       password: account.password.trim(),
       displayName: account.displayName.trim() || cleanUsername,
       role: account.role || 'manager',
+      canManageWeb: account.canManageWeb ?? true,
+      canManageMaps: account.canManageMaps ?? false,
       createdAt: Date.now(),
     };
     nextList = [...currentList, created];
@@ -1763,7 +1820,180 @@ export function getOrGenerateMerchantCode(
  */
 export const MAP_MANAGER_MASTER_CODE = 'XH-MAPS-8899';
 
+export interface EffectiveAdminRoleInfo {
+  isAuthenticated: boolean;
+  isSuperAdmin: boolean;
+  canManageWeb: boolean;
+  canManageMaps: boolean;
+  displayName: string;
+  identifier: string;
+  roleBadgeLabel: string;
+}
+
+export function getEffectiveAdminRoleInfo(
+  loggedAdmin?: AdminAccount | null,
+  authUser?: UserAuthProfile | null
+): EffectiveAdminRoleInfo {
+  const state = getAdminState();
+  const activeAdmin = loggedAdmin !== undefined ? loggedAdmin : getLoggedAdminSession();
+
+  if (activeAdmin) {
+    const accounts = getAdminAccounts();
+    const freshAcc =
+      accounts.find(a => a.id === activeAdmin.id || a.username === activeAdmin.username) ||
+      activeAdmin;
+    const isSuper =
+      freshAcc.role === 'superadmin' ||
+      freshAcc.username === 'admin' ||
+      freshAcc.username === 'minhtt';
+    const canWeb = isSuper ? true : Boolean(freshAcc.canManageWeb ?? true);
+    const canMaps = isSuper ? true : Boolean(freshAcc.canManageMaps ?? false);
+    const roleBadgeLabel = isSuper
+      ? 'Admin'
+      : canWeb && canMaps
+      ? 'Quản lý Web & Maps'
+      : canMaps
+      ? 'Quản lý Maps'
+      : 'Quản lý Web';
+    return {
+      isAuthenticated: true,
+      isSuperAdmin: isSuper,
+      canManageWeb: canWeb,
+      canManageMaps: canMaps,
+      displayName: freshAcc.displayName,
+      identifier: `@${freshAcc.username}`,
+      roleBadgeLabel,
+    };
+  }
+
+  const effectiveUser = authUser?.email ? authUser : getStoredAuthUser();
+  if (effectiveUser && effectiveUser.isLoggedIn && effectiveUser.email) {
+    const cleanEmail = effectiveUser.email.trim().toLowerCase();
+    const isSuperEmail = Boolean(
+      state.adminEmails?.some(e => e.trim().toLowerCase() === cleanEmail)
+    );
+    if (isSuperEmail) {
+      return {
+        isAuthenticated: true,
+        isSuperAdmin: true,
+        canManageWeb: true,
+        canManageMaps: true,
+        displayName: effectiveUser.displayName || effectiveUser.nickname || cleanEmail,
+        identifier: cleanEmail,
+        roleBadgeLabel: 'Admin',
+      };
+    }
+
+    const memberRecord = state.members?.[cleanEmail];
+    if (memberRecord && (memberRecord.canManageWeb || memberRecord.canManageMaps || memberRecord.status === 'admin')) {
+      const isSuper = memberRecord.status === 'admin';
+      const canWeb = isSuper ? true : Boolean(memberRecord.canManageWeb);
+      const canMaps = isSuper ? true : Boolean(memberRecord.canManageMaps);
+      const roleBadgeLabel = isSuper
+        ? 'Admin'
+        : canWeb && canMaps
+        ? 'Quản lý Web & Maps'
+        : canMaps
+        ? 'Quản lý Maps'
+        : 'Quản lý Web';
+      return {
+        isAuthenticated: true,
+        isSuperAdmin: isSuper,
+        canManageWeb: canWeb,
+        canManageMaps: canMaps,
+        displayName: memberRecord.nickname || memberRecord.displayName || cleanEmail,
+        identifier: cleanEmail,
+        roleBadgeLabel,
+      };
+    }
+  }
+
+  return {
+    isAuthenticated: false,
+    isSuperAdmin: false,
+    canManageWeb: false,
+    canManageMaps: false,
+    displayName: '',
+    identifier: '',
+    roleBadgeLabel: '',
+  };
+}
+
+export function approvePendingPlaceItem(placeId: string, scope: 'web' | 'maps'): void {
+  const state = getAdminState();
+  const ov = state.places[placeId];
+  if (!ov) return;
+
+  if (scope === 'web') {
+    ov.pendingWebApproval = null;
+  } else {
+    ov.pendingMapApproval = null;
+  }
+  ov.updatedAt = Date.now();
+  state.places[placeId] = ov;
+
+  // Đồng thời duyệt luôn trong merchantSubmissions nếu có
+  const subKey = `sub_${placeId}`;
+  if (state.merchantSubmissions?.[subKey]?.status === 'pending') {
+    state.merchantSubmissions[subKey].status = 'approved';
+    state.merchantSubmissions[subKey].reviewedAt = Date.now();
+  }
+
+  const baseName = ov.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
+  state.auditLogs = addAdminAuditLog(
+    state,
+    scope === 'web' ? '✅ Admin đã duyệt cập nhật Quán' : '✅ Admin đã duyệt định vị Maps',
+    baseName,
+    'place'
+  );
+  saveAdminState(state);
+}
+
+export function rejectPendingPlaceItem(placeId: string, scope: 'web' | 'maps'): void {
+  const state = getAdminState();
+  const ov = state.places[placeId];
+  if (!ov) return;
+
+  const baseName = ov.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
+
+  if (scope === 'web') {
+    if (ov.pendingWebApproval?.isNewPlace && ov.isCustom) {
+      delete state.places[placeId];
+    } else {
+      ov.pendingWebApproval = null;
+      state.places[placeId] = ov;
+    }
+  } else {
+    if (ov.pendingMapApproval?.isNewPlace && ov.isCustom) {
+      delete state.places[placeId];
+    } else {
+      if (ov.pendingMapApproval) {
+        ov.lat = ov.pendingMapApproval.previousLat ?? undefined;
+        ov.lng = ov.pendingMapApproval.previousLng ?? undefined;
+      }
+      ov.pendingMapApproval = null;
+      state.places[placeId] = ov;
+    }
+  }
+
+  const subKey = `sub_${placeId}`;
+  if (state.merchantSubmissions?.[subKey]?.status === 'pending') {
+    state.merchantSubmissions[subKey].status = 'rejected';
+    state.merchantSubmissions[subKey].reviewedAt = Date.now();
+  }
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    scope === 'web' ? '❌ Admin từ chối cập nhật Quán' : '❌ Admin từ chối định vị Maps',
+    baseName,
+    'place'
+  );
+  saveAdminState(state);
+}
+
 export function isMapManagerAuthenticated(authUser?: UserAuthProfile | null): boolean {
+  const roleInfo = getEffectiveAdminRoleInfo(undefined, authUser);
+  if (roleInfo.isSuperAdmin || roleInfo.canManageMaps) return true;
   if (isAdminAuthenticated(authUser)) return true;
   if (authUser?.isMapManager) return true;
   const stored = getStoredAuthUser();
@@ -2160,6 +2390,26 @@ export function submitMerchantPlaceUpdate(
     nextOv.lastVerifiedAt = new Date().toISOString().slice(0, 10);
   }
 
+  const roleCheck = getEffectiveAdminRoleInfo(undefined, effectiveUser);
+  if (!roleCheck.isSuperAdmin) {
+    if (p.lat !== null && p.lng !== null) {
+      nextOv.pendingMapApproval = {
+        submittedBy: userEmail,
+        submittedByName: submission.merchantName,
+        submittedAt: Date.now(),
+        actionSummary: `Cập nhật tọa độ (${p.lat}, ${p.lng})`,
+        previousLat: submission.previous.lat,
+        previousLng: submission.previous.lng,
+      };
+    }
+    nextOv.pendingWebApproval = {
+      submittedBy: userEmail,
+      submittedByName: submission.merchantName,
+      submittedAt: Date.now(),
+      actionSummary: 'Cập nhật thông tin & thực đơn quán',
+    };
+  }
+
   state.places[placeId] = nextOv;
 
   state.auditLogs = addAdminAuditLog(
@@ -2298,6 +2548,8 @@ export function createNewPlaceFromMap(
   const creatorEmail = (effectiveUser?.email || 'quanlymaps@xuanhoacogi.vn').trim().toLowerCase();
   const claimCode = getOrGenerateMerchantCode(newPlaceId, false, cleanName);
 
+  const creatorRole = getEffectiveAdminRoleInfo(undefined, effectiveUser);
+
   state.places[newPlaceId] = {
     id: newPlaceId,
     status: 'active',
@@ -2328,6 +2580,19 @@ export function createNewPlaceFromMap(
     coordinateSource: 'admin_verified',
     lastVerifiedAt: new Date().toISOString().slice(0, 10),
     merchantClaimCode: claimCode,
+    ...(!creatorRole.isSuperAdmin
+      ? {
+          pendingMapApproval: {
+            submittedBy: creatorEmail,
+            submittedByName: effectiveUser?.displayName || 'Quản lý Maps',
+            submittedAt: Date.now(),
+            actionSummary: `Thêm định vị mới (${mapCat})`,
+            previousLat: null,
+            previousLng: null,
+            isNewPlace: true,
+          },
+        }
+      : {}),
     updatedAt: Date.now(),
     isCustom: true,
     customPlaceData: newPlace,

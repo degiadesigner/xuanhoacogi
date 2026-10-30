@@ -92,6 +92,97 @@ export const localToLngLat = (o: City3DOrigin, x: number, y: number): [number, n
   o.lat + y / o.ky,
 ];
 
+/**
+ * Tọa độ tâm chuẩn của Đỉnh Nam Đồi Thằn Lằn (Núi Thằn Lằn: 21.293889, 105.724444)
+ * Hệ quy chiếu nội bộ (rx, rz) tính bằng mét so với tâm này:
+ * - Đỉnh Nam (Đài Vọng Cảnh Núi Thằn Lằn): rx = 0, rz = 0 (cao 28.5m)
+ * - Đỉnh Bắc (Di tích Lịch sử Bốt Pháp 1950): rx = -57.6, rz = -276.4 (cao 32.0m)
+ * - Ngã ba sống đồi (cuối đường nhựa gmaps/way_2528): rx = -12.4, rz = -153.9 (cao ~25.5m)
+ */
+export const LIZARD_HILL_ANCHOR = {
+  lng: 105.724444,
+  lat: 21.293889,
+  kx: 103728.707,
+  ky: 110574.0,
+};
+
+/**
+ * Tính chiều cao địa hình 3D (mét) của Đồi Thằn Lằn tại tọa độ mét cục bộ (rx, rz) so với LIZARD_HILL_ANCHOR.
+ * Thiết kế chuẩn theo bản đồ thực tế:
+ * - Dáng đồi thon dài hướng Bắc Tây Bắc – Nam Đông Nam như hình con thằn lằn.
+ * - Cắt vát tự nhiên ở ranh giới Đông Bắc để đường dân sinh (way_2276) và nhà dân xung quanh nằm phẳng ở y = 0.
+ * - Đường lên đồi (way_2528) bắt đầu từ chân đồi (y = 0) tại [79.7, -323.3] và leo dốc mượt lên sống đồi [-12.4, -153.9].
+ */
+export function getLizardHillLocalHeight(rx: number, rz: number): number {
+  if (rx < -195 || rx > 165 || rz < -395 || rz > 235) return 0;
+
+  // Mặt cắt chéo phía Đông Bắc bảo vệ đường dân sinh way_2276 và khu dân cư lân cận ở độ cao 0m
+  const neDist = (rx - 84) * 0.68 + (-rz - 325) * 0.73;
+  if (neDist > 0) return 0;
+  const neFade = Math.min(1, Math.max(0, -neDist / 32));
+
+  const lobes = [
+    // 1. Đỉnh Bắc (Đầu Thằn Lằn — Khu Di tích Bốt Pháp): mặt bằng đỉnh phẳng r = 17m ở độ cao 32.0m
+    { cx: -57.6, cz: -276.4, h: 32.0, rx: 145, rz: 112, flatR: 17 },
+    // 2. Sống lưng giữa đồi (Nơi đường nhựa way_2528 leo tới yên ngựa chia nhánh): cao 25.5m
+    { cx: -10.0, cz: -168.0, h: 25.5, rx: 148, rz: 142, flatR: 12 },
+    // 3. Đỉnh Nam (Lưng Thằn Lằn — Điểm ngắm toàn cảnh Xuân Hòa): mặt bằng phẳng r = 14.5m ở độ cao 28.5m
+    { cx: 0.0, cz: 0.0, h: 28.5, rx: 135, rz: 140, flatR: 14.5 },
+    // 4. Đuôi Thằn Lằn thoải dần về phía Nam (hướng về ĐHSP Hà Nội 2 & CĐ Việt-Xô): cao 15.0m
+    { cx: 14.0, cz: 118.0, h: 15.0, rx: 98, rz: 105, flatR: 0 },
+  ];
+
+  let sumP = 0;
+  let maxL = 0;
+  for (let i = 0; i < lobes.length; i++) {
+    const l = lobes[i];
+    const dx = rx - l.cx;
+    const dz = rz - l.cz;
+    const rawD = Math.hypot(dx / l.rx, dz / l.rz);
+    const flatD = l.flatR / Math.min(l.rx, l.rz);
+    let u = 0;
+    if (rawD <= flatD) {
+      u = 1;
+    } else {
+      const t = (rawD - flatD) / (1 - flatD);
+      if (t < 1) {
+        const s = 1 - t * t;
+        u = s * s;
+      }
+    }
+    const lh = l.h * u;
+    if (lh > maxL) maxL = lh;
+    sumP += lh * lh * lh;
+  }
+
+  let h = Math.min(32.0, Math.max(maxL, Math.cbrt(sumP) * 0.94));
+  if (Math.hypot(rx - -57.6, rz - -276.4) <= 16.5) h = 32.0;
+  if (Math.hypot(rx, rz) <= 14.0) h = Math.max(h, 28.5);
+  return h * neFade;
+}
+
+/**
+ * Tính chiều cao mặt Đồi Thằn Lằn (mét) trực tiếp từ tọa độ (lng, lat)
+ */
+export function getLizardHillElevationAtLngLat(lng: number, lat: number): number {
+  const rx = (lng - LIZARD_HILL_ANCHOR.lng) * LIZARD_HILL_ANCHOR.kx;
+  const rz = -(lat - LIZARD_HILL_ANCHOR.lat) * LIZARD_HILL_ANCHOR.ky;
+  return getLizardHillLocalHeight(rx, rz);
+}
+
+/**
+ * Kiểm tra xem một tọa độ (lng, lat) có nằm trong vùng dọn mặt bằng của Đồi Thằn Lằn
+ * (để loại bỏ các khối hộp nhà giả lập bị nhận diện nhầm từ bóng cây trên đồi)
+ */
+export function isInsideLizardHillClearZone(lng: number, lat: number): boolean {
+  if (getLizardHillElevationAtLngLat(lng, lat) > 0.25) return true;
+  // Quét sạch thêm 3 khối hộp nhiễu vệ tinh ở chân đồi phía Nam (21.2915..21.2920)
+  const rx = (lng - LIZARD_HILL_ANCHOR.lng) * LIZARD_HILL_ANCHOR.kx;
+  const rz = -(lat - LIZARD_HILL_ANCHOR.lat) * LIZARD_HILL_ANCHOR.ky;
+  if (rx >= -95 && rx <= 195 && rz >= 180 && rz <= 270) return true;
+  return false;
+}
+
 export function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
   const v = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);

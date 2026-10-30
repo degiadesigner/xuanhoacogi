@@ -3,6 +3,7 @@ import {
   Plus,
   Minus,
   LocateFixed,
+  Compass,
   Home,
   Layers,
   Castle,
@@ -205,6 +206,16 @@ export const MapControls: React.FC<MapControlsProps> = ({
           ) : (
             <LocateFixed size={15} className="text-[#39B980]" />
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={onResetCenter}
+          aria-label="Trở về trung tâm Xuân Hòa (Trường ĐHSP Hà Nội 2)"
+          title="Trở về trung tâm Xuân Hòa (Trường ĐH Sư Phạm Hà Nội 2)"
+          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-[#0284C7] hover:bg-[#E0F2FE] transition-colors border-b border-[#E5DEC9] cursor-pointer"
+        >
+          <Compass size={15} />
         </button>
 
         <button

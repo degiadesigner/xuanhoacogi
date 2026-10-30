@@ -5,6 +5,7 @@ import {
   savePlaceAdminOverride,
   resetPlaceToDefault,
   createNewPlaceFromMap,
+  getEffectiveAdminRoleInfo,
   type AdminPlaceItem,
 } from '@/lib/admin-store';
 import type {
@@ -2054,11 +2055,12 @@ export function saveLandmarkOrPlaceFromMap(payload: {
     const adminState = getAdminState();
     const existingOv = adminState.places?.[payload.id];
     const isOsmSeed = VERIFIED_OSM_POIS.some((p) => p.id === payload.id);
+    const roleInfo = getEffectiveAdminRoleInfo();
 
     savePlaceAdminOverride(
       payload.id,
       {
-        status: 'active',
+        status: existingOv?.status === 'locked' ? 'locked' : 'active',
         name: cleanName,
         address: payload.address.trim() || 'Phường Xuân Hòa',
         phone: (payload.phone || '').trim(),
@@ -2072,6 +2074,20 @@ export function saveLandmarkOrPlaceFromMap(payload: {
         coordinateVerified: true,
         coordinateSource: 'admin_verified',
         lastVerifiedAt: new Date().toISOString().slice(0, 10),
+        ...(!roleInfo.isSuperAdmin
+          ? {
+              pendingMapApproval: {
+                submittedBy: roleInfo.identifier || 'quanlymaps',
+                submittedByName: roleInfo.displayName || 'Quản lý Maps',
+                submittedAt: Date.now(),
+                actionSummary: `Cập nhật định vị (${lat}, ${lng})`,
+                previousLat: existingOv?.lat ?? null,
+                previousLng: existingOv?.lng ?? null,
+              },
+            }
+          : {
+              pendingMapApproval: null,
+            }),
       },
       `Cập nhật địa điểm & định vị "${cleanName}" (${lat}, ${lng})`
     );
@@ -2079,13 +2095,14 @@ export function saveLandmarkOrPlaceFromMap(payload: {
   }
 
   // Tạo địa danh / quán mới
+  const roleInfo = getEffectiveAdminRoleInfo();
   const created = createNewPlaceFromMap(
     {
       isLoggedIn: true,
       uid: 'admin_map_editor',
-      email: 'admin@xuanhoacogi.com',
-      displayName: 'Admin Bản Đồ',
-      nickname: 'Admin',
+      email: roleInfo.identifier.includes('@') ? roleInfo.identifier.replace(/^@/, '') : 'admin@xuanhoacogi.com',
+      displayName: roleInfo.displayName || 'Quản lý Bản Đồ',
+      nickname: roleInfo.displayName || 'Quản lý Maps',
       gender: 'male',
       avatar: '👑',
       avatarId: 'm_ty',
@@ -2109,11 +2126,19 @@ export function saveLandmarkOrPlaceFromMap(payload: {
   return { id: created.place.id, lat, lng };
 }
 
+export function blockLandmarkOrPlaceFromMap(placeId: string, placeName?: string): void {
+  savePlaceAdminOverride(
+    placeId,
+    { status: 'locked' },
+    `Block (Tạm khóa) địa điểm "${placeName || placeId}" trên Bản đồ`
+  );
+}
+
 export function hideLandmarkOrPlaceFromMap(placeId: string, placeName?: string): void {
   savePlaceAdminOverride(
     placeId,
     { status: 'deleted' },
-    `Ẩn địa điểm "${placeName || placeId}" khỏi Bản đồ`
+    `Xóa địa điểm "${placeName || placeId}" khỏi Bản đồ`
   );
 }
 

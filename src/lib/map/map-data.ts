@@ -6,6 +6,7 @@ import {
   resetPlaceToDefault,
   createNewPlaceFromMap,
   getEffectiveAdminRoleInfo,
+  requestOrExecuteDeletePlace,
   type AdminPlaceItem,
 } from '@/lib/admin-store';
 import type {
@@ -1335,36 +1336,31 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
       typeof override?.lat === 'number' &&
       typeof override?.lng === 'number' &&
       Number.isFinite(override.lat) &&
-      Number.isFinite(override.lng);
+      Number.isFinite(override.lng) &&
+      override?.coordinateVerified !== false;
 
     const parsedUrlCoord =
-      !hasExplicitLatLng && (override?.mapsUrl || place.mapsUrl)
-        ? parseCoordinatesFromInputOrUrl(override?.mapsUrl || place.mapsUrl || '')
+      !hasExplicitLatLng && override?.mapsUrl
+        ? parseCoordinatesFromInputOrUrl(override.mapsUrl)
         : null;
 
-    const streetMatchedCoord = CATALOG_STREET_MATCHED_COORDS[place.id] || null;
-
+    // NGUYÊN TẮC TUYỆT ĐỐI: Chỉ hiển thị các quán ĐÃ ĐƯỢC ĐỊNH DANH / CẮM GHIM TỌA ĐỘ.
+    // Các quán chưa ghim (⏳ Chưa ghim) phải ẩn 100% trên bản đồ (lat: null, lng: null, coordinateVerified: false).
     const finalLat = hasExplicitLatLng
       ? Number(override!.lat)
       : parsedUrlCoord
       ? parsedUrlCoord.lat
-      : streetMatchedCoord
-      ? streetMatchedCoord.lat
       : null;
     const finalLng = hasExplicitLatLng
       ? Number(override!.lng)
       : parsedUrlCoord
       ? parsedUrlCoord.lng
-      : streetMatchedCoord
-      ? streetMatchedCoord.lng
       : null;
 
     const hasValidLatLng = finalLat !== null && finalLng !== null;
     const isVerified = Boolean(
       hasValidLatLng &&
-        (override?.coordinateVerified === true ||
-          Boolean(parsedUrlCoord) ||
-          Boolean(streetMatchedCoord))
+        (override?.coordinateVerified === true || Boolean(parsedUrlCoord))
     );
     const pendingSub = adminState.merchantSubmissions?.[`sub_${place.id}`];
     const dishNames = (place.menu || []).map((m) => m.name);
@@ -1377,7 +1373,7 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
       lat: finalLat,
       lng: finalLng,
       coordinateSource: hasValidLatLng
-        ? override?.coordinateSource || (streetMatchedCoord ? 'nominatim_geocoded' : 'admin_verified')
+        ? override?.coordinateSource || 'admin_verified'
         : 'unverified',
       coordinateVerified: isVerified,
       dataSource: override?.isCustom ? 'admin_custom' : 'places_xuanhoa',
@@ -2017,9 +2013,51 @@ export function getAllAdminPlaceAndLandmarkItems(): AdminPlaceItem[] {
     });
   }
 
-  return [...baseManaged, ...landmarkItems].sort((a, b) =>
-    a.place.name.localeCompare(b.place.name, 'vi')
-  );
+  const osmIds = new Set(VERIFIED_OSM_POIS.map((p) => p.id));
+  const isItemPinned = (item: AdminPlaceItem): boolean => {
+    if (osmIds.has(item.place.id)) return true;
+    const ov = adminState.places?.[item.place.id];
+    return Boolean(
+      typeof ov?.lat === 'number' &&
+        typeof ov?.lng === 'number' &&
+        Number.isFinite(ov.lat) &&
+        Number.isFinite(ov.lng) &&
+        ov.coordinateVerified !== false
+    );
+  };
+
+  return [...baseManaged, ...landmarkItems].sort((a, b) => {
+    const aPinned = isItemPinned(a) ? 1 : 0;
+    const bPinned = isItemPinned(b) ? 1 : 0;
+    if (aPinned !== bPinned) return bPinned - aPinned;
+    const aCivic = a.sectorTag === 'dia-danh' ? 1 : 0;
+    const bCivic = b.sectorTag === 'dia-danh' ? 1 : 0;
+    if (aCivic !== bCivic) return bCivic - aCivic;
+    return a.place.name.localeCompare(b.place.name, 'vi');
+  });
+}
+
+/**
+ * Chỉ lấy danh sách QUÁN ĂN / HÀNG QUÁN THƯƠNG MẠI dành riêng cho mục "Quản lý Quán".
+ * Tuyệt đối KHÔNG đưa các đơn vị Hành chính, Công cộng, Trường học, Y tế, Địa danh vào Quản lý Quán.
+ */
+export function getCommercialAdminPlaceItems(): AdminPlaceItem[] {
+  const adminState = getAdminState();
+  const osmIds = new Set(VERIFIED_OSM_POIS.map((p) => p.id));
+  return getAllManagedPlaces().filter((item) => {
+    if (osmIds.has(item.place.id)) return false;
+    if (item.sectorTag === 'dia-danh') return false;
+    const ov = adminState.places?.[item.place.id];
+    if (
+      ov?.sectorTag === 'dia-danh' ||
+      ov?.mapCategory === 'public' ||
+      ov?.mapCategory === 'school' ||
+      ov?.mapCategory === 'medical'
+    ) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -2049,14 +2087,15 @@ export function saveLandmarkOrPlaceFromMap(payload: {
 
   const isCivicCat =
     payload.category === 'public' ||
-    payload.category === 'school';
+    payload.category === 'school' ||
+    String(payload.category) === 'medical';
 
   if (payload.id) {
     const adminState = getAdminState();
     const existingOv = adminState.places?.[payload.id];
     const isOsmSeed = VERIFIED_OSM_POIS.some((p) => p.id === payload.id);
-    const roleInfo = getEffectiveAdminRoleInfo();
 
+    // Chỉnh sửa thông tin / định vị của địa điểm đã có: Cả Admin và Quản lý Maps đều được áp dụng ngay lập tức (không cần duyệt)
     savePlaceAdminOverride(
       payload.id,
       {
@@ -2068,26 +2107,20 @@ export function saveLandmarkOrPlaceFromMap(payload: {
         ...(payload.tagline !== undefined ? { tagline: payload.tagline.trim() } : {}),
         ...(payload.mapsUrl !== undefined ? { mapsUrl: payload.mapsUrl.trim() } : {}),
         mapCategory: payload.category,
-        ...(isOsmSeed && !existingOv?.sectorTag ? { sectorTag: 'dia-danh' } : {}),
+        ...(isCivicCat || (isOsmSeed && !existingOv?.sectorTag)
+          ? {
+              sectorTag: 'dia-danh',
+              minPrice: 0,
+              maxPrice: 0,
+              customMenu: [],
+            }
+          : {}),
         lat,
         lng,
         coordinateVerified: true,
         coordinateSource: 'admin_verified',
         lastVerifiedAt: new Date().toISOString().slice(0, 10),
-        ...(!roleInfo.isSuperAdmin
-          ? {
-              pendingMapApproval: {
-                submittedBy: roleInfo.identifier || 'quanlymaps',
-                submittedByName: roleInfo.displayName || 'Quản lý Maps',
-                submittedAt: Date.now(),
-                actionSummary: `Cập nhật định vị (${lat}, ${lng})`,
-                previousLat: existingOv?.lat ?? null,
-                previousLng: existingOv?.lng ?? null,
-              },
-            }
-          : {
-              pendingMapApproval: null,
-            }),
+        pendingMapApproval: null,
       },
       `Cập nhật địa điểm & định vị "${cleanName}" (${lat}, ${lng})`
     );
@@ -2095,34 +2128,17 @@ export function saveLandmarkOrPlaceFromMap(payload: {
   }
 
   // Tạo địa danh / quán mới
-  const roleInfo = getEffectiveAdminRoleInfo();
-  const created = createNewPlaceFromMap(
-    {
-      isLoggedIn: true,
-      uid: 'admin_map_editor',
-      email: roleInfo.identifier.includes('@') ? roleInfo.identifier.replace(/^@/, '') : 'admin@xuanhoacogi.com',
-      displayName: roleInfo.displayName || 'Quản lý Bản Đồ',
-      nickname: roleInfo.displayName || 'Quản lý Maps',
-      gender: 'male',
-      avatar: '👑',
-      avatarId: 'm_ty',
-      hasCompletedProfile: true,
-      isFirstTimeSetupDone: true,
-      isMapManager: true,
-      createdAt: Date.now(),
-    },
-    {
-      name: cleanName,
-      mapCategory: payload.category,
-      address: payload.address.trim() || 'Phường Xuân Hòa',
-      phone: (payload.phone || '').trim(),
-      openHours: (payload.openHours || '').trim() || (isCivicCat ? '07:30 - 17:30' : '07:00 - 22:00'),
-      tagline: payload.tagline?.trim(),
-      lat,
-      lng,
-      mapsUrl: payload.mapsUrl?.trim(),
-    }
-  );
+  const created = createNewPlaceFromMap(undefined, {
+    name: cleanName,
+    mapCategory: payload.category,
+    address: payload.address.trim() || 'Phường Xuân Hòa',
+    phone: (payload.phone || '').trim(),
+    openHours: (payload.openHours || '').trim() || (isCivicCat ? '07:30 - 17:30' : '07:00 - 22:00'),
+    tagline: payload.tagline?.trim(),
+    lat,
+    lng,
+    mapsUrl: payload.mapsUrl?.trim(),
+  });
   return { id: created.place.id, lat, lng };
 }
 
@@ -2134,12 +2150,11 @@ export function blockLandmarkOrPlaceFromMap(placeId: string, placeName?: string)
   );
 }
 
-export function hideLandmarkOrPlaceFromMap(placeId: string, placeName?: string): void {
-  savePlaceAdminOverride(
-    placeId,
-    { status: 'deleted' },
-    `Xóa địa điểm "${placeName || placeId}" khỏi Bản đồ`
-  );
+export function hideLandmarkOrPlaceFromMap(
+  placeId: string,
+  placeName?: string
+): { executedImmediately: boolean } {
+  return requestOrExecuteDeletePlace(placeId, 'maps', placeName);
 }
 
 export function restoreLandmarkOrPlaceDefault(placeId: string): void {

@@ -67,16 +67,20 @@ export interface PlaceOverride {
     submittedByName: string;
     submittedAt: number;
     actionSummary: string;
+    actionType?: 'create' | 'delete' | 'update';
     isNewPlace?: boolean;
+    isDeleteRequest?: boolean;
   } | null;
   pendingMapApproval?: {
     submittedBy: string;
     submittedByName: string;
     submittedAt: number;
     actionSummary: string;
+    actionType?: 'create' | 'delete' | 'update';
     previousLat?: number | null;
     previousLng?: number | null;
     isNewPlace?: boolean;
+    isDeleteRequest?: boolean;
   } | null;
   updatedAt: number;
   isCustom?: boolean;
@@ -318,7 +322,40 @@ export function decodeRtdbKey(encodedKey: string): string {
   }
 }
 
-// Chuẩn hóa & gộp tuyệt đối theo Gmail: Đảm bảo 1 Gmail = DUY NHẤT 1 Nick, tự động dọn sạch mọi khóa bị nhân đôi (%2E hoặc trùng lặp)
+// Danh sách chặn tuyệt đối mọi email mẫu / nick quản lý ảo / tài khoản thử nghiệm để không bao giờ tự sinh nick mới trong Quản lý Thành viên
+const BLOCKED_FAKE_OR_TEST_MEMBER_EMAILS = new Set([
+  'minhanh.sp2@gmail.com',
+  'hoangnam.xuanhoa@gmail.com',
+  'nickao.phaquay99@gmail.com',
+  'nguoimoi.xuanhoa@gmail.com',
+  'quanlyweb.xh@gmail.com',
+  'quanlymaps.xh@gmail.com',
+  'kiemnhiem.xh@gmail.com',
+  'quanlymaps@xuanhoacogi.vn',
+  'chuquan.xuanhoa@gmail.com',
+  'merchant@xuanhoacogi.vn',
+  'thuckhach@gmail.com',
+  'admin@xuanhoacogi.com',
+  'minhtt@xuanhoacogi.com',
+]);
+
+export function isBlockedFakeOrTestMemberEmail(email?: string | null): boolean {
+  if (!email) return true;
+  const clean = decodeRtdbKey(email).trim().toLowerCase();
+  if (!clean || !clean.includes('@')) return true;
+  if (BLOCKED_FAKE_OR_TEST_MEMBER_EMAILS.has(clean)) return true;
+  if (/^(thanhvien|seeder|test|demo|quanlyweb|quanlymaps|kiemnhiem)\b/i.test(clean)) return true;
+  if (
+    clean.endsWith('@chuquan.xuanhoa') ||
+    clean.endsWith('@xuanhoacogi.vn') ||
+    clean.endsWith('@xuanhoacogi.com')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+// Chuẩn hóa & gộp tuyệt đối theo Gmail: Đảm bảo 1 Gmail = DUY NHẤT 1 Nick, tự động dọn sạch mọi khóa bị nhân đôi (%2E hoặc trùng lặp) và loại bỏ 100% nick ảo
 export function normalizeAndDeduplicateMembers(
   rawMembers?: Record<string, ManagedMember> | null
 ): { members: Record<string, ManagedMember>; hadDuplicates: boolean } {
@@ -334,7 +371,7 @@ export function normalizeAndDeduplicateMembers(
       continue;
     }
     const cleanEmail = decodeRtdbKey(incoming.email || rawKey).trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
+    if (!cleanEmail || !cleanEmail.includes('@') || isBlockedFakeOrTestMemberEmail(cleanEmail)) {
       hadDuplicates = true;
       continue;
     }
@@ -404,17 +441,45 @@ export function normalizeAndDeduplicateMembers(
   return { members: out, hadDuplicates };
 }
 
+let cachedAdminRaw: string | null = null;
+let cachedAdminState: AdminState | null = null;
+let lastLocalSaveUpdatedAt = 0;
+
+function isSuperAdminIdentifier(id?: string | null): boolean {
+  if (!id) return false;
+  const clean = id.trim().toLowerCase();
+  return (
+    clean === 'admin' ||
+    clean === '@admin' ||
+    clean === 'minhtt' ||
+    clean === '@minhtt' ||
+    clean === 'admin@xuanhoacogi.com' ||
+    clean === 'minhtt@xuanhoacogi.com' ||
+    clean === 'truongtuanminh.91@gmail.com' ||
+    clean === 'marcel.vietnam@gmail.com' ||
+    clean === 'quanlymaps@xuanhoacogi.vn'
+  );
+}
+
 export function getAdminState(): AdminState {
   if (typeof window === 'undefined') return createInitialAdminState();
   try {
     const raw = localStorage.getItem(ADMIN_STORAGE_KEY);
     if (!raw) {
       const init = createInitialAdminState();
-      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(init));
+      const s = JSON.stringify(init);
+      localStorage.setItem(ADMIN_STORAGE_KEY, s);
+      cachedAdminRaw = s;
+      cachedAdminState = init;
       return init;
     }
+    if (raw === cachedAdminRaw && cachedAdminState) {
+      return cachedAdminState;
+    }
+
     const parsed: AdminState = JSON.parse(raw);
     const places = parsed.places || {};
+    const merchantSubmissions = parsed.merchantSubmissions || {};
 
     // Tự động hợp nhất quán Cháo Lòng Chị Hồng (xh_custom_1792229707991) đã tạo trong Admin sang mã chính thức có biển quán & ảnh món
     let migrated = false;
@@ -436,6 +501,101 @@ export function getAdminState(): AdminState {
       migrated = true;
     }
 
+    // Dọn sạch dữ liệu thử nghiệm vô tình lưu vào Ăn Vặt Gamitra (gamitra-xuan-hoa) để trả về đúng trạng thái ⏳ Chưa ghim
+    for (const [pid, ov] of Object.entries(places)) {
+      if (!ov) continue;
+      if (pid === 'gamitra-xuan-hoa' || pid === 'an-vat-gamitra') {
+        if (ov.phone && ov.phone.endsWith('aaa')) {
+          ov.phone = ov.phone.replace(/aaa+$/i, '').trim();
+          migrated = true;
+        }
+        if (
+          ov.lat !== undefined ||
+          ov.lng !== undefined ||
+          ov.coordinateVerified
+        ) {
+          delete ov.lat;
+          delete ov.lng;
+          ov.coordinateVerified = false;
+          ov.coordinateSource = 'unverified';
+          delete ov.lastVerifiedAt;
+          migrated = true;
+        }
+      }
+
+      const isCivicOrSchool =
+        ov.mapCategory === 'public' ||
+        ov.mapCategory === 'school' ||
+        ov.mapCategory === 'medical' ||
+        ov.sectorTag === 'dia-danh';
+
+      if (isCivicOrSchool) {
+        if (ov.sectorTag !== 'dia-danh') {
+          ov.sectorTag = 'dia-danh';
+          migrated = true;
+        }
+        if (ov.customMenu && ov.customMenu.length > 0) {
+          ov.customMenu = [];
+          migrated = true;
+        }
+        if (ov.customPlaceData?.menu && ov.customPlaceData.menu.length > 0) {
+          ov.customPlaceData.menu = [];
+          ov.customPlaceData.minPrice = 0;
+          ov.customPlaceData.maxPrice = 0;
+          ov.customPlaceData.priceRange = 'Địa danh công cộng';
+          migrated = true;
+        }
+        if (ov.pendingWebApproval) {
+          ov.pendingWebApproval = null;
+          migrated = true;
+        }
+      }
+
+      // Admin làm gì là mệnh lệnh (không cần duyệt); chỉnh sửa thông tin/tọa độ cũng không cần duyệt (chỉ Thêm mới hoặc Yêu cầu Xóa của Quản lý mới chờ duyệt)
+      if (ov.pendingWebApproval) {
+        const pw = ov.pendingWebApproval;
+        if (
+          isSuperAdminIdentifier(pw.submittedBy) ||
+          (!pw.isNewPlace && !pw.isDeleteRequest)
+        ) {
+          ov.pendingWebApproval = null;
+          migrated = true;
+        }
+      }
+      if (ov.pendingMapApproval) {
+        const pm = ov.pendingMapApproval;
+        if (
+          isSuperAdminIdentifier(pm.submittedBy) ||
+          (!pm.isNewPlace && !pm.isDeleteRequest)
+        ) {
+          ov.pendingMapApproval = null;
+          migrated = true;
+        }
+      }
+
+      const subKey = `sub_${pid}`;
+      if (
+        merchantSubmissions[subKey] &&
+        (isCivicOrSchool ||
+          pid.startsWith('xh_map_') ||
+          isSuperAdminIdentifier(merchantSubmissions[subKey].merchantEmail))
+      ) {
+        delete merchantSubmissions[subKey];
+        migrated = true;
+      }
+    }
+
+    // Dọn sạch các nick quản lý thử nghiệm tự sinh trong adminAccounts (chỉ giữ tài khoản thật)
+    let cleanAdminAccounts = parsed.adminAccounts || DEFAULT_ADMIN_ACCOUNTS;
+    const filteredAccounts = cleanAdminAccounts.filter(acc => {
+      const u = (acc.username || '').trim().toLowerCase();
+      return u !== 'quanlyweb' && u !== 'quanlymaps' && u !== 'kiemnhiem' && !u.startsWith('test');
+    });
+    if (filteredAccounts.length !== cleanAdminAccounts.length) {
+      cleanAdminAccounts = filteredAccounts.length > 0 ? filteredAccounts : DEFAULT_ADMIN_ACCOUNTS;
+      migrated = true;
+    }
+
     const { members: cleanMembers, hadDuplicates } = normalizeAndDeduplicateMembers(parsed.members);
     if (hadDuplicates) {
       migrated = true;
@@ -447,14 +607,20 @@ export function getAdminState(): AdminState {
       places,
       dishes: parsed.dishes || {},
       members: cleanMembers,
-      merchantSubmissions: parsed.merchantSubmissions || {},
+      adminAccounts: cleanAdminAccounts,
+      merchantSubmissions,
       auditLogs: parsed.auditLogs || [],
       mapAccessMode: parsed.mapAccessMode || 'merchants_and_admin_only',
     };
 
     if (migrated) {
-      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(resultState));
+      const nextRaw = JSON.stringify(resultState);
+      localStorage.setItem(ADMIN_STORAGE_KEY, nextRaw);
+      cachedAdminRaw = nextRaw;
+    } else {
+      cachedAdminRaw = raw;
     }
+    cachedAdminState = resultState;
 
     return resultState;
   } catch {
@@ -486,6 +652,7 @@ function decodeRtdbRecord<T>(record?: Record<string, T> | null): Record<string, 
 
 export function pushMemberToCloudRealtime(member: ManagedMember, includeAdminRoles = false): void {
   if (typeof window === 'undefined' || !firebaseConfig.apiKey || !member?.email) return;
+  if (isBlockedFakeOrTestMemberEmail(member.email)) return;
   try {
     const rtdb = getRealtimeDb();
     if (!rtdb) return;
@@ -535,8 +702,11 @@ export function saveAdminState(next: AdminState, syncCloud = true): void {
   if (typeof window === 'undefined') return;
   try {
     next.updatedAt = Date.now();
+    lastLocalSaveUpdatedAt = next.updatedAt;
     next.members = normalizeAndDeduplicateMembers(next.members || {}).members;
     const serialized = JSON.stringify(next);
+    cachedAdminRaw = serialized;
+    cachedAdminState = next;
     localStorage.setItem(ADMIN_STORAGE_KEY, serialized);
     window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: next }));
 
@@ -606,7 +776,7 @@ export function initAdminCloudSync(): void {
     const cleanIncoming = normalizeAndDeduplicateMembers(incomingMembers).members;
     const out: Record<string, ManagedMember> = { ...cleanLocal };
     for (const [emailKey, incoming] of Object.entries(cleanIncoming)) {
-      if (!incoming || !emailKey) continue;
+      if (!incoming || !emailKey || isBlockedFakeOrTestMemberEmail(emailKey)) continue;
       const existing = out[emailKey];
       out[emailKey] = {
         ...(existing || {}),
@@ -634,34 +804,70 @@ export function initAdminCloudSync(): void {
 
   const applyCloudData = (cloudData: Partial<AdminState> | null | undefined) => {
     if (!cloudData) return;
+    if (cloudData.updatedAt && cloudData.updatedAt === lastLocalSaveUpdatedAt) {
+      return;
+    }
     const local = getAdminState();
     const decodedCloudMembers = decodeRtdbRecord<ManagedMember>(cloudData.members as any);
+    for (const k of Object.keys(decodedCloudMembers)) {
+      if (isBlockedFakeOrTestMemberEmail(k)) {
+        removeMemberFromCloudRealtime(k);
+        delete decodedCloudMembers[k];
+      }
+    }
     const mergedMembers = mergeMembersMap(local.members || {}, decodedCloudMembers);
 
-    if (cloudData.updatedAt && cloudData.updatedAt >= (local.updatedAt || 0)) {
+    const incomingPlaces = { ...(cloudData.places || local.places || {}) };
+    for (const gid of ['gamitra-xuan-hoa', 'an-vat-gamitra']) {
+      if (incomingPlaces[gid]) {
+        if (incomingPlaces[gid].phone && incomingPlaces[gid].phone!.endsWith('aaa')) {
+          incomingPlaces[gid].phone = incomingPlaces[gid].phone!.replace(/aaa+$/i, '').trim();
+        }
+        delete incomingPlaces[gid].lat;
+        delete incomingPlaces[gid].lng;
+        incomingPlaces[gid].coordinateVerified = false;
+        incomingPlaces[gid].coordinateSource = 'unverified';
+        delete incomingPlaces[gid].lastVerifiedAt;
+      }
+    }
+
+    const incomingAccounts = (cloudData.adminAccounts || local.adminAccounts || DEFAULT_ADMIN_ACCOUNTS).filter(acc => {
+      const u = (acc.username || '').trim().toLowerCase();
+      return u !== 'quanlyweb' && u !== 'quanlymaps' && u !== 'kiemnhiem' && !u.startsWith('test');
+    });
+
+    if (cloudData.updatedAt && cloudData.updatedAt > (local.updatedAt || 0)) {
       const merged: AdminState = {
         ...local,
-        places: cloudData.places || local.places || {},
+        places: incomingPlaces,
         dishes: cloudData.dishes || local.dishes || {},
         members: mergedMembers,
         merchantSubmissions: cloudData.merchantSubmissions || local.merchantSubmissions || {},
         auditLogs: cloudData.auditLogs || local.auditLogs,
         adminEmails: cloudData.adminEmails || local.adminEmails,
-        adminAccounts: cloudData.adminAccounts || local.adminAccounts,
+        adminAccounts: incomingAccounts.length > 0 ? incomingAccounts : DEFAULT_ADMIN_ACCOUNTS,
         sectorTags: cloudData.sectorTags || local.sectorTags,
         fontScale: cloudData.fontScale || local.fontScale,
         mapAccessMode: cloudData.mapAccessMode || local.mapAccessMode || 'merchants_and_admin_only',
         updatedAt: cloudData.updatedAt,
       };
-      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(merged));
+      const serialized = JSON.stringify(merged);
+      cachedAdminRaw = serialized;
+      cachedAdminState = merged;
+      localStorage.setItem(ADMIN_STORAGE_KEY, serialized);
       window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: merged }));
-    } else if (Object.keys(decodedCloudMembers).length > 0) {
+    } else if (
+      Object.keys(decodedCloudMembers).length > Object.keys(local.members || {}).length
+    ) {
       // Kể cả khi local.updatedAt mới hơn, vẫn luôn hợp nhất danh sách thành viên từ Cloud để không bao giờ sót người mới đăng ký
       const merged: AdminState = {
         ...local,
         members: mergedMembers,
       };
-      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(merged));
+      const serialized = JSON.stringify(merged);
+      cachedAdminRaw = serialized;
+      cachedAdminState = merged;
+      localStorage.setItem(ADMIN_STORAGE_KEY, serialized);
       window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: merged }));
     }
   };
@@ -690,6 +896,12 @@ export function initAdminCloudSync(): void {
           if (!snapshot.exists()) return;
           const rawRegistry = snapshot.val() as Record<string, ManagedMember>;
           const decodedRegistry = decodeRtdbRecord<ManagedMember>(rawRegistry);
+          for (const k of Object.keys(decodedRegistry)) {
+            if (isBlockedFakeOrTestMemberEmail(k)) {
+              removeMemberFromCloudRealtime(k);
+              delete decodedRegistry[k];
+            }
+          }
           const local = getAdminState();
           const nextMembers = mergeMembersMap(local.members || {}, decodedRegistry);
           const nextState: AdminState = {
@@ -712,6 +924,24 @@ export function syncUserToAdminRegistry(user: UserAuthProfile, spinsCount = 0, l
   const state = getAdminState();
   const key = (user.email || user.uid || 'guest').trim().toLowerCase();
   const existing = state.members[key];
+
+  // Tuyệt đối không tự tạo thành viên cho các tài khoản mẫu / nick quản lý ảo / khách chưa có Gmail thật
+  if (!user.email || isBlockedFakeOrTestMemberEmail(user.email)) {
+    return (
+      existing || {
+        uid: user.uid || 'guest',
+        email: user.email || '',
+        displayName: user.displayName || user.nickname || 'Thực khách',
+        nickname: user.nickname || user.displayName || 'Thực khách',
+        avatar: user.avatar || '🐭',
+        avatarId: user.avatarId || 'm_ty',
+        gender: user.gender || 'male',
+        status: 'active',
+        createdAt: Date.now(),
+        lastActiveAt: Date.now(),
+      }
+    );
+  }
 
   // Đồng bộ 2 chiều quyền Chủ Quán & Mã Code đi theo Gmail mãi mãi
   if (user.email) {
@@ -1100,31 +1330,25 @@ export function seedDemoMembersIfEmpty(): void {
   const state = getAdminState();
   let changed = false;
 
-  // 1. Xóa bỏ hoàn toàn các tài khoản mẫu / mô phỏng để đảm bảo 100% là số người đăng ký THỰC TẾ
-  const fakeDemoEmails = [
-    'minhanh.sp2@gmail.com',
-    'hoangnam.xuanhoa@gmail.com',
-    'nickao.phaquay99@gmail.com',
-    'nguoimoi.xuanhoa@gmail.com',
-    'quanlyweb.xh@gmail.com',
-    'quanlymaps.xh@gmail.com',
-    'kiemnhiem.xh@gmail.com',
-  ];
-  for (const fakeEmail of fakeDemoEmails) {
+  // 1. Xóa bỏ hoàn toàn các tài khoản mẫu / mô phỏng cả ở Local lẫn trên Firebase Cloud để đảm bảo 100% là người đăng ký THỰC TẾ
+  for (const fakeEmail of Array.from(BLOCKED_FAKE_OR_TEST_MEMBER_EMAILS)) {
+    removeMemberFromCloudRealtime(fakeEmail);
     if (state.members[fakeEmail]) {
       delete state.members[fakeEmail];
       changed = true;
     }
   }
   for (const existingKey of Object.keys(state.members)) {
-    if (/^thanhvien\.\d+@gmail\.com$/i.test(existingKey)) {
+    if (isBlockedFakeOrTestMemberEmail(existingKey)) {
+      removeMemberFromCloudRealtime(existingKey);
       delete state.members[existingKey];
       changed = true;
     }
   }
 
-  // 2. Quét toàn bộ hồ sơ người dùng THẬT đã từng đăng nhập Google trên trình duyệt hiện tại và đẩy từng nick lên nhánh Realtime
+  // 2. Chỉ đồng bộ nick Gmail THẬT đang đăng nhập trên trình duyệt hiện tại (và dọn sạch cache localStorage nếu vướng nick mẫu cũ)
   try {
+    const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const storageKey = localStorage.key(i);
       if (
@@ -1136,7 +1360,11 @@ export function seedDemoMembersIfEmpty(): void {
         const parsedUser = JSON.parse(rawUser);
         if (parsedUser && parsedUser.email) {
           const emailKey = parsedUser.email.trim().toLowerCase();
-          if (fakeDemoEmails.includes(emailKey) || /^thanhvien\.\d+@gmail\.com$/i.test(emailKey)) continue;
+          if (isBlockedFakeOrTestMemberEmail(emailKey)) {
+            keysToRemove.push(storageKey);
+            continue;
+          }
+          if (storageKey !== 'xuanhoa_auth_user_v1') continue;
           const isAdminEmail = (state.adminEmails || DEFAULT_ADMIN_EMAILS).includes(emailKey);
           if (!state.members[emailKey]) {
             const newLocalMember: ManagedMember = {
@@ -1166,12 +1394,13 @@ export function seedDemoMembersIfEmpty(): void {
         }
       }
     }
+    for (const k of keysToRemove) {
+      localStorage.removeItem(k);
+    }
   } catch {}
 
   if (changed) {
-    // Chỉ lưu local, không ghi đè toàn bộ global_state khi mới mở trang để tránh ghi đè dữ liệu Cloud từ máy khác
-    localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(state));
-    window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: state }));
+    saveAdminState(state, true);
   }
 }
 
@@ -2237,15 +2466,92 @@ export function getEffectiveAdminRoleInfo(
   };
 }
 
+export function requestOrExecuteDeletePlace(
+  placeId: string,
+  scope: 'web' | 'maps',
+  placeName?: string
+): { executedImmediately: boolean } {
+  const state = getAdminState();
+  const roleInfo = getEffectiveAdminRoleInfo();
+  const current = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
+  const resolvedName =
+    placeName || current.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
+
+  if (roleInfo.isSuperAdmin) {
+    state.places[placeId] = {
+      ...current,
+      id: placeId,
+      status: 'deleted',
+      pendingWebApproval: null,
+      pendingMapApproval: null,
+      updatedAt: Date.now(),
+    };
+    const subKey = `sub_${placeId}`;
+    if (state.merchantSubmissions?.[subKey]) {
+      delete state.merchantSubmissions[subKey];
+    }
+    state.auditLogs = addAdminAuditLog(
+      state,
+      scope === 'web' ? '🗑️ Admin xóa quán khỏi hệ thống' : '🗑️ Admin xóa địa điểm khỏi Bản đồ',
+      resolvedName,
+      'place'
+    );
+    saveAdminState(state);
+    return { executedImmediately: true };
+  }
+
+  // Quản lý (Web / Maps) yêu cầu xóa -> Chờ Admin duyệt
+  const reqPayload = {
+    submittedBy: roleInfo.identifier || (scope === 'web' ? 'quanlyweb' : 'quanlymaps'),
+    submittedByName: roleInfo.displayName || (scope === 'web' ? 'Quản lý Web' : 'Quản lý Maps'),
+    submittedAt: Date.now(),
+    actionSummary: scope === 'web' ? 'Yêu cầu XÓA quán khỏi hệ thống' : 'Yêu cầu XÓA địa điểm khỏi Bản đồ',
+    actionType: 'delete' as const,
+    isDeleteRequest: true,
+  };
+
+  state.places[placeId] = {
+    ...current,
+    id: placeId,
+    ...(scope === 'web' ? { pendingWebApproval: reqPayload } : { pendingMapApproval: reqPayload }),
+    updatedAt: Date.now(),
+  };
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    scope === 'web' ? '⏳ Quản lý gửi yêu cầu XÓA quán (chờ duyệt)' : '⏳ Quản lý gửi yêu cầu XÓA địa điểm (chờ duyệt)',
+    `${resolvedName} — bởi ${reqPayload.submittedByName}`,
+    'place'
+  );
+  saveAdminState(state);
+  return { executedImmediately: false };
+}
+
 export function approvePendingPlaceItem(placeId: string, scope: 'web' | 'maps'): void {
   const state = getAdminState();
   const ov = state.places[placeId];
   if (!ov) return;
 
-  if (scope === 'web') {
+  const baseName = ov.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
+  const pendingObj = scope === 'web' ? ov.pendingWebApproval : ov.pendingMapApproval;
+  const isDelete = Boolean(
+    pendingObj?.isDeleteRequest ||
+      pendingObj?.actionType === 'delete' ||
+      ov.pendingWebApproval?.isDeleteRequest ||
+      ov.pendingMapApproval?.isDeleteRequest
+  );
+
+  if (isDelete) {
+    ov.status = 'deleted';
     ov.pendingWebApproval = null;
-  } else {
     ov.pendingMapApproval = null;
+  } else {
+    ov.status = 'active';
+    if (scope === 'web') {
+      ov.pendingWebApproval = null;
+    } else {
+      ov.pendingMapApproval = null;
+    }
   }
   ov.updatedAt = Date.now();
   state.places[placeId] = ov;
@@ -2257,14 +2563,54 @@ export function approvePendingPlaceItem(placeId: string, scope: 'web' | 'maps'):
     state.merchantSubmissions[subKey].reviewedAt = Date.now();
   }
 
-  const baseName = ov.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
   state.auditLogs = addAdminAuditLog(
     state,
-    scope === 'web' ? '✅ Admin đã duyệt cập nhật Quán' : '✅ Admin đã duyệt định vị Maps',
+    isDelete
+      ? `✅ Admin đã duyệt XÓA ${scope === 'web' ? 'quán' : 'địa điểm Maps'}`
+      : scope === 'web'
+      ? '✅ Admin đã duyệt thêm Quán mới'
+      : '✅ Admin đã duyệt thêm Định vị Maps',
     baseName,
     'place'
   );
   saveAdminState(state);
+}
+
+export function approveAllPendingPlaceItems(scope: 'web' | 'maps'): number {
+  const state = getAdminState();
+  let count = 0;
+  for (const [placeId, ov] of Object.entries(state.places || {})) {
+    const pendingObj = scope === 'web' ? ov.pendingWebApproval : ov.pendingMapApproval;
+    if (!pendingObj) continue;
+    const isDelete = Boolean(pendingObj.isDeleteRequest || pendingObj.actionType === 'delete');
+    if (isDelete) {
+      ov.status = 'deleted';
+      ov.pendingWebApproval = null;
+      ov.pendingMapApproval = null;
+    } else {
+      ov.status = 'active';
+      if (scope === 'web') ov.pendingWebApproval = null;
+      else ov.pendingMapApproval = null;
+    }
+    ov.updatedAt = Date.now();
+    state.places[placeId] = ov;
+    const subKey = `sub_${placeId}`;
+    if (state.merchantSubmissions?.[subKey]?.status === 'pending') {
+      state.merchantSubmissions[subKey].status = 'approved';
+      state.merchantSubmissions[subKey].reviewedAt = Date.now();
+    }
+    count++;
+  }
+  if (count > 0) {
+    state.auditLogs = addAdminAuditLog(
+      state,
+      `⚡ Admin duyệt hàng loạt ${count} yêu cầu (${scope === 'web' ? 'Quản lý Quán' : 'Quản lý Maps'})`,
+      `${count} mục`,
+      'place'
+    );
+    saveAdminState(state);
+  }
+  return count;
 }
 
 export function rejectPendingPlaceItem(placeId: string, scope: 'web' | 'maps'): void {
@@ -2273,8 +2619,15 @@ export function rejectPendingPlaceItem(placeId: string, scope: 'web' | 'maps'): 
   if (!ov) return;
 
   const baseName = ov.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
+  const pendingObj = scope === 'web' ? ov.pendingWebApproval : ov.pendingMapApproval;
+  const isDelete = Boolean(pendingObj?.isDeleteRequest || pendingObj?.actionType === 'delete');
 
-  if (scope === 'web') {
+  if (isDelete) {
+    if (scope === 'web') ov.pendingWebApproval = null;
+    else ov.pendingMapApproval = null;
+    ov.updatedAt = Date.now();
+    state.places[placeId] = ov;
+  } else if (scope === 'web') {
     if (ov.pendingWebApproval?.isNewPlace && ov.isCustom) {
       delete state.places[placeId];
     } else {
@@ -2285,7 +2638,7 @@ export function rejectPendingPlaceItem(placeId: string, scope: 'web' | 'maps'): 
     if (ov.pendingMapApproval?.isNewPlace && ov.isCustom) {
       delete state.places[placeId];
     } else {
-      if (ov.pendingMapApproval) {
+      if (ov.pendingMapApproval && ov.pendingMapApproval.previousLat !== undefined) {
         ov.lat = ov.pendingMapApproval.previousLat ?? undefined;
         ov.lng = ov.pendingMapApproval.previousLng ?? undefined;
       }
@@ -2302,7 +2655,11 @@ export function rejectPendingPlaceItem(placeId: string, scope: 'web' | 'maps'): 
 
   state.auditLogs = addAdminAuditLog(
     state,
-    scope === 'web' ? '❌ Admin từ chối cập nhật Quán' : '❌ Admin từ chối định vị Maps',
+    isDelete
+      ? `❌ Admin từ chối yêu cầu XÓA (${scope === 'web' ? 'Quán' : 'Maps'})`
+      : scope === 'web'
+      ? '❌ Admin từ chối thêm Quán mới'
+      : '❌ Admin từ chối thêm Định vị Maps',
     baseName,
     'place'
   );
@@ -2790,6 +3147,7 @@ export function createNewPlaceFromMap(
   }
 
   const mapCat = payload.mapCategory || 'food';
+  const isCivicOrSchool = mapCat === 'public' || mapCat === 'school' || mapCat === 'medical';
   const sectorMap: Record<string, { category: Place['category']; sectorTag: string }> = {
     food: { category: 'restaurant', sectorTag: 'an-chinh' },
     pub: { category: 'pub', sectorTag: 'nhau-lau' },
@@ -2811,48 +3169,52 @@ export function createNewPlaceFromMap(
   const newPlaceId = `xh_map_${Date.now()}`;
   const sigName =
     payload.signatureDishName?.trim() ||
-    (mapCat === 'public'
+    (mapCat === 'public' || mapCat === 'medical'
       ? 'Cơ quan hành chính / Điểm công cộng'
       : mapCat === 'school'
       ? 'Cơ sở Giáo dục & Đào tạo'
       : `Đặc trưng tại ${cleanName}`);
-  const sigPrice = Number(payload.signatureDishPrice) || 35;
+  const sigPrice = isCivicOrSchool ? 0 : Number(payload.signatureDishPrice) || 35;
 
   const newPlace: Place = {
     id: newPlaceId,
     name: cleanName,
     tagline:
       payload.tagline?.trim() ||
-      (mapCat === 'public'
+      (mapCat === 'public' || mapCat === 'medical'
         ? 'Đơn vị hành chính & Điểm dịch vụ công Phường Xuân Hòa'
+        : mapCat === 'school'
+        ? 'Trường học & Giảng đường tại Phường Xuân Hòa'
         : `Địa điểm tiêu biểu tại Phường Xuân Hòa`),
     category: mapped.category,
     address: payload.address.trim() || 'Phường Xuân Hòa, Tỉnh Phú Thọ',
     zone: 'center',
     distance: 'Trung tâm Xuân Hòa',
-    openHours: payload.openHours?.trim() || '07:00 - 22:00',
+    openHours: payload.openHours?.trim() || (isCivicOrSchool ? '07:30 - 17:30' : '07:00 - 22:00'),
     phone: payload.phone?.trim() || '',
-    priceRange: `${sigPrice}k - ${sigPrice + 35}k`,
-    minPrice: sigPrice,
-    maxPrice: sigPrice + 35,
-    rating: 4.9,
-    reviewCount: 12,
+    priceRange: isCivicOrSchool ? 'Địa danh công cộng' : `${sigPrice}k - ${sigPrice + 35}k`,
+    minPrice: isCivicOrSchool ? 0 : sigPrice,
+    maxPrice: isCivicOrSchool ? 0 : sigPrice + 35,
+    rating: 5.0,
+    reviewCount: 10,
     imageUrl: '',
     tags: [mapCat, 'Xuân Hòa'],
     signatureDish: {
       id: `${newPlaceId}_sig`,
       name: sigName,
       price: sigPrice,
-      tag: 'Món tủ',
+      tag: isCivicOrSchool ? 'Địa danh' : 'Món tủ',
     },
-    menu: [
-      {
-        id: `${newPlaceId}_m1`,
-        name: sigName,
-        price: sigPrice,
-        tag: 'Bán chạy',
-      },
-    ],
+    menu: isCivicOrSchool
+      ? []
+      : [
+          {
+            id: `${newPlaceId}_m1`,
+            name: sigName,
+            price: sigPrice,
+            tag: 'Bán chạy',
+          },
+        ],
     serviceMode: 'both',
     mapsQuery: `${cleanName} Xuân Hòa Phú Thọ`,
     mapsUrl:
@@ -2863,10 +3225,11 @@ export function createNewPlaceFromMap(
   };
 
   const state = getAdminState();
-  const creatorEmail = (effectiveUser?.email || 'quanlymaps@xuanhoacogi.vn').trim().toLowerCase();
-  const claimCode = getOrGenerateMerchantCode(newPlaceId, false, cleanName);
-
   const creatorRole = getEffectiveAdminRoleInfo(undefined, effectiveUser);
+  const creatorIdentifier =
+    creatorRole.identifier ||
+    (effectiveUser?.email || 'quanlymaps@xuanhoacogi.vn').trim().toLowerCase();
+  const claimCode = getOrGenerateMerchantCode(newPlaceId, false, cleanName);
 
   state.places[newPlaceId] = {
     id: newPlaceId,
@@ -2901,64 +3264,31 @@ export function createNewPlaceFromMap(
     ...(!creatorRole.isSuperAdmin
       ? {
           pendingMapApproval: {
-            submittedBy: creatorEmail,
-            submittedByName: effectiveUser?.displayName || 'Quản lý Maps',
+            submittedBy: creatorIdentifier,
+            submittedByName: creatorRole.displayName || effectiveUser?.displayName || 'Quản lý Maps',
             submittedAt: Date.now(),
-            actionSummary: `Thêm định vị mới (${mapCat})`,
+            actionSummary: `Yêu cầu thêm định vị mới (${mapCat})`,
+            actionType: 'create',
             previousLat: null,
             previousLng: null,
             isNewPlace: true,
           },
         }
-      : {}),
+      : {
+          pendingMapApproval: null,
+          pendingWebApproval: null,
+        }),
     updatedAt: Date.now(),
     isCustom: true,
     customPlaceData: newPlace,
   };
 
-  // Lưu đồng thời vào danh sách Duyệt Quán để Admin dễ dàng kiểm soát và nâng cấp hình ảnh / menu bằng AI
-  if (!state.merchantSubmissions) state.merchantSubmissions = {};
-  const subId = `sub_${newPlaceId}`;
-  state.merchantSubmissions[subId] = {
-    id: subId,
-    placeId: newPlaceId,
-    placeOriginalName: cleanName,
-    merchantEmail: creatorEmail,
-    merchantName: effectiveUser?.displayName || '🗺️ Quản lý Maps',
-    claimCodeUsed: claimCode,
-    submittedAt: Date.now(),
-    status: 'pending',
-    proposed: {
-      name: cleanName,
-      phone: newPlace.phone || '',
-      openHours: newPlace.openHours || '07:00 - 22:00',
-      address: newPlace.address,
-      tagline: newPlace.tagline,
-      minPrice: newPlace.minPrice,
-      maxPrice: newPlace.maxPrice,
-      serviceMode: newPlace.serviceMode,
-      signatureDishName: sigName,
-      signatureDishPrice: sigPrice,
-      customMenu: newPlace.menu,
-      lat,
-      lng,
-      gpsDistanceMeters: 0,
-    },
-    previous: {
-      name: cleanName,
-      phone: '',
-      openHours: '',
-      address: newPlace.address,
-      lat: null,
-      lng: null,
-      menuCount: 0,
-    },
-  };
-
   state.auditLogs = addAdminAuditLog(
     state,
-    `🗺️ Tạo địa điểm mới trên Bản đồ (${mapCat})`,
-    `${cleanName} — Tọa độ: ${lat}, ${lng} (Mã quán: ${claimCode})`,
+    creatorRole.isSuperAdmin
+      ? `🗺️ Admin ghim địa điểm mới trên Bản đồ (${mapCat})`
+      : `⏳ Quản lý Maps thêm địa điểm mới chờ duyệt (${mapCat})`,
+    `${cleanName} — Tọa độ: ${lat}, ${lng}`,
     'place'
   );
 

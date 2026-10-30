@@ -105,6 +105,7 @@ interface DigitalMapViewProps {
   adminPreviewLat?: number | null;
   adminPreviewLng?: number | null;
   adminPreviewName?: string;
+  adminFlyTrigger?: number;
   onAdminPickCoordinates?: (lat: number, lng: number) => void;
   onAdminSelectPlace?: (placeId: string) => void;
 }
@@ -148,7 +149,379 @@ interface LoadedGeoLayers {
   roadLabelAnchors?: RoadLabelAnchor[];
 }
 
-export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
+interface CachedGeoBundle {
+  geoLayers: LoadedGeoLayers;
+  osmRoads: RoadSearchResult[];
+  osmRoadMatchedCatalog: Record<
+    string,
+    { lat: number; lng: number; roadName: string; osmId: string }
+  >;
+}
+
+let cachedProcessedGeoBundle: CachedGeoBundle | null = null;
+let inflightGeoBundlePromise: Promise<CachedGeoBundle> | null = null;
+
+export function prefetchDigitalMapGeoLayers(): Promise<CachedGeoBundle> {
+  if (cachedProcessedGeoBundle) {
+    return Promise.resolve(cachedProcessedGeoBundle);
+  }
+  if (inflightGeoBundlePromise) {
+    return inflightGeoBundlePromise;
+  }
+
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  inflightGeoBundlePromise = Promise.all([
+    fetch(`${base}/geo/xuanhoa-boundary.geojson`).then((r) => r.json()),
+    fetch(`${base}/geo/xuanhoa-landuse.geojson`).then((r) => r.json()),
+    fetch(`${base}/geo/xuanhoa-water.geojson`).then((r) => r.json()),
+    fetch(`${base}/geo/xuanhoa-waterways.geojson`).then((r) => r.json()),
+    fetch(`${base}/geo/xuanhoa-roads.geojson`).then((r) => r.json()),
+    fetch(`${base}/geo/xuanhoa-buildings.geojson`).then((r) => r.json()),
+    fetch(`${base}/geo/xuanhoa-places-labels.geojson`).then((r) => r.json()),
+    fetch(`${base}/geo/xuanhoa-osm-verified-pois.json`).then((r) => r.json()),
+    fetch(`${base}/geo/xuanhoa-catalog-osm-matched.json`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .catch(() => ({})),
+  ])
+    .then(
+      ([
+        boundary,
+        landuse,
+        water,
+        waterways,
+        roads,
+        buildings,
+        placeLabels,
+        verifiedPoisData,
+        matchedCatalog,
+      ]) => {
+        const boundaryFeatures: any[] = boundary?.features || [];
+        const wardRing: number[][] = boundaryFeatures[0]?.geometry?.coordinates?.[0] || [];
+
+        const isPointInsideXuanHoa = (lng: number, lat: number) => {
+          if (!wardRing || wardRing.length < 3) return true;
+          let inside = false;
+          for (let i = 0, j = wardRing.length - 1; i < wardRing.length; j = i++) {
+            const xi = wardRing[i][0],
+              yi = wardRing[i][1];
+            const xj = wardRing[j][0],
+              yj = wardRing[j][1];
+            const intersect =
+              yi > lat !== yj > lat &&
+              lng < ((xj - xi) * (lat - yi)) / (yj - yi || 1e-9) + xi;
+            if (intersect) inside = !inside;
+          }
+          return inside;
+        };
+
+        const rawLanduse: any[] = landuse?.features || [];
+        const rawWater: any[] = water?.features || [];
+        const rawWaterways: any[] = waterways?.features || [];
+        const rawRoads: any[] = roads?.features || [];
+        const allRawBuildings: any[] = buildings?.features || [];
+
+        const indexRingFeature = (f: any, ring: number[][]) => {
+          if (!ring || ring.length === 0) return;
+          let minX = Infinity,
+            maxX = -Infinity,
+            minY = Infinity,
+            maxY = -Infinity;
+          for (let i = 0; i < ring.length; i++) {
+            const x = ring[i][0];
+            const y = ring[i][1];
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+          f._minLng = minX;
+          f._maxLng = maxX;
+          f._minLat = minY;
+          f._maxLat = maxY;
+          f._midLng = (minX + maxX) * 0.5;
+          f._midLat = (minY + maxY) * 0.5;
+        };
+
+        const cleanGeoText = (raw: string) =>
+          String(raw || '')
+            .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\r\n\t]+/gu, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+
+        for (const f of rawLanduse) indexRingFeature(f, f.geometry?.coordinates?.[0]);
+        for (const f of rawWater) {
+          indexRingFeature(f, f.geometry?.coordinates?.[0]);
+          f._cleanName = cleanGeoText(f.properties?.name || '');
+        }
+        for (const f of rawWaterways) indexRingFeature(f, f.geometry?.coordinates);
+
+        const roadsMajor: any[] = [];
+        const roadsSecondary: any[] = [];
+        const roadsMinor: any[] = [];
+        const roadsAlley: any[] = [];
+
+        for (const f of rawRoads) {
+          indexRingFeature(f, f.geometry?.coordinates);
+          f._cleanName = cleanGeoText(f.properties?.name || '');
+          const t = f.properties?.tier || 'minor';
+          if (t === 'major') roadsMajor.push(f);
+          else if (t === 'secondary') roadsSecondary.push(f);
+          else if (t === 'minor') roadsMinor.push(f);
+          else roadsAlley.push(f);
+        }
+
+        const rawBuildings: any[] = [];
+        const landmarkBuildings: any[] = [];
+        const regularBuildings: any[] = [];
+
+        for (const f of allRawBuildings) {
+          const ring: number[][] = f.geometry?.coordinates?.[0];
+          indexRingFeature(f, ring);
+          const mLng = f._midLng;
+          const mLat = f._midLat;
+          if (!mLng || !mLat || !ring) continue;
+          if (!isPointInsideXuanHoa(mLng, mLat)) continue;
+          const cleanBName = cleanGeoText(f.properties?.name || '');
+          f._cleanName = cleanBName;
+          rawBuildings.push(f);
+          if (cleanBName) {
+            landmarkBuildings.push(f);
+          } else {
+            regularBuildings.push(f);
+          }
+        }
+
+        const samplePointAtDist = (
+          coords: number[][],
+          segLens: number[],
+          targetDist: number
+        ) => {
+          let acc = 0;
+          for (let i = 0; i < segLens.length; i++) {
+            if (acc + segLens[i] >= targetDist || i === segLens.length - 1) {
+              const t =
+                segLens[i] > 0
+                  ? Math.max(0, Math.min(1, (targetDist - acc) / segLens[i]))
+                  : 0.5;
+              return {
+                lng: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * t,
+                lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * t,
+                dirLng: coords[i + 1][0] - coords[i][0],
+                dirLat: coords[i + 1][1] - coords[i][1],
+              };
+            }
+            acc += segLens[i];
+          }
+          return {
+            lng: coords[0][0],
+            lat: coords[0][1],
+            dirLng: coords[coords.length - 1][0] - coords[0][0],
+            dirLat: coords[coords.length - 1][1] - coords[0][1],
+          };
+        };
+
+        const sampleStraightAnchor = (
+          coords: number[][],
+          segLens: number[],
+          totalLen: number,
+          targetDist: number
+        ) => {
+          const ptMid = samplePointAtDist(coords, segLens, targetDist);
+          const span = Math.min(0.00024, totalLen * 0.35);
+          if (span < 0.00006) return ptMid;
+          const ptBefore = samplePointAtDist(
+            coords,
+            segLens,
+            Math.max(0, targetDist - span)
+          );
+          const ptAfter = samplePointAtDist(
+            coords,
+            segLens,
+            Math.min(totalLen, targetDist + span)
+          );
+          const v1x = ptMid.lng - ptBefore.lng;
+          const v1y = ptMid.lat - ptBefore.lat;
+          const v2x = ptAfter.lng - ptMid.lng;
+          const v2y = ptAfter.lat - ptMid.lat;
+          const len1 = Math.hypot(v1x, v1y);
+          const len2 = Math.hypot(v2x, v2y);
+          if (len1 > 1e-7 && len2 > 1e-7) {
+            const cosAngle = (v1x * v2x + v1y * v2y) / (len1 * len2);
+            if (cosAngle < 0.92) return null;
+          }
+          return {
+            lng: ptMid.lng,
+            lat: ptMid.lat,
+            dirLng: ptAfter.lng - ptBefore.lng,
+            dirLat: ptAfter.lat - ptBefore.lat,
+          };
+        };
+
+        const totalRoadSpanByName = new Map<string, number>();
+        for (const f of rawRoads) {
+          const rName = f._cleanName || '';
+          const coords = f.geometry?.coordinates;
+          if (!rName || !coords || coords.length < 2) continue;
+          let totalLen = 0;
+          const segLens: number[] = [];
+          for (let i = 0; i < coords.length - 1; i++) {
+            const l = Math.hypot(
+              coords[i + 1][0] - coords[i][0],
+              coords[i + 1][1] - coords[i][1]
+            );
+            segLens.push(l);
+            totalLen += l;
+          }
+          f._roadGeomLen = totalLen;
+          f._segLens = segLens;
+          totalRoadSpanByName.set(
+            rName,
+            (totalRoadSpanByName.get(rName) || 0) + totalLen
+          );
+        }
+
+        const rawAnchorsByName = new Map<string, RoadLabelAnchor[]>();
+        const stepDeg = 0.00105;
+
+        for (const f of rawRoads) {
+          const rName = f._cleanName || '';
+          const coords = f.geometry?.coordinates;
+          const totalLen: number = f._roadGeomLen || 0;
+          const segLens: number[] = f._segLens || [];
+          if (!rName || !coords || coords.length < 2 || totalLen < 0.00048) continue;
+
+          const tier = f.properties?.tier || 'minor';
+          const isAlley = tier === 'alley' || rName.startsWith('Ngõ ');
+          const halfW = rName.length * 3.05 + 8;
+          const roadSpanDeg = Math.max(
+            totalLen,
+            totalRoadSpanByName.get(rName) || totalLen
+          );
+          const list = rawAnchorsByName.get(rName) || [];
+
+          if (totalLen < stepDeg * 1.35) {
+            const pt = sampleStraightAnchor(coords, segLens, totalLen, totalLen * 0.5);
+            if (pt) {
+              list.push({
+                name: rName,
+                tier,
+                isAlley,
+                halfW,
+                roadSpanDeg,
+                lng: pt.lng,
+                lat: pt.lat,
+                dirLng: pt.dirLng,
+                dirLat: pt.dirLat,
+              });
+            }
+          } else {
+            for (
+              let d = stepDeg * 0.55;
+              d <= totalLen - stepDeg * 0.35;
+              d += stepDeg
+            ) {
+              const pt = sampleStraightAnchor(coords, segLens, totalLen, d);
+              if (pt) {
+                list.push({
+                  name: rName,
+                  tier,
+                  isAlley,
+                  halfW,
+                  roadSpanDeg,
+                  lng: pt.lng,
+                  lat: pt.lat,
+                  dirLng: pt.dirLng,
+                  dirLat: pt.dirLat,
+                });
+              }
+            }
+          }
+
+          rawAnchorsByName.set(rName, list);
+        }
+
+        const roadLabelAnchors: RoadLabelAnchor[] = [];
+        for (const [, candidates] of rawAnchorsByName.entries()) {
+          const accepted: RoadLabelAnchor[] = [];
+          for (const cand of candidates) {
+            const tooClose = accepted.some(
+              (a) => Math.hypot(cand.lng - a.lng, cand.lat - a.lat) < 0.00082
+            );
+            if (!tooClose) {
+              accepted.push(cand);
+              roadLabelAnchors.push(cand);
+            }
+          }
+        }
+
+        const tierPriority: Record<string, number> = {
+          major: 1,
+          secondary: 2,
+          minor: 3,
+          alley: 4,
+        };
+        roadLabelAnchors.sort(
+          (a, b) => (tierPriority[a.tier] || 3) - (tierPriority[b.tier] || 3)
+        );
+
+        const geoLayers: LoadedGeoLayers = {
+          boundary: boundaryFeatures,
+          landuse: rawLanduse,
+          water: rawWater,
+          waterways: rawWaterways,
+          roads: rawRoads,
+          roadsMajor,
+          roadsSecondary,
+          roadsMinor,
+          roadsAlley,
+          buildings: rawBuildings,
+          landmarkBuildings,
+          regularBuildings,
+          placeLabels: placeLabels?.features || [],
+          roadLabelAnchors,
+        };
+
+        const parsedRoads: RoadSearchResult[] =
+          verifiedPoisData && Array.isArray(verifiedPoisData.namedRoads)
+            ? verifiedPoisData.namedRoads.map((r: any, idx: number) => ({
+                id: r.osmId || `road_${idx}`,
+                name: r.name,
+                highway: r.highway || 'residential',
+                tier: r.tier || 'minor',
+                lat: Number(r.lat),
+                lng: Number(r.lng),
+                osmId: r.osmId || '',
+                segmentsCount: r.segmentsCount || 1,
+                insideWard: Boolean(r.insideWard),
+              }))
+            : VERIFIED_OSM_ROADS_SEED;
+
+        const parsedMatchedCatalog =
+          matchedCatalog && typeof matchedCatalog === 'object'
+            ? (matchedCatalog as Record<
+                string,
+                { lat: number; lng: number; roadName: string; osmId: string }
+              >)
+            : {};
+
+        cachedProcessedGeoBundle = {
+          geoLayers,
+          osmRoads: parsedRoads,
+          osmRoadMatchedCatalog: parsedMatchedCatalog,
+        };
+        inflightGeoBundlePromise = null;
+        return cachedProcessedGeoBundle;
+      }
+    )
+    .catch((err) => {
+      inflightGeoBundlePromise = null;
+      throw err;
+    });
+
+  return inflightGeoBundlePromise;
+}
+
+const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
   onBackToHome,
   authUser = null,
   onOpenLogin,
@@ -157,6 +530,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   adminPreviewLat = null,
   adminPreviewLng = null,
   adminPreviewName = '',
+  adminFlyTrigger = 0,
   onAdminPickCoordinates,
   onAdminSelectPlace,
 }) => {
@@ -164,11 +538,17 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   const vectorCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const markerOverlayRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
-  const geoLayersRef = useRef<LoadedGeoLayers | null>(null);
+  const geoLayersRef = useRef<LoadedGeoLayers | null>(cachedProcessedGeoBundle?.geoLayers || null);
   const canvasDimsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   const isInteractingRef = useRef<boolean>(false);
   const hasUserInteractedRef = useRef<boolean>(false);
   const rafIdRef = useRef<number | null>(null);
+  const locationNoticeTimerRef = useRef<number | null>(null);
+  const initialAdminCoordsRef = useRef<{ lat: number | null; lng: number | null }>({
+    lat: adminPreviewLat,
+    lng: adminPreviewLng,
+  });
+  initialAdminCoordsRef.current = { lat: adminPreviewLat, lng: adminPreviewLng };
 
   // Refs khóa cứng 100% tọa độ Marker DOM theo từng frame của MapLibre (0 độ trễ, 0 nhảy vị trí!)
   const markerElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -176,12 +556,6 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   const gameAssetElsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
   const userMarkerElRef = useRef<HTMLDivElement | null>(null);
   const userHomeMarkerElRef = useRef<HTMLDivElement | null>(null);
-  const adminPreviewMarkerElRef = useRef<HTMLDivElement | null>(null);
-  const adminPreviewCoordsRef = useRef<{ lat: number | null; lng: number | null }>({
-    lat: adminPreviewLat,
-    lng: adminPreviewLng,
-  });
-  adminPreviewCoordsRef.current = { lat: adminPreviewLat, lng: adminPreviewLng };
   const filteredVerifiedMarkersRef = useRef<PlaceLocation[]>([]);
   const userCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const userHomeRef = useRef<UserHomeLocation | null>(null);
@@ -204,29 +578,42 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   const highlightedRoadNameRef = useRef<string>('');
 
   // Trạng thái bản đồ & kết nối (Phần 12)
-  const [isMapLoading, setIsMapLoading] = useState<boolean>(true);
+  const [isMapLoading, setIsMapLoading] = useState<boolean>(() => !cachedProcessedGeoBundle);
   const [mapLoadError, setMapLoadError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState<boolean>(
     typeof navigator !== 'undefined' ? !navigator.onLine : false
   );
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
+  const showTemporaryMapNotice = useCallback((msg: string, durationMs = 2200) => {
+    if (locationNoticeTimerRef.current !== null) {
+      window.clearTimeout(locationNoticeTimerRef.current);
+    }
+    setLocationNotice(msg);
+    locationNoticeTimerRef.current = window.setTimeout(() => {
+      setLocationNotice(null);
+      locationNoticeTimerRef.current = null;
+    }, durationMs);
+  }, []);
   const [isLocatingUser, setIsLocatingUser] = useState<boolean>(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   userCoordsRef.current = userCoords;
 
   // Dữ liệu địa điểm & đường phố thực tế
   const [syncTick, setSyncTick] = useState<number>(0);
-  const [osmRoads, setOsmRoads] = useState<RoadSearchResult[]>(VERIFIED_OSM_ROADS_SEED);
+  const [osmRoads, setOsmRoads] = useState<RoadSearchResult[]>(
+    () => cachedProcessedGeoBundle?.osmRoads || VERIFIED_OSM_ROADS_SEED
+  );
   const [osmRoadMatchedCatalog, setOsmRoadMatchedCatalog] = useState<
     Record<string, { lat: number; lng: number; roadName: string; osmId: string }>
-  >({});
-  const [selectedCategories, setSelectedCategories] = useState<MapCategoryKey[]>(
-    embeddedInAdmin ? ['all'] : ['public', 'school']
-  );
+  >(() => cachedProcessedGeoBundle?.osmRoadMatchedCatalog || {});
+  // Mặc định chỉ hiển thị Hành chính & Công cộng + Trường học (ẩn toàn bộ hàng quán cho tới khi bấm bật từng danh mục)
+  const [selectedCategories, setSelectedCategories] = useState<MapCategoryKey[]>(['public', 'school']);
   const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState<boolean>(false);
   const [isCategoryDropdown2DOpen, setIsCategoryDropdown2DOpen] = useState<boolean>(false);
   const [isSavedDropdown2DOpen, setIsSavedDropdown2DOpen] = useState<boolean>(false);
-  const [showWelcomeBanner, setShowWelcomeBanner] = useState<boolean>(true);
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState<boolean>(
+    () => !embeddedInAdmin && !cachedProcessedGeoBundle
+  );
 
   // Định danh tài khoản (nick) hiện tại để lưu địa điểm yêu thích (★) riêng cho từng nick
   const userAccountKey = useMemo(
@@ -295,7 +682,8 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   // Địa điểm / Cụm / Tài sản Game đang chọn
   const [selectedPlace, setSelectedPlace] = useState<PlaceLocation | null>(null);
   const [hoveredPlaceId, setHoveredPlaceId] = useState<string | null>(null);
-  selectedPlaceIdRef.current = selectedPlace?.id || null;
+  selectedPlaceIdRef.current =
+    selectedPlace?.id || (embeddedInAdmin ? adminSelectedPlaceId || null : null);
   hoveredPlaceIdRef.current = hoveredPlaceId;
   const [clusterSelectionList, setClusterSelectionList] = useState<PlaceLocation[] | null>(null);
   const [selectedGameAsset, setSelectedGameAsset] = useState<GameAsset | null>(null);
@@ -1696,24 +2084,6 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         }
       }
 
-      if (
-        adminPreviewMarkerElRef.current &&
-        typeof adminPreviewCoordsRef.current.lat === 'number' &&
-        typeof adminPreviewCoordsRef.current.lng === 'number' &&
-        !Number.isNaN(adminPreviewCoordsRef.current.lat) &&
-        !Number.isNaN(adminPreviewCoordsRef.current.lng)
-      ) {
-        const pt = projPt(adminPreviewCoordsRef.current.lng, adminPreviewCoordsRef.current.lat);
-        if (adminPreviewMarkerElRef.current.style.display !== 'block') {
-          adminPreviewMarkerElRef.current.style.display = 'block';
-        }
-        adminPreviewMarkerElRef.current.style.transform = `translate3d(${pt.x.toFixed(1)}px, ${pt.y.toFixed(1)}px, 0)`;
-      } else if (adminPreviewMarkerElRef.current) {
-        if (adminPreviewMarkerElRef.current.style.display !== 'none') {
-          adminPreviewMarkerElRef.current.style.display = 'none';
-        }
-      }
-
       // 6b. Nhãn phụ ký hiệu tòa nhà nội khu (S1, S2, A1, Giảng đường A...) — chỉ hiện khi zoom thật gần (>= 16.4) và không trùng ghim
       if (!isMoving && zoom >= 16.4 && vis.buildings && geo.landmarkBuildings) {
         ctx.font = `700 9.5px ${CANVAS_FONT_STACK}`;
@@ -2040,366 +2410,36 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     }
   }, [scheduleCanvasRender]);
 
-  // Tải toàn bộ dữ liệu địa lý OpenStreetMap đã xác minh từ public/geo/ + Lọc phẳng 2D ngoài Xuân Hòa + Khởi tạo Khu Đô Thị gọn gàng
+  // Tải & tái sử dụng tức thì bộ dữ liệu địa lý OpenStreetMap đã xác minh từ bộ nhớ đệm RAM (0ms trên các lần mở tiếp theo)
   useEffect(() => {
-    const controller = new AbortController();
-    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+    if (cachedProcessedGeoBundle) {
+      geoLayersRef.current = cachedProcessedGeoBundle.geoLayers;
+      setIsMapLoading(false);
+      scheduleCanvasRender();
+      return;
+    }
 
-    Promise.all([
-      fetch(`${base}/geo/xuanhoa-boundary.geojson`, { signal: controller.signal }).then((r) => r.json()),
-      fetch(`${base}/geo/xuanhoa-landuse.geojson`, { signal: controller.signal }).then((r) => r.json()),
-      fetch(`${base}/geo/xuanhoa-water.geojson`, { signal: controller.signal }).then((r) => r.json()),
-      fetch(`${base}/geo/xuanhoa-waterways.geojson`, { signal: controller.signal }).then((r) => r.json()),
-      fetch(`${base}/geo/xuanhoa-roads.geojson`, { signal: controller.signal }).then((r) => r.json()),
-      fetch(`${base}/geo/xuanhoa-buildings.geojson`, { signal: controller.signal }).then((r) => r.json()),
-      fetch(`${base}/geo/xuanhoa-places-labels.geojson`, { signal: controller.signal }).then((r) => r.json()),
-      fetch(`${base}/geo/xuanhoa-osm-verified-pois.json`, { signal: controller.signal }).then((r) => r.json()),
-      fetch(`${base}/geo/xuanhoa-catalog-osm-matched.json`, { signal: controller.signal })
-        .then((r) => (r.ok ? r.json() : {}))
-        .catch(() => ({})),
-    ])
-      .then(
-        ([
-          boundary,
-          landuse,
-          water,
-          waterways,
-          roads,
-          buildings,
-          placeLabels,
-          verifiedPoisData,
-          matchedCatalog,
-        ]) => {
-          const boundaryFeatures: any[] = boundary?.features || [];
-          const wardRing: number[][] = boundaryFeatures[0]?.geometry?.coordinates?.[0] || [];
-
-          // Hàm kiểm tra điểm nằm trong ranh giới hành chính Phường Xuân Hòa
-          const isPointInsideXuanHoa = (lng: number, lat: number) => {
-            if (!wardRing || wardRing.length < 3) return true;
-            let inside = false;
-            for (let i = 0, j = wardRing.length - 1; i < wardRing.length; j = i++) {
-              const xi = wardRing[i][0],
-                yi = wardRing[i][1];
-              const xj = wardRing[j][0],
-                yj = wardRing[j][1];
-              const intersect =
-                yi > lat !== yj > lat &&
-                lng < ((xj - xi) * (lat - yi)) / (yj - yi || 1e-9) + xi;
-              if (intersect) inside = !inside;
-            }
-            return inside;
-          };
-
-          const rawLanduse: any[] = landuse?.features || [];
-          const rawWater: any[] = water?.features || [];
-          const rawWaterways: any[] = waterways?.features || [];
-          const rawRoads: any[] = roads?.features || [];
-          const allRawBuildings: any[] = buildings?.features || [];
-
-          const indexRingFeature = (f: any, ring: number[][]) => {
-            if (!ring || ring.length === 0) return;
-            let minX = Infinity,
-              maxX = -Infinity,
-              minY = Infinity,
-              maxY = -Infinity;
-            for (let i = 0; i < ring.length; i++) {
-              const x = ring[i][0];
-              const y = ring[i][1];
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
-            }
-            f._minLng = minX;
-            f._maxLng = maxX;
-            f._minLat = minY;
-            f._maxLat = maxY;
-            f._midLng = (minX + maxX) * 0.5;
-            f._midLat = (minY + maxY) * 0.5;
-          };
-
-          const cleanGeoText = (raw: string) =>
-            String(raw || '')
-              .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\r\n\t]+/gu, ' ')
-              .replace(/\s{2,}/g, ' ')
-              .trim();
-
-          for (const f of rawLanduse) indexRingFeature(f, f.geometry?.coordinates?.[0]);
-          for (const f of rawWater) {
-            indexRingFeature(f, f.geometry?.coordinates?.[0]);
-            f._cleanName = cleanGeoText(f.properties?.name || '');
-          }
-          for (const f of rawWaterways) indexRingFeature(f, f.geometry?.coordinates);
-
-          const roadsMajor: any[] = [];
-          const roadsSecondary: any[] = [];
-          const roadsMinor: any[] = [];
-          const roadsAlley: any[] = [];
-
-          for (const f of rawRoads) {
-            indexRingFeature(f, f.geometry?.coordinates);
-            f._cleanName = cleanGeoText(f.properties?.name || '');
-            const t = f.properties?.tier || 'minor';
-            if (t === 'major') roadsMajor.push(f);
-            else if (t === 'secondary') roadsSecondary.push(f);
-            else if (t === 'minor') roadsMinor.push(f);
-            else roadsAlley.push(f);
-          }
-
-          // LỌC SẠCH CÁC TÒA NHÀ NGOÀI PHƯỜNG XUÂN HÒA & TÁCH NHÓM NHÀ CHÍNH / NHÀ DÂN
-          const rawBuildings: any[] = [];
-          const landmarkBuildings: any[] = [];
-          const regularBuildings: any[] = [];
-
-          for (const f of allRawBuildings) {
-            const ring: number[][] = f.geometry?.coordinates?.[0];
-            indexRingFeature(f, ring);
-            const mLng = f._midLng;
-            const mLat = f._midLat;
-            if (!mLng || !mLat || !ring) continue;
-            if (!isPointInsideXuanHoa(mLng, mLat)) continue;
-            const cleanBName = cleanGeoText(f.properties?.name || '');
-            f._cleanName = cleanBName;
-            rawBuildings.push(f);
-            if (cleanBName) {
-              landmarkBuildings.push(f);
-            } else {
-              regularBuildings.push(f);
-            }
-          }
-
-          // Chuẩn bị hệ thống điểm neo nhãn tên đường chuẩn Google Maps:
-          // - Tính tổng chiều dài thực của từng tên đường (roadSpanDeg)
-          // - Chỉ đặt điểm neo trên các đoạn thẳng (loại bỏ khúc cua gấp > 23 độ để chữ không bị gãy góc)
-          const samplePointAtDist = (
-            coords: number[][],
-            segLens: number[],
-            targetDist: number
-          ) => {
-            let acc = 0;
-            for (let i = 0; i < segLens.length; i++) {
-              if (acc + segLens[i] >= targetDist || i === segLens.length - 1) {
-                const t =
-                  segLens[i] > 0
-                    ? Math.max(0, Math.min(1, (targetDist - acc) / segLens[i]))
-                    : 0.5;
-                return {
-                  lng: coords[i][0] + (coords[i + 1][0] - coords[i][0]) * t,
-                  lat: coords[i][1] + (coords[i + 1][1] - coords[i][1]) * t,
-                  dirLng: coords[i + 1][0] - coords[i][0],
-                  dirLat: coords[i + 1][1] - coords[i][1],
-                };
-              }
-              acc += segLens[i];
-            }
-            return {
-              lng: coords[0][0],
-              lat: coords[0][1],
-              dirLng: coords[coords.length - 1][0] - coords[0][0],
-              dirLat: coords[coords.length - 1][1] - coords[0][1],
-            };
-          };
-
-          const sampleStraightAnchor = (
-            coords: number[][],
-            segLens: number[],
-            totalLen: number,
-            targetDist: number
-          ) => {
-            const ptMid = samplePointAtDist(coords, segLens, targetDist);
-            const span = Math.min(0.00024, totalLen * 0.35);
-            if (span < 0.00006) return ptMid;
-            const ptBefore = samplePointAtDist(
-              coords,
-              segLens,
-              Math.max(0, targetDist - span)
-            );
-            const ptAfter = samplePointAtDist(
-              coords,
-              segLens,
-              Math.min(totalLen, targetDist + span)
-            );
-            const v1x = ptMid.lng - ptBefore.lng;
-            const v1y = ptMid.lat - ptBefore.lat;
-            const v2x = ptAfter.lng - ptMid.lng;
-            const v2y = ptAfter.lat - ptMid.lat;
-            const len1 = Math.hypot(v1x, v1y);
-            const len2 = Math.hypot(v2x, v2y);
-            if (len1 > 1e-7 && len2 > 1e-7) {
-              const cosAngle = (v1x * v2x + v1y * v2y) / (len1 * len2);
-              // Nếu đoạn đường tại điểm này cua gấp hơn ~23 độ -> bỏ qua để chữ không bị vắt ngang góc cua
-              if (cosAngle < 0.92) return null;
-            }
-            return {
-              lng: ptMid.lng,
-              lat: ptMid.lat,
-              dirLng: ptAfter.lng - ptBefore.lng,
-              dirLat: ptAfter.lat - ptBefore.lat,
-            };
-          };
-
-          const totalRoadSpanByName = new Map<string, number>();
-          for (const f of rawRoads) {
-            const rName = f._cleanName || '';
-            const coords = f.geometry?.coordinates;
-            if (!rName || !coords || coords.length < 2) continue;
-            let totalLen = 0;
-            const segLens: number[] = [];
-            for (let i = 0; i < coords.length - 1; i++) {
-              const l = Math.hypot(
-                coords[i + 1][0] - coords[i][0],
-                coords[i + 1][1] - coords[i][1]
-              );
-              segLens.push(l);
-              totalLen += l;
-            }
-            f._roadGeomLen = totalLen;
-            f._segLens = segLens;
-            totalRoadSpanByName.set(
-              rName,
-              (totalRoadSpanByName.get(rName) || 0) + totalLen
-            );
-          }
-
-          const rawAnchorsByName = new Map<string, RoadLabelAnchor[]>();
-          const stepDeg = 0.00105; // ~115m mỗi điểm neo ứng viên dọc theo con đường
-
-          for (const f of rawRoads) {
-            const rName = f._cleanName || '';
-            const coords = f.geometry?.coordinates;
-            const totalLen: number = f._roadGeomLen || 0;
-            const segLens: number[] = f._segLens || [];
-            if (!rName || !coords || coords.length < 2 || totalLen < 0.00048) continue;
-
-            const tier = f.properties?.tier || 'minor';
-            const isAlley = tier === 'alley' || rName.startsWith('Ngõ ');
-            const halfW = rName.length * 3.05 + 8;
-            const roadSpanDeg = Math.max(
-              totalLen,
-              totalRoadSpanByName.get(rName) || totalLen
-            );
-            const list = rawAnchorsByName.get(rName) || [];
-
-            if (totalLen < stepDeg * 1.35) {
-              const pt = sampleStraightAnchor(coords, segLens, totalLen, totalLen * 0.5);
-              if (pt) {
-                list.push({
-                  name: rName,
-                  tier,
-                  isAlley,
-                  halfW,
-                  roadSpanDeg,
-                  lng: pt.lng,
-                  lat: pt.lat,
-                  dirLng: pt.dirLng,
-                  dirLat: pt.dirLat,
-                });
-              }
-            } else {
-              for (
-                let d = stepDeg * 0.55;
-                d <= totalLen - stepDeg * 0.35;
-                d += stepDeg
-              ) {
-                const pt = sampleStraightAnchor(coords, segLens, totalLen, d);
-                if (pt) {
-                  list.push({
-                    name: rName,
-                    tier,
-                    isAlley,
-                    halfW,
-                    roadSpanDeg,
-                    lng: pt.lng,
-                    lat: pt.lat,
-                    dirLng: pt.dirLng,
-                    dirLat: pt.dirLat,
-                  });
-                }
-              }
-            }
-
-            rawAnchorsByName.set(rName, list);
-          }
-
-          // Khử trùng lặp giữa 2 làn đường đôi song song trong bán kính ~90m
-          const roadLabelAnchors: RoadLabelAnchor[] = [];
-          for (const [, candidates] of rawAnchorsByName.entries()) {
-            const accepted: RoadLabelAnchor[] = [];
-            for (const cand of candidates) {
-              const tooClose = accepted.some(
-                (a) => Math.hypot(cand.lng - a.lng, cand.lat - a.lat) < 0.00082
-              );
-              if (!tooClose) {
-                accepted.push(cand);
-                roadLabelAnchors.push(cand);
-              }
-            }
-          }
-
-          const tierPriority: Record<string, number> = {
-            major: 1,
-            secondary: 2,
-            minor: 3,
-            alley: 4,
-          };
-          roadLabelAnchors.sort(
-            (a, b) => (tierPriority[a.tier] || 3) - (tierPriority[b.tier] || 3)
-          );
-
-          geoLayersRef.current = {
-            boundary: boundaryFeatures,
-            landuse: rawLanduse,
-            water: rawWater,
-            waterways: rawWaterways,
-            roads: rawRoads,
-            roadsMajor,
-            roadsSecondary,
-            roadsMinor,
-            roadsAlley,
-            buildings: rawBuildings,
-            landmarkBuildings,
-            regularBuildings,
-            placeLabels: placeLabels?.features || [],
-            roadLabelAnchors,
-          };
-
-          if (verifiedPoisData && Array.isArray(verifiedPoisData.namedRoads)) {
-            const baseNamed = verifiedPoisData.namedRoads.map((r: any, idx: number) => ({
-              id: r.osmId || `road_${idx}`,
-              name: r.name,
-              highway: r.highway || 'residential',
-              tier: r.tier || 'minor',
-              lat: Number(r.lat),
-              lng: Number(r.lng),
-              osmId: r.osmId || '',
-              segmentsCount: r.segmentsCount || 1,
-              insideWard: Boolean(r.insideWard),
-            }));
-            setOsmRoads(baseNamed);
-          }
-
-          if (matchedCatalog && typeof matchedCatalog === 'object') {
-            setOsmRoadMatchedCatalog(
-              matchedCatalog as Record<
-                string,
-                { lat: number; lng: number; roadName: string; osmId: string }
-              >
-            );
-          }
-
-          setIsMapLoading(false);
-          setCameraVersion((v) => v + 1);
-          scheduleCanvasRender();
-        }
-      )
+    let cancelled = false;
+    prefetchDigitalMapGeoLayers()
+      .then((bundle) => {
+        if (cancelled) return;
+        geoLayersRef.current = bundle.geoLayers;
+        setOsmRoads(bundle.osmRoads);
+        setOsmRoadMatchedCatalog(bundle.osmRoadMatchedCatalog);
+        setIsMapLoading(false);
+        setCameraVersion((v) => v + 1);
+        scheduleCanvasRender();
+      })
       .catch((err) => {
-        if (err?.name !== 'AbortError') {
+        if (!cancelled && err?.name !== 'AbortError') {
           console.error('Failed loading geo layers:', err);
           setIsMapLoading(false);
         }
       });
 
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, [scheduleCanvasRender]);
 
   // Hiển thị toàn bộ các vị trí đã xác minh tọa độ (gồm mốc địa danh OSM thật + các quán đã được Chủ quán ghim & Admin duyệt)
@@ -2431,25 +2471,24 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     [verifiedMapMarkers, savedPlaceIds]
   );
 
-  // Lọc danh sách marker đã xác minh theo danh mục đang bật (mặc định auto bật Hành chính + Trường học; nếu tắt "Hiện ghim định vị" thì không hiện ghim nào ngoài địa điểm đang chọn)
+  // Lọc danh sách marker đã xác minh theo danh mục đang bật (mặc định auto bật Hành chính + Trường học; thằng nào chưa định vị hoặc danh mục chưa bật thì tuyệt đối chưa hiện lên trên cả Maps Quản lý lẫn Maps Khách hàng)
   const filteredVerifiedMarkers = useMemo(() => {
     if (!layerVisibility.realPois) {
-      return selectedPlace
-        ? verifiedMapMarkers.filter((loc) => loc.id === selectedPlace.id)
-        : [];
+      return [];
     }
     return verifiedMapMarkers.filter((loc) => {
-      if (selectedPlace?.id === loc.id) return true;
-      if (savedPlaceIds.includes(loc.id)) return true;
+      if (!loc.coordinateVerified || loc.lat === null || loc.lng === null) return false;
+      if (embeddedInAdmin && adminSelectedPlaceId && loc.id === adminSelectedPlaceId) return true;
       if (selectedCategories.includes('all')) return true;
+      if (String(loc.category) === 'medical' && selectedCategories.includes('public')) return true;
       return selectedCategories.includes(loc.category);
     });
   }, [
     verifiedMapMarkers,
     selectedCategories,
     layerVisibility.realPois,
-    selectedPlace,
-    savedPlaceIds,
+    embeddedInAdmin,
+    adminSelectedPlaceId,
   ]);
 
   // Đồng bộ danh sách marker đã lọc vào ref để vòng lặp 60fps khóa tọa độ chính xác tuyệt đối
@@ -2468,10 +2507,11 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
   }, [verifiedMapMarkers, selectedPlace?.id]);
 
   useEffect(() => {
-    selectedPlaceIdRef.current = selectedPlace?.id || null;
+    selectedPlaceIdRef.current =
+      selectedPlace?.id || (embeddedInAdmin ? adminSelectedPlaceId || null : null);
     hoveredPlaceIdRef.current = hoveredPlaceId;
     scheduleCanvasRender();
-  }, [selectedPlace, hoveredPlaceId, scheduleCanvasRender]);
+  }, [selectedPlace, embeddedInAdmin, adminSelectedPlaceId, hoveredPlaceId, scheduleCanvasRender]);
 
   useEffect(() => {
     userCoordsRef.current = userCoords;
@@ -2491,11 +2531,25 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
 
     try {
+      const initLat = initialAdminCoordsRef.current.lat;
+      const initLng = initialAdminCoordsRef.current.lng;
+      const hasValidInitCoords =
+        typeof initLat === 'number' &&
+        typeof initLng === 'number' &&
+        !Number.isNaN(initLat) &&
+        !Number.isNaN(initLng) &&
+        initLat >= 20 &&
+        initLat <= 23 &&
+        initLng >= 104 &&
+        initLng <= 107;
+
       const map = new maplibregl.Map({
         container: mapContainerRef.current,
         style: buildXuhoPastelMapStyle(base),
-        center: [XUANHOA_DEFAULT_CENTER.lng, XUANHOA_DEFAULT_CENTER.lat],
-        zoom: XUANHOA_DEFAULT_CENTER.zoom,
+        center: hasValidInitCoords
+          ? [initLng!, initLat!]
+          : [XUANHOA_DEFAULT_CENTER.lng, XUANHOA_DEFAULT_CENTER.lat],
+        zoom: hasValidInitCoords ? 16.4 : XUANHOA_DEFAULT_CENTER.zoom,
         pitch: is3DModeRef.current ? 42 : 0,
         bearing: 0,
         dragRotate: false,
@@ -2627,6 +2681,26 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       const pickedLat = Number(e.lngLat.lat.toFixed(6));
       const pickedLng = Number(e.lngLat.lng.toFixed(6));
 
+      // Ưu tiên 1: Nếu Admin / Quản lý Maps đang bấm "Chấm trực tiếp trên Bản đồ" từ bảng chỉnh sửa -> Đưa tọa độ về lại đúng bảng chỉnh sửa, tuyệt đối không bị văng ra ngoài
+      if (isPickingOnMap && (isAdminUser || isMapManagerUser)) {
+        triggerFeedback('pin');
+        setAdminLatInput(String(pickedLat));
+        setAdminLngInput(String(pickedLng));
+        setAdminCoordSource('admin_verified');
+        setIsPickingOnMap(false);
+        setIsAdminCoordModalOpen(true);
+        setAdminFeedback(
+          `✅ Đã lấy tọa độ (${pickedLat}, ${pickedLng}) từ Bản đồ! Hãy bấm "Lưu cập nhật Địa điểm" để hoàn tất.`
+        );
+        map.easeTo({
+          center: [pickedLng, pickedLat],
+          zoom: Math.max(map.getZoom(), 16.6),
+          duration: 280,
+        });
+        scheduleCanvasRender();
+        return;
+      }
+
       if (embeddedInAdmin && onAdminPickCoordinates) {
         triggerFeedback('pin');
         onAdminPickCoordinates(pickedLat, pickedLng);
@@ -2660,19 +2734,6 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         setHomeModalMode('edit');
         setHomeFeedback(
           `Đã lấy tọa độ chỗ bạn sống trên bản đồ (${pickedLat}, ${pickedLng}). Bấm "Lưu chỗ bạn sống" để hoàn tất!`
-        );
-        return;
-      }
-
-      if (isPickingOnMap && (isAdminUser || isMapManagerUser)) {
-        triggerFeedback('pin');
-        setAdminLatInput(String(pickedLat));
-        setAdminLngInput(String(pickedLng));
-        setAdminCoordSource('admin_verified');
-        setIsPickingOnMap(false);
-        setIsAdminCoordModalOpen(true);
-        setAdminFeedback(
-          `Đã lấy tọa độ trên bản đồ: ${pickedLat}, ${pickedLng}. Hãy nhấn "Xác nhận & Lưu" để hoàn tất.`
         );
         return;
       }
@@ -2754,13 +2815,29 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
   const handleSelectVerifiedPlace = useCallback(
     (place: PlaceLocation) => {
+      if (isPickingOnMap && (isAdminUser || isMapManagerUser) && place.lat !== null && place.lng !== null) {
+        triggerFeedback('pin');
+        setAdminLatInput(String(place.lat));
+        setAdminLngInput(String(place.lng));
+        setAdminCoordSource('admin_verified');
+        setIsPickingOnMap(false);
+        setIsAdminCoordModalOpen(true);
+        setAdminFeedback(
+          `✅ Đã lấy tọa độ (${place.lat}, ${place.lng}) trên Bản đồ! Bấm "Lưu cập nhật Địa điểm" để hoàn tất.`
+        );
+        return;
+      }
+      triggerFeedback('tap');
       highlightedRoadNameRef.current = '';
       setSelectedGameAsset(null);
       setClusterSelectionList(null);
-      setSelectedPlace(place);
-      if (embeddedInAdmin && onAdminSelectPlace) {
-        onAdminSelectPlace(place.id);
+      if (embeddedInAdmin) {
+        if (onAdminSelectPlace) {
+          onAdminSelectPlace(place.id);
+        }
+        return;
       }
+      setSelectedPlace(place);
       if (place.lat !== null && place.lng !== null) {
         flyToCoordinates(
           place.lat,
@@ -2771,12 +2848,22 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         );
       }
     },
-    [flyToCoordinates, currentZoom, embeddedInAdmin, onAdminSelectPlace]
+    [
+      isPickingOnMap,
+      isAdminUser,
+      isMapManagerUser,
+      flyToCoordinates,
+      currentZoom,
+      embeddedInAdmin,
+      onAdminSelectPlace,
+    ]
   );
 
-  // Tự động di chuyển Bản đồ số nhúng trong Cột 3 của Quản lý Maps tới tọa độ quán đang chọn
+  // Tự động di chuyển Bản đồ số nhúng trong Cột 3 của Quản lý Maps tới tọa độ quán đang chọn (nhẹ tênh 180ms easeTo, không giật lag)
   useEffect(() => {
     if (!embeddedInAdmin) return;
+    setSyncTick((t) => t + 1);
+    const map = mapInstanceRef.current;
     if (
       typeof adminPreviewLat === 'number' &&
       typeof adminPreviewLng === 'number' &&
@@ -2787,17 +2874,32 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       adminPreviewLng >= 104 &&
       adminPreviewLng <= 107
     ) {
-      flyToCoordinates(
-        adminPreviewLat,
-        adminPreviewLng,
-        16.6,
-        adminPreviewName || 'Đang định vị',
-        0.0042
-      );
+      focusTargetRef.current = {
+        lat: adminPreviewLat,
+        lng: adminPreviewLng,
+        radiusDeg: 0.0042,
+        label: focusTargetRef.current.label,
+      };
+      if (map) {
+        map.easeTo({
+          center: [adminPreviewLng, adminPreviewLat],
+          zoom: Math.max(map.getZoom(), 16.3),
+          duration: 180,
+          essential: true,
+        });
+      }
+      scheduleCanvasRender();
     } else {
       scheduleCanvasRender();
     }
-  }, [embeddedInAdmin, adminSelectedPlaceId, adminPreviewLat, adminPreviewLng, adminPreviewName, flyToCoordinates, scheduleCanvasRender]);
+  }, [
+    embeddedInAdmin,
+    adminSelectedPlaceId,
+    adminPreviewLat,
+    adminPreviewLng,
+    adminFlyTrigger,
+    scheduleCanvasRender,
+  ]);
 
   // Vẽ đường đi Google Maps-style từ vị trí thực tế của khách hàng (GPS thật, VD: Phúc Yên) đến đúng địa chỉ tại Xuân Hòa
   const handleDrawRouteToPlace = useCallback(
@@ -2970,11 +3072,24 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     [isAdminUser, isMapManagerUser, pendingApprovalCount]
   );
 
-  const handleSelectUnverifiedPlace = useCallback((place: PlaceLocation) => {
-    if (place.originalPlace) {
-      setModalPlace(place.originalPlace);
-    }
-  }, []);
+  const handleSelectUnverifiedPlace = useCallback(
+    (place: PlaceLocation) => {
+      triggerFeedback('tap');
+      if (isAdminUser || isMapManagerUser) {
+        if (embeddedInAdmin && onAdminSelectPlace) {
+          onAdminSelectPlace(place.id);
+          setLocationNotice(`🎯 Đã chọn "${place.name}" — Hãy bấm lên Bản đồ để ghim tọa độ ngay!`);
+          return;
+        }
+        openAdminCoordinateModal(place);
+        return;
+      }
+      if (place.originalPlace) {
+        setModalPlace(place.originalPlace);
+      }
+    },
+    [isAdminUser, isMapManagerUser, embeddedInAdmin, onAdminSelectPlace]
+  );
 
   const handleSelectRoad = useCallback(
     (road: RoadSearchResult) => {
@@ -3143,15 +3258,28 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         setLocationNotice('Chỉ Quản trị viên hoặc Quản lý Maps mới có quyền chỉnh sửa địa điểm.');
         return;
       }
+      triggerFeedback('tap');
       const target = place || selectedPlace || verifiedMapMarkers[0] || unverifiedCatalogPlaces[0] || null;
       setIsAdminCreatingNew(false);
       populateAdminFormFromPlace(target);
+      if (embeddedInAdmin && onAdminSelectPlace && target) {
+        onAdminSelectPlace(target.id);
+      }
       setAdminCoordSource('admin_verified');
       setNominatimSuggestions([]);
       setAdminFeedback(null);
       setIsAdminCoordModalOpen(true);
     },
-    [isAdminUser, isMapManagerUser, selectedPlace, verifiedMapMarkers, unverifiedCatalogPlaces, populateAdminFormFromPlace]
+    [
+      isAdminUser,
+      isMapManagerUser,
+      selectedPlace,
+      verifiedMapMarkers,
+      unverifiedCatalogPlaces,
+      populateAdminFormFromPlace,
+      embeddedInAdmin,
+      onAdminSelectPlace,
+    ]
   );
 
   const openAdminCreatePlaceModal = useCallback(() => {
@@ -3159,6 +3287,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       setLocationNotice('Chỉ Quản trị viên hoặc Quản lý Maps mới có quyền thêm địa điểm mới.');
       return;
     }
+    triggerFeedback('tap');
     const center = mapInstanceRef.current?.getCenter();
     const lat = center ? Number(center.lat.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lat;
     const lng = center ? Number(center.lng.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lng;
@@ -3183,6 +3312,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     const query = `${adminMapsUrlInput.trim() || adminEditAddress.trim() || adminEditName.trim()}`;
     if (!query) return;
 
+    triggerFeedback('tap');
     const parsed = parseCoordinatesFromInputOrUrl(query);
     if (parsed) {
       setAdminLatInput(String(parsed.lat));
@@ -3248,55 +3378,67 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         lng,
         mapsUrl: adminMapsUrlInput,
       });
+      triggerFeedback('approve');
       setShowCommercialShops(true);
       setSelectedCategories((prev) =>
         prev.includes(adminEditCategory) ? prev : [...prev, adminEditCategory]
       );
       setSyncTick((t) => t + 1);
-      const nextNotice = isAdminUser
-        ? `✅ Đã lưu địa điểm: "${adminEditName.trim()}"`
-        : `✅ Đã ghim "${adminEditName.trim()}" lên Bản đồ & gửi sang mục Duyệt Maps (Cột 1) cho Admin!`;
-      setAdminFeedback(nextNotice);
-      setLocationNotice(nextNotice);
+      if (embeddedInAdmin && onAdminSelectPlace) {
+        onAdminSelectPlace(saved.id);
+      }
+      setIsAdminCreatingNew(false);
+      setIsAdminCoordModalOpen(false);
+      const nextNotice = isAdminCreatingNew
+        ? `✅ Đã thêm mới "${adminEditName.trim()}" thành công!`
+        : `✅ Đã cập nhật "${adminEditName.trim()}" thành công!`;
+      setAdminFeedback(null);
+      showTemporaryMapNotice(nextNotice, 2300);
       flyToCoordinates(saved.lat, saved.lng, 16.6, adminEditName.trim(), 0.0042);
-      setTimeout(() => {
-        setIsAdminCoordModalOpen(false);
-      }, 650);
     } catch (err: any) {
+      triggerFeedback('warn');
       setAdminFeedback(err?.message || 'Lỗi lưu thông tin địa điểm.');
     }
   };
 
   const handleBlockAdminPlace = () => {
     if ((!isAdminUser && !isMapManagerUser) || !adminTargetPlace) return;
+    triggerFeedback('warn');
     blockLandmarkOrPlaceFromMap(adminTargetPlace.id, adminEditName || adminTargetPlace.name);
     if (selectedPlace?.id === adminTargetPlace.id) {
       setSelectedPlace(null);
     }
     setSyncTick((t) => t + 1);
     setIsAdminCoordModalOpen(false);
-    setLocationNotice(
-      `🔒 Đã Block (tạm khóa) "${adminEditName || adminTargetPlace.name}" khỏi Bản đồ 2D & 3D.`
-    );
+    const msg = `🔒 Đã tạm khóa "${adminEditName || adminTargetPlace.name}" trên Bản đồ!`;
+    showTemporaryMapNotice(msg, 2300);
   };
 
   const handleDeleteAdminPlace = () => {
-    if (!isAdminUser || !adminTargetPlace) return;
-    hideLandmarkOrPlaceFromMap(adminTargetPlace.id, adminEditName || adminTargetPlace.name);
-    if (selectedPlace?.id === adminTargetPlace.id) {
+    if ((!isAdminUser && !isMapManagerUser) || !adminTargetPlace) return;
+    triggerFeedback('warn');
+    const res = hideLandmarkOrPlaceFromMap(adminTargetPlace.id, adminEditName || adminTargetPlace.name);
+    if (res.executedImmediately && selectedPlace?.id === adminTargetPlace.id) {
       setSelectedPlace(null);
     }
     setSyncTick((t) => t + 1);
     setIsAdminCoordModalOpen(false);
-    setLocationNotice(`🗑️ Đã xóa "${adminEditName || adminTargetPlace.name}" khỏi Bản đồ 2D & 3D.`);
+    showTemporaryMapNotice(
+      res.executedImmediately
+        ? `🗑️ Đã xóa "${adminEditName || adminTargetPlace.name}" khỏi Bản đồ!`
+        : `⏳ Đã gửi yêu cầu xóa "${adminEditName || adminTargetPlace.name}" chờ Admin duyệt!`,
+      2300
+    );
   };
 
   const handleRestoreAdminPlaceDefault = () => {
     if ((!isAdminUser && !isMapManagerUser) || !adminTargetPlace) return;
+    triggerFeedback('tap');
     restoreLandmarkOrPlaceDefault(adminTargetPlace.id);
     setSyncTick((t) => t + 1);
     setIsAdminCoordModalOpen(false);
-    setLocationNotice(`↺ Đã khôi phục "${adminTargetPlace.name}" về dữ liệu gốc mặc định.`);
+    const msg = `↺ Đã khôi phục "${adminTargetPlace.name}" về mặc định!`;
+    showTemporaryMapNotice(msg, 2300);
   };
 
   // Mở khung cài đặt / thay đổi "Chỗ bạn sinh sống (Nhà của bạn)"
@@ -3494,33 +3636,6 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         ref={markerOverlayRef}
         className="absolute inset-0 pointer-events-none overflow-hidden z-10"
       >
-        {/* Marker Vị trí đang chấm / đang sửa trực tiếp trong Cột 3 Quản lý Maps */}
-        {embeddedInAdmin &&
-          typeof adminPreviewLat === 'number' &&
-          typeof adminPreviewLng === 'number' &&
-          !Number.isNaN(adminPreviewLat) &&
-          !Number.isNaN(adminPreviewLng) && (
-            <div
-              ref={(el) => {
-                adminPreviewMarkerElRef.current = el;
-              }}
-              style={{
-                transform: 'translate3d(-9999px, -9999px, 0)',
-                zIndex: 65,
-                willChange: 'transform',
-              }}
-              className="absolute top-0 left-0 pointer-events-none"
-            >
-              <div className="relative -translate-x-1/2 -translate-y-full flex flex-col items-center">
-                <div className="mb-1 px-2.5 py-1 rounded-lg bg-[#DC2626] text-white border-2 border-white text-[11px] font-extrabold whitespace-nowrap shadow-lg">
-                  📍 {adminPreviewName || 'Vị trí đang chọn'}
-                </div>
-                <div className="w-7 h-7 rounded-full bg-[#DC2626] text-white border-2 border-white ring-2 ring-[#991B1B] flex items-center justify-center shadow-lg">
-                  <MapPin size={15} />
-                </div>
-              </div>
-            </div>
-          )}
         {/* Marker Vị trí người dùng (User Location Layer) */}
         {userCoords && layerVisibility.userLocation && (
           <div
@@ -3621,7 +3736,8 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         {/* Marker Địa điểm thực tế đã xác minh tọa độ (Khóa cứng từng tọa độ 1:1, nhãn text tách biệt tuyệt đối không gây dịch chuyển tâm icon) */}
         {filteredVerifiedMarkers.map((loc) => {
           const cat = MAP_CATEGORY_BY_ID[loc.category];
-          const isSelected = selectedPlace?.id === loc.id;
+          const isSelected =
+            selectedPlace?.id === loc.id || (embeddedInAdmin && adminSelectedPlaceId === loc.id);
           const isHovered = hoveredPlaceId === loc.id;
           const isSavedMarker = savedPlaceIds.includes(loc.id);
 
@@ -3661,11 +3777,11 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                       markerLabelElsRef.current.delete(loc.id);
                     }
                   }}
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-0.5 rounded-xl border-2 text-[10.5px] sm:text-[11px] leading-snug font-extrabold whitespace-nowrap max-w-[175px] sm:max-w-[200px] truncate shadow-sm pointer-events-none"
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-0.5 rounded-xl border-2 text-[10.5px] sm:text-[11px] leading-snug font-extrabold whitespace-nowrap max-w-[185px] sm:max-w-[210px] truncate shadow-sm pointer-events-none"
                   style={{
-                    backgroundColor: isSelected ? '#403064' : isSavedMarker ? '#FEF3C7' : '#FFFDF9',
-                    borderColor: isSavedMarker ? '#D97706' : '#403064',
-                    color: isSelected ? '#FFFFFF' : '#2D2246',
+                    backgroundColor: isSelected ? '#059669' : isSavedMarker ? '#FEF3C7' : '#FFFDF9',
+                    borderColor: isSelected ? '#047857' : isSavedMarker ? '#D97706' : '#059669',
+                    color: isSelected ? '#FFFFFF' : '#065F46',
                   }}
                 >
                   {isSavedMarker ? `★ ${loc.name}` : loc.name}
@@ -3673,16 +3789,19 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
 
                 {/* Huy hiệu Icon neo chính xác 100% vào tọa độ [lng, lat] */}
                 <div
-                  className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-2xl border-2 flex items-center justify-center text-white transition-transform shadow-[0_5px_12px_rgba(64,48,100,0.22)]"
+                  className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-2xl border-2 flex items-center justify-center text-white transition-transform"
                   style={{
                     backgroundColor: isSelected
-                      ? '#403064'
+                      ? '#059669'
                       : cat?.markerBg || '#39B980',
-                    borderColor: isSelected ? '#39B980' : isSavedMarker ? '#F59E0B' : '#403064',
+                    borderColor: isSelected ? '#FFFFFF' : isSavedMarker ? '#F59E0B' : '#065F46',
+                    boxShadow: isSelected
+                      ? '0 0 0 3px rgba(5, 150, 105, 0.32), 0 6px 14px rgba(5, 150, 105, 0.28)'
+                      : '0 4px 10px rgba(15, 23, 42, 0.18)',
                     transform: isSelected
-                      ? 'scale(1.16)'
+                      ? 'scale(1.14)'
                       : isHovered
-                      ? 'scale(1.08)'
+                      ? 'scale(1.06)'
                       : 'scale(1)',
                   }}
                 >
@@ -3702,15 +3821,17 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       {/* 3. LỚP GIAO DIỆN ĐIỀU KHIỂN TRÊN CÙNG — GỌN GÀNG CHUẨN GOOGLE MAPS (MOBILE & WEB) */}
       <div className="absolute top-2.5 sm:top-3 left-2.5 sm:left-3 right-2.5 sm:right-3 z-30 flex flex-col gap-1.5 pointer-events-none">
         <div className="relative flex items-center gap-1.5 sm:gap-2 pointer-events-auto max-w-xl">
-          <button
-            type="button"
-            onClick={onBackToHome}
-            aria-label="Quay lại trang chủ Xuân Hòa Có Gì"
-            title="Quay lại trang chủ Xuân Hòa Có Gì"
-            className="hidden md:flex px-3.5 h-9 sm:h-10 rounded-full bg-white/96 border border-slate-200/90 text-slate-800 hover:bg-slate-100 font-extrabold text-xs leading-snug items-center justify-center shadow-[0_6px_20px_rgba(15,23,42,0.10)] backdrop-blur-md shrink-0 cursor-pointer transition"
-          >
-            <span>Trang chủ</span>
-          </button>
+          {!embeddedInAdmin && (
+            <button
+              type="button"
+              onClick={onBackToHome}
+              aria-label="Quay lại trang chủ Xuân Hòa Có Gì"
+              title="Quay lại trang chủ Xuân Hòa Có Gì"
+              className="hidden md:flex px-3.5 h-9 sm:h-10 rounded-full bg-white/96 border border-slate-200/90 text-slate-800 hover:bg-slate-100 font-extrabold text-xs leading-snug items-center justify-center shadow-[0_6px_20px_rgba(15,23,42,0.10)] backdrop-blur-md shrink-0 cursor-pointer transition"
+            >
+              <span>Trang chủ</span>
+            </button>
+          )}
 
           <MapSearchBar
             verifiedPlaces={verifiedMapMarkers}
@@ -4262,7 +4383,14 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       </div>
 
       {/* 3-BOTTOM. THANH ĐIỀU KHIỂN ADMIN / CHỦ QUÁN GỌN GÀNG Ở ĐÁY BẢN ĐỒ */}
-      {!merchantPickingForPlace && (hasClaimedPlaces || isMapManagerUser || isAdminUser) && (
+      {embeddedInAdmin && (
+        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+          <div className="px-3 py-1 rounded-full bg-white/94 border border-[#059669]/40 text-[#065F46] shadow-md text-[11px] font-extrabold whitespace-nowrap">
+            🎯 Bấm trực tiếp lên điểm bất kỳ trên bản đồ để lấy tọa độ tự động
+          </div>
+        </div>
+      )}
+      {!embeddedInAdmin && !merchantPickingForPlace && (hasClaimedPlaces || isMapManagerUser || isAdminUser) && (
         <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center justify-center gap-1.5 pointer-events-auto max-w-[calc(100vw-20px)]">
           {hasClaimedPlaces && primaryMerchantPlace && !isMapManagerUser && (
             <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/95 border border-[#39B980] shadow-md text-[11px] whitespace-nowrap">
@@ -4536,6 +4664,34 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
         </>
       )}
 
+      {/* 3B-PICK. THANH HƯỚNG DẪN KHI ADMIN ĐANG CHẤM TRỰC TIẾP TỌA ĐỘ TRÊN BẢN ĐỒ */}
+      {isPickingOnMap && (isAdminUser || isMapManagerUser) && (
+        <div className="absolute left-3 right-3 bottom-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-full sm:max-w-lg z-40 pointer-events-auto">
+          <div className="px-4 py-3 rounded-2xl bg-[#403064] text-white border-2 border-[#39B980] shadow-2xl flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-extrabold text-[#39B980] flex items-center gap-1">
+                <Crosshair size={13} />
+                <span>CHẾ ĐỘ CHẤM TỌA ĐỘ TRỰC TIẾP</span>
+              </div>
+              <div className="text-xs font-bold truncate mt-0.5">
+                Chạm vào vị trí bất kỳ trên Bản đồ cho: {adminEditName || 'Địa điểm đang chọn'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                triggerFeedback('tap');
+                setIsPickingOnMap(false);
+                setIsAdminCoordModalOpen(true);
+              }}
+              className="h-8 px-3 rounded-xl bg-white/15 hover:bg-white/25 text-white font-extrabold text-xs whitespace-nowrap cursor-pointer shrink-0"
+            >
+              Quay lại bảng sửa
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 4. POPUP THÔNG TIN ĐỊA ĐIỂM HOẶC DANH SÁCH CỤM GẦN NHAU Ở ĐÁY BẢN ĐỒ */}
       <div className="absolute left-2.5 right-12 sm:left-3 sm:right-14 bottom-12 md:bottom-12 z-30 pointer-events-none flex flex-col items-start gap-2">
         {clusterSelectionList && clusterSelectionList.length > 1 && (
@@ -4573,7 +4729,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           </div>
         )}
 
-        {selectedPlace && (
+        {selectedPlace && !isPickingOnMap && !embeddedInAdmin && (
           <div className="pointer-events-auto w-full">
             <MapPlacePopup
               place={selectedPlace}
@@ -4603,7 +4759,7 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
       </div>
 
       {/* 5. THÔNG BÁO GỌN GÀNG KHI ĐANG VÀO BẢN ĐỒ SỐ PHƯỜNG XUÂN HÒA */}
-      {(isMapLoading || showWelcomeBanner) && (
+      {!embeddedInAdmin && (isMapLoading || showWelcomeBanner) && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
           <div className="pointer-events-auto inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#1E1633]/94 text-white border border-[#39B980]/60 shadow-[0_10px_28px_rgba(15,23,42,0.22)] backdrop-blur-md text-[11.5px] font-extrabold whitespace-nowrap">
             {isMapLoading ? (
@@ -4914,13 +5070,13 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
           onClick={() => setIsAdminCoordModalOpen(false)}
         >
           <div
-            className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl bg-[#FFFDF9] border-2 border-[#403064] shadow-2xl p-4 sm:p-5 text-[#2D2246]"
+            className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_24px_60px_rgba(45,34,70,0.28)] p-5 sm:p-6 text-[#2D2246]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-2 pb-3 border-b border-[#E5DEC9]">
-              <div>
+            <div className="flex items-start justify-between gap-3 pb-3.5 border-b border-[#E5DEC9]">
+              <div className="min-w-0">
                 <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-extrabold tracking-wide ${
                     isAdminUser
                       ? 'bg-[#FEF3C7] text-[#92400E]'
                       : 'bg-[#E6F7EF] text-[#047857]'
@@ -4930,12 +5086,12 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                     ? 'ADMIN • QUẢN TRỊ BẢN ĐỒ SỐ PHƯỜNG XUÂN HÒA'
                     : 'QUẢN LÝ MAPS • XỬ LÝ TRỰC TIẾP TRÊN ĐIỆN THOẠI / BẢN ĐỒ'}
                 </span>
-                <h2 className="text-base font-extrabold text-[#2D2246] mt-1">
+                <h2 className="text-base sm:text-lg font-extrabold text-[#2D2246] mt-1 leading-tight">
                   {isAdminCreatingNew
                     ? 'Thêm vị trí, hàng quán hoặc địa danh mới'
                     : 'Chỉnh sửa vị trí, hàng quán & chấm Maps'}
                 </h2>
-                <p className="text-[11px] text-[#65587F] mt-0.5">
+                <p className="text-[11.5px] text-[#65587F] mt-0.5 leading-snug">
                   {isAdminUser
                     ? 'Đổi tên địa danh, cập nhật hàng quán, địa chỉ, chấm tọa độ, Block hoặc xóa khỏi Bản đồ 2D & 3D.'
                     : 'Bạn có thể thêm mới vị trí/hàng quán, chấm tọa độ Maps hoặc Block trực tiếp tại đây. Mọi cập nhật sẽ tự động gửi về mục Duyệt Maps (Cột 1) để Admin duyệt.'}
@@ -4943,26 +5099,35 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => setIsAdminCoordModalOpen(false)}
-                className="p-1.5 rounded-xl bg-[#F1ECE1] text-[#403064] cursor-pointer shrink-0"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setIsAdminCoordModalOpen(false);
+                }}
+                className="w-8 h-8 rounded-xl bg-[#F1ECE1] hover:bg-[#E5DEC9] active:scale-95 transition-all text-[#403064] flex items-center justify-center cursor-pointer shrink-0"
               >
                 <X size={16} />
               </button>
             </div>
 
-            {/* Chuyển nhanh giữa Sửa địa điểm có sẵn & Thêm mới */}
-            <div className="mt-3 flex items-center gap-2">
+            {/* Chuyển nhanh giữa Sửa địa điểm có sẵn & Thêm mới — Cân đối 50/50 */}
+            <div className="mt-3.5 grid grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={() => {
+                  triggerFeedback('tap');
                   setIsAdminCreatingNew(false);
-                  const fallback = selectedPlace || verifiedMapMarkers[0] || unverifiedCatalogPlaces[0] || null;
+                  const fallback =
+                    adminTargetPlace ||
+                    selectedPlace ||
+                    verifiedMapMarkers[0] ||
+                    unverifiedCatalogPlaces[0] ||
+                    null;
                   populateAdminFormFromPlace(fallback);
                   setAdminFeedback(null);
                 }}
-                className={`flex-1 py-2 px-3 rounded-xl font-extrabold text-xs border transition cursor-pointer ${
+                className={`h-10 px-3 rounded-xl font-extrabold text-xs border transition-all active:scale-[0.99] flex items-center justify-center cursor-pointer truncate ${
                   !isAdminCreatingNew
-                    ? 'bg-[#403064] text-white border-[#403064]'
+                    ? 'bg-[#403064] text-white border-[#403064] shadow-xs'
                     : 'bg-[#F8F5EE] text-[#403064] border-[#D8CFC0] hover:bg-[#F1ECE1]'
                 }`}
               >
@@ -4971,9 +5136,9 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               <button
                 type="button"
                 onClick={() => openAdminCreatePlaceModal()}
-                className={`flex-1 py-2 px-3 rounded-xl font-extrabold text-xs border transition cursor-pointer ${
+                className={`h-10 px-3 rounded-xl font-extrabold text-xs border transition-all active:scale-[0.99] flex items-center justify-center cursor-pointer truncate ${
                   isAdminCreatingNew
-                    ? 'bg-[#059669] text-white border-[#047857]'
+                    ? 'bg-[#059669] text-white border-[#047857] shadow-xs'
                     : 'bg-[#E6F7EF] text-[#047857] border-[#39B980] hover:bg-[#D1FAE5]'
                 }`}
               >
@@ -4981,22 +5146,33 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveAdminCoordinates} className="mt-3 space-y-3 text-xs">
+            <form onSubmit={handleSaveAdminCoordinates} className="mt-3.5 space-y-3 text-xs">
               {!isAdminCreatingNew && (
                 <div>
-                  <label className="block font-bold text-[#403064] mb-1">
+                  <label className="block h-5 leading-5 font-extrabold text-[#403064] mb-1 truncate">
                     Chọn địa danh / trụ sở / hàng quán cần chỉnh sửa:
                   </label>
                   <select
                     value={adminTargetPlace?.id || ''}
                     onChange={(e) => {
+                      triggerFeedback('tap');
                       const allCatalog = [...verifiedMapMarkers, ...unverifiedCatalogPlaces];
                       const found = allCatalog.find((p) => p.id === e.target.value) || null;
                       populateAdminFormFromPlace(found);
+                      if (embeddedInAdmin && onAdminSelectPlace && found) {
+                        onAdminSelectPlace(found.id);
+                      }
+                      if (found && found.lat !== null && found.lng !== null) {
+                        flyToCoordinates(found.lat, found.lng, 16.5, found.name, 0.0042);
+                      }
                       setNominatimSuggestions([]);
-                      setAdminFeedback(null);
+                      setAdminFeedback(
+                        found
+                          ? `🎯 Đang chọn: "${found.name}" — Bạn có thể sửa thông tin hoặc chấm tọa độ ngay.`
+                          : null
+                      );
                     }}
-                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] font-bold text-[#2D2246]"
+                    className="w-full h-10 px-3 rounded-xl bg-[#F8F5EE] border border-[#403064] font-bold text-[#2D2246] text-xs focus:outline-none focus:ring-2 focus:ring-[#39B980]/40"
                   >
                     <optgroup label={`Đang hiển thị trên Bản đồ (${verifiedMapMarkers.length})`}>
                       {verifiedMapMarkers.map((p) => (
@@ -5018,10 +5194,10 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                 </div>
               )}
 
-              {/* Tên địa danh / trụ sở mới & Danh mục */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* HÀNG 1: Tên địa danh / trụ sở mới & Danh mục (Thẳng hàng 100%, cao h-10 đồng bộ) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-[#403064] mb-1">
+                  <label className="block h-5 leading-5 font-extrabold text-[#403064] mb-1 truncate">
                     Tên địa danh / trụ sở / cơ quan / quán *
                   </label>
                   <input
@@ -5030,19 +5206,22 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                     value={adminEditName}
                     onChange={(e) => setAdminEditName(e.target.value)}
                     placeholder="VD: Trụ sở Công an Phường Xuân Hòa / Nhà văn hóa..."
-                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] font-extrabold text-[#2D2246] text-xs"
+                    className="w-full h-10 px-3 rounded-xl bg-[#F8F5EE] border border-[#403064] font-extrabold text-[#2D2246] text-xs focus:outline-none focus:ring-2 focus:ring-[#39B980]/40"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-[#403064] mb-1">Phân loại danh mục</label>
+                  <label className="block h-5 leading-5 font-extrabold text-[#403064] mb-1 truncate">
+                    Phân loại danh mục
+                  </label>
                   <select
                     value={adminEditCategory}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      triggerFeedback('tap');
                       setAdminEditCategory(
                         e.target.value as Exclude<MapCategoryKey, 'all' | 'game_asset'>
-                      )
-                    }
-                    className="w-full px-2.5 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] font-bold text-[#2D2246] text-xs"
+                      );
+                    }}
+                    className="w-full h-10 px-2.5 rounded-xl bg-[#F8F5EE] border border-[#403064] font-bold text-[#2D2246] text-xs focus:outline-none focus:ring-2 focus:ring-[#39B980]/40"
                   >
                     <option value="public">Cơ quan / Trụ sở / Công cộng</option>
                     <option value="school">Trường học / Giáo dục</option>
@@ -5057,22 +5236,22 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                 </div>
               </div>
 
-              {/* Địa chỉ & Mô tả chức năng mới */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* HÀNG 2: Địa chỉ & Mô tả chức năng (Nhãn 1 dòng h-5, ô nhập h-10 cân đối 100%) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                 <div>
-                  <label className="block font-bold text-[#403064] mb-1">
-                    Địa chỉ hiển thị (Số nhà, Ngõ, Đường, Khu vực)
+                  <label className="block h-5 leading-5 font-extrabold text-[#403064] mb-1 truncate">
+                    Địa chỉ hiển thị (Số nhà, Đường, Khu vực)
                   </label>
                   <input
                     type="text"
                     value={adminEditAddress}
                     onChange={(e) => setAdminEditAddress(e.target.value)}
                     placeholder="VD: Đường Nguyễn Văn Linh, Phường Xuân Hòa"
-                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] text-xs"
+                    className="w-full h-10 px-3 rounded-xl bg-[#F8F5EE] border border-[#403064] font-semibold text-[#2D2246] text-xs focus:outline-none focus:ring-2 focus:ring-[#39B980]/40"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-[#403064] mb-1">
+                  <label className="block h-5 leading-5 font-extrabold text-[#403064] mb-1 truncate">
                     Mô tả chức năng / Ghi chú hiển thị trên thẻ
                   </label>
                   <input
@@ -5080,47 +5259,51 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                     value={adminEditTagline}
                     onChange={(e) => setAdminEditTagline(e.target.value)}
                     placeholder="VD: Trụ sở làm việc mới / Điểm tiếp dân..."
-                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] text-xs"
+                    className="w-full h-10 px-3 rounded-xl bg-[#F8F5EE] border border-[#403064] font-semibold text-[#2D2246] text-xs focus:outline-none focus:ring-2 focus:ring-[#39B980]/40"
                   />
                 </div>
               </div>
 
-              {/* Giờ mở cửa & SĐT */}
-              <div className="grid grid-cols-2 gap-2.5">
+              {/* HÀNG 3: Giờ hoạt động & Số điện thoại liên hệ (Nhãn 1 dòng h-5, ô nhập h-10 cân đối 100%) */}
+              <div className="grid grid-cols-2 gap-3 items-end">
                 <div>
-                  <label className="block font-bold text-[#403064] mb-1">Giờ hoạt động</label>
+                  <label className="block h-5 leading-5 font-extrabold text-[#403064] mb-1 truncate">
+                    Giờ hoạt động
+                  </label>
                   <input
                     type="text"
                     value={adminEditHours}
                     onChange={(e) => setAdminEditHours(e.target.value)}
-                    placeholder="VD: 07:30 - 17:00"
-                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] text-xs"
+                    placeholder="VD: 07:30 - 17:30"
+                    className="w-full h-10 px-3 rounded-xl bg-[#F8F5EE] border border-[#403064] font-semibold text-[#2D2246] text-xs focus:outline-none focus:ring-2 focus:ring-[#39B980]/40"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-[#403064] mb-1">Số điện thoại liên hệ</label>
+                  <label className="block h-5 leading-5 font-extrabold text-[#403064] mb-1 truncate">
+                    Số điện thoại liên hệ
+                  </label>
                   <input
                     type="text"
                     value={adminEditPhone}
                     onChange={(e) => setAdminEditPhone(e.target.value)}
-                    placeholder="VD: 0987..."
-                    className="w-full px-3 py-2 rounded-xl bg-[#F8F5EE] border border-[#403064] text-xs"
+                    placeholder="VD: 0211 3863 115"
+                    className="w-full h-10 px-3 rounded-xl bg-[#F8F5EE] border border-[#403064] font-semibold text-[#2D2246] text-xs focus:outline-none focus:ring-2 focus:ring-[#39B980]/40"
                   />
                 </div>
               </div>
 
-              {/* Dán Link Google Maps / Plus Code + Chấm trực tiếp */}
-              <div className="p-3 rounded-2xl bg-[#F8F5EE] border border-[#E5DEC9] space-y-2">
+              {/* KHUNG TỌA ĐỘ: Dán Link Google Maps / Plus Code + Chấm trực tiếp */}
+              <div className="p-3.5 rounded-2xl bg-[#F8F5EE] border border-[#E5DEC9] space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-extrabold text-[#2D2246]">
+                  <span className="font-extrabold text-[#2D2246] text-xs">
                     Vị trí & Tọa độ trên Bản đồ 2D / 3D
                   </span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={handleSuggestFromOsm}
                       disabled={isGeocoding}
-                      className="px-2.5 py-1.5 rounded-xl bg-[#E6F7EF] text-[#1D7A52] border border-[#39B980] font-bold flex items-center gap-1 cursor-pointer text-[11px]"
+                      className="h-8 px-3 rounded-xl bg-[#E6F7EF] hover:bg-[#D1FAE5] active:scale-95 transition-all text-[#1D7A52] border border-[#39B980] font-extrabold flex items-center gap-1 cursor-pointer text-[11px] whitespace-nowrap"
                     >
                       {isGeocoding && <Loader2 size={12} className="animate-spin" />}
                       <span>Trích xuất / Gợi ý tọa độ</span>
@@ -5129,10 +5312,11 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
+                        triggerFeedback('pin');
                         setIsAdminCoordModalOpen(false);
                         setIsPickingOnMap(true);
                       }}
-                      className="px-2.5 py-1.5 rounded-xl bg-[#403064] text-white font-bold cursor-pointer text-[11px]"
+                      className="h-8 px-3 rounded-xl bg-[#403064] hover:bg-[#2D2246] active:scale-95 transition-all text-white font-extrabold flex items-center gap-1 cursor-pointer text-[11px] whitespace-nowrap"
                     >
                       <span>Chấm trực tiếp trên Bản đồ</span>
                     </button>
@@ -5150,36 +5334,43 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                       if (parsed) {
                         setAdminLatInput(String(parsed.lat));
                         setAdminLngInput(String(parsed.lng));
+                        setAdminFeedback(
+                          `✅ Đã tự động nhận diện tọa độ (${parsed.lat}, ${parsed.lng}) từ đường dẫn!`
+                        );
                       }
                     }}
                     placeholder="Dán Link Google Maps, Plus Code (VD: 7PQ6+VFP) hoặc tọa độ 21.289, 105.711..."
-                    className="w-full px-3 py-1.5 rounded-xl bg-[#FFFDF9] border border-[#D8CFC0] text-[11px]"
+                    className="w-full h-10 px-3 rounded-xl bg-[#FFFDF9] border border-[#D8CFC0] text-xs font-medium text-[#2D2246] focus:outline-none focus:border-[#403064]"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-3 items-end">
                   <div>
-                    <label className="block font-bold text-[#403064] mb-1">Vĩ độ (Latitude)</label>
+                    <label className="block h-5 leading-5 font-extrabold text-[#403064] mb-1 truncate">
+                      Vĩ độ (Latitude)
+                    </label>
                     <input
                       type="number"
                       step="any"
                       required
-                      placeholder="VD: 21.281850"
+                      placeholder="VD: 21.289713"
                       value={adminLatInput}
                       onChange={(e) => setAdminLatInput(e.target.value)}
-                      className="w-full px-3 py-1.5 rounded-xl bg-[#FFFDF9] border border-[#403064] font-mono text-xs"
+                      className="w-full h-10 px-3 rounded-xl bg-[#FFFDF9] border border-[#403064] font-mono font-bold text-xs text-[#2D2246] focus:outline-none focus:ring-2 focus:ring-[#39B980]/40"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-[#403064] mb-1">Kinh độ (Longitude)</label>
+                    <label className="block h-5 leading-5 font-extrabold text-[#403064] mb-1 truncate">
+                      Kinh độ (Longitude)
+                    </label>
                     <input
                       type="number"
                       step="any"
                       required
-                      placeholder="VD: 105.726210"
+                      placeholder="VD: 105.711203"
                       value={adminLngInput}
                       onChange={(e) => setAdminLngInput(e.target.value)}
-                      className="w-full px-3 py-1.5 rounded-xl bg-[#FFFDF9] border border-[#403064] font-mono text-xs"
+                      className="w-full h-10 px-3 rounded-xl bg-[#FFFDF9] border border-[#403064] font-mono font-bold text-xs text-[#2D2246] focus:outline-none focus:ring-2 focus:ring-[#39B980]/40"
                     />
                   </div>
                 </div>
@@ -5188,19 +5379,21 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               {nominatimSuggestions.length > 0 && (
                 <div className="p-2.5 rounded-2xl bg-[#E6F7EF]/60 border border-[#39B980]/40 space-y-1.5">
                   <div className="text-[11px] font-extrabold text-[#1D7A52]">
-                    Tọa độ đề xuất (Bấm chọn để điền):
+                    Tọa độ đề xuất (Bấm chọn để điền ngay):
                   </div>
                   {nominatimSuggestions.map((sug, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onClick={() => {
+                        triggerFeedback('pin');
                         setAdminLatInput(String(sug.lat));
                         setAdminLngInput(String(sug.lng));
                         setAdminCoordSource('nominatim_geocoded');
                         flyToCoordinates(sug.lat, sug.lng, 16.5);
+                        setAdminFeedback(`✅ Đã điền tọa độ gợi ý: ${sug.lat}, ${sug.lng}`);
                       }}
-                      className="w-full text-left p-2 rounded-xl bg-[#FFFDF9] hover:bg-[#E6F7EF] border border-[#D8CFC0] text-[11px] cursor-pointer"
+                      className="w-full text-left p-2 rounded-xl bg-[#FFFDF9] hover:bg-[#E6F7EF] border border-[#D8CFC0] text-[11px] cursor-pointer transition-colors"
                     >
                       <div className="font-bold text-[#2D2246]">{sug.displayName}</div>
                       <div className="font-mono text-[10px] text-[#1D7A52]">
@@ -5212,18 +5405,19 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
               )}
 
               {adminFeedback && (
-                <div className="p-2.5 rounded-xl bg-[#E6F7EF] text-[#1D7A52] font-bold text-[11px]">
-                  {adminFeedback}
+                <div className="px-3.5 py-2.5 rounded-xl bg-[#E6F7EF] border border-[#39B980] text-[#047857] font-extrabold text-xs flex items-center justify-between gap-2">
+                  <span>{adminFeedback}</span>
                 </div>
               )}
 
-              <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[#E5DEC9]">
-                {!isAdminCreatingNew && adminTargetPlace && (
-                  <div className="flex flex-wrap items-center gap-1.5">
+              {/* THANH NÚT THAO TÁC CUỐI BẢNG — NẰM TRÊN 1 DÒNG CÂN ĐỐI 100%, CAO ĐỒNG BỘ h-9 */}
+              <div className="pt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#E5DEC9]">
+                {!isAdminCreatingNew && adminTargetPlace ? (
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
                       onClick={handleBlockAdminPlace}
-                      className="px-3 py-2 rounded-xl bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#F59E0B] font-extrabold cursor-pointer text-[11px]"
+                      className="h-9 px-3 rounded-xl bg-[#FEF3C7] hover:bg-[#FDE68A] active:scale-95 transition-all text-[#92400E] border border-[#F59E0B] font-extrabold cursor-pointer text-[11.5px] whitespace-nowrap flex items-center justify-center"
                       title="Block (Tạm khóa) địa điểm này trên Bản đồ 2D & 3D"
                     >
                       Block (Tạm khóa)
@@ -5232,38 +5426,43 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
                       <button
                         type="button"
                         onClick={handleDeleteAdminPlace}
-                        className="px-3 py-2 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-extrabold cursor-pointer text-[11px]"
+                        className="h-9 px-3 rounded-xl bg-[#FEE2E2] hover:bg-[#FECACA] active:scale-95 transition-all text-[#991B1B] border border-[#FCA5A5] font-extrabold cursor-pointer text-[11.5px] whitespace-nowrap flex items-center justify-center"
                         title="Chỉ Admin tối cao mới có quyền xóa địa điểm khỏi Bản đồ"
                       >
                         Xóa khỏi bản đồ
                       </button>
                     ) : (
-                      <span className="px-2.5 py-1.5 rounded-xl bg-[#F1ECE1] text-[#65587F] font-bold text-[10.5px]">
+                      <span className="h-9 px-2.5 rounded-xl bg-[#F1ECE1] text-[#65587F] font-bold text-[11px] whitespace-nowrap flex items-center justify-center">
                         🔒 Xóa: Chỉ Admin
                       </span>
                     )}
                     <button
                       type="button"
                       onClick={handleRestoreAdminPlaceDefault}
-                      className="px-2.5 py-2 rounded-xl bg-[#F3EFE6] hover:bg-[#E5DEC9] text-[#403064] font-bold cursor-pointer text-[11px]"
+                      className="h-9 px-3 rounded-xl bg-[#F3EFE6] hover:bg-[#E5DEC9] active:scale-95 transition-all text-[#403064] border border-[#D8CFC0] font-bold cursor-pointer text-[11.5px] whitespace-nowrap flex items-center justify-center"
                       title="Khôi phục tên và tọa độ gốc ban đầu"
                     >
                       Khôi phục gốc
                     </button>
                   </div>
+                ) : (
+                  <div />
                 )}
 
                 <div className="flex items-center gap-2 ml-auto">
                   <button
                     type="button"
-                    onClick={() => setIsAdminCoordModalOpen(false)}
-                    className="px-3.5 py-2 rounded-xl bg-[#F1ECE1] text-[#403064] font-bold cursor-pointer"
+                    onClick={() => {
+                      triggerFeedback('tap');
+                      setIsAdminCoordModalOpen(false);
+                    }}
+                    className="h-9 px-4 rounded-xl bg-[#F1ECE1] hover:bg-[#E5DEC9] active:scale-95 transition-all text-[#403064] font-extrabold text-xs cursor-pointer whitespace-nowrap flex items-center justify-center"
                   >
                     Đóng
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-xl bg-[#059669] hover:bg-[#047857] text-white border-2 border-[#403064] font-extrabold cursor-pointer shadow-sm"
+                    className="h-9 px-4 rounded-xl bg-[#059669] hover:bg-[#047857] active:scale-95 transition-all text-white border-2 border-[#403064] font-extrabold text-xs cursor-pointer shadow-xs whitespace-nowrap flex items-center justify-center"
                   >
                     <span>
                       {isAdminCreatingNew
@@ -5654,3 +5853,5 @@ export const DigitalMapView: React.FC<DigitalMapViewProps> = ({
     </div>
   );
 };
+
+export const DigitalMapView = React.memo(DigitalMapViewInner);

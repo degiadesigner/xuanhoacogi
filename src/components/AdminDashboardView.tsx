@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Shield,
   Store,
@@ -78,6 +78,9 @@ import {
   getEffectiveAdminRoleInfo,
   approvePendingPlaceItem,
   rejectPendingPlaceItem,
+  approveAllPendingPlaceItems,
+  requestOrExecuteDeletePlace,
+  clearPlaceCoordinates,
   syncUserToAdminRegistry,
   ensureCloudPermissionsSyncedForEmail,
 } from '@/lib/admin-store';
@@ -90,12 +93,13 @@ import {
   createOrUpdateAuthUserFromGoogle,
 } from '@/lib/auth';
 import { GoogleGIcon } from '@/components/GoogleGIcon';
-import { DigitalMapView } from '@/components/DigitalMapView';
+import { DigitalMapView, prefetchDigitalMapGeoLayers } from '@/components/DigitalMapView';
 import { Place } from '@/lib/places-xuanhoa';
 import { MerchantPortalModal } from '@/components/map/MerchantPortalModal';
 import { triggerFeedback, FeedbackSoundType } from '@/lib/ui-feedback';
 import {
   getAllAdminPlaceAndLandmarkItems,
+  getCommercialAdminPlaceItems,
   getManagedOsmLandmarks,
   parseCoordinatesFromInputOrUrl,
   geocodeAddressWithNominatim,
@@ -295,6 +299,7 @@ export function AdminDashboardView({
   const [editPlaceMapCategory, setEditPlaceMapCategory] = useState<EditableMapCategory>('food');
   const [editPlaceLat, setEditPlaceLat] = useState('');
   const [editPlaceLng, setEditPlaceLng] = useState('');
+  const [hasActivelyPinnedOnMap, setHasActivelyPinnedOnMap] = useState(false);
   const [isAdminGeocoding, setIsAdminGeocoding] = useState(false);
   const [adminGeoSuggestions, setAdminGeoSuggestions] = useState<
     Array<{ displayName: string; lat: number; lng: number }>
@@ -370,11 +375,24 @@ export function AdminDashboardView({
   >('admin_approvals');
   const [justSavedPlace, setJustSavedPlace] = useState(false);
   const [copiedBtnKey, setCopiedBtnKey] = useState<string | null>(null);
+  const [toastId, setToastId] = useState(0);
+  const [toastKind, setToastKind] = useState<FeedbackSoundType>('success');
+  const toastTimerRef = useRef<number | null>(null);
+  const [mapFlyTrigger, setMapFlyTrigger] = useState(0);
 
   const showToast = (msg: string, sound: FeedbackSoundType = 'success') => {
     triggerFeedback(sound);
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToastKind(sound);
     setToast(msg);
-    setTimeout(() => setToast(''), 3400);
+    setToastId(id => id + 1);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast('');
+      toastTimerRef.current = null;
+    }, 2100);
   };
 
   const jumpToMapUrl = (hashRoute: string) => {
@@ -402,6 +420,7 @@ export function AdminDashboardView({
   useEffect(() => {
     initAdminCloudSync();
     seedDemoMembersIfEmpty();
+    prefetchDigitalMapGeoLayers().catch(() => {});
     const onSync = () => setRefreshTick(t => t + 1);
     const onAuthChange = (e: Event) => {
       const customEvt = e as CustomEvent<UserAuthProfile | null>;
@@ -442,33 +461,34 @@ export function AdminDashboardView({
     }
   }, [roleInfo.isAuthenticated, isSuperAdmin, canManageWeb, canManageMaps, activeSection]);
 
-  const allPlaces = useMemo(() => getAllAdminPlaceAndLandmarkItems(), [refreshTick]);
+  // Tách biệt hoàn toàn:
+  // - commercialPlaces: CHỈ chứa các Quán ăn / Nhậu / Cafe / Ăn vặt / Dịch vụ (Dùng cho Quản lý Quán)
+  // - allMapPlaces: Chứa toàn bộ Địa điểm Bản đồ gồm Hành chính & Công cộng, Trường học, và Quán (Dùng cho Quản lý Maps)
+  const commercialPlaces = useMemo(() => getCommercialAdminPlaceItems(), [refreshTick]);
+  const allMapPlaces = useMemo(() => getAllAdminPlaceAndLandmarkItems(), [refreshTick]);
   const managedOsmLandmarks = useMemo(() => getManagedOsmLandmarks(true), [refreshTick]);
+  const osmLandmarkById = useMemo(
+    () => new Map(managedOsmLandmarks.map(l => [l.id, l])),
+    [managedOsmLandmarks]
+  );
   const allDishes = useMemo(() => getAllManagedDishes(), [refreshTick]);
   const allReviews = useMemo(() => getAllSystemReviews(), [refreshTick]);
-  const pendingMerchantSubmissions = useMemo(
-    () => getAllMerchantSubmissions().filter(s => s.status === 'pending'),
-    [refreshTick]
-  );
 
-  // Danh sách chờ Admin duyệt ở cột 1 của Quản lý Quán và Quản lý Maps
+  // Danh sách chờ Admin duyệt (CHỈ khi Quản lý thực hiện Thêm mới hoặc Yêu cầu Xóa)
   const pendingWebPlaces = useMemo(() => {
-    return allPlaces.filter(item => {
+    return commercialPlaces.filter(item => {
       const ov = adminState.places?.[item.place.id];
-      const hasSub = pendingMerchantSubmissions.some(s => s.placeId === item.place.id);
-      return Boolean(ov?.pendingWebApproval) || hasSub;
+      return Boolean(ov?.pendingWebApproval);
     });
-  }, [allPlaces, adminState, pendingMerchantSubmissions]);
+  }, [commercialPlaces, adminState]);
 
   const pendingMapPlaces = useMemo(() => {
-    return allPlaces.filter(item => {
+    return allMapPlaces.filter(item => {
       const ov = adminState.places?.[item.place.id];
-      const hasMapSub = pendingMerchantSubmissions.some(
-        s => s.placeId === item.place.id && s.proposed.lat !== null
-      );
-      return Boolean(ov?.pendingMapApproval) || hasMapSub;
+      return Boolean(ov?.pendingMapApproval);
     });
-  }, [allPlaces, adminState, pendingMerchantSubmissions]);
+  }, [allMapPlaces, adminState]);
+
   const allMembers = useMemo(() => {
     const uniqueByEmail = new Map<string, (typeof adminState.members)[string]>();
     for (const m of Object.values(adminState.members || {})) {
@@ -487,24 +507,49 @@ export function AdminDashboardView({
       : DEFAULT_SECTOR_TAGS;
   }, [adminState]);
 
+  // Phân khu dành riêng cho Quản lý Quán (Loại bỏ Địa Danh / Hành Chính / Trường Học để không bao giờ lẫn vào Quán)
+  const commercialSectorTags: SectorCategoryTag[] = useMemo(() => {
+    return sectorTags.filter(s => s.id !== 'dia-danh');
+  }, [sectorTags]);
+
   const getSectorShortLabel = (sectorId: string) => {
     const found = sectorTags.find(s => s.id === sectorId);
     if (!found) return sectorId;
     return found.label.split(' (')[0];
   };
 
+  const prevSectionRef = useRef<AdminSection>(activeSection);
+  const [inlineActionFeedback, setInlineActionFeedback] = useState<string>('');
+
   useEffect(() => {
-    if (!selectedPlaceId && allPlaces.length > 0) {
-      selectPlaceForEdit(allPlaces[0]);
+    const activeList = activeSection === 'maps' ? allMapPlaces : commercialPlaces;
+    const sectionJustChanged = prevSectionRef.current !== activeSection;
+    prevSectionRef.current = activeSection;
+
+    if (!selectedPlaceId && activeList.length > 0) {
+      selectPlaceForEdit(activeList[0], false);
     } else if (selectedPlaceId) {
-      const updated = allPlaces.find(p => p.place.id === selectedPlaceId);
-      if (updated && editPlaceName === '') {
-        selectPlaceForEdit(updated);
+      const inActiveList = activeList.find(p => p.place.id === selectedPlaceId);
+      if (!inActiveList && activeList.length > 0) {
+        selectPlaceForEdit(activeList[0], false);
+      } else if (
+        sectionJustChanged &&
+        activeSection === 'maps' &&
+        inActiveList &&
+        inActiveList.sectorTag !== 'dia-danh' &&
+        !adminState.places?.[inActiveList.place.id]?.coordinateVerified &&
+        activeList.length > 0
+      ) {
+        // Chỉ khi VỪA chuyển tab từ mục khác sang Quản lý Maps thì mới chọn mốc Hành chính đã ghim đầu tiên; khi đang ở trong Quản lý Maps, bấm vào bất kỳ địa điểm nào sẽ giữ nguyên 100% ở địa điểm đó!
+        selectPlaceForEdit(activeList[0], false);
+      } else if (inActiveList && editPlaceName === '') {
+        selectPlaceForEdit(inActiveList, false);
       }
     }
-  }, [allPlaces, selectedPlaceId]);
+  }, [commercialPlaces, allMapPlaces, selectedPlaceId, activeSection]);
 
-  const selectPlaceForEdit = (item: AdminPlaceItem) => {
+  const selectPlaceForEdit = (item: AdminPlaceItem, playFeedback = true) => {
+    if (playFeedback) triggerFeedback('tap');
     setSelectedPlaceId(item.place.id);
     setEditPlaceName(item.place.name);
     setEditPlaceTagline(item.place.tagline);
@@ -529,11 +574,24 @@ export function AdminDashboardView({
     setEditPlaceImageUrl(item.place.imageUrl || '');
 
     const ov = adminState.places?.[item.place.id];
-    const osmItem = managedOsmLandmarks.find(l => l.id === item.place.id);
-    const resolvedLat = typeof ov?.lat === 'number' ? ov.lat : osmItem?.lat;
-    const resolvedLng = typeof ov?.lng === 'number' ? ov.lng : osmItem?.lng;
-    setEditPlaceLat(typeof resolvedLat === 'number' ? String(resolvedLat) : '');
-    setEditPlaceLng(typeof resolvedLng === 'number' ? String(resolvedLng) : '');
+    const osmItem = osmLandmarkById.get(item.place.id);
+    const hasVerifiedOvCoords =
+      typeof ov?.lat === 'number' &&
+      typeof ov?.lng === 'number' &&
+      ov?.coordinateVerified !== false;
+    const resolvedLat = hasVerifiedOvCoords ? ov!.lat : osmItem?.lat;
+    const resolvedLng = hasVerifiedOvCoords ? ov!.lng : osmItem?.lng;
+    const hasResolvedCoords = typeof resolvedLat === 'number' && typeof resolvedLng === 'number';
+    setEditPlaceLat(hasResolvedCoords ? String(resolvedLat) : '');
+    setEditPlaceLng(hasResolvedCoords ? String(resolvedLng) : '');
+    setHasActivelyPinnedOnMap(hasResolvedCoords);
+    if (playFeedback) {
+      setInlineActionFeedback(
+        hasResolvedCoords
+          ? `🎯 Đang chọn: "${item.place.name}" (${resolvedLat}, ${resolvedLng})`
+          : `🎯 Đang chọn: "${item.place.name}" — Chưa ghim tọa độ (Bấm lên Bản đồ Cột 3 để ghim ngay)`
+      );
+    }
 
     const resolvedMapCat = (ov?.mapCategory ||
       osmItem?.category ||
@@ -568,7 +626,7 @@ export function AdminDashboardView({
   // Lọc và sắp xếp danh sách quán theo đúng bảng chữ cái A -> B -> C -> D (hoặc tab Duyệt Quán)
   const filteredPlaces = useMemo(() => {
     const q = placeSearch.trim().toLowerCase();
-    const sourceList = placeListTab === 'pending_web' ? pendingWebPlaces : allPlaces;
+    const sourceList = placeListTab === 'pending_web' ? pendingWebPlaces : commercialPlaces;
     const list = sourceList.filter(item => {
       if (placeSectorFilter !== 'all' && item.sectorTag !== placeSectorFilter) return false;
       if (placeStatusFilter === 'boosted') {
@@ -593,14 +651,18 @@ export function AdminDashboardView({
 
     // Luôn xếp chuẩn theo bảng chữ cái A -> B -> C -> D
     return [...list].sort((a, b) => a.place.name.localeCompare(b.place.name, 'vi'));
-  }, [allPlaces, pendingWebPlaces, placeListTab, placeSearch, placeSectorFilter, placeStatusFilter]);
+  }, [commercialPlaces, pendingWebPlaces, placeListTab, placeSearch, placeSectorFilter, placeStatusFilter]);
 
   // Lọc danh sách Địa điểm cho mục Quản lý Maps (Cột 1 của Quản lý Maps)
   const getResolvedPlaceCoordsAndCat = (item: AdminPlaceItem) => {
     const ov = adminState.places?.[item.place.id];
-    const osmItem = managedOsmLandmarks.find(l => l.id === item.place.id);
-    const lat = typeof ov?.lat === 'number' ? ov.lat : osmItem?.lat ?? null;
-    const lng = typeof ov?.lng === 'number' ? ov.lng : osmItem?.lng ?? null;
+    const osmItem = osmLandmarkById.get(item.place.id);
+    const hasVerifiedOv =
+      typeof ov?.lat === 'number' &&
+      typeof ov?.lng === 'number' &&
+      ov?.coordinateVerified !== false;
+    const lat = hasVerifiedOv ? ov!.lat! : osmItem?.lat ?? null;
+    const lng = hasVerifiedOv ? ov!.lng! : osmItem?.lng ?? null;
     const hasCoords = typeof lat === 'number' && typeof lng === 'number';
     const mapCat = (ov?.mapCategory ||
       osmItem?.category ||
@@ -618,7 +680,7 @@ export function AdminDashboardView({
 
   const filteredMapPlaces = useMemo(() => {
     const q = mapSearch.trim().toLowerCase();
-    const sourceList = mapListTab === 'pending_maps' ? pendingMapPlaces : allPlaces;
+    const sourceList = mapListTab === 'pending_maps' ? pendingMapPlaces : allMapPlaces;
     const list = sourceList.filter(item => {
       const { hasCoords, mapCat } = getResolvedPlaceCoordsAndCat(item);
       if (mapCatFilter !== 'all' && mapCat !== mapCatFilter) return false;
@@ -633,7 +695,7 @@ export function AdminDashboardView({
       );
     });
     return [...list].sort((a, b) => a.place.name.localeCompare(b.place.name, 'vi'));
-  }, [allPlaces, pendingMapPlaces, mapListTab, mapSearch, mapCatFilter, mapCoordFilter, adminState, managedOsmLandmarks]);
+  }, [allMapPlaces, pendingMapPlaces, mapListTab, mapSearch, mapCatFilter, mapCoordFilter, adminState, managedOsmLandmarks]);
 
   const getMatchedDishPreview = (item: AdminPlaceItem): string | null => {
     const q = placeSearch.trim().toLowerCase();
@@ -656,14 +718,93 @@ export function AdminDashboardView({
     });
   }, [allMembers, memberSearch, memberFilter]);
 
-  const selectedPlaceItem = useMemo(
-    () => allPlaces.find(p => p.place.id === selectedPlaceId) || null,
-    [allPlaces, selectedPlaceId]
-  );
+  const selectedPlaceItem = useMemo(() => {
+    const activeList = activeSection === 'maps' ? allMapPlaces : commercialPlaces;
+    return (
+      activeList.find(p => p.place.id === selectedPlaceId) ||
+      allMapPlaces.find(p => p.place.id === selectedPlaceId) ||
+      null
+    );
+  }, [commercialPlaces, allMapPlaces, selectedPlaceId, activeSection]);
+
+  const adminMapEditContextRef = useRef({
+    selectedPlaceItem,
+    selectedPlaceId,
+    editPlaceName,
+    editPlaceAddress,
+    editPlacePhone,
+    editPlaceMapCategory,
+    editPlaceSectorTag,
+    isSuperAdmin,
+    allMapPlaces,
+    selectPlaceForEdit,
+  });
+  adminMapEditContextRef.current = {
+    selectedPlaceItem,
+    selectedPlaceId,
+    editPlaceName,
+    editPlaceAddress,
+    editPlacePhone,
+    editPlaceMapCategory,
+    editPlaceSectorTag,
+    isSuperAdmin,
+    allMapPlaces,
+    selectPlaceForEdit,
+  };
+
+  const handleAdminMapPickCoordinates = useCallback((pickedLat: number, pickedLng: number) => {
+    const ctx = adminMapEditContextRef.current;
+    if (!ctx.selectedPlaceItem) return;
+    const cleanLat = Number(pickedLat.toFixed(6));
+    const cleanLng = Number(pickedLng.toFixed(6));
+    setEditPlaceLat(String(cleanLat));
+    setEditPlaceLng(String(cleanLng));
+    setHasActivelyPinnedOnMap(true);
+    const targetName = ctx.editPlaceName.trim() || ctx.selectedPlaceItem.place.name;
+    savePlaceAdminOverride(
+      ctx.selectedPlaceItem.place.id,
+      {
+        name: targetName,
+        address: ctx.editPlaceAddress.trim() || ctx.selectedPlaceItem.place.address,
+        phone: ctx.editPlacePhone.trim() || ctx.selectedPlaceItem.place.phone,
+        mapCategory: ctx.editPlaceMapCategory,
+        sectorTag:
+          ctx.editPlaceMapCategory === 'public' || ctx.editPlaceMapCategory === 'school'
+            ? 'dia-danh'
+            : ctx.editPlaceSectorTag,
+        lat: cleanLat,
+        lng: cleanLng,
+        coordinateVerified: true,
+        coordinateSource: 'admin_verified',
+        ...(ctx.isSuperAdmin
+          ? {
+              status: 'active',
+              pendingMapApproval: null,
+              pendingWebApproval: null,
+            }
+          : {}),
+      },
+      `Ghim tọa độ (${cleanLat}, ${cleanLng}) cho "${targetName}"`
+    );
+    setRefreshTick(t => t + 1);
+    setJustSavedPlace(true);
+    setTimeout(() => setJustSavedPlace(false), 1800);
+    const pinMsg = `✅ Đã chấm & lưu ngay vị trí "${targetName}" (${cleanLat}, ${cleanLng})!`;
+    setInlineActionFeedback(pinMsg);
+    showToast(pinMsg, 'approve');
+  }, []);
+
+  const handleAdminMapSelectPlace = useCallback((pickedPlaceId: string) => {
+    const ctx = adminMapEditContextRef.current;
+    const found = ctx.allMapPlaces.find(p => p.place.id === pickedPlaceId);
+    if (found && found.place.id !== ctx.selectedPlaceId) {
+      ctx.selectPlaceForEdit(found);
+    }
+  }, []);
 
   const totalMenuDishesCount = useMemo(() => {
-    return allPlaces.reduce((acc, item) => acc + (item.fullMenu?.length || 0), 0);
-  }, [allPlaces]);
+    return commercialPlaces.reduce((acc, item) => acc + (item.fullMenu?.length || 0), 0);
+  }, [commercialPlaces]);
 
   const redirectToCustomerHome = () => {
     if (typeof window !== 'undefined') {
@@ -765,20 +906,30 @@ export function AdminDashboardView({
     showToast('Đã thoát khỏi phiên Quản trị');
   };
 
-  // Lưu thay đổi của Quán & Thực đơn
+  // Lưu thay đổi của Quán & Thực đơn (Chỉnh sửa: Áp dụng ngay lập tức không cần chờ duyệt; Admin lưu là mệnh lệnh tối cao)
   const handleSavePlaceAndMenu = (customMenuOverride?: CustomMenuEntry[], toastLabel?: string) => {
     if (!selectedPlaceItem) return;
-    const menuToSave = customMenuOverride !== undefined ? customMenuOverride : editPlaceMenu;
+    const isEditingMapsSection = activeSection === 'maps';
+    const isLandmarkCat =
+      isEditingMapsSection &&
+      (editPlaceMapCategory === 'public' || editPlaceMapCategory === 'school');
+
+    const resolvedSectorTag = isLandmarkCat ? 'dia-danh' : editPlaceSectorTag === 'dia-danh' && !isEditingMapsSection ? 'an-chinh' : editPlaceSectorTag;
+    const menuToSave = isLandmarkCat
+      ? []
+      : customMenuOverride !== undefined
+      ? customMenuOverride
+      : editPlaceMenu;
     const parsedTags = editPlaceTagsText
       .split(',')
       .map(t => t.trim())
       .filter(Boolean);
 
     let mappedCategory: Place['category'] = editPlaceCategory;
-    if (editPlaceSectorTag === 'nhau-lau') mappedCategory = 'pub';
-    else if (editPlaceSectorTag === 'uong') mappedCategory = 'cafe';
-    else if (editPlaceSectorTag === 'an-vat') mappedCategory = 'fast_food';
-    else if (editPlaceSectorTag === 'an-chinh') mappedCategory = 'restaurant';
+    if (resolvedSectorTag === 'nhau-lau') mappedCategory = 'pub';
+    else if (resolvedSectorTag === 'uong') mappedCategory = 'cafe';
+    else if (resolvedSectorTag === 'an-vat') mappedCategory = 'fast_food';
+    else if (resolvedSectorTag === 'an-chinh') mappedCategory = 'restaurant';
 
     // Tự động trích xuất tọa độ từ link Google Maps / Plus Code nếu có
     const parsedFromUrl = parseCoordinatesFromInputOrUrl(editPlaceMapsUrl || editPlaceMapsQuery);
@@ -794,15 +945,12 @@ export function AdminDashboardView({
       numLng >= 105.0 &&
       numLng <= 106.5;
 
-    const prevOv = adminState.places?.[selectedPlaceItem.place.id];
-    const isEditingMapsSection = activeSection === 'maps';
-
     savePlaceAdminOverride(
       selectedPlaceItem.place.id,
       {
         name: editPlaceName.trim() || selectedPlaceItem.place.name,
         tagline: editPlaceTagline.trim(),
-        sectorTag: editPlaceSectorTag,
+        sectorTag: resolvedSectorTag,
         mapCategory: editPlaceMapCategory,
         category: mappedCategory,
         tags: parsedTags,
@@ -817,10 +965,10 @@ export function AdminDashboardView({
         deliveryNote: editPlaceDeliveryNote.trim(),
         mapsQuery: editPlaceMapsQuery.trim() || `${editPlaceName.trim()} Xuân Hòa Phúc Yên`,
         mapsUrl: editPlaceMapsUrl.trim(),
-        minPrice: Number(editPlaceMinPrice) || 20,
-        maxPrice: Number(editPlaceMaxPrice) || 60,
-        signatureDishName: editPlaceSigName.trim() || 'Món tủ',
-        signatureDishPrice: Number(editPlaceSigPrice) || 35,
+        minPrice: isLandmarkCat ? 0 : Number(editPlaceMinPrice) || 20,
+        maxPrice: isLandmarkCat ? 0 : Number(editPlaceMaxPrice) || 60,
+        signatureDishName: isLandmarkCat ? 'Cơ quan / Địa danh' : editPlaceSigName.trim() || 'Món tủ',
+        signatureDishPrice: isLandmarkCat ? 0 : Number(editPlaceSigPrice) || 35,
         quip: editPlaceQuip.trim(),
         imageUrl: editPlaceImageUrl.trim() || undefined,
         customMenu: menuToSave,
@@ -832,43 +980,31 @@ export function AdminDashboardView({
               coordinateSource: 'admin_verified',
             }
           : {}),
-        ...(!isSuperAdmin
-          ? isEditingMapsSection
-            ? {
-                pendingMapApproval: {
-                  submittedBy: roleInfo.identifier || 'quanlymaps',
-                  submittedByName: roleInfo.displayName || 'Quản lý Maps',
-                  submittedAt: Date.now(),
-                  actionSummary: hasValidCoords
-                    ? `Cập nhật định vị (${Number(numLat!.toFixed(5))}, ${Number(numLng!.toFixed(5))})`
-                    : 'Cập nhật thông tin địa điểm Maps',
-                  previousLat: prevOv?.lat ?? null,
-                  previousLng: prevOv?.lng ?? null,
-                },
-              }
-            : {
-                pendingWebApproval: {
-                  submittedBy: roleInfo.identifier || 'quanlyweb',
-                  submittedByName: roleInfo.displayName || 'Quản lý Web',
-                  submittedAt: Date.now(),
-                  actionSummary: customMenuOverride
-                    ? `Cập nhật thực đơn (${menuToSave.length} món)`
-                    : 'Cập nhật thông tin quán',
-                },
-              }
+        // Chỉnh sửa thông tin/tọa độ có hiệu lực ngay lập tức. Nếu Admin lưu trên mục đang chờ duyệt thì tự động duyệt luôn!
+        ...(isSuperAdmin
+          ? {
+              status: 'active',
+              pendingWebApproval: null,
+              pendingMapApproval: null,
+            }
           : {}),
       },
       toastLabel || `Cập nhật "${editPlaceName}"`
     );
     setRefreshTick(t => t + 1);
     setJustSavedPlace(true);
-    setTimeout(() => setJustSavedPlace(false), 2000);
-    showToast(
-      !isSuperAdmin
-        ? `✅ Đã lưu và gửi vào mục ${isEditingMapsSection ? 'Duyệt Maps' : 'Duyệt Quán'} chờ Admin duyệt!`
-        : toastLabel || `✅ Đã lưu cập nhật "${editPlaceName}"!`,
-      'approve'
-    );
+    setTimeout(() => setJustSavedPlace(false), 1800);
+    if (hasValidCoords) {
+      setHasActivelyPinnedOnMap(true);
+      setMapFlyTrigger(t => t + 1);
+    }
+    const finalMsg =
+      toastLabel ||
+      (hasValidCoords
+        ? `✅ Đã cập nhật "${editPlaceName}" (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})`
+        : `✅ Đã cập nhật "${editPlaceName}"`);
+    setInlineActionFeedback(finalMsg);
+    showToast(finalMsg, 'approve');
   };
 
   const handleChangePriorityBoost = (nextBoost: 1 | 2 | 3) => {
@@ -954,25 +1090,40 @@ export function AdminDashboardView({
 
   const handleCreatePlace = () => {
     if (!newPlaceForm.name.trim()) return;
+    const isFromMapsSection = activeSection === 'maps';
+    const isLandmarkCat =
+      isFromMapsSection &&
+      (newPlaceForm.mapCategory === 'public' || newPlaceForm.mapCategory === 'school');
+
+    const resolvedSectorTag = isLandmarkCat
+      ? 'dia-danh'
+      : newPlaceForm.sectorTag === 'dia-danh'
+      ? 'an-chinh'
+      : newPlaceForm.sectorTag;
+
     const newId = `xh_custom_${Date.now()}`;
     let mappedCategory: Place['category'] = 'restaurant';
-    if (newPlaceForm.sectorTag === 'nhau-lau') mappedCategory = 'pub';
-    else if (newPlaceForm.sectorTag === 'uong') mappedCategory = 'cafe';
-    else if (newPlaceForm.sectorTag === 'an-vat') mappedCategory = 'fast_food';
+    if (resolvedSectorTag === 'nhau-lau') mappedCategory = 'pub';
+    else if (resolvedSectorTag === 'uong') mappedCategory = 'cafe';
+    else if (resolvedSectorTag === 'an-vat') mappedCategory = 'fast_food';
 
     const created: Place = {
       id: newId,
       name: newPlaceForm.name.trim(),
       category: mappedCategory,
-      tagline: `${newPlaceForm.name.trim()} • Xuân Hòa`,
-      tags: [getSectorShortLabel(newPlaceForm.sectorTag), 'Xuân Hòa'],
-      serviceMode: 'both',
+      tagline: isLandmarkCat
+        ? `${newPlaceForm.mapCategory === 'school' ? 'Trường học & Giảng đường' : 'Hành chính & Công cộng'} • Xuân Hòa`
+        : `${newPlaceForm.name.trim()} • Xuân Hòa`,
+      tags: isLandmarkCat
+        ? [newPlaceForm.mapCategory === 'school' ? 'Trường học' : 'Hành chính', 'Xuân Hòa']
+        : [getSectorShortLabel(resolvedSectorTag), 'Xuân Hòa'],
+      serviceMode: 'dine_in_only',
       zone: 'dhsp2',
       address: newPlaceForm.address.trim(),
       distance: 'Cách ĐHSP2 350m',
-      minPrice: 25,
-      maxPrice: 65,
-      priceRange: '25k - 65k',
+      minPrice: isLandmarkCat ? 0 : 25,
+      maxPrice: isLandmarkCat ? 0 : 65,
+      priceRange: isLandmarkCat ? '' : '25k - 65k',
       rating: 4.9,
       reviewCount: 1,
       imageUrl: '',
@@ -983,19 +1134,23 @@ export function AdminDashboardView({
       mapsUrl: newPlaceForm.mapsUrl.trim() || undefined,
       signatureDish: {
         id: `${newId}_sig`,
-        name: newPlaceForm.sigDishName.trim() || 'Món đặc trưng',
-        price: Number(newPlaceForm.sigDishPrice) || 35,
+        name: isLandmarkCat ? 'Địa danh / Cơ quan' : newPlaceForm.sigDishName.trim() || 'Món đặc trưng',
+        price: isLandmarkCat ? 0 : Number(newPlaceForm.sigDishPrice) || 35,
       },
-      menu: [
-        {
-          id: `${newId}_m1`,
-          name: newPlaceForm.sigDishName.trim() || 'Món đặc trưng',
-          price: Number(newPlaceForm.sigDishPrice) || 35,
-          tag: 'Bán chạy',
-          serviceTag: 'both',
-        },
-      ],
-      quip: 'Địa điểm mới tại Xuân Hòa Có Gì.',
+      menu: isLandmarkCat
+        ? []
+        : [
+            {
+              id: `${newId}_m1`,
+              name: newPlaceForm.sigDishName.trim() || 'Món đặc trưng',
+              price: Number(newPlaceForm.sigDishPrice) || 35,
+              tag: 'Bán chạy',
+              serviceTag: 'both',
+            },
+          ],
+      quip: isLandmarkCat
+        ? 'Địa điểm Hành chính / Công cộng / Trường học trên Bản đồ số Xuân Hòa.'
+        : 'Quán tại Xuân Hòa Có Gì.',
     };
     createNewCustomPlace(created);
     const parsedFromUrl = parseCoordinatesFromInputOrUrl(newPlaceForm.mapsUrl || newPlaceForm.address);
@@ -1007,10 +1162,11 @@ export function AdminDashboardView({
       !Number.isNaN(numLat) &&
       !Number.isNaN(numLng);
 
-    const isFromMapsSection = activeSection === 'maps';
     savePlaceAdminOverride(newId, {
-      sectorTag: newPlaceForm.sectorTag,
-      mapCategory: newPlaceForm.mapCategory,
+      status: 'active',
+      sectorTag: resolvedSectorTag,
+      mapCategory: isFromMapsSection ? newPlaceForm.mapCategory : 'food',
+      customMenu: isLandmarkCat ? [] : undefined,
       ...(hasCoords
         ? {
             lat: Number(numLat!.toFixed(6)),
@@ -1019,6 +1175,7 @@ export function AdminDashboardView({
             coordinateSource: 'admin_verified',
           }
         : {}),
+      // Admin tạo là mệnh lệnh thực thi luôn, chỉ Quản lý tạo mới cần chờ duyệt!
       ...(!isSuperAdmin
         ? isFromMapsSection
           ? {
@@ -1026,7 +1183,10 @@ export function AdminDashboardView({
                 submittedBy: roleInfo.identifier || 'quanlymaps',
                 submittedByName: roleInfo.displayName || 'Quản lý Maps',
                 submittedAt: Date.now(),
-                actionSummary: 'Thêm địa điểm định vị mới',
+                actionType: 'create',
+                actionSummary: isLandmarkCat
+                  ? `Thêm địa danh định vị mới (${newPlaceForm.mapCategory === 'school' ? 'Trường học' : 'Hành chính & Công cộng'})`
+                  : 'Thêm địa điểm định vị mới',
                 previousLat: null,
                 previousLng: null,
                 isNewPlace: true,
@@ -1037,21 +1197,25 @@ export function AdminDashboardView({
                 submittedBy: roleInfo.identifier || 'quanlyweb',
                 submittedByName: roleInfo.displayName || 'Quản lý Web',
                 submittedAt: Date.now(),
+                actionType: 'create',
                 actionSummary: 'Thêm quán mới vào hệ thống',
                 isNewPlace: true,
               },
             }
-        : {}),
+        : {
+            pendingWebApproval: null,
+            pendingMapApproval: null,
+          }),
     });
     setIsNewPlaceModalOpen(false);
     setRefreshTick(t => t + 1);
     setSelectedPlaceId(newId);
     showToast(
       !isSuperAdmin
-        ? `✅ Đã tạo "${created.name}" và đưa vào danh sách chờ Admin duyệt!`
+        ? `✅ Đã tạo "${created.name}" và gửi vào Hộp Duyệt chờ Admin duyệt!`
         : hasCoords
-        ? `✅ Đã tạo & cắm ghim lên Bản đồ: ${created.name}`
-        : `✅ Đã thêm địa điểm mới: ${created.name}`,
+        ? `✅ Admin đã thêm & cắm ghim ngay lập tức: ${created.name}`
+        : `✅ Admin đã thêm ngay lập tức: ${created.name}`,
       'approve'
     );
   };
@@ -1153,7 +1317,7 @@ export function AdminDashboardView({
 
   const realMembersCount = allMembers.filter(m => !m.isTestAccount).length;
   const seederMembersCount = allMembers.filter(m => m.isTestAccount).length;
-  const boostedPlacesCount = allPlaces.filter(p => p.priorityBoost > 1).length;
+  const boostedPlacesCount = commercialPlaces.filter(p => p.priorityBoost > 1).length;
 
   // ===========================================================================
   // NẾU CHƯA ĐĂNG NHẬP TÀI KHOẢN QUẢN LÝ HOẶC GMAIL ĐƯỢC CẤP QUYỀN -> HIỆN TRANG ĐĂNG NHẬP TINH GỌN
@@ -1414,30 +1578,37 @@ export function AdminDashboardView({
         fontFamily: "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-      {/* TOAST THÔNG BÁO NỔI GIỮA ĐỈNH MÀN HÌNH — LUÔN NHÌN THẤY RÕ RÀNG */}
+      {/* THÔNG BÁO NHẢY LÊN (POPUP TOAST) KHI LƯU / THÊM / XÓA / DUYỆT — HIỆN RÕ RỒI TỰ TẮT */}
       {toast && (
         <div
+          key={toastId}
+          onClick={() => setToast('')}
           style={{
             position: 'fixed',
-            top: '14px',
+            top: '58px',
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 100005,
-            background: '#18181B',
+            background: toastKind === 'warn' ? '#7F1D1D' : '#064E3B',
             color: '#FFFFFF',
-            padding: '10px 18px',
+            padding: '10px 20px',
             borderRadius: '999px',
-            boxShadow: '0 14px 36px rgba(0,0,0,0.28)',
+            boxShadow: '0 14px 34px rgba(0, 0, 0, 0.28)',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            fontSize: '12.5px',
+            fontSize: '13px',
             fontWeight: 800,
-            border: '2px solid #10B981',
+            border: toastKind === 'warn' ? '2px solid #F87171' : '2px solid #34D399',
             maxWidth: '92vw',
+            cursor: 'pointer',
+            animation: 'xhToastJump 2.1s cubic-bezier(0.16, 1, 0.3, 1) forwards',
           }}
         >
-          <CheckCircle2 size={16} style={{ color: '#10B981', flexShrink: 0 }} />
+          <CheckCircle2
+            size={16}
+            style={{ color: toastKind === 'warn' ? '#FCA5A5' : '#34D399', flexShrink: 0 }}
+          />
           <span>{toast}</span>
         </div>
       )}
@@ -1581,8 +1752,8 @@ export function AdminDashboardView({
                         icon: Store,
                         badge:
                           pendingWebPlaces.length > 0
-                            ? `${allPlaces.length} • ${pendingWebPlaces.length} duyệt`
-                            : String(allPlaces.length),
+                            ? `${commercialPlaces.length} • ${pendingWebPlaces.length} duyệt`
+                            : String(commercialPlaces.length),
                       },
                     ]
                   : []),
@@ -1594,8 +1765,8 @@ export function AdminDashboardView({
                         icon: MapPin,
                         badge:
                           pendingMapPlaces.length > 0
-                            ? `${allPlaces.length} • ${pendingMapPlaces.length} duyệt`
-                            : String(allPlaces.length),
+                            ? `${allMapPlaces.length} • ${pendingMapPlaces.length} duyệt`
+                            : String(allMapPlaces.length),
                       },
                     ]
                   : []),
@@ -1692,8 +1863,8 @@ export function AdminDashboardView({
                 {[
                   {
                     label: 'Tổng số Quán (A-Z)',
-                    val: allPlaces.length,
-                    sub: `${allPlaces.filter(p => p.status === 'active').length} quán đang mở`,
+                    val: commercialPlaces.length,
+                    sub: `${commercialPlaces.filter(p => p.status === 'active').length} quán đang mở`,
                   },
                   {
                     label: 'Quán đang Bật Ưu Tiên',
@@ -1738,7 +1909,7 @@ export function AdminDashboardView({
                 }}
               >
                 <div style={{ fontSize: '15px', fontWeight: 800, marginBottom: '12px' }}>
-                  Phân khu Địa điểm tại Xuân Hòa (Bấm vào để lọc ngay trong Quản lý Quán)
+                  Phân khu Quán tại Xuân Hòa (Bấm vào để lọc ngay trong Quản lý Quán)
                 </div>
                 <div
                   style={{
@@ -1747,8 +1918,8 @@ export function AdminDashboardView({
                     gap: '10px',
                   }}
                 >
-                  {sectorTags.map(sec => {
-                    const cnt = allPlaces.filter(p => p.sectorTag === sec.id).length;
+                  {commercialSectorTags.map(sec => {
+                    const cnt = commercialPlaces.filter(p => p.sectorTag === sec.id).length;
                     return (
                       <div
                         key={sec.id}
@@ -1793,7 +1964,175 @@ export function AdminDashboardView({
           {/*    CỘT 2 (THÔNG TIN QUÁN) | CỘT 3 (THỰC ĐƠN MÓN ĂN)                 */}
           {/* =================================================================== */}
           {activeSection === 'places' && canManageWeb && (
-            <div className="xh-three-col-layout">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* HỘP DUYỆT YÊU CẦU QUÁN (THÊM MỚI / XÓA) — Ô DUYỆT HẲN HOI RÕ RÀNG */}
+              {pendingWebPlaces.length > 0 && (
+                <div
+                  style={{
+                    background: '#FFFBEB',
+                    border: '2px solid #F59E0B',
+                    borderRadius: '14px',
+                    padding: '12px 16px',
+                    boxShadow: '0 4px 16px rgba(245, 158, 11, 0.14)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                      marginBottom: '10px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span
+                        style={{
+                          padding: '3px 9px',
+                          borderRadius: '99px',
+                          background: '#D97706',
+                          color: '#FFFFFF',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                        }}
+                      >
+                        HỘP DUYỆT QUÁN ({pendingWebPlaces.length})
+                      </span>
+                      <span style={{ fontSize: '13px', fontWeight: 800, color: '#92400E' }}>
+                        Danh sách yêu cầu Thêm mới / Xóa Quán từ Quản lý Web chờ Admin duyệt
+                      </span>
+                    </div>
+                    {isSuperAdmin && pendingWebPlaces.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cnt = approveAllPendingPlaceItems('web');
+                          setRefreshTick(t => t + 1);
+                          showToast(`✅ Admin đã duyệt toàn bộ ${cnt} yêu cầu Quán!`, 'approve');
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#059669',
+                          color: '#FFFFFF',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ⚡ Duyệt tất cả ({pendingWebPlaces.length})
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '8px' }}>
+                    {pendingWebPlaces.map(item => {
+                      const ov = adminState.places?.[item.place.id];
+                      const p = ov?.pendingWebApproval;
+                      if (!p) return null;
+                      const isDel = p.isDeleteRequest || p.actionType === 'delete';
+                      return (
+                        <div
+                          key={item.place.id}
+                          onClick={() => selectPlaceForEdit(item)}
+                          style={{
+                            background: '#FFFFFF',
+                            border: isDel ? '1.5px solid #FCA5A5' : '1.5px solid #6EE7B7',
+                            borderRadius: '10px',
+                            padding: '9px 12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 800,
+                                  padding: '2px 6px',
+                                  borderRadius: '5px',
+                                  background: isDel ? '#FEE2E2' : '#D1FAE5',
+                                  color: isDel ? '#B91C1C' : '#047857',
+                                }}
+                              >
+                                {isDel ? '🔴 YÊU CẦU XÓA' : '🟢 THÊM MỚI'}
+                              </span>
+                              <span style={{ fontSize: '13px', fontWeight: 800, color: '#18181B' }}>
+                                {item.place.name}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#71717A', marginTop: '3px' }}>
+                              Bởi <strong>{p.submittedByName}</strong> • {p.actionSummary}
+                            </div>
+                          </div>
+
+                          {isSuperAdmin ? (
+                            <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  approvePendingPlaceItem(item.place.id, 'web');
+                                  setRefreshTick(t => t + 1);
+                                  showToast(
+                                    isDel
+                                      ? `🗑️ Admin đã duyệt xóa quán "${item.place.name}"!`
+                                      : `✅ Admin đã duyệt thêm quán "${item.place.name}"!`,
+                                    'approve'
+                                  );
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '7px',
+                                  border: 'none',
+                                  background: isDel ? '#DC2626' : '#059669',
+                                  color: '#FFFFFF',
+                                  fontSize: '11.5px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                ✓ Duyệt
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  rejectPendingPlaceItem(item.place.id, 'web');
+                                  setRefreshTick(t => t + 1);
+                                  showToast(`Đã từ chối yêu cầu với "${item.place.name}"`, 'warn');
+                                }}
+                                style={{
+                                  padding: '6px 9px',
+                                  borderRadius: '7px',
+                                  border: '1px solid #FCA5A5',
+                                  background: '#FEF2F2',
+                                  color: '#B91C1C',
+                                  fontSize: '11.5px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                ✕ Hủy
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#B45309', flexShrink: 0 }}>
+                              Chờ Admin
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="xh-three-col-layout">
               {/* CỘT 1: DANH SÁCH QUÁN + TAB DUYỆT QUÁN */}
               <div
                 className={`xh-places-list-pane ${mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
@@ -1833,7 +2172,7 @@ export function AdminDashboardView({
                         boxShadow: placeListTab === 'all' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
                       }}
                     >
-                      Danh sách ({allPlaces.length})
+                      Danh sách ({commercialPlaces.length})
                     </button>
                     <button
                       type="button"
@@ -1880,7 +2219,15 @@ export function AdminDashboardView({
                         : `Quán A–Z (${filteredPlaces.length})`}
                     </span>
                     <button
-                      onClick={() => setIsNewPlaceModalOpen(true)}
+                      onClick={() => {
+                        setNewPlaceForm(prev => ({
+                          ...prev,
+                          name: '',
+                          sectorTag: 'an-chinh',
+                          mapCategory: 'food',
+                        }));
+                        setIsNewPlaceModalOpen(true);
+                      }}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -1952,8 +2299,8 @@ export function AdminDashboardView({
                         style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
                       >
                         <option value="all">Tất cả phân khu</option>
-                        {sectorTags.map(sec => {
-                          const cnt = allPlaces.filter(p => p.sectorTag === sec.id).length;
+                        {commercialSectorTags.map(sec => {
+                          const cnt = commercialPlaces.filter(p => p.sectorTag === sec.id).length;
                           return (
                             <option key={sec.id} value={sec.id}>
                               {sec.label.split(' (')[0]} ({cnt})
@@ -1968,11 +2315,11 @@ export function AdminDashboardView({
                         style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
                       >
                         <option value="all">Mọi trạng thái</option>
-                        <option value="active">Đang mở ({allPlaces.filter(p => p.status === 'active').length})</option>
+                        <option value="active">Đang mở ({commercialPlaces.filter(p => p.status === 'active').length})</option>
                         <option value="boosted">★ Ưu tiên ({boostedPlacesCount})</option>
-                        <option value="locked">Tạm khóa ({allPlaces.filter(p => p.status === 'locked').length})</option>
+                        <option value="locked">Tạm khóa ({commercialPlaces.filter(p => p.status === 'locked').length})</option>
                         {isSuperAdmin && (
-                          <option value="deleted">Đã xóa ({allPlaces.filter(p => p.status === 'deleted').length})</option>
+                          <option value="deleted">Đã xóa ({commercialPlaces.filter(p => p.status === 'deleted').length})</option>
                         )}
                       </select>
                     </div>
@@ -1993,6 +2340,7 @@ export function AdminDashboardView({
                       const matchedDish = getMatchedDishPreview(item);
                       const ov = adminState.places?.[item.place.id];
                       const pendingWeb = ov?.pendingWebApproval;
+                      const isDelReq = Boolean(pendingWeb?.isDeleteRequest || pendingWeb?.actionType === 'delete');
                       return (
                         <div
                           key={item.place.id}
@@ -2008,12 +2356,16 @@ export function AdminDashboardView({
                             border: isSelected
                               ? `1.5px solid ${theme.accent}`
                               : pendingWeb
-                              ? '1px solid #F59E0B'
+                              ? isDelReq
+                                ? '1.5px solid #EF4444'
+                                : '1.5px solid #F59E0B'
                               : `1px solid ${theme.border}`,
                             background: isSelected
                               ? theme.accentSoft
                               : pendingWeb
-                              ? 'rgba(254, 243, 199, 0.45)'
+                              ? isDelReq
+                                ? 'rgba(254, 226, 226, 0.5)'
+                                : 'rgba(254, 243, 199, 0.45)'
                               : theme.bgElevated,
                           }}
                         >
@@ -2029,12 +2381,12 @@ export function AdminDashboardView({
                                     fontWeight: 800,
                                     padding: '1px 5px',
                                     borderRadius: '4px',
-                                    background: '#FEF3C7',
-                                    color: '#B45309',
-                                    border: '1px solid #FCD34D',
+                                    background: isDelReq ? '#FEE2E2' : '#FEF3C7',
+                                    color: isDelReq ? '#B91C1C' : '#B45309',
+                                    border: isDelReq ? '1px solid #FCA5A5' : '1px solid #FCD34D',
                                   }}
                                 >
-                                  Chờ duyệt
+                                  {isDelReq ? '🔴 Chờ xóa' : '🟢 Chờ duyệt'}
                                 </span>
                               )}
                               {item.priorityBoost > 1 && (
@@ -2092,8 +2444,64 @@ export function AdminDashboardView({
                           </div>
 
                           {pendingWeb && (
-                            <div style={{ marginTop: '4px', fontSize: '10.5px', fontWeight: 700, color: '#B45309' }}>
-                              📝 {pendingWeb.submittedByName}: {pendingWeb.actionSummary}
+                            <div
+                              style={{
+                                marginTop: '6px',
+                                paddingTop: '5px',
+                                borderTop: '1px dashed rgba(217, 119, 6, 0.3)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '6px',
+                              }}
+                            >
+                              <span style={{ fontSize: '10.5px', fontWeight: 700, color: isDelReq ? '#B91C1C' : '#B45309' }}>
+                                {pendingWeb.submittedByName}: {pendingWeb.actionSummary}
+                              </span>
+                              {isSuperAdmin && (
+                                <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      approvePendingPlaceItem(item.place.id, 'web');
+                                      setRefreshTick(t => t + 1);
+                                      showToast(`✅ Đã duyệt "${item.place.name}"!`, 'approve');
+                                    }}
+                                    style={{
+                                      padding: '2px 7px',
+                                      borderRadius: '5px',
+                                      border: 'none',
+                                      background: '#059669',
+                                      color: '#FFF',
+                                      fontSize: '10px',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    ✓ Duyệt
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      rejectPendingPlaceItem(item.place.id, 'web');
+                                      setRefreshTick(t => t + 1);
+                                      showToast(`Đã hủy yêu cầu "${item.place.name}"`, 'warn');
+                                    }}
+                                    style={{
+                                      padding: '2px 6px',
+                                      borderRadius: '5px',
+                                      border: '1px solid #FCA5A5',
+                                      background: '#FEF2F2',
+                                      color: '#B91C1C',
+                                      fontSize: '10px',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
 
@@ -2156,13 +2564,14 @@ export function AdminDashboardView({
                       const ov = adminState.places?.[selectedPlaceItem.place.id];
                       const pending = ov?.pendingWebApproval;
                       if (!pending) return null;
+                      const isDel = pending.isDeleteRequest || pending.actionType === 'delete';
                       return (
                         <div
                           style={{
                             padding: '11px 13px',
                             borderRadius: '10px',
-                            background: '#FFFBEB',
-                            border: '1.5px solid #F59E0B',
+                            background: isDel ? '#FEF2F2' : '#FFFBEB',
+                            border: isDel ? '1.5px solid #EF4444' : '1.5px solid #F59E0B',
                             marginBottom: '12px',
                             display: 'flex',
                             alignItems: 'center',
@@ -2172,10 +2581,10 @@ export function AdminDashboardView({
                           }}
                         >
                           <div>
-                            <div style={{ fontSize: '12px', fontWeight: 800, color: '#B45309' }}>
-                              ⏳ Đang chờ Admin duyệt thay đổi Quán
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: isDel ? '#B91C1C' : '#B45309' }}>
+                              {isDel ? '🔴 Yêu cầu XÓA Quán đang chờ Admin duyệt' : '🟢 Quán MỚI thêm đang chờ Admin duyệt'}
                             </div>
-                            <div style={{ fontSize: '11.5px', color: '#92400E', marginTop: '2px' }}>
+                            <div style={{ fontSize: '11.5px', color: isDel ? '#991B1B' : '#92400E', marginTop: '2px' }}>
                               Người gửi: <strong>{pending.submittedByName}</strong> ({pending.submittedBy}) •{' '}
                               {pending.actionSummary}
                             </div>
@@ -2188,27 +2597,32 @@ export function AdminDashboardView({
                                 onClick={() => {
                                   approvePendingPlaceItem(selectedPlaceItem.place.id, 'web');
                                   setRefreshTick(t => t + 1);
-                                  showToast(`✅ Đã duyệt chính thức quán "${selectedPlaceItem.place.name}"!`, 'approve');
+                                  showToast(
+                                    isDel
+                                      ? `🗑️ Đã duyệt xóa quán "${selectedPlaceItem.place.name}"!`
+                                      : `✅ Đã duyệt chính thức quán "${selectedPlaceItem.place.name}"!`,
+                                    'approve'
+                                  );
                                 }}
                                 style={{
                                   padding: '6px 12px',
                                   borderRadius: '8px',
                                   border: 'none',
-                                  background: '#059669',
+                                  background: isDel ? '#DC2626' : '#059669',
                                   color: '#FFFFFF',
                                   fontSize: '12px',
                                   fontWeight: 800,
                                   cursor: 'pointer',
                                 }}
                               >
-                                ✓ Duyệt Quán
+                                {isDel ? '✓ Duyệt Xóa' : '✓ Duyệt Thêm Quán'}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => {
                                   rejectPendingPlaceItem(selectedPlaceItem.place.id, 'web');
                                   setRefreshTick(t => t + 1);
-                                  showToast(`Đã từ chối bản cập nhật của "${selectedPlaceItem.place.name}"`, 'warn');
+                                  showToast(`Đã từ chối yêu cầu với "${selectedPlaceItem.place.name}"`, 'warn');
                                 }}
                                 style={{
                                   padding: '6px 10px',
@@ -2238,14 +2652,14 @@ export function AdminDashboardView({
                                 fontWeight: 800,
                               }}
                             >
-                              <Lock size={12} /> Chờ Admin duyệt (Đã khóa với Quản lý)
+                              <Lock size={12} /> Chờ Admin duyệt
                             </span>
                           )}
                         </div>
                       );
                     })()}
 
-                    {/* THANH TIÊU ĐỀ CỘT 2: TÊN QUÁN + TẦN SUẤT + BLOCK (TẠM KHÓA) + XÓA (CHỈ ADMIN) + LƯU */}
+                    {/* THANH TIÊU ĐỀ CỘT 2: TÊN QUÁN + TẦN SUẤT + BLOCK (TẠM KHÓA) + XÓA + LƯU */}
                     <div
                       style={{
                         display: 'flex',
@@ -2321,44 +2735,37 @@ export function AdminDashboardView({
                           <span>{selectedPlaceItem.status === 'active' ? 'Block' : 'Mở khóa'}</span>
                         </button>
 
-                        {/* NÚT XÓA: CHỈ SUPER ADMIN MỚI CÓ QUYỀN XÓA */}
-                        {isSuperAdmin ? (
-                          <button
-                            onClick={() => {
-                              savePlaceAdminOverride(
-                                selectedPlaceItem.place.id,
-                                { status: 'deleted' },
-                                'Xóa quán khỏi hệ thống'
-                              );
-                              setRefreshTick(t => t + 1);
-                              showToast('Đã xóa quán khỏi hệ thống');
-                            }}
-                            style={{
-                              ...actionBtnStyle(theme, false),
-                              padding: '6px 10px',
-                              fontSize: '11.5px',
-                              color: '#B91C1C',
-                            }}
-                          >
-                            <Trash2 size={12} />
-                            <span>Xóa</span>
-                          </button>
-                        ) : (
-                          <span
-                            style={{
-                              fontSize: '10.5px',
-                              fontWeight: 700,
-                              padding: '5px 8px',
-                              borderRadius: '7px',
-                              background: theme.bgElevated,
-                              border: `1px solid ${theme.border}`,
-                              color: theme.textMuted,
-                            }}
-                            title="Quản lý Web chỉ có quyền thêm/sửa và Block, không có quyền Xóa"
-                          >
-                            🔒 Xóa: Chỉ Admin
-                          </span>
-                        )}
+                        {/* NÚT XÓA: ADMIN XÓA NGAY LẬP TỨC, QUẢN LÝ XÓA SẼ GỬI VÀO HỘP DUYỆT */}
+                        <button
+                          onClick={() => {
+                            const res = requestOrExecuteDeletePlace(
+                              selectedPlaceItem.place.id,
+                              'web',
+                              selectedPlaceItem.place.name
+                            );
+                            setRefreshTick(t => t + 1);
+                            showToast(
+                              res.executedImmediately
+                                ? `🗑️ Admin đã xóa quán "${selectedPlaceItem.place.name}" ngay lập tức!`
+                                : `⏳ Đã gửi yêu cầu xóa quán "${selectedPlaceItem.place.name}" vào Hộp Duyệt chờ Admin!`,
+                              res.executedImmediately ? 'approve' : 'warn'
+                            );
+                          }}
+                          style={{
+                            ...actionBtnStyle(theme, false),
+                            padding: '6px 10px',
+                            fontSize: '11.5px',
+                            color: '#B91C1C',
+                          }}
+                          title={
+                            isSuperAdmin
+                              ? 'Admin xóa ngay lập tức'
+                              : 'Quản lý gửi yêu cầu xóa chờ Admin duyệt'
+                          }
+                        >
+                          <Trash2 size={12} />
+                          <span>{isSuperAdmin ? 'Xóa ngay' : 'Xóa (Chờ duyệt)'}</span>
+                        </button>
 
                         <button
                           onClick={() => handleSavePlaceAndMenu()}
@@ -2426,9 +2833,17 @@ export function AdminDashboardView({
                         />
                       </div>
 
-                      {/* PHÂN KHU NGÀNH NGHỀ */}
+                      {/* PHÂN KHU NGÀNH NGHỀ (CHỈ HIỆN CÁC NGÀNH QUÁN ĂN / NHẬU / CAFE / DỊCH VỤ, KHÔNG HIỆN ĐỊA DANH HÀNH CHÍNH) */}
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            height: '18px',
+                            marginBottom: '5px',
+                          }}
+                        >
                           <label style={{ ...compactLabelStyle(theme), marginBottom: 0 }}>
                             Phân khu Ngành nghề
                           </label>
@@ -2439,10 +2854,11 @@ export function AdminDashboardView({
                               border: 'none',
                               background: 'transparent',
                               color: theme.accent,
-                              fontSize: '10.5px',
+                              fontSize: '11px',
                               fontWeight: 700,
                               cursor: 'pointer',
                               padding: 0,
+                              lineHeight: '18px',
                             }}
                           >
                             {isAddingSectorInline ? 'Đóng' : '+ Thêm mới'}
@@ -2451,11 +2867,17 @@ export function AdminDashboardView({
 
                         {!isAddingSectorInline ? (
                           <select
-                            value={editPlaceSectorTag}
+                            value={editPlaceSectorTag === 'dia-danh' ? 'an-chinh' : editPlaceSectorTag}
                             onChange={e => setEditPlaceSectorTag(e.target.value)}
-                            style={{ ...lightSelectStyle(theme), padding: '8px 10px', fontSize: '12.5px' }}
+                            style={{
+                              ...lightSelectStyle(theme),
+                              height: '38px',
+                              padding: '0 10px',
+                              fontSize: '13px',
+                              boxSizing: 'border-box',
+                            }}
                           >
-                            {sectorTags.map(sec => (
+                            {commercialSectorTags.map(sec => (
                               <option key={sec.id} value={sec.id}>
                                 {sec.label}
                               </option>
@@ -2474,12 +2896,13 @@ export function AdminDashboardView({
                               type="button"
                               onClick={handleAddInlineSector}
                               style={{
-                                padding: '0 10px',
+                                height: '38px',
+                                padding: '0 12px',
                                 borderRadius: '8px',
                                 border: 'none',
                                 background: theme.accent,
                                 color: '#FFF',
-                                fontSize: '11.5px',
+                                fontSize: '12px',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                               }}
@@ -2496,7 +2919,13 @@ export function AdminDashboardView({
                         <select
                           value={editPlaceServiceMode}
                           onChange={e => setEditPlaceServiceMode(e.target.value as Place['serviceMode'])}
-                          style={{ ...lightSelectStyle(theme), padding: '8px 10px', fontSize: '12.5px' }}
+                          style={{
+                            ...lightSelectStyle(theme),
+                            height: '38px',
+                            padding: '0 10px',
+                            fontSize: '13px',
+                            boxSizing: 'border-box',
+                          }}
                         >
                           <option value="both">Ăn tại quán & Có nhận Ship</option>
                           <option value="dine_in_only">Chỉ phục vụ tại quán</option>
@@ -2504,6 +2933,29 @@ export function AdminDashboardView({
                         </select>
                       </div>
                     </div>
+
+                    {inlineActionFeedback && (
+                      <div
+                        style={{
+                          marginTop: '12px',
+                          padding: '9px 12px',
+                          borderRadius: '10px',
+                          background: justSavedPlace ? '#E6F7EF' : theme.bgElevated,
+                          border: justSavedPlace
+                            ? '1.5px solid #10B981'
+                            : `1px solid ${theme.border}`,
+                          color: justSavedPlace ? '#047857' : theme.textSecondary,
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                        }}
+                      >
+                        <span>{inlineActionFeedback}</span>
+                      </div>
+                    )}
 
                     {/* MỞ RỘNG THÔNG TIN BỔ SUNG KHI CẦN */}
                     <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: `1px dashed ${theme.border}` }}>
@@ -2968,6 +3420,7 @@ export function AdminDashboardView({
                   </div>
                 </div>
               ) : null}
+              </div>
             </div>
           )}
 
@@ -2977,7 +3430,175 @@ export function AdminDashboardView({
           {/*     CỘT 3 (BẢN ĐỒ SỐ TRỰC TIẾP NGAY TRONG TRANG QUẢN LÝ)           */}
           {/* =================================================================== */}
           {activeSection === 'maps' && canManageMaps && (
-            <div className="xh-three-col-layout xh-maps-three-col">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* HỘP DUYỆT ĐỊNH VỊ MAPS (THÊM MỚI / XÓA) — Ô DUYỆT HẲN HOI RÕ RÀNG */}
+              {pendingMapPlaces.length > 0 && (
+                <div
+                  style={{
+                    background: '#FFFBEB',
+                    border: '2px solid #F59E0B',
+                    borderRadius: '14px',
+                    padding: '12px 16px',
+                    boxShadow: '0 4px 16px rgba(245, 158, 11, 0.14)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                      marginBottom: '10px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span
+                        style={{
+                          padding: '3px 9px',
+                          borderRadius: '99px',
+                          background: '#D97706',
+                          color: '#FFFFFF',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                        }}
+                      >
+                        HỘP DUYỆT MAPS ({pendingMapPlaces.length})
+                      </span>
+                      <span style={{ fontSize: '13px', fontWeight: 800, color: '#92400E' }}>
+                        Danh sách yêu cầu Thêm mới / Xóa Địa điểm từ Quản lý Maps chờ Admin duyệt
+                      </span>
+                    </div>
+                    {isSuperAdmin && pendingMapPlaces.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cnt = approveAllPendingPlaceItems('maps');
+                          setRefreshTick(t => t + 1);
+                          showToast(`✅ Admin đã duyệt toàn bộ ${cnt} yêu cầu trên Bản đồ số!`, 'approve');
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#059669',
+                          color: '#FFFFFF',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ⚡ Duyệt tất cả ({pendingMapPlaces.length})
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '8px' }}>
+                    {pendingMapPlaces.map(item => {
+                      const ov = adminState.places?.[item.place.id];
+                      const p = ov?.pendingMapApproval;
+                      if (!p) return null;
+                      const isDel = p.isDeleteRequest || p.actionType === 'delete';
+                      return (
+                        <div
+                          key={item.place.id}
+                          onClick={() => selectPlaceForEdit(item)}
+                          style={{
+                            background: '#FFFFFF',
+                            border: isDel ? '1.5px solid #FCA5A5' : '1.5px solid #6EE7B7',
+                            borderRadius: '10px',
+                            padding: '9px 12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 800,
+                                  padding: '2px 6px',
+                                  borderRadius: '5px',
+                                  background: isDel ? '#FEE2E2' : '#D1FAE5',
+                                  color: isDel ? '#B91C1C' : '#047857',
+                                }}
+                              >
+                                {isDel ? '🔴 YÊU CẦU XÓA' : '🟢 THÊM MỚI'}
+                              </span>
+                              <span style={{ fontSize: '13px', fontWeight: 800, color: '#18181B' }}>
+                                {item.place.name}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#71717A', marginTop: '3px' }}>
+                              Bởi <strong>{p.submittedByName}</strong> • {p.actionSummary}
+                            </div>
+                          </div>
+
+                          {isSuperAdmin ? (
+                            <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  approvePendingPlaceItem(item.place.id, 'maps');
+                                  setRefreshTick(t => t + 1);
+                                  showToast(
+                                    isDel
+                                      ? `🗑️ Admin đã duyệt xóa địa điểm "${item.place.name}"!`
+                                      : `✅ Admin đã duyệt địa điểm "${item.place.name}"!`,
+                                    'approve'
+                                  );
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '7px',
+                                  border: 'none',
+                                  background: isDel ? '#DC2626' : '#059669',
+                                  color: '#FFFFFF',
+                                  fontSize: '11.5px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                ✓ Duyệt
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  rejectPendingPlaceItem(item.place.id, 'maps');
+                                  setRefreshTick(t => t + 1);
+                                  showToast(`Đã từ chối yêu cầu với "${item.place.name}"`, 'warn');
+                                }}
+                                style={{
+                                  padding: '6px 9px',
+                                  borderRadius: '7px',
+                                  border: '1px solid #FCA5A5',
+                                  background: '#FEF2F2',
+                                  color: '#B91C1C',
+                                  fontSize: '11.5px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                ✕ Hủy
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#B45309', flexShrink: 0 }}>
+                              Chờ Admin
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="xh-three-col-layout xh-maps-three-col">
               {/* CỘT 1: DANH SÁCH ĐỊA ĐIỂM MAPS + TAB DUYỆT MAPS */}
               <div
                 className={`xh-places-list-pane ${mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
@@ -3017,7 +3638,7 @@ export function AdminDashboardView({
                         boxShadow: mapListTab === 'all' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
                       }}
                     >
-                      Địa điểm ({allPlaces.length})
+                      Địa điểm ({allMapPlaces.length})
                     </button>
                     <button
                       type="button"
@@ -3064,7 +3685,15 @@ export function AdminDashboardView({
                         : `Định vị Maps (${filteredMapPlaces.length})`}
                     </span>
                     <button
-                      onClick={() => setIsNewPlaceModalOpen(true)}
+                      onClick={() => {
+                        setNewPlaceForm(prev => ({
+                          ...prev,
+                          name: '',
+                          sectorTag: 'dia-danh',
+                          mapCategory: 'public',
+                        }));
+                        setIsNewPlaceModalOpen(true);
+                      }}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -3152,11 +3781,11 @@ export function AdminDashboardView({
                     filteredMapPlaces.map(item => {
                       const isSelected = selectedPlaceId === item.place.id;
                       const ov = adminState.places?.[item.place.id];
-                      const hasCoords =
-                        Boolean(ov?.coordinateVerified) &&
-                        typeof ov?.lat === 'number' &&
-                        typeof ov?.lng === 'number';
+                      const { hasCoords, mapCat } = getResolvedPlaceCoordsAndCat(item);
+                      const catLabel =
+                        EDITABLE_MAP_CATEGORIES.find(c => c.id === mapCat)?.label || mapCat;
                       const pendingMap = ov?.pendingMapApproval;
+                      const isDelReq = Boolean(pendingMap?.isDeleteRequest || pendingMap?.actionType === 'delete');
                       return (
                         <div
                           key={item.place.id}
@@ -3172,17 +3801,32 @@ export function AdminDashboardView({
                             border: isSelected
                               ? `1.5px solid ${theme.accent}`
                               : pendingMap
-                              ? '1px solid #F59E0B'
+                              ? isDelReq
+                                ? '1.5px solid #EF4444'
+                                : '1.5px solid #F59E0B'
                               : `1px solid ${theme.border}`,
                             background: isSelected
                               ? theme.accentSoft
                               : pendingMap
-                              ? 'rgba(254, 243, 199, 0.45)'
+                              ? isDelReq
+                                ? 'rgba(254, 226, 226, 0.5)'
+                                : 'rgba(254, 243, 199, 0.45)'
                               : theme.bgElevated,
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                            <span style={{ fontSize: '12.5px', fontWeight: 700, color: theme.textPrimary }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <span
+                              style={{
+                                fontSize: '12.5px',
+                                fontWeight: 700,
+                                color: theme.textPrimary,
+                                minWidth: 0,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={item.place.name}
+                            >
                               {item.place.name}
                             </span>
                             {pendingMap ? (
@@ -3190,13 +3834,15 @@ export function AdminDashboardView({
                                 style={{
                                   fontSize: '9.5px',
                                   fontWeight: 800,
-                                  padding: '1px 5px',
+                                  padding: '1px 6px',
                                   borderRadius: '4px',
-                                  background: '#FEF3C7',
-                                  color: '#B45309',
+                                  background: isDelReq ? '#FEE2E2' : '#FEF3C7',
+                                  color: isDelReq ? '#B91C1C' : '#B45309',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
                                 }}
                               >
-                                Chờ duyệt
+                                {isDelReq ? '🔴 Chờ xóa' : '🟢 Chờ duyệt'}
                               </span>
                             ) : (
                               <span
@@ -3204,18 +3850,94 @@ export function AdminDashboardView({
                                   fontSize: '10px',
                                   fontWeight: 700,
                                   color: hasCoords ? '#047857' : '#B45309',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
                                 }}
                               >
                                 {hasCoords ? '📍 Đã ghim' : '⏳ Chưa ghim'}
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: '11px', color: theme.textMuted, marginTop: '3px' }}>
-                            {item.place.address || 'P. Xuân Hòa'}
+                          <div
+                            style={{
+                              fontSize: '11px',
+                              color: theme.textMuted,
+                              marginTop: '2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontWeight: 700,
+                                color:
+                                  mapCat === 'public' || mapCat === 'school'
+                                    ? '#047857'
+                                    : theme.accent,
+                              }}
+                            >
+                              {catLabel}
+                            </span>
                           </div>
                           {pendingMap && (
-                            <div style={{ marginTop: '4px', fontSize: '10.5px', fontWeight: 700, color: '#B45309' }}>
-                              📍 {pendingMap.submittedByName}: {pendingMap.actionSummary}
+                            <div
+                              style={{
+                                marginTop: '6px',
+                                paddingTop: '5px',
+                                borderTop: '1px dashed rgba(217, 119, 6, 0.3)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '6px',
+                              }}
+                            >
+                              <span style={{ fontSize: '10.5px', fontWeight: 700, color: isDelReq ? '#B91C1C' : '#B45309' }}>
+                                📍 {pendingMap.submittedByName}: {pendingMap.actionSummary}
+                              </span>
+                              {isSuperAdmin && (
+                                <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      approvePendingPlaceItem(item.place.id, 'maps');
+                                      setRefreshTick(t => t + 1);
+                                      showToast(`✅ Đã duyệt "${item.place.name}"!`, 'approve');
+                                    }}
+                                    style={{
+                                      padding: '2px 7px',
+                                      borderRadius: '5px',
+                                      border: 'none',
+                                      background: '#059669',
+                                      color: '#FFF',
+                                      fontSize: '10px',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    ✓ Duyệt
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      rejectPendingPlaceItem(item.place.id, 'maps');
+                                      setRefreshTick(t => t + 1);
+                                      showToast(`Đã hủy yêu cầu "${item.place.name}"`, 'warn');
+                                    }}
+                                    style={{
+                                      padding: '2px 6px',
+                                      borderRadius: '5px',
+                                      border: '1px solid #FCA5A5',
+                                      background: '#FEF2F2',
+                                      color: '#B91C1C',
+                                      fontSize: '10px',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -3225,7 +3947,7 @@ export function AdminDashboardView({
                 </div>
               </div>
 
-              {/* CỘT 2: THÔNG TIN ĐỊNH VỊ & TỌA ĐỘ MAPS */}
+              {/* CỘT 2: THÔNG TIN ĐỊNH VỊ & TỌA ĐỘ MAPS — GỌN GÀNG, CÂN ĐỐI */}
               {selectedPlaceItem ? (
                 <div
                   className={`xh-col-middle-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
@@ -3237,7 +3959,8 @@ export function AdminDashboardView({
                       borderRadius: '14px',
                       border: `1px solid ${theme.border}`,
                       boxShadow: theme.shadow,
-                      padding: '16px 18px',
+                      padding: '14px 16px',
+                      boxSizing: 'border-box',
                     }}
                   >
                     {/* KHUNG DUYỆT MAPS (CHỈ ADMIN ĐƯỢC DUYỆT, QUẢN LÝ MAPS BỊ KHÓA) */}
@@ -3245,13 +3968,14 @@ export function AdminDashboardView({
                       const ov = adminState.places?.[selectedPlaceItem.place.id];
                       const pending = ov?.pendingMapApproval;
                       if (!pending) return null;
+                      const isDel = pending.isDeleteRequest || pending.actionType === 'delete';
                       return (
                         <div
                           style={{
                             padding: '11px 13px',
                             borderRadius: '10px',
-                            background: '#FFFBEB',
-                            border: '1.5px solid #F59E0B',
+                            background: isDel ? '#FEF2F2' : '#FFFBEB',
+                            border: isDel ? '1.5px solid #EF4444' : '1.5px solid #F59E0B',
                             marginBottom: '12px',
                             display: 'flex',
                             alignItems: 'center',
@@ -3261,10 +3985,12 @@ export function AdminDashboardView({
                           }}
                         >
                           <div>
-                            <div style={{ fontSize: '12px', fontWeight: 800, color: '#B45309' }}>
-                              ⏳ Đang chờ Admin duyệt Định vị Bản đồ số
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: isDel ? '#B91C1C' : '#B45309' }}>
+                              {isDel
+                                ? '🔴 Yêu cầu XÓA Địa điểm khỏi Bản đồ đang chờ Admin duyệt'
+                                : '🟢 Địa điểm MỚI thêm trên Bản đồ đang chờ Admin duyệt'}
                             </div>
-                            <div style={{ fontSize: '11.5px', color: '#92400E', marginTop: '2px' }}>
+                            <div style={{ fontSize: '11.5px', color: isDel ? '#991B1B' : '#92400E', marginTop: '2px' }}>
                               Người gửi: <strong>{pending.submittedByName}</strong> ({pending.submittedBy}) •{' '}
                               {pending.actionSummary}
                             </div>
@@ -3277,27 +4003,32 @@ export function AdminDashboardView({
                                 onClick={() => {
                                   approvePendingPlaceItem(selectedPlaceItem.place.id, 'maps');
                                   setRefreshTick(t => t + 1);
-                                  showToast(`✅ Đã duyệt định vị "${selectedPlaceItem.place.name}"!`, 'approve');
+                                  showToast(
+                                    isDel
+                                      ? `🗑️ Đã duyệt xóa địa điểm "${selectedPlaceItem.place.name}"!`
+                                      : `✅ Đã duyệt định vị "${selectedPlaceItem.place.name}"!`,
+                                    'approve'
+                                  );
                                 }}
                                 style={{
                                   padding: '6px 12px',
                                   borderRadius: '8px',
                                   border: 'none',
-                                  background: '#059669',
+                                  background: isDel ? '#DC2626' : '#059669',
                                   color: '#FFFFFF',
                                   fontSize: '12px',
                                   fontWeight: 800,
                                   cursor: 'pointer',
                                 }}
                               >
-                                ✓ Duyệt Maps
+                                {isDel ? '✓ Duyệt Xóa' : '✓ Duyệt Maps'}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => {
                                   rejectPendingPlaceItem(selectedPlaceItem.place.id, 'maps');
                                   setRefreshTick(t => t + 1);
-                                  showToast(`Đã hoàn tác định vị của "${selectedPlaceItem.place.name}"`, 'warn');
+                                  showToast(`Đã từ chối yêu cầu của "${selectedPlaceItem.place.name}"`, 'warn');
                                 }}
                                 style={{
                                   padding: '6px 10px',
@@ -3327,7 +4058,7 @@ export function AdminDashboardView({
                                 fontWeight: 800,
                               }}
                             >
-                              <Lock size={12} /> Chờ Admin duyệt (Đã khóa với Quản lý)
+                              <Lock size={12} /> Chờ Admin duyệt
                             </span>
                           )}
                         </div>
@@ -3340,15 +4071,37 @@ export function AdminDashboardView({
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '8px',
-                        paddingBottom: '12px',
+                        paddingBottom: '10px',
                         borderBottom: `1px solid ${theme.border}`,
-                        marginBottom: '14px',
+                        marginBottom: '12px',
                         flexWrap: 'wrap',
                       }}
                     >
-                      <span style={{ fontSize: '15px', fontWeight: 800 }}>
-                        2. Thông tin Định vị Bản đồ
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '14.5px', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                          2. Thông tin Định vị Bản đồ
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            background:
+                              editPlaceLat.trim() !== '' && editPlaceLng.trim() !== ''
+                                ? '#E6F7EF'
+                                : '#FEF3C7',
+                            color:
+                              editPlaceLat.trim() !== '' && editPlaceLng.trim() !== ''
+                                ? '#047857'
+                                : '#B45309',
+                          }}
+                        >
+                          {editPlaceLat.trim() !== '' && editPlaceLng.trim() !== ''
+                            ? '📍 Đã ghim'
+                            : '⏳ Chưa ghim'}
+                        </span>
+                      </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
                         {/* NÚT BLOCK (TẠM KHÓA) TRÊN MAPS */}
@@ -3361,11 +4114,17 @@ export function AdminDashboardView({
                               nextStatus === 'locked' ? 'Block địa điểm trên Maps' : 'Mở khóa địa điểm Maps'
                             );
                             setRefreshTick(t => t + 1);
-                            showToast(nextStatus === 'locked' ? 'Đã Block địa điểm' : 'Đã mở khóa địa điểm');
+                            const msg =
+                              nextStatus === 'locked'
+                                ? `🔒 Đã Block "${selectedPlaceItem.place.name}" trên Bản đồ`
+                                : `🔓 Đã mở khóa "${selectedPlaceItem.place.name}" trên Bản đồ`;
+                            setInlineActionFeedback(msg);
+                            showToast(msg);
                           }}
                           style={{
                             ...actionBtnStyle(theme, false),
-                            padding: '6px 10px',
+                            height: '32px',
+                            padding: '0 10px',
                             fontSize: '11.5px',
                             color: selectedPlaceItem.status === 'active' ? '#B45309' : '#047857',
                           }}
@@ -3374,42 +4133,61 @@ export function AdminDashboardView({
                           <span>{selectedPlaceItem.status === 'active' ? 'Block' : 'Mở khóa'}</span>
                         </button>
 
-                        {isSuperAdmin ? (
+                        {/* NÚT GỠ GHIM TỌA ĐỘ (ĐƯA VỀ TRẠNG THÁI CHƯA GHIM) */}
+                        {editPlaceLat.trim() !== '' && editPlaceLng.trim() !== '' && (
                           <button
                             onClick={() => {
-                              savePlaceAdminOverride(
+                              clearPlaceCoordinates(
                                 selectedPlaceItem.place.id,
-                                { status: 'deleted' },
-                                'Xóa địa điểm khỏi Maps'
+                                selectedPlaceItem.place.name
                               );
+                              setEditPlaceLat('');
+                              setEditPlaceLng('');
+                              setHasActivelyPinnedOnMap(false);
                               setRefreshTick(t => t + 1);
-                              showToast('Đã xóa địa điểm khỏi bản đồ');
+                              const msg = `⏳ Đã gỡ ghim tọa độ của "${selectedPlaceItem.place.name}" về Chưa định vị!`;
+                              setInlineActionFeedback(msg);
+                              showToast(msg, 'tap');
                             }}
                             style={{
                               ...actionBtnStyle(theme, false),
-                              padding: '6px 10px',
+                              height: '32px',
+                              padding: '0 10px',
                               fontSize: '11.5px',
-                              color: '#B91C1C',
                             }}
+                            title="Gỡ ghim tọa độ để chuyển địa điểm này về trạng thái Chưa ghim"
                           >
-                            <Trash2 size={12} />
-                            <span>Xóa</span>
+                            <RotateCcw size={12} />
+                            <span>Gỡ ghim</span>
                           </button>
-                        ) : (
-                          <span
-                            style={{
-                              fontSize: '10.5px',
-                              fontWeight: 700,
-                              padding: '5px 8px',
-                              borderRadius: '7px',
-                              background: theme.bgElevated,
-                              border: `1px solid ${theme.border}`,
-                              color: theme.textMuted,
-                            }}
-                          >
-                            🔒 Xóa: Chỉ Admin
-                          </span>
                         )}
+
+                        {/* NÚT XÓA: ADMIN XÓA NGAY LẬP TỨC, QUẢN LÝ XÓA SẼ GỬI VÀO HỘP DUYỆT */}
+                        <button
+                          onClick={() => {
+                            const res = requestOrExecuteDeletePlace(
+                              selectedPlaceItem.place.id,
+                              'maps',
+                              selectedPlaceItem.place.name
+                            );
+                            setRefreshTick(t => t + 1);
+                            const msg = res.executedImmediately
+                              ? `🗑️ Admin đã xóa địa điểm "${selectedPlaceItem.place.name}" khỏi Bản đồ ngay lập tức!`
+                              : `⏳ Đã gửi yêu cầu xóa "${selectedPlaceItem.place.name}" vào Hộp Duyệt chờ Admin!`;
+                            setInlineActionFeedback(msg);
+                            showToast(msg, res.executedImmediately ? 'approve' : 'warn');
+                          }}
+                          style={{
+                            ...actionBtnStyle(theme, false),
+                            height: '32px',
+                            padding: '0 10px',
+                            fontSize: '11.5px',
+                            color: '#B91C1C',
+                          }}
+                        >
+                          <Trash2 size={12} />
+                          <span>{isSuperAdmin ? 'Xóa ngay' : 'Xóa (Chờ duyệt)'}</span>
+                        </button>
 
                         <button
                           onClick={() => handleSavePlaceAndMenu()}
@@ -3417,7 +4195,8 @@ export function AdminDashboardView({
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '5px',
-                            padding: '6px 12px',
+                            height: '32px',
+                            padding: '0 12px',
                             borderRadius: '8px',
                             border: 'none',
                             background: justSavedPlace ? '#059669' : theme.accent,
@@ -3425,6 +4204,7 @@ export function AdminDashboardView({
                             fontSize: '12px',
                             fontWeight: 800,
                             cursor: 'pointer',
+                            transition: 'all 0.15s ease',
                           }}
                         >
                           {justSavedPlace ? <Check size={13} /> : <Save size={13} />}
@@ -3449,13 +4229,21 @@ export function AdminDashboardView({
                         <select
                           value={editPlaceMapCategory}
                           onChange={e => {
+                            triggerFeedback('tap');
                             const nextCat = e.target.value as EditableMapCategory;
                             setEditPlaceMapCategory(nextCat);
                             if (nextCat === 'public' || nextCat === 'school') {
                               setEditPlaceSectorTag('dia-danh');
                             }
                           }}
-                          style={{ ...lightSelectStyle(theme), height: '36px', fontWeight: 700 }}
+                          style={{
+                            ...lightSelectStyle(theme),
+                            height: '38px',
+                            padding: '0 10px',
+                            fontSize: '13px',
+                            fontWeight: 700,
+                            boxSizing: 'border-box',
+                          }}
                         >
                           {EDITABLE_MAP_CATEGORIES.map(c => (
                             <option key={c.id} value={c.id}>
@@ -3471,12 +4259,13 @@ export function AdminDashboardView({
                           type="text"
                           value={editPlacePhone}
                           onChange={e => setEditPlacePhone(e.target.value)}
+                          placeholder="Chưa cập nhật SĐT"
                           style={compactInputStyle(theme)}
                         />
                       </div>
 
                       <div className="xh-col-span-2">
-                        <label style={compactLabelStyle(theme)}>Địa chỉ chi tiết</label>
+                        <label style={compactLabelStyle(theme)}>Địa chỉ chi tiết (Số nhà, Đường, Khu vực)</label>
                         <input
                           type="text"
                           value={editPlaceAddress}
@@ -3487,9 +4276,9 @@ export function AdminDashboardView({
 
                       <div className="xh-col-span-2">
                         <label style={compactLabelStyle(theme)}>
-                          Dán link Google Maps, Plus Code (VD: 7PQ6+VFP) hoặc tìm tọa độ tự động
+                          Dán link Google Maps, Plus Code (VD: 7PQ6+VFP) hoặc tìm tọa độ
                         </label>
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                           <input
                             type="text"
                             value={editPlaceMapsUrl || editPlaceMapsQuery}
@@ -3504,6 +4293,10 @@ export function AdminDashboardView({
                               if (parsed) {
                                 setEditPlaceLat(String(parsed.lat));
                                 setEditPlaceLng(String(parsed.lng));
+                                setHasActivelyPinnedOnMap(true);
+                                setInlineActionFeedback(
+                                  `📍 Đã nhận diện tọa độ (${parsed.lat}, ${parsed.lng}) từ link Maps!`
+                                );
                               }
                             }}
                             placeholder="Dán link Google Maps, Plus Code hoặc tọa độ..."
@@ -3523,7 +4316,10 @@ export function AdminDashboardView({
                               if (direct) {
                                 setEditPlaceLat(String(direct.lat));
                                 setEditPlaceLng(String(direct.lng));
-                                showToast(`📍 Đã trích xuất tọa độ: ${direct.lat}, ${direct.lng}`);
+                                setHasActivelyPinnedOnMap(true);
+                                const msg = `📍 Đã trích xuất tọa độ: ${direct.lat}, ${direct.lng}`;
+                                setInlineActionFeedback(msg);
+                                showToast(msg);
                                 return;
                               }
                               setIsAdminGeocoding(true);
@@ -3534,7 +4330,10 @@ export function AdminDashboardView({
                                 if (results.length > 0) {
                                   setEditPlaceLat(String(results[0].lat));
                                   setEditPlaceLng(String(results[0].lng));
-                                  showToast(`📍 Đã tìm thấy tọa độ: ${results[0].lat}, ${results[0].lng}`);
+                                  setHasActivelyPinnedOnMap(true);
+                                  const msg = `📍 Đã tìm thấy tọa độ: ${results[0].lat}, ${results[0].lng}`;
+                                  setInlineActionFeedback(msg);
+                                  showToast(msg);
                                 } else {
                                   const road = findSuggestedRoadForAddress(
                                     `${editPlaceAddress} ${editPlaceName}`,
@@ -3543,9 +4342,14 @@ export function AdminDashboardView({
                                   if (road) {
                                     setEditPlaceLat(String(Number(road.lat.toFixed(6))));
                                     setEditPlaceLng(String(Number(road.lng.toFixed(6))));
-                                    showToast(`📍 Định vị theo đường ${road.name}`);
+                                    setHasActivelyPinnedOnMap(true);
+                                    const msg = `📍 Định vị theo đường ${road.name}`;
+                                    setInlineActionFeedback(msg);
+                                    showToast(msg);
                                   } else {
-                                    showToast('Chưa tìm thấy tự động — hãy chấm trực tiếp ở Cột 3 bên phải', 'warn');
+                                    const msg = 'Chưa tìm thấy tự động — hãy bấm trực tiếp ở Cột 3 bên phải để ghim!';
+                                    setInlineActionFeedback(msg);
+                                    showToast(msg, 'warn');
                                   }
                                 }
                               } finally {
@@ -3558,7 +4362,8 @@ export function AdminDashboardView({
                               color: '#FFFFFF',
                               borderColor: theme.accent,
                               padding: '0 12px',
-                              height: '36px',
+                              height: '38px',
+                              boxSizing: 'border-box',
                             }}
                           >
                             <MapPin size={13} />
@@ -3624,16 +4429,16 @@ export function AdminDashboardView({
                   >
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: '13.5px', fontWeight: 800 }}>
-                        3. Bản đồ số Xuân Hòa (Chấm & Tìm trực tiếp)
+                        3. Bản đồ số Xuân Hòa (Chấm chỗ nào xong chỗ đó)
                       </div>
                       <div style={{ fontSize: '11px', color: theme.textSecondary }}>
-                        Tìm đường/quán ngay trên Bản đồ số hoặc bấm vào vị trí bất kỳ để lấy tọa độ
+                        Bấm trực tiếp vào vị trí trên Bản đồ số để ghim & lưu tọa độ tức thì
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                       <button
                         type="button"
-                        onClick={() => handleSavePlaceAndMenu(undefined, 'Đã lưu định vị Bản đồ')}
+                        onClick={() => handleSavePlaceAndMenu()}
                         style={{
                           ...smallRowBtnStyle(theme),
                           background: '#047857',
@@ -3691,33 +4496,27 @@ export function AdminDashboardView({
                       embeddedInAdmin={true}
                       adminSelectedPlaceId={selectedPlaceItem.place.id}
                       adminPreviewLat={
-                        editPlaceLat.trim() !== '' && !Number.isNaN(Number(editPlaceLat))
+                        hasActivelyPinnedOnMap &&
+                        editPlaceLat.trim() !== '' &&
+                        !Number.isNaN(Number(editPlaceLat))
                           ? Number(editPlaceLat)
                           : null
                       }
                       adminPreviewLng={
-                        editPlaceLng.trim() !== '' && !Number.isNaN(Number(editPlaceLng))
+                        hasActivelyPinnedOnMap &&
+                        editPlaceLng.trim() !== '' &&
+                        !Number.isNaN(Number(editPlaceLng))
                           ? Number(editPlaceLng)
                           : null
                       }
-                      adminPreviewName={editPlaceName || selectedPlaceItem.place.name}
-                      onAdminPickCoordinates={(pickedLat, pickedLng) => {
-                        setEditPlaceLat(String(pickedLat));
-                        setEditPlaceLng(String(pickedLng));
-                        showToast(
-                          `📍 Đã chấm trên Bản đồ số: ${pickedLat}, ${pickedLng} — Bấm "Lưu Định Vị" để lưu!`
-                        );
-                      }}
-                      onAdminSelectPlace={pickedPlaceId => {
-                        const found = allPlaces.find(p => p.place.id === pickedPlaceId);
-                        if (found) {
-                          selectPlaceForEdit(found);
-                        }
-                      }}
+                      adminFlyTrigger={mapFlyTrigger}
+                      onAdminPickCoordinates={handleAdminMapPickCoordinates}
+                      onAdminSelectPlace={handleAdminMapSelectPlace}
                     />
                   </div>
                 </div>
               ) : null}
+              </div>
             </div>
           )}
 
@@ -4613,14 +5412,14 @@ export function AdminDashboardView({
         </div>
       )}
 
-      {/* MODAL THÊM QUÁN MỚI */}
+      {/* MODAL THÊM QUÁN MỚI (QUẢN LÝ QUÁN) HOẶC THÊM ĐỊNH VỊ MỚI (QUẢN LÝ MAPS) */}
       {isNewPlaceModalOpen && (
         <div className="xh-modal-backdrop" onClick={() => setIsNewPlaceModalOpen(false)}>
           <div
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: '440px',
+              maxWidth: '450px',
               background: theme.bgCard,
               color: theme.textPrimary,
               borderRadius: '16px',
@@ -4629,37 +5428,39 @@ export function AdminDashboardView({
               boxShadow: '0 20px 50px rgba(0,0,0,0.18)',
             }}
           >
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: 800 }}>
-              Thêm Quán / Địa Điểm Mới
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: 800 }}>
+              {activeSection === 'maps'
+                ? '📍 Thêm Địa Điểm Định Vị Mới (Maps)'
+                : '🏪 Thêm Quán Mới (Quản lý Quán)'}
             </h3>
+            <div style={{ fontSize: '11.5px', color: theme.textMuted, marginBottom: '12px' }}>
+              {activeSection === 'maps'
+                ? 'Chọn đúng mục Hành chính & Công cộng, Trường học... Các mục Hành chính/Trường học chỉ nằm trên Bản đồ số, không đẩy sang Quản lý Quán.'
+                : 'Chỉ dành cho Quán ăn, Quán nhậu, Cafe, Ăn vặt, Dịch vụ.'}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
-                <label style={compactLabelStyle(theme)}>Tên quán *</label>
+                <label style={compactLabelStyle(theme)}>
+                  {activeSection === 'maps' ? 'Tên Địa điểm / Cơ quan / Quán *' : 'Tên Quán *'}
+                </label>
                 <input
                   type="text"
                   value={newPlaceForm.name}
                   onChange={e => setNewPlaceForm({ ...newPlaceForm, name: e.target.value })}
-                  placeholder="VD: Lẩu Nướng Cô Ba / Bi-a Club..."
+                  placeholder={
+                    activeSection === 'maps'
+                      ? 'VD: UBND Phường Xuân Hòa / Công an Phường Xuân Hòa...'
+                      : 'VD: Lẩu Nướng Cô Ba / Bi-a Club...'
+                  }
                   style={compactInputStyle(theme)}
                 />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+
+              {activeSection === 'maps' ? (
                 <div>
-                  <label style={compactLabelStyle(theme)}>Phân khu quản lý</label>
-                  <select
-                    value={newPlaceForm.sectorTag}
-                    onChange={e => setNewPlaceForm({ ...newPlaceForm, sectorTag: e.target.value })}
-                    style={{ ...lightSelectStyle(theme), padding: '8px 11px' }}
-                  >
-                    {sectorTags.map(sec => (
-                      <option key={sec.id} value={sec.id}>
-                        {sec.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={compactLabelStyle(theme)}>Biểu tượng Bản đồ (Icon)</label>
+                  <label style={compactLabelStyle(theme)}>
+                    Danh mục Bản đồ số (Chọn đúng mục Hành chính / Trường học / Quán)
+                  </label>
                   <select
                     value={newPlaceForm.mapCategory}
                     onChange={e => {
@@ -4670,10 +5471,18 @@ export function AdminDashboardView({
                         sectorTag:
                           nextCat === 'public' || nextCat === 'school'
                             ? 'dia-danh'
-                            : newPlaceForm.sectorTag,
+                            : nextCat === 'pub'
+                            ? 'nhau-lau'
+                            : nextCat === 'cafe'
+                            ? 'uong'
+                            : nextCat === 'snack'
+                            ? 'an-vat'
+                            : nextCat === 'service'
+                            ? 'dich-vu'
+                            : 'an-chinh',
                       });
                     }}
-                    style={{ ...lightSelectStyle(theme), padding: '8px 11px' }}
+                    style={{ ...lightSelectStyle(theme), padding: '8px 11px', fontSize: '12.5px' }}
                   >
                     {EDITABLE_MAP_CATEGORIES.map(c => (
                       <option key={c.id} value={c.id}>
@@ -4682,7 +5491,38 @@ export function AdminDashboardView({
                     ))}
                   </select>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <label style={compactLabelStyle(theme)}>Phân khu Quán (Ngành nghề)</label>
+                  <select
+                    value={newPlaceForm.sectorTag === 'dia-danh' ? 'an-chinh' : newPlaceForm.sectorTag}
+                    onChange={e => {
+                      const sec = e.target.value;
+                      setNewPlaceForm({
+                        ...newPlaceForm,
+                        sectorTag: sec,
+                        mapCategory:
+                          sec === 'nhau-lau'
+                            ? 'pub'
+                            : sec === 'uong'
+                            ? 'cafe'
+                            : sec === 'an-vat'
+                            ? 'snack'
+                            : sec === 'dich-vu'
+                            ? 'service'
+                            : 'food',
+                      });
+                    }}
+                    style={{ ...lightSelectStyle(theme), padding: '8px 11px', fontSize: '12.5px' }}
+                  >
+                    {commercialSectorTags.map(sec => (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div>
                   <label style={compactLabelStyle(theme)}>Số điện thoại</label>
@@ -4694,7 +5534,7 @@ export function AdminDashboardView({
                   />
                 </div>
                 <div>
-                  <label style={compactLabelStyle(theme)}>Giờ mở cửa</label>
+                  <label style={compactLabelStyle(theme)}>Giờ mở cửa / làm việc</label>
                   <input
                     type="text"
                     value={newPlaceForm.openHours}
@@ -4820,7 +5660,11 @@ export function AdminDashboardView({
                   cursor: 'pointer',
                 }}
               >
-                Tạo Quán
+                {isSuperAdmin
+                  ? activeSection === 'maps'
+                    ? '✓ Thêm & Ghim Ngay'
+                    : '✓ Tạo Quán Ngay'
+                  : 'Gửi Duyệt Tạo Mới'}
               </button>
             </div>
           </div>
@@ -4992,15 +5836,16 @@ export function AdminDashboardView({
           width: 100%;
           overflow-x: hidden;
         }
-        /* BỐ CỤC 3 CỘT CHO QUẢN LÝ QUÁN VÀ QUẢN LÝ MAPS */
+        /* BỐ CỤC 3 CỘT CHO QUẢN LÝ QUÁN VÀ QUẢN LÝ MAPS — CÂN ĐỐI 100% KHUNG HÌNH */
         .xh-three-col-layout {
           display: grid;
-          grid-template-columns: 295px minmax(350px, 1.15fr) minmax(320px, 1fr);
+          grid-template-columns: 295px minmax(360px, 1.12fr) minmax(330px, 1fr);
           gap: 14px;
-          align-items: start;
+          align-items: stretch;
         }
         .xh-three-col-layout.xh-maps-three-col {
-          grid-template-columns: 265px minmax(330px, 0.92fr) minmax(440px, 1.45fr);
+          grid-template-columns: 280px minmax(365px, 0.96fr) minmax(440px, 1.42fr);
+          align-items: stretch;
         }
         .xh-places-master-detail {
           display: grid;
@@ -5015,16 +5860,25 @@ export function AdminDashboardView({
           position: sticky;
           top: 68px;
           align-self: start;
+          box-sizing: border-box;
+        }
+        .xh-col-middle-pane {
+          position: sticky;
+          top: 68px;
+          align-self: start;
+          box-sizing: border-box;
         }
         .xh-col-right-pane {
           position: sticky;
           top: 68px;
           align-self: start;
+          box-sizing: border-box;
         }
         .xh-compact-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 10px 12px;
+          gap: 11px 12px;
+          align-items: end;
         }
         .xh-col-span-2 {
           grid-column: span 2;
@@ -5033,6 +5887,38 @@ export function AdminDashboardView({
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
           gap: 12px;
+        }
+        .xh-admin-root button,
+        .xh-admin-root select,
+        .xh-admin-root input {
+          transition: background-color 0.14s ease, border-color 0.14s ease, transform 0.1s ease, box-shadow 0.14s ease;
+        }
+        .xh-admin-root button:active {
+          transform: scale(0.97);
+        }
+        .xh-admin-root input:focus,
+        .xh-admin-root select:focus {
+          border-color: #166534 !important;
+          box-shadow: 0 0 0 2px rgba(22, 101, 52, 0.14);
+        }
+
+        @keyframes xhToastJump {
+          0% {
+            opacity: 0;
+            transform: translate(-50%, 14px) scale(0.92);
+          }
+          14% {
+            opacity: 1;
+            transform: translate(-50%, 0) scale(1);
+          }
+          82% {
+            opacity: 1;
+            transform: translate(-50%, 0) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translate(-50%, -8px) scale(0.96);
+          }
         }
 
         @media (max-width: 1180px) {
@@ -5120,23 +6006,30 @@ export function AdminDashboardView({
 function compactLabelStyle(theme: ThemeTokens): React.CSSProperties {
   return {
     display: 'block',
-    fontSize: '11.5px',
+    fontSize: '12px',
     fontWeight: 700,
     color: theme.textSecondary,
-    marginBottom: '4px',
+    marginBottom: '5px',
+    lineHeight: '18px',
+    height: '18px',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   };
 }
 
 function compactInputStyle(theme: ThemeTokens): React.CSSProperties {
   return {
     width: '100%',
-    padding: '8px 11px',
+    height: '38px',
+    boxSizing: 'border-box',
+    padding: '0 11px',
     borderRadius: '8px',
     border: `1px solid ${theme.border}`,
     backgroundColor: theme.bgInput,
     color: theme.textPrimary,
     fontSize: '13px',
-    fontWeight: 500,
+    fontWeight: 600,
     outline: 'none',
     fontFamily: 'inherit',
   };

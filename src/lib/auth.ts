@@ -10,7 +10,7 @@ import {
   signOut as fbSignOut, 
   User 
 } from 'firebase/auth';
-import { update } from 'firebase/database';
+import { update, get } from 'firebase/database';
 import { firebaseConfig, getRealtimeDb, ref } from './firebase';
 
 export type UserResidentType = 'student_sp2' | 'student_other' | 'local' | 'worker' | 'tourist';
@@ -241,41 +241,88 @@ function encodeEmailForRtdbKey(email: string): string {
     .replace(/\]/g, '%5D');
 }
 
+function getCanonicalUidForEmail(email: string, fallbackUid?: string): string {
+  const clean = email.trim().toLowerCase();
+  if (fallbackUid && !fallbackUid.startsWith('uid_17') && !fallbackUid.startsWith('google_17')) {
+    return fallbackUid;
+  }
+  return `uid_${clean.replace(/[^a-z0-9]/g, '_')}`;
+}
+
+function getExistingMemberFromAdminCache(email?: string): Partial<UserAuthProfile> | null {
+  if (typeof window === 'undefined' || !email) return null;
+  try {
+    const cleanEmail = email.trim().toLowerCase();
+    const encodedKey = encodeEmailForRtdbKey(cleanEmail);
+    const rawAdmin = localStorage.getItem('xuanhoa_admin_state_v1');
+    if (!rawAdmin) return null;
+    const parsed = JSON.parse(rawAdmin);
+    const m = parsed?.members?.[cleanEmail] || parsed?.members?.[encodedKey];
+    if (!m || !m.email) return null;
+    return {
+      uid: m.uid,
+      email: cleanEmail,
+      displayName: m.displayName || m.nickname,
+      nickname: m.nickname || m.displayName,
+      gender: m.gender || 'male',
+      avatar: m.avatar || '🐭',
+      avatarId: m.avatarId || 'm_ty',
+      phone: m.phone || '',
+      residentType: m.residentType || 'student_sp2',
+      tastePreferences: m.tastePreferences || ['lau_nuong', 'tra_sua'],
+      photoURL: m.photoURL,
+      hasCompletedProfile: true,
+      isFirstTimeSetupDone: true,
+      createdAt: m.createdAt || Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function saveAuthUser(user: UserAuthProfile): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(LOGGED_OUT_KEY);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-    if (user.email) {
-      const cleanEmail = user.email.trim().toLowerCase();
-      localStorage.setItem(PROFILE_BY_EMAIL_PREFIX + cleanEmail, JSON.stringify(user));
+    const normalizedEmail = user.email ? user.email.trim().toLowerCase() : undefined;
+    const normalizedUser: UserAuthProfile = normalizedEmail
+      ? {
+          ...user,
+          email: normalizedEmail,
+          uid: getCanonicalUidForEmail(normalizedEmail, user.uid),
+        }
+      : user;
 
-      // Đồng bộ tức thì (Realtime) hồ sơ thành viên lên Firebase Realtime Database để Admin thấy ngay lập tức trên mọi máy
+    localStorage.removeItem(LOGGED_OUT_KEY);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(normalizedUser));
+    if (normalizedEmail) {
+      localStorage.setItem(PROFILE_BY_EMAIL_PREFIX + normalizedEmail, JSON.stringify(normalizedUser));
+
+      // Đồng bộ tức thì (Realtime) 1 Gmail = 1 Nick duy nhất lên Firebase Realtime Database
       try {
         const rtdb = getRealtimeDb();
-        if (rtdb && user.isLoggedIn) {
-          const safeKey = encodeEmailForRtdbKey(cleanEmail);
+        if (rtdb && normalizedUser.isLoggedIn) {
+          const safeKey = encodeEmailForRtdbKey(normalizedEmail);
           const payload: Record<string, any> = {
-            uid: user.uid || `uid_${Date.now()}`,
-            email: cleanEmail,
-            displayName: user.displayName || user.nickname || cleanEmail,
-            nickname: user.nickname || user.displayName || cleanEmail,
-            avatar: user.avatar || '🐭',
-            avatarId: user.avatarId || 'm_ty',
-            gender: user.gender || 'male',
-            phone: user.phone || '',
-            residentType: user.residentType || 'student_sp2',
-            tastePreferences: user.tastePreferences || [],
-            createdAt: user.createdAt || Date.now(),
+            uid: normalizedUser.uid,
+            email: normalizedEmail,
+            displayName: normalizedUser.displayName || normalizedUser.nickname || normalizedEmail,
+            nickname: normalizedUser.nickname || normalizedUser.displayName || normalizedEmail,
+            avatar: normalizedUser.avatar || '🐭',
+            avatarId: normalizedUser.avatarId || 'm_ty',
+            gender: normalizedUser.gender || 'male',
+            phone: normalizedUser.phone || '',
+            residentType: normalizedUser.residentType || 'student_sp2',
+            tastePreferences: normalizedUser.tastePreferences || [],
+            createdAt: normalizedUser.createdAt || Date.now(),
             lastActiveAt: Date.now(),
           };
-          if (user.photoURL) payload.photoURL = user.photoURL;
+          if (normalizedUser.photoURL) payload.photoURL = normalizedUser.photoURL;
           update(ref(rtdb, `xuanhoa_admin/members_registry/${safeKey}`), payload).catch(() => {});
         }
       } catch {}
     }
-    writeAuthCookie(user);
-    window.dispatchEvent(new CustomEvent('xuanhoa_auth_change', { detail: user }));
+    writeAuthCookie(normalizedUser);
+    window.dispatchEvent(new CustomEvent('xuanhoa_auth_change', { detail: normalizedUser }));
   } catch (err) {
     console.warn('Lỗi lưu tài khoản người dùng:', err);
   }
@@ -320,40 +367,51 @@ function decodeJwtPayload(token: string): any | null {
   }
 }
 
-// Tạo hoặc cập nhật ngay lập tức hồ sơ người dùng từ thông tin Google thật và lưu bền vững
+// Tạo hoặc khôi phục hồ sơ duy nhất từ Gmail (1 Gmail = 1 Nick duy nhất xuyên suốt mọi thiết bị)
 export function createOrUpdateAuthUserFromGoogle(googleData: {
   uid: string;
   email: string;
   displayName: string;
   photoURL?: string;
 }): UserAuthProfile {
+  const cleanEmail = (googleData.email || 'thuckhach@gmail.com').trim().toLowerCase();
   const existingCurrent = getStoredAuthUser();
-  const existingByEmail = getSavedProfileByEmail(googleData.email);
+  const existingByEmail = getSavedProfileByEmail(cleanEmail);
+  const existingFromAdmin = getExistingMemberFromAdminCache(cleanEmail);
+
   const baseProfile =
     existingByEmail ||
-    (existingCurrent && existingCurrent.email?.toLowerCase() === googleData.email?.toLowerCase()
+    (existingCurrent && existingCurrent.email?.trim().toLowerCase() === cleanEmail
       ? existingCurrent
-      : null);
+      : null) ||
+    existingFromAdmin;
 
   const cleanDisplayName =
-    googleData.displayName || googleData.email?.split('@')[0] || 'Thực Khách';
+    googleData.displayName || cleanEmail.split('@')[0] || 'Thực Khách';
+
+  const alreadyRegistered = Boolean(
+    baseProfile?.isFirstTimeSetupDone ||
+      baseProfile?.phone ||
+      (baseProfile?.avatarId && baseProfile.avatarId !== 'm_ty') ||
+      existingFromAdmin
+  );
 
   const updated: UserAuthProfile = {
     isLoggedIn: true,
-    uid: googleData.uid || baseProfile?.uid || 'google_' + Date.now(),
-    email: googleData.email || baseProfile?.email || 'thuckhach@gmail.com',
-    displayName: cleanDisplayName,
+    uid: getCanonicalUidForEmail(cleanEmail, googleData.uid || baseProfile?.uid),
+    email: cleanEmail,
+    displayName: baseProfile?.displayName || cleanDisplayName,
     nickname: baseProfile?.merchantPlaceName || baseProfile?.nickname || cleanDisplayName,
     gender: baseProfile?.gender || 'male',
     avatar: baseProfile?.isMerchantAccount ? '🏪' : baseProfile?.avatar || '🐭',
     avatarId: baseProfile?.avatarId || 'm_ty',
     phone: baseProfile?.phone || '',
-    residentType: baseProfile?.residentType || 'student_sp2',
+    residentType: (baseProfile?.residentType as UserResidentType) || 'student_sp2',
     tastePreferences: baseProfile?.tastePreferences || ['lau_nuong', 'tra_sua'],
     filterByTaste: baseProfile?.filterByTaste ?? true,
     photoURL: googleData.photoURL || baseProfile?.photoURL,
     hasCompletedProfile: true,
-    isFirstTimeSetupDone: baseProfile?.isFirstTimeSetupDone || false,
+    isFirstTimeSetupDone: alreadyRegistered,
     isMerchantAccount: baseProfile?.isMerchantAccount,
     merchantPlaceId: baseProfile?.merchantPlaceId,
     merchantPlaceName: baseProfile?.merchantPlaceName,
@@ -361,7 +419,51 @@ export function createOrUpdateAuthUserFromGoogle(googleData: {
     createdAt: baseProfile?.createdAt || Date.now(),
   };
 
-  saveAuthUser(updated);
+  // Kiểm tra trên Cloud Firebase xem Gmail này đã có nick từ trước trên thiết bị khác chưa:
+  // Nếu đã có nick trên Cloud, khôi phục đúng nick đó (không tạo nick mới hay ghi đè bằng mặc định)
+  if (!alreadyRegistered && typeof window !== 'undefined' && firebaseConfig.apiKey) {
+    try {
+      const rtdb = getRealtimeDb();
+      if (rtdb) {
+        const safeKey = encodeEmailForRtdbKey(cleanEmail);
+        get(ref(rtdb, `xuanhoa_admin/members_registry/${safeKey}`))
+          .then(snap => {
+            if (snap.exists()) {
+              const cloudMember = snap.val();
+              if (cloudMember && cloudMember.email) {
+                const restored: UserAuthProfile = {
+                  ...updated,
+                  uid: getCanonicalUidForEmail(cleanEmail, cloudMember.uid || updated.uid),
+                  displayName: cloudMember.displayName || cloudMember.nickname || updated.displayName,
+                  nickname: cloudMember.nickname || cloudMember.displayName || updated.nickname,
+                  avatar: cloudMember.avatar || updated.avatar,
+                  avatarId: cloudMember.avatarId || updated.avatarId,
+                  gender: cloudMember.gender || updated.gender,
+                  phone: cloudMember.phone || updated.phone,
+                  residentType: cloudMember.residentType || updated.residentType,
+                  tastePreferences: cloudMember.tastePreferences || updated.tastePreferences,
+                  isFirstTimeSetupDone: true,
+                  createdAt: cloudMember.createdAt || updated.createdAt,
+                };
+                saveAuthUser(restored);
+                return;
+              }
+            }
+            saveAuthUser(updated);
+          })
+          .catch(() => {
+            saveAuthUser(updated);
+          });
+      } else {
+        saveAuthUser(updated);
+      }
+    } catch {
+      saveAuthUser(updated);
+    }
+  } else {
+    saveAuthUser(updated);
+  }
+
   return updated;
 }
 

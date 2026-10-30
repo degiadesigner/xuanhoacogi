@@ -286,6 +286,123 @@ function createInitialAdminState(): AdminState {
   };
 }
 
+// Mã hóa / giải mã khóa cho Firebase Realtime Database (Firebase RTDB cấm các ký tự . # $ / [ ] trong key, ví dụ email có dấu chấm ".")
+export function encodeRtdbKey(key: string): string {
+  return String(key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/%/g, '%25')
+    .replace(/\./g, '%2E')
+    .replace(/#/g, '%23')
+    .replace(/\$/g, '%24')
+    .replace(/\//g, '%2F')
+    .replace(/\[/g, '%5B')
+    .replace(/\]/g, '%5D');
+}
+
+export function decodeRtdbKey(encodedKey: string): string {
+  try {
+    return decodeURIComponent(String(encodedKey || '')).trim().toLowerCase();
+  } catch {
+    return String(encodedKey || '')
+      .replace(/%2E/gi, '.')
+      .replace(/%23/gi, '#')
+      .replace(/%24/gi, '$')
+      .replace(/%2F/gi, '/')
+      .replace(/%5B/gi, '[')
+      .replace(/%5D/gi, ']')
+      .replace(/%25/gi, '%')
+      .trim()
+      .toLowerCase();
+  }
+}
+
+// Chuẩn hóa & gộp tuyệt đối theo Gmail: Đảm bảo 1 Gmail = DUY NHẤT 1 Nick, tự động dọn sạch mọi khóa bị nhân đôi (%2E hoặc trùng lặp)
+export function normalizeAndDeduplicateMembers(
+  rawMembers?: Record<string, ManagedMember> | null
+): { members: Record<string, ManagedMember>; hadDuplicates: boolean } {
+  const out: Record<string, ManagedMember> = {};
+  let hadDuplicates = false;
+  if (!rawMembers || typeof rawMembers !== 'object') {
+    return { members: out, hadDuplicates: false };
+  }
+
+  for (const [rawKey, incoming] of Object.entries(rawMembers)) {
+    if (!incoming || typeof incoming !== 'object') {
+      hadDuplicates = true;
+      continue;
+    }
+    const cleanEmail = decodeRtdbKey(incoming.email || rawKey).trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      hadDuplicates = true;
+      continue;
+    }
+    if (rawKey !== cleanEmail) {
+      hadDuplicates = true;
+    }
+
+    const canonicalUid = `uid_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+    const existing = out[cleanEmail];
+    if (existing) {
+      hadDuplicates = true;
+      const preferIncomingNick =
+        incoming.nickname &&
+        incoming.nickname !== cleanEmail &&
+        (!existing.nickname || existing.nickname === cleanEmail);
+      out[cleanEmail] = {
+        ...existing,
+        ...incoming,
+        uid: canonicalUid,
+        email: cleanEmail,
+        displayName: preferIncomingNick
+          ? incoming.displayName || incoming.nickname
+          : existing.displayName || incoming.displayName || cleanEmail,
+        nickname: preferIncomingNick
+          ? incoming.nickname
+          : existing.nickname || incoming.nickname || cleanEmail,
+        phone: incoming.phone || existing.phone || '',
+        avatar:
+          incoming.avatar && incoming.avatar !== '🐭'
+            ? incoming.avatar
+            : existing.avatar || incoming.avatar || '🐭',
+        avatarId:
+          incoming.avatarId && incoming.avatarId !== 'm_ty'
+            ? incoming.avatarId
+            : existing.avatarId || incoming.avatarId || 'm_ty',
+        gender: incoming.gender || existing.gender || 'male',
+        residentType: incoming.residentType || existing.residentType || 'student_sp2',
+        tastePreferences:
+          incoming.tastePreferences && incoming.tastePreferences.length > 0
+            ? incoming.tastePreferences
+            : existing.tastePreferences || [],
+        status:
+          existing.status && existing.status !== 'active'
+            ? existing.status
+            : incoming.status || 'active',
+        canManageWeb: Boolean(existing.canManageWeb || incoming.canManageWeb),
+        canManageMaps: Boolean(existing.canManageMaps || incoming.canManageMaps),
+        banReason: existing.banReason || incoming.banReason,
+        spinsCount: Math.max(existing.spinsCount || 0, incoming.spinsCount || 0),
+        level: Math.max(existing.level || 1, incoming.level || 1),
+        reviewsCount: Math.max(existing.reviewsCount || 0, incoming.reviewsCount || 0),
+        createdAt: Math.min(
+          existing.createdAt || Date.now(),
+          incoming.createdAt || Date.now()
+        ),
+        lastActiveAt: Math.max(existing.lastActiveAt || 0, incoming.lastActiveAt || 0) || Date.now(),
+      };
+    } else {
+      out[cleanEmail] = {
+        ...incoming,
+        uid: canonicalUid,
+        email: cleanEmail,
+      };
+    }
+  }
+
+  return { members: out, hadDuplicates };
+}
+
 export function getAdminState(): AdminState {
   if (typeof window === 'undefined') return createInitialAdminState();
   try {
@@ -318,12 +435,17 @@ export function getAdminState(): AdminState {
       migrated = true;
     }
 
+    const { members: cleanMembers, hadDuplicates } = normalizeAndDeduplicateMembers(parsed.members);
+    if (hadDuplicates) {
+      migrated = true;
+    }
+
     const resultState: AdminState = {
       ...createInitialAdminState(),
       ...parsed,
       places,
       dishes: parsed.dishes || {},
-      members: parsed.members || {},
+      members: cleanMembers,
       merchantSubmissions: parsed.merchantSubmissions || {},
       auditLogs: parsed.auditLogs || [],
       mapAccessMode: parsed.mapAccessMode || 'merchants_and_admin_only',
@@ -336,37 +458,6 @@ export function getAdminState(): AdminState {
     return resultState;
   } catch {
     return createInitialAdminState();
-  }
-}
-
-// Mã hóa / giải mã khóa cho Firebase Realtime Database (Firebase RTDB cấm các ký tự . # $ / [ ] trong key, ví dụ email có dấu chấm ".")
-export function encodeRtdbKey(key: string): string {
-  return String(key || '')
-    .trim()
-    .toLowerCase()
-    .replace(/%/g, '%25')
-    .replace(/\./g, '%2E')
-    .replace(/#/g, '%23')
-    .replace(/\$/g, '%24')
-    .replace(/\//g, '%2F')
-    .replace(/\[/g, '%5B')
-    .replace(/\]/g, '%5D');
-}
-
-export function decodeRtdbKey(encodedKey: string): string {
-  try {
-    return decodeURIComponent(String(encodedKey || '')).trim().toLowerCase();
-  } catch {
-    return String(encodedKey || '')
-      .replace(/%2E/gi, '.')
-      .replace(/%23/gi, '#')
-      .replace(/%24/gi, '$')
-      .replace(/%2F/gi, '/')
-      .replace(/%5B/gi, '[')
-      .replace(/%5D/gi, ']')
-      .replace(/%25/gi, '%')
-      .trim()
-      .toLowerCase();
   }
 }
 
@@ -443,6 +534,7 @@ export function saveAdminState(next: AdminState, syncCloud = true): void {
   if (typeof window === 'undefined') return;
   try {
     next.updatedAt = Date.now();
+    next.members = normalizeAndDeduplicateMembers(next.members || {}).members;
     const serialized = JSON.stringify(next);
     localStorage.setItem(ADMIN_STORAGE_KEY, serialized);
     window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: next }));
@@ -509,16 +601,17 @@ export function initAdminCloudSync(): void {
     localMembers: Record<string, ManagedMember>,
     incomingMembers: Record<string, ManagedMember>
   ): Record<string, ManagedMember> => {
-    const out: Record<string, ManagedMember> = { ...localMembers };
-    for (const [rawKey, incoming] of Object.entries(incomingMembers)) {
-      if (!incoming) continue;
-      const emailKey = (incoming.email || decodeRtdbKey(rawKey)).trim().toLowerCase();
-      if (!emailKey) continue;
+    const cleanLocal = normalizeAndDeduplicateMembers(localMembers).members;
+    const cleanIncoming = normalizeAndDeduplicateMembers(incomingMembers).members;
+    const out: Record<string, ManagedMember> = { ...cleanLocal };
+    for (const [emailKey, incoming] of Object.entries(cleanIncoming)) {
+      if (!incoming || !emailKey) continue;
       const existing = out[emailKey];
       out[emailKey] = {
         ...(existing || {}),
         ...incoming,
-        email: incoming.email || emailKey,
+        uid: `uid_${emailKey.replace(/[^a-z0-9]/g, '_')}`,
+        email: emailKey,
         status: incoming.status || existing?.status || 'active',
         canManageWeb:
           incoming.canManageWeb !== undefined ? incoming.canManageWeb : existing?.canManageWeb,
@@ -528,7 +621,10 @@ export function initAdminCloudSync(): void {
         spinsCount: Math.max(incoming.spinsCount || 0, existing?.spinsCount || 0),
         level: Math.max(incoming.level || 1, existing?.level || 1),
         reviewsCount: Math.max(incoming.reviewsCount || 0, existing?.reviewsCount || 0),
-        createdAt: existing?.createdAt || incoming.createdAt || Date.now(),
+        createdAt: Math.min(
+          existing?.createdAt || Date.now(),
+          incoming.createdAt || Date.now()
+        ),
         lastActiveAt: Math.max(incoming.lastActiveAt || 0, existing?.lastActiveAt || 0) || Date.now(),
       };
     }

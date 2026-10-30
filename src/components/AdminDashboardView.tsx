@@ -439,7 +439,15 @@ export function AdminDashboardView({
     });
   }, [allPlaces, adminState, pendingMerchantSubmissions]);
   const allMembers = useMemo(() => {
-    return Object.values(adminState.members || {}).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+    const uniqueByEmail = new Map<string, (typeof adminState.members)[string]>();
+    for (const m of Object.values(adminState.members || {})) {
+      if (!m || !m.email) continue;
+      const emailKey = m.email.trim().toLowerCase();
+      if (!uniqueByEmail.has(emailKey)) {
+        uniqueByEmail.set(emailKey, m);
+      }
+    }
+    return Array.from(uniqueByEmail.values()).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
   }, [adminState]);
 
   const sectorTags: SectorCategoryTag[] = useMemo(() => {

@@ -1,11 +1,4 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import {
-  getFirestore,
-  doc,
-  setDoc,
-  onSnapshot,
-} from 'firebase/firestore';
-import { set } from 'firebase/database';
+import { set, update, remove } from 'firebase/database';
 import { firebaseConfig, getRealtimeDb, ref, onValue } from './firebase';
 import { Food } from './foods';
 import { Place, xuanHoaPlaces, getPlaceStyleGroup } from './places-xuanhoa';
@@ -346,6 +339,106 @@ export function getAdminState(): AdminState {
   }
 }
 
+// Mã hóa / giải mã khóa cho Firebase Realtime Database (Firebase RTDB cấm các ký tự . # $ / [ ] trong key, ví dụ email có dấu chấm ".")
+export function encodeRtdbKey(key: string): string {
+  return String(key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/%/g, '%25')
+    .replace(/\./g, '%2E')
+    .replace(/#/g, '%23')
+    .replace(/\$/g, '%24')
+    .replace(/\//g, '%2F')
+    .replace(/\[/g, '%5B')
+    .replace(/\]/g, '%5D');
+}
+
+export function decodeRtdbKey(encodedKey: string): string {
+  try {
+    return decodeURIComponent(String(encodedKey || '')).trim().toLowerCase();
+  } catch {
+    return String(encodedKey || '')
+      .replace(/%2E/gi, '.')
+      .replace(/%23/gi, '#')
+      .replace(/%24/gi, '$')
+      .replace(/%2F/gi, '/')
+      .replace(/%5B/gi, '[')
+      .replace(/%5D/gi, ']')
+      .replace(/%25/gi, '%')
+      .trim()
+      .toLowerCase();
+  }
+}
+
+function encodeRtdbRecord<T>(record?: Record<string, T> | null): Record<string, T> {
+  const out: Record<string, T> = {};
+  if (!record || typeof record !== 'object') return out;
+  for (const [k, v] of Object.entries(record)) {
+    if (v !== undefined) {
+      out[encodeRtdbKey(k)] = v;
+    }
+  }
+  return out;
+}
+
+function decodeRtdbRecord<T>(record?: Record<string, T> | null): Record<string, T> {
+  const out: Record<string, T> = {};
+  if (!record || typeof record !== 'object') return out;
+  for (const [k, v] of Object.entries(record)) {
+    if (v !== undefined && v !== null) {
+      out[decodeRtdbKey(k)] = v;
+    }
+  }
+  return out;
+}
+
+export function pushMemberToCloudRealtime(member: ManagedMember, includeAdminRoles = false): void {
+  if (typeof window === 'undefined' || !firebaseConfig.apiKey || !member?.email) return;
+  try {
+    const rtdb = getRealtimeDb();
+    if (!rtdb) return;
+    const safeKey = encodeRtdbKey(member.email);
+    const payload: Record<string, any> = {
+      uid: member.uid || `uid_${Date.now()}`,
+      email: member.email.trim().toLowerCase(),
+      displayName: member.displayName || member.nickname || member.email,
+      nickname: member.nickname || member.displayName || member.email,
+      avatar: member.avatar || '🐭',
+      avatarId: member.avatarId || 'm_ty',
+      gender: member.gender || 'male',
+      phone: member.phone || '',
+      residentType: member.residentType || 'student_sp2',
+      tastePreferences: member.tastePreferences || [],
+      spinsCount: member.spinsCount || 0,
+      level: member.level || 1,
+      reviewsCount: member.reviewsCount || 0,
+      createdAt: member.createdAt || Date.now(),
+      lastActiveAt: member.lastActiveAt || Date.now(),
+    };
+    if (member.photoURL) payload.photoURL = member.photoURL;
+    if (member.isTestAccount !== undefined) payload.isTestAccount = member.isTestAccount;
+    if (includeAdminRoles) {
+      payload.status = member.status || 'active';
+      payload.canManageWeb = Boolean(member.canManageWeb);
+      payload.canManageMaps = Boolean(member.canManageMaps);
+      if (member.banReason !== undefined) payload.banReason = member.banReason;
+    }
+    const cleanPayload = JSON.parse(JSON.stringify(payload));
+    update(ref(rtdb, `xuanhoa_admin/members_registry/${safeKey}`), cleanPayload).catch(() => {});
+  } catch {}
+}
+
+export function removeMemberFromCloudRealtime(emailKey: string): void {
+  if (typeof window === 'undefined' || !firebaseConfig.apiKey || !emailKey) return;
+  try {
+    const rtdb = getRealtimeDb();
+    if (!rtdb) return;
+    const safeKey = encodeRtdbKey(emailKey);
+    remove(ref(rtdb, `xuanhoa_admin/members_registry/${safeKey}`)).catch(() => {});
+    remove(ref(rtdb, `xuanhoa_admin/global_state/members/${safeKey}`)).catch(() => {});
+  } catch {}
+}
+
 export function saveAdminState(next: AdminState, syncCloud = true): void {
   if (typeof window === 'undefined') return;
   try {
@@ -355,11 +448,12 @@ export function saveAdminState(next: AdminState, syncCloud = true): void {
     window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: next }));
 
     if (syncCloud && firebaseConfig.apiKey) {
+      const encodedMembers = encodeRtdbRecord(next.members || {});
       const cleanPayload = JSON.parse(
         JSON.stringify({
           places: next.places || {},
           dishes: next.dishes || {},
-          members: next.members || {},
+          members: encodedMembers,
           merchantSubmissions: next.merchantSubmissions || {},
           auditLogs: (next.auditLogs || []).slice(0, 80),
           adminEmails: next.adminEmails || DEFAULT_ADMIN_EMAILS,
@@ -370,17 +464,10 @@ export function saveAdminState(next: AdminState, syncCloud = true): void {
           updatedAt: next.updatedAt,
         })
       );
-      // 1. Đồng bộ qua Firebase Realtime Database (chính thức)
       const rtdb = getRealtimeDb();
       if (rtdb) {
         set(ref(rtdb, 'xuanhoa_admin/global_state'), cleanPayload).catch(() => {});
       }
-      // 2. Dự phòng Cloud Firestore
-      try {
-        const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        setDoc(doc(db, 'xuanhoa_admin', 'global_state'), cleanPayload).catch(() => {});
-      } catch {}
     }
   } catch (err) {
     console.warn('Failed to save admin state:', err);
@@ -403,7 +490,7 @@ export function addAdminAuditLog(
   return [entry, ...(state.auditLogs || [])].slice(0, 100);
 }
 
-// Khởi tạo lắng nghe đồng bộ Realtime giữa các Tab trình duyệt (storage) & Đa thiết bị qua Firebase Realtime Database + Firestore
+// Khởi tạo lắng nghe đồng bộ Realtime giữa các Tab trình duyệt (storage) & Đa thiết bị qua Firebase Realtime Database
 let cloudListenerStarted = false;
 export function initAdminCloudSync(): void {
   if (typeof window === 'undefined' || cloudListenerStarted) return;
@@ -418,15 +505,48 @@ export function initAdminCloudSync(): void {
 
   if (!firebaseConfig.apiKey) return;
 
+  const mergeMembersMap = (
+    localMembers: Record<string, ManagedMember>,
+    incomingMembers: Record<string, ManagedMember>
+  ): Record<string, ManagedMember> => {
+    const out: Record<string, ManagedMember> = { ...localMembers };
+    for (const [rawKey, incoming] of Object.entries(incomingMembers)) {
+      if (!incoming) continue;
+      const emailKey = (incoming.email || decodeRtdbKey(rawKey)).trim().toLowerCase();
+      if (!emailKey) continue;
+      const existing = out[emailKey];
+      out[emailKey] = {
+        ...(existing || {}),
+        ...incoming,
+        email: incoming.email || emailKey,
+        status: incoming.status || existing?.status || 'active',
+        canManageWeb:
+          incoming.canManageWeb !== undefined ? incoming.canManageWeb : existing?.canManageWeb,
+        canManageMaps:
+          incoming.canManageMaps !== undefined ? incoming.canManageMaps : existing?.canManageMaps,
+        banReason: incoming.banReason !== undefined ? incoming.banReason : existing?.banReason,
+        spinsCount: Math.max(incoming.spinsCount || 0, existing?.spinsCount || 0),
+        level: Math.max(incoming.level || 1, existing?.level || 1),
+        reviewsCount: Math.max(incoming.reviewsCount || 0, existing?.reviewsCount || 0),
+        createdAt: existing?.createdAt || incoming.createdAt || Date.now(),
+        lastActiveAt: Math.max(incoming.lastActiveAt || 0, existing?.lastActiveAt || 0) || Date.now(),
+      };
+    }
+    return out;
+  };
+
   const applyCloudData = (cloudData: Partial<AdminState> | null | undefined) => {
     if (!cloudData) return;
     const local = getAdminState();
-    if (cloudData.updatedAt && cloudData.updatedAt > (local.updatedAt || 0)) {
+    const decodedCloudMembers = decodeRtdbRecord<ManagedMember>(cloudData.members as any);
+    const mergedMembers = mergeMembersMap(local.members || {}, decodedCloudMembers);
+
+    if (cloudData.updatedAt && cloudData.updatedAt >= (local.updatedAt || 0)) {
       const merged: AdminState = {
         ...local,
-        places: cloudData.places || {},
-        dishes: cloudData.dishes || {},
-        members: { ...local.members, ...(cloudData.members || {}) },
+        places: cloudData.places || local.places || {},
+        dishes: cloudData.dishes || local.dishes || {},
+        members: mergedMembers,
         merchantSubmissions: cloudData.merchantSubmissions || local.merchantSubmissions || {},
         auditLogs: cloudData.auditLogs || local.auditLogs,
         adminEmails: cloudData.adminEmails || local.adminEmails,
@@ -436,7 +556,16 @@ export function initAdminCloudSync(): void {
         mapAccessMode: cloudData.mapAccessMode || local.mapAccessMode || 'merchants_and_admin_only',
         updatedAt: cloudData.updatedAt,
       };
-      saveAdminState(merged, false);
+      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(merged));
+      window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: merged }));
+    } else if (Object.keys(decodedCloudMembers).length > 0) {
+      // Kể cả khi local.updatedAt mới hơn, vẫn luôn hợp nhất danh sách thành viên từ Cloud để không bao giờ sót người mới đăng ký
+      const merged: AdminState = {
+        ...local,
+        members: mergedMembers,
+      };
+      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(merged));
+      window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: merged }));
     }
   };
 
@@ -444,6 +573,7 @@ export function initAdminCloudSync(): void {
   try {
     const rtdb = getRealtimeDb();
     if (rtdb) {
+      // 2a. Lắng nghe trạng thái tổng thể (Quán, Maps, Cài đặt, Thành viên)
       const rtdbRef = ref(rtdb, 'xuanhoa_admin/global_state');
       onValue(
         rtdbRef,
@@ -454,23 +584,27 @@ export function initAdminCloudSync(): void {
         },
         () => {}
       );
+
+      // 2b. Lắng nghe nhánh chuyên biệt `members_registry` để bất kỳ ai đăng ký Gmail mới trên điện thoại/máy tính khác đều nhảy Realtime (<0.1s) vào bảng Quản lý Thành viên
+      const membersRegRef = ref(rtdb, 'xuanhoa_admin/members_registry');
+      onValue(
+        membersRegRef,
+        snapshot => {
+          if (!snapshot.exists()) return;
+          const rawRegistry = snapshot.val() as Record<string, ManagedMember>;
+          const decodedRegistry = decodeRtdbRecord<ManagedMember>(rawRegistry);
+          const local = getAdminState();
+          const nextMembers = mergeMembersMap(local.members || {}, decodedRegistry);
+          const nextState: AdminState = {
+            ...local,
+            members: nextMembers,
+          };
+          localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(nextState));
+          window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: nextState }));
+        },
+        () => {}
+      );
     }
-  } catch {}
-
-  // 3. Dự phòng qua Cloud Firestore
-  try {
-    const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const fsRef = doc(db, 'xuanhoa_admin', 'global_state');
-
-    onSnapshot(
-      fsRef,
-      snap => {
-        if (!snap.exists()) return;
-        applyCloudData(snap.data() as Partial<AdminState>);
-      },
-      () => {}
-    );
   } catch {}
 }
 
@@ -557,6 +691,7 @@ export function syncUserToAdminRegistry(user: UserAuthProfile, spinsCount = 0, l
       'user'
     );
   }
+  pushMemberToCloudRealtime(member, false);
   saveAdminState(state);
   return member;
 }
@@ -605,6 +740,7 @@ export function updateMemberStatusInAdmin(
     `${target.nickname} (${target.email})`,
     'user'
   );
+  pushMemberToCloudRealtime(target, true);
   saveAdminState(state);
 }
 
@@ -631,6 +767,7 @@ export function updateMemberManagerPermissions(
     `${target.nickname} (${target.email})`,
     'user'
   );
+  pushMemberToCloudRealtime(target, true);
   saveAdminState(state);
 }
 
@@ -687,6 +824,7 @@ export function deleteMemberAndPurgeReviews(memberKey: string): { purgedReviews:
       'user'
     );
     delete state.members[key];
+    removeMemberFromCloudRealtime(key);
     saveAdminState(state);
   }
 
@@ -813,7 +951,7 @@ export function seedDemoMembersIfEmpty(): void {
     }
   }
 
-  // 2. Quét toàn bộ hồ sơ người dùng THẬT đã từng đăng nhập Google trên trình duyệt
+  // 2. Quét toàn bộ hồ sơ người dùng THẬT đã từng đăng nhập Google trên trình duyệt hiện tại và đẩy từng nick lên nhánh Realtime
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const storageKey = localStorage.key(i);
@@ -829,7 +967,7 @@ export function seedDemoMembersIfEmpty(): void {
           if (fakeDemoEmails.includes(emailKey) || /^thanhvien\.\d+@gmail\.com$/i.test(emailKey)) continue;
           const isAdminEmail = (state.adminEmails || DEFAULT_ADMIN_EMAILS).includes(emailKey);
           if (!state.members[emailKey]) {
-            state.members[emailKey] = {
+            const newLocalMember: ManagedMember = {
               uid: parsedUser.uid || `uid_${Date.now()}`,
               email: parsedUser.email,
               displayName: parsedUser.displayName || parsedUser.nickname || emailKey,
@@ -839,6 +977,7 @@ export function seedDemoMembersIfEmpty(): void {
               gender: parsedUser.gender || 'male',
               phone: parsedUser.phone || '',
               residentType: parsedUser.residentType || 'local',
+              tastePreferences: parsedUser.tastePreferences || [],
               status: isAdminEmail ? 'admin' : 'active',
               spinsCount: 0,
               level: 1,
@@ -846,7 +985,11 @@ export function seedDemoMembersIfEmpty(): void {
               createdAt: parsedUser.createdAt || Date.now(),
               lastActiveAt: Date.now(),
             };
+            state.members[emailKey] = newLocalMember;
+            pushMemberToCloudRealtime(newLocalMember, false);
             changed = true;
+          } else {
+            pushMemberToCloudRealtime(state.members[emailKey], false);
           }
         }
       }
@@ -854,7 +997,9 @@ export function seedDemoMembersIfEmpty(): void {
   } catch {}
 
   if (changed) {
-    saveAdminState(state, true);
+    // Chỉ lưu local, không ghi đè toàn bộ global_state khi mới mở trang để tránh ghi đè dữ liệu Cloud từ máy khác
+    localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(state));
+    window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: state }));
   }
 }
 

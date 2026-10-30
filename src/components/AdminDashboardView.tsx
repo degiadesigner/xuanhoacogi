@@ -60,6 +60,8 @@ import {
   deleteMemberAndPurgeReviews,
   deleteSystemReview,
   seedDemoMembersIfEmpty,
+  initAdminCloudSync,
+  pushMemberToCloudRealtime,
   updateAdminSystemSettings,
   getAdminAccounts,
   getLoggedAdminSession,
@@ -206,8 +208,29 @@ export function AdminDashboardView({
     }
   };
 
-  // Mặc định vào Quản lý Quán (hoặc Tổng quan)
-  const [activeSection, setActiveSection] = useState<AdminSection>('places');
+  // Giữ nguyên mục đang xem (Quản lý Thành viên, Quản lý Maps, Quản lý Quán...) kể cả khi bấm F5 tải lại trang
+  const [activeSection, setActiveSection] = useState<AdminSection>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('xuanhoa_admin_active_section_v1') as AdminSection | null;
+      if (
+        saved === 'overview' ||
+        saved === 'places' ||
+        saved === 'maps' ||
+        saved === 'members' ||
+        saved === 'reviews' ||
+        saved === 'logs'
+      ) {
+        return saved;
+      }
+    }
+    return 'places';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('xuanhoa_admin_active_section_v1', activeSection);
+    }
+  }, [activeSection]);
   const [refreshTick, setRefreshTick] = useState(0);
   const [toast, setToast] = useState<string>('');
 
@@ -356,6 +379,7 @@ export function AdminDashboardView({
   };
 
   useEffect(() => {
+    initAdminCloudSync();
     seedDemoMembersIfEmpty();
     const onSync = () => setRefreshTick(t => t + 1);
     window.addEventListener('xuanhoa_admin_sync', onSync);
@@ -981,16 +1005,16 @@ export function AdminDashboardView({
       `seeder.${Date.now().toString().slice(-4)}@xuanhoacogi.com`
     ).toLowerCase();
 
-    state.members[emailKey] = {
+    const createdMember = {
       uid: `seeder_${Date.now()}`,
       email: emailKey,
       displayName: seederForm.nickname.trim(),
       nickname: seederForm.nickname.trim(),
       avatar: '',
       avatarId: 'm_thin',
-      gender: 'male',
+      gender: 'male' as const,
       residentType: seederForm.residentType,
-      status: 'active',
+      status: 'active' as const,
       spinsCount: 5,
       level: 2,
       reviewsCount: 0,
@@ -998,6 +1022,8 @@ export function AdminDashboardView({
       lastActiveAt: Date.now(),
       isTestAccount: true,
     };
+    state.members[emailKey] = createdMember;
+    pushMemberToCloudRealtime(createdMember, true);
     saveAdminState(state);
     setIsAddSeederModalOpen(false);
     setSeederForm({ nickname: '', email: '', residentType: 'student_sp2' });

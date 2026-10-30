@@ -10,7 +10,8 @@ import {
   signOut as fbSignOut, 
   User 
 } from 'firebase/auth';
-import { firebaseConfig } from './firebase';
+import { update } from 'firebase/database';
+import { firebaseConfig, getRealtimeDb, ref } from './firebase';
 
 export type UserResidentType = 'student_sp2' | 'student_other' | 'local' | 'worker' | 'tourist';
 
@@ -227,13 +228,51 @@ export function getStoredAuthUser(): UserAuthProfile | null {
   }
 }
 
+function encodeEmailForRtdbKey(email: string): string {
+  return email
+    .trim()
+    .toLowerCase()
+    .replace(/%/g, '%25')
+    .replace(/\./g, '%2E')
+    .replace(/#/g, '%23')
+    .replace(/\$/g, '%24')
+    .replace(/\//g, '%2F')
+    .replace(/\[/g, '%5B')
+    .replace(/\]/g, '%5D');
+}
+
 export function saveAuthUser(user: UserAuthProfile): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(LOGGED_OUT_KEY);
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
     if (user.email) {
-      localStorage.setItem(PROFILE_BY_EMAIL_PREFIX + user.email.trim().toLowerCase(), JSON.stringify(user));
+      const cleanEmail = user.email.trim().toLowerCase();
+      localStorage.setItem(PROFILE_BY_EMAIL_PREFIX + cleanEmail, JSON.stringify(user));
+
+      // Đồng bộ tức thì (Realtime) hồ sơ thành viên lên Firebase Realtime Database để Admin thấy ngay lập tức trên mọi máy
+      try {
+        const rtdb = getRealtimeDb();
+        if (rtdb && user.isLoggedIn) {
+          const safeKey = encodeEmailForRtdbKey(cleanEmail);
+          const payload: Record<string, any> = {
+            uid: user.uid || `uid_${Date.now()}`,
+            email: cleanEmail,
+            displayName: user.displayName || user.nickname || cleanEmail,
+            nickname: user.nickname || user.displayName || cleanEmail,
+            avatar: user.avatar || '🐭',
+            avatarId: user.avatarId || 'm_ty',
+            gender: user.gender || 'male',
+            phone: user.phone || '',
+            residentType: user.residentType || 'student_sp2',
+            tastePreferences: user.tastePreferences || [],
+            createdAt: user.createdAt || Date.now(),
+            lastActiveAt: Date.now(),
+          };
+          if (user.photoURL) payload.photoURL = user.photoURL;
+          update(ref(rtdb, `xuanhoa_admin/members_registry/${safeKey}`), payload).catch(() => {});
+        }
+      } catch {}
     }
     writeAuthCookie(user);
     window.dispatchEvent(new CustomEvent('xuanhoa_auth_change', { detail: user }));

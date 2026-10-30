@@ -182,6 +182,10 @@ export default function Home() {
 
   useEffect(() => {
     initAdminCloudSync();
+    const existingStored = getStoredAuthUser();
+    if (existingStored && existingStored.isLoggedIn && existingStored.email) {
+      syncUserToAdminRegistry(existingStored, profile.dishesCount, profile.level);
+    }
 
     // Kiểm tra kết quả chuyển hướng từ Google (dành cho mọi trình duyệt Mobile & PC)
     checkRedirectAuthResult().then((user) => {

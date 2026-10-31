@@ -27,17 +27,33 @@ export type CoordinateSource =
   | 'openstreetmap'
   | 'admin_verified'
   | 'merchant_verified'
+  | 'google_maps_resolved'
+  | 'nominatim_selected'
   | 'nominatim_geocoded'
+  | 'catalog_seed'
   | 'unverified';
 
 /**
- * Trạng thái định vị chuẩn của địa điểm trên hệ thống Quản lý Maps & Bản đồ 2D/3D
+ * Trạng thái định vị chuẩn của địa điểm trên hệ thống Quản lý Maps & Bản đồ 2D/3D.
+ * Chỉ phụ thuộc vào lat/lng hợp lệ hay không (tách biệt hoàn toàn với mapsLinkStatus).
  */
 export type PlaceLocationStatus =
   | 'located'
   | 'unlocated'
+  | 'invalid_coordinates'
   | 'invalid'
   | 'pending_geocode';
+
+/**
+ * Trạng thái của link Google Maps (độc lập hoàn toàn với locationStatus).
+ * Một quán có thể vừa 'located' (đã có tọa độ ghim) vừa có mapsLinkStatus = 'invalid' / 'unresolved'.
+ */
+export type MapsLinkStatus = 'none' | 'valid' | 'unresolved' | 'invalid';
+
+/**
+ * Trạng thái hiển thị chung cho cả 2D và 3D.
+ */
+export type PlaceVisibilityStatus = 'visible' | 'hidden' | 'deleted' | 'blocked';
 
 /**
  * Nguồn dữ liệu gốc của địa điểm
@@ -60,6 +76,10 @@ export interface PlaceLocation {
   coordinateSource: CoordinateSource;
   coordinateVerified: boolean;
   locationStatus?: PlaceLocationStatus;
+  mapsLinkStatus?: MapsLinkStatus;
+  visibilityStatus?: PlaceVisibilityStatus;
+  version?: number;
+  updatedAt?: number;
   dataSource: PlaceDataSource;
   lastVerifiedAt: string | null;
   phone?: string;

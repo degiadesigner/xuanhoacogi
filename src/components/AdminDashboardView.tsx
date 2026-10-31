@@ -81,6 +81,10 @@ import {
   approveAllPendingPlaceItems,
   requestOrExecuteDeletePlace,
   clearPlaceCoordinates,
+  computePlaceLocationStatus,
+  computeMapsLinkStatus,
+  computePlaceVisibilityStatus,
+  logMapDebug,
   syncUserToAdminRegistry,
   ensureCloudPermissionsSyncedForEmail,
 } from '@/lib/admin-store';
@@ -209,6 +213,197 @@ const ADMIN_THEMES: Record<AdminThemeMode, ThemeTokens> = {
   },
 };
 
+function matchesMapCategoryFilter(
+  item: AdminPlaceItem,
+  mapCat: EditableMapCategory,
+  mapCatFilter: string
+): boolean {
+  if (mapCatFilter === 'all') return true;
+  if (mapCat === mapCatFilter) return true;
+  if (mapCatFilter === 'billiards') {
+    const nameLower = item.place.name.toLowerCase();
+    const normHay = item.normalizedHaystack || normalizeVietnamese(`${item.place.name} ${(item.place.tags || []).join(' ')}`);
+    return (
+      item.sectorTag === 'bia-game' ||
+      normHay.includes('bi a') ||
+      nameLower.includes('bi-a') ||
+      nameLower.includes('billiards') ||
+      nameLower.includes('bida')
+    );
+  }
+  if (mapCatFilter === 'game' && item.sectorTag === 'bia-game') {
+    return true;
+  }
+  return false;
+}
+
+interface MapPlaceListRowProps {
+  item: AdminPlaceItem;
+  isSelected: boolean;
+  hasCoords: boolean;
+  isLinkError: boolean;
+  catLabel: string;
+  hasPendingMap: boolean;
+  isDelReq: boolean;
+  accentColor: string;
+  accentSoft: string;
+  textPrimary: string;
+  textMuted: string;
+  onSelect: (item: AdminPlaceItem) => void;
+}
+
+const MapPlaceListRow = React.memo<MapPlaceListRowProps>(function MapPlaceListRow({
+  item,
+  isSelected,
+  hasCoords,
+  isLinkError,
+  catLabel,
+  hasPendingMap,
+  isDelReq,
+  accentColor,
+  accentSoft,
+  textPrimary,
+  textMuted,
+  onSelect,
+}) {
+  return (
+    <div
+      onClick={() => onSelect(item)}
+      style={{
+        minHeight: '54px',
+        padding: '7px 10px',
+        borderRadius: '8px',
+        marginBottom: '4px',
+        cursor: 'pointer',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        gap: '3px',
+        border: isSelected
+          ? `1px solid ${accentColor}`
+          : hasPendingMap
+          ? isDelReq
+            ? '1px solid #FCA5A5'
+            : '1px solid #FCD34D'
+          : '1px solid transparent',
+        background: isSelected
+          ? accentSoft
+          : hasPendingMap
+          ? isDelReq
+            ? '#FEF2F2'
+            : '#FFFBEB'
+          : '#F8F6F1',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '6px',
+        }}
+      >
+        <span
+          style={{
+            fontSize: '12px',
+            fontWeight: 700,
+            color: textPrimary,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={item.place.name}
+        >
+          {item.place.name}
+        </span>
+        <span
+          style={{
+            fontSize: '11px',
+            flexShrink: 0,
+            lineHeight: 1,
+          }}
+        >
+          {hasCoords ? '📍' : isLinkError ? '⚠' : '⏳'}
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '6px',
+        }}
+      >
+        <span
+          style={{
+            fontSize: '10.5px',
+            fontWeight: 600,
+            color: textMuted,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {catLabel}
+        </span>
+
+        {hasPendingMap ? (
+          <span
+            style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              padding: '1px 5px',
+              borderRadius: '4px',
+              background: isDelReq ? '#FEE2E2' : '#FEF3C7',
+              color: isDelReq ? '#B91C1C' : '#B45309',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+            }}
+          >
+            {isDelReq ? 'Chờ xóa' : 'Chờ duyệt'}
+          </span>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+            <span
+              style={{
+                fontSize: '10px',
+                fontWeight: 600,
+                padding: '1px 6px',
+                borderRadius: '4px',
+                background: hasCoords ? '#E6F7EF' : '#FEF3C7',
+                color: hasCoords ? '#047857' : '#B45309',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {hasCoords ? 'Đã định vị' : 'Chưa định vị'}
+            </span>
+            {isLinkError && (
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  padding: '1px 5px',
+                  borderRadius: '4px',
+                  background: '#FEF2F2',
+                  color: '#DC2626',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Link Google Maps bị lỗi hoặc chưa đọc được tọa độ"
+              >
+                ⚠ Link lỗi
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
 export function AdminDashboardView({
   authUser,
   onBack: onBackToApp,
@@ -285,8 +480,24 @@ export function AdminDashboardView({
   // Quản lý Maps (3 cột: Cột 1 Danh sách & Duyệt Maps | Cột 2 Định vị & Địa danh | Cột 3 Bản đồ tương tác & Kiểm tra)
   const [mapListTab, setMapListTab] = useState<'all' | 'pending_maps'>('all');
   const [mapSearch, setMapSearch] = useState('');
+  const [debouncedMapSearch, setDebouncedMapSearch] = useState('');
   const [mapCatFilter, setMapCatFilter] = useState<string>('all');
   const [mapCoordFilter, setMapCoordFilter] = useState<'all' | 'verified' | 'unverified' | 'invalid' | 'locked'>('all');
+  const resolveRequestIdRef = useRef(0);
+  const resolveAbortRef = useRef<AbortController | null>(null);
+  const isSavingPlaceRef = useRef(false);
+  const [isSavingPlace, setIsSavingPlace] = useState(false);
+
+  useEffect(() => {
+    if (!mapSearch.trim()) {
+      setDebouncedMapSearch('');
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setDebouncedMapSearch(mapSearch);
+    }, 140);
+    return () => window.clearTimeout(timer);
+  }, [mapSearch]);
 
   // Thêm nhanh phân khu ngành nghề ngay trong cài đặt của Quán
   const [isAddingSectorInline, setIsAddingSectorInline] = useState(false);
@@ -551,10 +762,18 @@ export function AdminDashboardView({
     }
   }, [commercialPlaces, allMapPlaces, selectedPlaceId, activeSection]);
 
-  const selectPlaceForEdit = (item: AdminPlaceItem, playFeedback = true) => {
+  const selectPlaceForEdit = useCallback((item: AdminPlaceItem, playFeedback = true) => {
     if (playFeedback) triggerFeedback('tap');
-    loadedPlaceIdRef.current = item.place.id;
-    setSelectedPlaceId(item.place.id);
+    resolveRequestIdRef.current += 1;
+    const reqId = resolveRequestIdRef.current;
+    if (resolveAbortRef.current) {
+      resolveAbortRef.current.abort();
+      resolveAbortRef.current = null;
+    }
+
+    const targetPlaceId = item.place.id;
+    loadedPlaceIdRef.current = targetPlaceId;
+    setSelectedPlaceId(targetPlaceId);
     setEditPlaceName(item.place.name);
     setEditPlaceTagline(item.place.tagline);
     setEditPlaceSectorTag(item.sectorTag || 'an-chinh');
@@ -577,8 +796,9 @@ export function AdminDashboardView({
     setEditPlaceQuip(item.place.quip || '');
     setEditPlaceImageUrl(item.place.imageUrl || '');
 
-    const ov = adminState.places?.[item.place.id];
-    const osmItem = osmLandmarkById.get(item.place.id);
+    const currentAdminState = getAdminState();
+    const ov = currentAdminState.places?.[targetPlaceId];
+    const osmItem = osmLandmarkById.get(targetPlaceId);
     const isCivic =
       Boolean(osmItem) ||
       item.sectorTag === 'dia-danh' ||
@@ -594,7 +814,7 @@ export function AdminDashboardView({
       !isExplicitlyUnpinned &&
       typeof ov?.lat === 'number' &&
       typeof ov?.lng === 'number' &&
-      (isCivic || ov?.adminPinApproved === true || Boolean(ov?.pendingMapApproval));
+      (isCivic || ov?.adminPinApproved === true || ov?.coordinateVerified === true || Boolean(ov?.pendingMapApproval));
     const parsedFromMapsUrl =
       !hasVerifiedOvCoords && (ov?.mapsUrl || item.place.mapsUrl)
         ? parseCoordinatesFromInputOrUrl(ov?.mapsUrl || item.place.mapsUrl || '')
@@ -617,38 +837,30 @@ export function AdminDashboardView({
     setEditPlaceLat(hasResolvedCoords ? String(resolvedLat) : '');
     setEditPlaceLng(hasResolvedCoords ? String(resolvedLng) : '');
     setHasActivelyPinnedOnMap(hasResolvedCoords);
-    if (hasResolvedCoords && parsedFromMapsUrl && !hasVerifiedOvCoords) {
-      savePlaceAdminOverride(
-        item.place.id,
-        {
-          lat: parsedFromMapsUrl.lat,
-          lng: parsedFromMapsUrl.lng,
-          coordinateVerified: true,
-          adminPinApproved: true,
-          locationStatus: 'located',
-          coordinateSource: 'admin_verified',
-          lastVerifiedAt: new Date().toISOString().slice(0, 10),
-        }
-      );
-      setMapFlyTrigger(t => t + 1);
-      setRefreshTick(t => t + 1);
-    } else if (!hasResolvedCoords && (ov?.mapsUrl || item.place.mapsUrl)) {
+
+    if (!hasResolvedCoords && (ov?.mapsUrl || item.place.mapsUrl) && ov?.mapsLinkStatus !== 'invalid') {
       const candidateShortUrl = (ov?.mapsUrl || item.place.mapsUrl || '').trim();
       if (/^https?:\/\//i.test(candidateShortUrl)) {
-        expandAndParseShortMapsUrl(candidateShortUrl).then(expanded => {
+        const abortCtrl = new AbortController();
+        resolveAbortRef.current = abortCtrl;
+        expandAndParseShortMapsUrl(candidateShortUrl, abortCtrl.signal).then(expanded => {
+          if (resolveRequestIdRef.current !== reqId || loadedPlaceIdRef.current !== targetPlaceId) {
+            return;
+          }
           if (expanded) {
             setEditPlaceLat(String(expanded.lat));
             setEditPlaceLng(String(expanded.lng));
             setHasActivelyPinnedOnMap(true);
             savePlaceAdminOverride(
-              item.place.id,
+              targetPlaceId,
               {
                 lat: expanded.lat,
                 lng: expanded.lng,
                 coordinateVerified: true,
                 adminPinApproved: true,
                 locationStatus: 'located',
-                coordinateSource: 'admin_verified',
+                mapsLinkStatus: 'valid',
+                coordinateSource: 'google_maps_resolved',
                 lastVerifiedAt: new Date().toISOString().slice(0, 10),
               },
               'Tự động giải mã tọa độ từ link Google Maps rút gọn'
@@ -693,7 +905,15 @@ export function AdminDashboardView({
     setDishSearchInPlace('');
     setEditingDishIndex(null);
     setIsAddingDishRow(false);
-  };
+  }, [osmLandmarkById]);
+
+  const handleSelectRowInMapsList = useCallback(
+    (item: AdminPlaceItem) => {
+      selectPlaceForEdit(item);
+      setMobileShowDetailPane(true);
+    },
+    [selectPlaceForEdit]
+  );
 
   // Lọc và sắp xếp danh sách quán theo đúng bảng chữ cái A -> B -> C -> D (hoặc tab Duyệt Quán)
   const filteredPlaces = useMemo(() => {
@@ -725,94 +945,111 @@ export function AdminDashboardView({
     return [...list].sort((a, b) => a.place.name.localeCompare(b.place.name, 'vi'));
   }, [commercialPlaces, pendingWebPlaces, placeListTab, placeSearch, placeSectorFilter, placeStatusFilter]);
 
-  // Lọc danh sách Địa điểm cho mục Quản lý Maps (Cột 1 của Quản lý Maps)
-  const getResolvedPlaceCoordsAndCat = (item: AdminPlaceItem) => {
-    const ov = adminState.places?.[item.place.id];
-    const osmItem = osmLandmarkById.get(item.place.id);
-    const isCivic =
-      Boolean(osmItem) ||
-      item.sectorTag === 'dia-danh' ||
-      ov?.sectorTag === 'dia-danh' ||
-      ov?.mapCategory === 'public' ||
-      ov?.mapCategory === 'school' ||
-      ov?.mapCategory === 'medical';
-    const isExplicitlyUnpinned = ov?.coordinateVerified === false;
-    const hasVerifiedOv =
-      !isExplicitlyUnpinned &&
-      typeof ov?.lat === 'number' &&
-      typeof ov?.lng === 'number' &&
-      ov?.coordinateVerified === true &&
-      !ov?.pendingMapApproval &&
-      (isCivic || ov?.adminPinApproved === true);
-    const lat = isExplicitlyUnpinned ? null : hasVerifiedOv ? ov!.lat! : osmItem?.lat ?? null;
-    const lng = isExplicitlyUnpinned ? null : hasVerifiedOv ? ov!.lng! : osmItem?.lng ?? null;
-    const hasCoords = typeof lat === 'number' && typeof lng === 'number';
-    const mapCat = (osmItem?.category ||
-      resolvePlaceMapCategory(
-        item.place,
-        ov?.sectorTag || item.sectorTag,
-        ov?.mapCategory || item.mapCategory
-      )) as EditableMapCategory;
-    const rawMapsUrl = (ov?.mapsUrl ?? item.place.mapsUrl ?? '').trim();
-    const hasUnresolvedUrl =
-      !hasCoords &&
-      (ov?.locationStatus === 'invalid' || isShortOrUnresolvableMapsUrl(rawMapsUrl));
-    const locationStatus: 'located' | 'unlocated' | 'invalid' = hasCoords
-      ? 'located'
-      : hasUnresolvedUrl
-      ? 'invalid'
-      : 'unlocated';
-    return { lat, lng, hasCoords, mapCat, locationStatus, rawMapsUrl };
-  };
+  // Lọc danh sách Địa điểm cho mục Quản lý Maps (Cột 1 của Quản lý Maps) — Tách bạch tuyệt đối locationStatus và mapsLinkStatus
+  const getResolvedPlaceCoordsAndCat = useCallback(
+    (item: AdminPlaceItem) => {
+      const ov = adminState.places?.[item.place.id];
+      const osmItem = osmLandmarkById.get(item.place.id);
+      const isCivic =
+        Boolean(osmItem) ||
+        item.sectorTag === 'dia-danh' ||
+        ov?.sectorTag === 'dia-danh' ||
+        ov?.mapCategory === 'public' ||
+        ov?.mapCategory === 'school' ||
+        ov?.mapCategory === 'medical';
+      const isExplicitlyUnpinned = ov?.coordinateVerified === false;
+      const hasVerifiedOv =
+        !isExplicitlyUnpinned &&
+        typeof ov?.lat === 'number' &&
+        typeof ov?.lng === 'number' &&
+        (ov?.coordinateVerified === true || ov?.locationStatus === 'located') &&
+        !ov?.pendingMapApproval &&
+        (isCivic || ov?.adminPinApproved === true || ov?.coordinateVerified === true);
+      const lat = isExplicitlyUnpinned ? null : hasVerifiedOv ? ov!.lat! : osmItem?.lat ?? null;
+      const lng = isExplicitlyUnpinned ? null : hasVerifiedOv ? ov!.lng! : osmItem?.lng ?? null;
+      const hasCoords = typeof lat === 'number' && typeof lng === 'number';
+      const mapCat = (osmItem?.category ||
+        resolvePlaceMapCategory(
+          item.place,
+          ov?.sectorTag || item.sectorTag,
+          ov?.mapCategory || item.mapCategory
+        )) as EditableMapCategory;
+      const rawMapsUrl = (ov?.mapsUrl ?? item.place.mapsUrl ?? '').trim();
+      const mapsLinkStatus = computeMapsLinkStatus(ov, item.place.mapsUrl);
+      const isLinkError = mapsLinkStatus === 'invalid' || mapsLinkStatus === 'unresolved';
+      const locationStatus: 'located' | 'unlocated' | 'invalid_coordinates' = hasCoords
+        ? 'located'
+        : 'unlocated';
+      return {
+        lat,
+        lng,
+        hasCoords,
+        mapCat,
+        locationStatus,
+        mapsLinkStatus,
+        isLinkError,
+        rawMapsUrl,
+      };
+    },
+    [adminState, osmLandmarkById]
+  );
 
-  // Thống kê số lượng trạng thái định vị cho Quản lý Maps (Tất cả = Đã định vị + Chưa định vị)
+  // Thống kê số lượng trạng thái định vị cho Quản lý Maps — DÙNG CÙNG 1 NGUỒN VÀ CÙNG 1 PREDICATE VỚI filteredMapPlaces
   const mapLocationStats = useMemo(() => {
+    const sourceList = mapListTab === 'pending_maps' ? pendingMapPlaces : allMapPlaces;
+    let total = 0;
     let located = 0;
     let unlocated = 0;
     let invalid = 0;
-    for (const item of allMapPlaces) {
-      const { hasCoords, locationStatus } = getResolvedPlaceCoordsAndCat(item);
+    for (const item of sourceList) {
+      const { hasCoords, mapCat, isLinkError } = getResolvedPlaceCoordsAndCat(item);
+      if (!matchesMapCategoryFilter(item, mapCat, mapCatFilter)) continue;
+      total++;
       if (hasCoords) located++;
-      else {
-        unlocated++;
-        if (locationStatus === 'invalid') invalid++;
-      }
+      else unlocated++;
+      if (isLinkError) invalid++;
     }
+    logMapDebug('FILTER COUNTS', {
+      mapListTab,
+      mapCatFilter,
+      total,
+      located,
+      unlocated,
+      linkError: invalid,
+    });
     return {
-      total: allMapPlaces.length,
+      total,
       located,
       unlocated,
       invalid,
       commercialCount: commercialPlaces.length,
       landmarkCount: Math.max(0, allMapPlaces.length - commercialPlaces.length),
     };
-  }, [allMapPlaces, commercialPlaces.length, adminState, osmLandmarkById]);
+  }, [
+    allMapPlaces,
+    pendingMapPlaces,
+    mapListTab,
+    mapCatFilter,
+    commercialPlaces.length,
+    getResolvedPlaceCoordsAndCat,
+  ]);
 
   const filteredMapPlaces = useMemo(() => {
-    const qRaw = mapSearch.trim().toLowerCase();
-    const qNorm = normalizeVietnamese(mapSearch);
+    const qRaw = debouncedMapSearch.trim().toLowerCase();
+    const qNorm = qRaw ? normalizeVietnamese(debouncedMapSearch) : '';
     const sourceList = mapListTab === 'pending_maps' ? pendingMapPlaces : allMapPlaces;
     const list = sourceList.filter(item => {
-      const { hasCoords, mapCat, locationStatus, rawMapsUrl } = getResolvedPlaceCoordsAndCat(item);
-      if (mapCatFilter !== 'all') {
-        const matchesExactCat = mapCat === mapCatFilter;
-        const matchesBiaAlias =
-          mapCatFilter === 'billiards' &&
-          (item.sectorTag === 'bia-game' ||
-            normalizeVietnamese(`${item.place.name} ${(item.place.tags || []).join(' ')}`).includes('bi a') ||
-            item.place.name.toLowerCase().includes('bi-a') ||
-            item.place.name.toLowerCase().includes('billiards') ||
-            item.place.name.toLowerCase().includes('bida'));
-        const matchesGameAlias =
-          mapCatFilter === 'game' && item.sectorTag === 'bia-game';
-        if (!matchesExactCat && !matchesBiaAlias && !matchesGameAlias) return false;
-      }
+      const { hasCoords, mapCat, isLinkError, rawMapsUrl } = getResolvedPlaceCoordsAndCat(item);
+      if (!matchesMapCategoryFilter(item, mapCat, mapCatFilter)) return false;
       if (mapCoordFilter === 'verified' && !hasCoords) return false;
       if (mapCoordFilter === 'unverified' && hasCoords) return false;
-      if (mapCoordFilter === 'invalid' && locationStatus !== 'invalid') return false;
+      if (mapCoordFilter === 'invalid' && !isLinkError) return false;
       if (mapCoordFilter === 'locked' && item.status !== 'locked') return false;
       if (!qRaw) return true;
 
+      if (item.normalizedHaystack && qNorm && item.normalizedHaystack.includes(qNorm)) {
+        return true;
+      }
       const catLabel = EDITABLE_MAP_CATEGORIES.find(c => c.id === mapCat)?.label || mapCat;
       const sectorLabel = getSectorShortLabel(item.sectorTag || '');
       const haystackRaw = `${item.place.name} ${item.place.address} ${item.place.phone || ''} ${catLabel} ${sectorLabel} ${mapCat} ${item.sectorTag} ${(item.place.tags || []).join(' ')} ${item.place.mapsQuery || ''} ${rawMapsUrl}`.toLowerCase();
@@ -821,7 +1058,15 @@ export function AdminDashboardView({
       return false;
     });
     return [...list].sort((a, b) => a.place.name.localeCompare(b.place.name, 'vi'));
-  }, [allMapPlaces, pendingMapPlaces, mapListTab, mapSearch, mapCatFilter, mapCoordFilter, adminState, managedOsmLandmarks]);
+  }, [
+    allMapPlaces,
+    pendingMapPlaces,
+    mapListTab,
+    debouncedMapSearch,
+    mapCatFilter,
+    mapCoordFilter,
+    getResolvedPlaceCoordsAndCat,
+  ]);
 
   const getMatchedDishPreview = (item: AdminPlaceItem): string | null => {
     const q = placeSearch.trim().toLowerCase();
@@ -1045,7 +1290,14 @@ export function AdminDashboardView({
 
   // Lưu thay đổi của Quán & Thực đơn (Chỉnh sửa: Áp dụng ngay lập tức không cần chờ duyệt; Admin lưu là mệnh lệnh tối cao)
   const handleSavePlaceAndMenu = (customMenuOverride?: CustomMenuEntry[], toastLabel?: string) => {
-    if (!selectedPlaceItem) return;
+    if (!selectedPlaceItem || isSavingPlaceRef.current) return;
+    isSavingPlaceRef.current = true;
+    setIsSavingPlace(true);
+    window.setTimeout(() => {
+      isSavingPlaceRef.current = false;
+      setIsSavingPlace(false);
+    }, 280);
+
     const isEditingMapsSection = activeSection === 'maps';
     const isLandmarkCat =
       isEditingMapsSection &&
@@ -1086,10 +1338,9 @@ export function AdminDashboardView({
       mappedCategory = 'restaurant';
     }
 
-    // Tự động trích xuất tọa độ từ link Google Maps / Plus Code nếu có
-    const parsedFromUrl = parseCoordinatesFromInputOrUrl(
-      editPlaceMapsUrl || editPlaceMapsQuery || editPlaceAddress
-    );
+    // Tự động trích xuất tọa độ trực tiếp từ link Google Maps / Plus Code nếu có
+    const cleanMapsUrl = editPlaceMapsUrl.trim();
+    const parsedFromUrl = parseCoordinatesFromInputOrUrl(cleanMapsUrl || editPlaceMapsQuery);
     const numLat = editPlaceLat.trim() !== '' ? Number(editPlaceLat) : parsedFromUrl?.lat;
     const numLng = editPlaceLng.trim() !== '' ? Number(editPlaceLng) : parsedFromUrl?.lng;
     const hasValidCoords =
@@ -1102,8 +1353,13 @@ export function AdminDashboardView({
       numLng >= 104.0 &&
       numLng <= 107.0;
 
-    const isUnresolvedMapsLink =
-      !hasValidCoords && isShortOrUnresolvableMapsUrl(editPlaceMapsUrl);
+    const initialMapsLinkStatus = !cleanMapsUrl
+      ? 'none'
+      : parseCoordinatesFromInputOrUrl(cleanMapsUrl)
+      ? 'valid'
+      : isShortOrUnresolvableMapsUrl(cleanMapsUrl)
+      ? 'unresolved'
+      : 'invalid';
 
     const targetPlaceId = selectedPlaceItem.place.id;
     const cleanPlaceName = editPlaceName.trim() || selectedPlaceItem.place.name;
@@ -1127,7 +1383,8 @@ export function AdminDashboardView({
         isFeatured: editPlacePriorityBoost > 1,
         deliveryNote: editPlaceDeliveryNote.trim(),
         mapsQuery: editPlaceMapsQuery.trim() || `${cleanPlaceName} Xuân Hòa Phúc Yên`,
-        mapsUrl: editPlaceMapsUrl.trim(),
+        mapsUrl: cleanMapsUrl,
+        mapsLinkStatus: initialMapsLinkStatus,
         minPrice: isLandmarkCat ? 0 : Number(editPlaceMinPrice) || 20,
         maxPrice: isLandmarkCat ? 0 : Number(editPlaceMaxPrice) || 60,
         signatureDishName: isLandmarkCat ? 'Cơ quan / Địa danh' : editPlaceSigName.trim() || 'Món tủ',
@@ -1141,7 +1398,7 @@ export function AdminDashboardView({
               lng: Number(numLng!.toFixed(6)),
               coordinateVerified: isSuperAdmin || isLandmarkCat,
               adminPinApproved: isSuperAdmin || isLandmarkCat,
-              locationStatus: isSuperAdmin || isLandmarkCat ? 'located' : 'unlocated',
+              locationStatus: 'located',
               coordinateSource: 'admin_verified',
               ...(!isSuperAdmin && !isLandmarkCat
                 ? {
@@ -1156,10 +1413,6 @@ export function AdminDashboardView({
                     },
                   }
                 : {}),
-            }
-          : isUnresolvedMapsLink
-          ? {
-              locationStatus: 'invalid',
             }
           : {}),
         // Chỉnh sửa thông tin/tọa độ có hiệu lực ngay lập tức. Nếu Admin lưu trên mục đang chờ duyệt thì tự động duyệt luôn!
@@ -1188,26 +1441,46 @@ export function AdminDashboardView({
     setJustSavedPlace(true);
     setTimeout(() => setJustSavedPlace(false), 1800);
 
+    const isUnresolvedMapsLink = initialMapsLinkStatus === 'unresolved' || initialMapsLinkStatus === 'invalid';
     const finalMsg =
       toastLabel ||
       (hasValidCoords
         ? `✅ Đã cập nhật & ghim Bản đồ "${cleanPlaceName}" (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})`
         : isUnresolvedMapsLink
-        ? `⚠️ Đã lưu "${cleanPlaceName}" — Link Maps rút gọn chưa có sẵn tọa độ số, đã đưa vào mục Chưa định vị trong Quản lý Maps để chấm tay!`
+        ? `⚠️ Đã lưu "${cleanPlaceName}" — đang kiểm tra link Google Maps...`
         : `✅ Đã cập nhật "${cleanPlaceName}"`);
     setInlineActionFeedback(finalMsg);
-    showToast(finalMsg, isUnresolvedMapsLink ? 'warn' : 'approve');
+    showToast(finalMsg, !hasValidCoords && isUnresolvedMapsLink ? 'warn' : 'approve');
 
-    // Nếu người dùng dán link Maps hoặc địa chỉ nhưng chưa tách được tọa độ ngay, thử giải quyết bất đồng bộ qua pipeline resolvePlaceCoordinates
-    if (!hasValidCoords && (editPlaceMapsUrl.trim() || editPlaceAddress.trim())) {
+    // Nếu người dùng dán link Google Maps rút gọn chưa có tọa độ trực tiếp, phân giải qua Server-Side Resolver (KHÔNG tự động fallback sang Nominatim khi lưu)
+    if (!hasValidCoords && cleanMapsUrl) {
+      resolveRequestIdRef.current += 1;
+      const reqId = resolveRequestIdRef.current;
+      if (resolveAbortRef.current) {
+        resolveAbortRef.current.abort();
+      }
+      const abortCtrl = new AbortController();
+      resolveAbortRef.current = abortCtrl;
+
       resolvePlaceCoordinates({
-        mapsUrl: editPlaceMapsUrl.trim(),
+        mapsUrl: cleanMapsUrl,
         mapsQuery: editPlaceMapsQuery.trim(),
         address: editPlaceAddress.trim(),
         name: cleanPlaceName,
-        allowGeocode: Boolean(editPlaceMapsUrl.trim()),
+        allowGeocode: false,
+        signal: abortCtrl.signal,
       })
         .then(resolved => {
+          if (resolveRequestIdRef.current !== reqId) return;
+          const latestOv = getAdminState().places?.[targetPlaceId];
+          // Không bao giờ ghi đè nếu Admin đã chấm tay lên bản đồ trong lúc đang chờ mạng
+          if (
+            latestOv?.coordinateSource === 'admin_verified' &&
+            typeof latestOv.lat === 'number' &&
+            typeof latestOv.lng === 'number'
+          ) {
+            return;
+          }
           if (resolved.status === 'located' && resolved.lat !== null && resolved.lng !== null) {
             savePlaceAdminOverride(targetPlaceId, {
               lat: resolved.lat,
@@ -1215,8 +1488,8 @@ export function AdminDashboardView({
               coordinateVerified: isSuperAdmin || isLandmarkCat,
               adminPinApproved: isSuperAdmin || isLandmarkCat,
               locationStatus: 'located',
-              coordinateSource:
-                resolved.source === 'geocoded_address' ? 'nominatim_geocoded' : 'admin_verified',
+              mapsLinkStatus: 'valid',
+              coordinateSource: 'google_maps_resolved',
             });
             if (loadedPlaceIdRef.current === targetPlaceId) {
               setEditPlaceLat(String(resolved.lat));
@@ -1225,9 +1498,17 @@ export function AdminDashboardView({
               setMapFlyTrigger(t => t + 1);
             }
             setRefreshTick(t => t + 1);
-            const autoMsg = `📍 Đã tự động xác định tọa độ (${resolved.lat}, ${resolved.lng}) và ghim "${cleanPlaceName}" lên Bản đồ!`;
+            const autoMsg = `📍 Đã giải mã link Google Maps (${resolved.lat}, ${resolved.lng}) và ghim "${cleanPlaceName}" lên Bản đồ!`;
             setInlineActionFeedback(autoMsg);
             showToast(autoMsg, 'approve');
+          } else {
+            savePlaceAdminOverride(targetPlaceId, {
+              mapsLinkStatus: 'invalid',
+            });
+            setRefreshTick(t => t + 1);
+            const errMsg = resolved.note || 'Không thể đọc tọa độ chính xác từ Google Maps.';
+            setInlineActionFeedback(`⚠️ ${errMsg}`);
+            showToast(`⚠️ ${errMsg}`, 'warn');
           }
         })
         .catch(() => {});
@@ -1412,21 +1693,24 @@ export function AdminDashboardView({
       numLng >= 104.0 &&
       numLng <= 107.0;
 
+    const cleanNewMapsUrl = newPlaceForm.mapsUrl.trim();
+    const initialNewMapsLinkStatus = !cleanNewMapsUrl
+      ? 'none'
+      : parseCoordinatesFromInputOrUrl(cleanNewMapsUrl)
+      ? 'valid'
+      : isShortOrUnresolvableMapsUrl(cleanNewMapsUrl)
+      ? 'unresolved'
+      : 'invalid';
     const isUnresolvedMapsLink =
-      !hasCoords && isShortOrUnresolvableMapsUrl(newPlaceForm.mapsUrl);
+      initialNewMapsLinkStatus === 'unresolved' || initialNewMapsLinkStatus === 'invalid';
 
     savePlaceAdminOverride(newId, {
       status: 'active',
       sectorTag: resolvedSectorTag,
       mapCategory: resolvedMapCat,
       customMenu: isLandmarkCat ? [] : undefined,
-      locationStatus: hasCoords
-        ? isSuperAdmin
-          ? 'located'
-          : 'unlocated'
-        : isUnresolvedMapsLink
-        ? 'invalid'
-        : 'unlocated',
+      locationStatus: hasCoords ? 'located' : 'unlocated',
+      mapsLinkStatus: initialNewMapsLinkStatus,
       ...(hasCoords
         ? {
             lat: Number(numLat!.toFixed(6)),
@@ -1520,25 +1804,33 @@ export function AdminDashboardView({
     setInlineActionFeedback(addMsg);
     showToast(addMsg, isUnresolvedMapsLink ? 'warn' : 'approve');
 
-    // Nếu tạo quán có kèm link Maps hoặc địa chỉ nhưng chưa có sẵn số tọa độ, tự động thử phân giải tọa độ bất đồng bộ
-    if (!hasCoords && (newPlaceForm.mapsUrl.trim() || newPlaceForm.address.trim())) {
+    // Nếu tạo quán có kèm link Google Maps rút gọn chưa có sẵn số tọa độ, tự động thử phân giải tọa độ qua Server-Side Resolver
+    if (!hasCoords && cleanNewMapsUrl) {
       resolvePlaceCoordinates({
-        mapsUrl: newPlaceForm.mapsUrl.trim(),
+        mapsUrl: cleanNewMapsUrl,
         mapsQuery: created.mapsQuery,
         address: newPlaceForm.address.trim(),
         name: created.name,
-        allowGeocode: Boolean(newPlaceForm.mapsUrl.trim()),
+        allowGeocode: false,
       })
         .then(resolved => {
+          const latestOv = getAdminState().places?.[newId];
+          if (
+            latestOv?.coordinateSource === 'admin_verified' &&
+            typeof latestOv.lat === 'number' &&
+            typeof latestOv.lng === 'number'
+          ) {
+            return;
+          }
           if (resolved.status === 'located' && resolved.lat !== null && resolved.lng !== null) {
             savePlaceAdminOverride(newId, {
               lat: resolved.lat,
               lng: resolved.lng,
               coordinateVerified: isSuperAdmin,
               adminPinApproved: isSuperAdmin,
-              locationStatus: isSuperAdmin ? 'located' : 'unlocated',
-              coordinateSource:
-                resolved.source === 'geocoded_address' ? 'nominatim_geocoded' : 'admin_verified',
+              locationStatus: 'located',
+              mapsLinkStatus: 'valid',
+              coordinateSource: 'google_maps_resolved',
             });
             if (loadedPlaceIdRef.current === newId) {
               setEditPlaceLat(String(resolved.lat));
@@ -1547,9 +1839,14 @@ export function AdminDashboardView({
               setMapFlyTrigger(t => t + 1);
             }
             setRefreshTick(t => t + 1);
-            const autoMsg = `📍 Đã tự động xác định tọa độ (${resolved.lat}, ${resolved.lng}) và ghim "${created.name}" lên Bản đồ!`;
+            const autoMsg = `📍 Đã giải mã link Google Maps (${resolved.lat}, ${resolved.lng}) và ghim "${created.name}" lên Bản đồ!`;
             setInlineActionFeedback(autoMsg);
             showToast(autoMsg, 'approve');
+          } else {
+            savePlaceAdminOverride(newId, {
+              mapsLinkStatus: 'invalid',
+            });
+            setRefreshTick(t => t + 1);
           }
         })
         .catch(() => {});
@@ -2807,22 +3104,22 @@ export function AdminDashboardView({
                             <span>{item.fullMenu.length} món</span>
                             <span>•</span>
                             {(() => {
-                              const { hasCoords, locationStatus } = getResolvedPlaceCoordsAndCat(item);
+                              const { hasCoords, isLinkError } = getResolvedPlaceCoordsAndCat(item);
                               return (
                                 <span
                                   style={{
                                     fontWeight: 700,
                                     color: hasCoords
                                       ? '#047857'
-                                      : locationStatus === 'invalid'
+                                      : isLinkError
                                       ? '#DC2626'
                                       : '#B45309',
                                   }}
                                 >
                                   {hasCoords
                                     ? '📍 Đã định vị'
-                                    : locationStatus === 'invalid'
-                                    ? '🗺 Lỗi link Maps'
+                                    : isLinkError
+                                    ? '⚠ Link Maps lỗi'
                                     : '⏳ Chưa định vị'}
                                 </span>
                               );
@@ -4630,15 +4927,13 @@ export function AdminDashboardView({
                         <option value="all">Trạng thái ({mapLocationStats.total})</option>
                         <option value="verified">Đã định vị ({mapLocationStats.located})</option>
                         <option value="unverified">Chưa định vị ({mapLocationStats.unlocated})</option>
-                        {mapLocationStats.invalid > 0 && (
-                          <option value="invalid">Lỗi link ({mapLocationStats.invalid})</option>
-                        )}
+                        <option value="invalid">⚠ Link Maps lỗi ({mapLocationStats.invalid})</option>
                         <option value="locked">Đang khóa (Block)</option>
                       </select>
                     </div>
                   </div>
 
-                  {/* DANH SÁCH ĐỊA ĐIỂM GỌN (54–62px / item) */}
+                  {/* DANH SÁCH ĐỊA ĐIỂM GỌN (54–62px / item) — ĐÃ MEMOIZE ĐỂ GÕ FORM KHÔNG RE-RENDER LIST */}
                   <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
                     {filteredMapPlaces.length === 0 ? (
                       <div
@@ -4657,7 +4952,7 @@ export function AdminDashboardView({
                       filteredMapPlaces.map(item => {
                         const isSelected = selectedPlaceId === item.place.id;
                         const ov = adminState.places?.[item.place.id];
-                        const { hasCoords, mapCat, locationStatus } = getResolvedPlaceCoordsAndCat(item);
+                        const { hasCoords, mapCat, isLinkError } = getResolvedPlaceCoordsAndCat(item);
                         const catLabel =
                           EDITABLE_MAP_CATEGORIES.find(c => c.id === mapCat)?.label || mapCat;
                         const pendingMap = ov?.pendingMapApproval;
@@ -4665,139 +4960,21 @@ export function AdminDashboardView({
                           pendingMap?.isDeleteRequest || pendingMap?.actionType === 'delete'
                         );
                         return (
-                          <div
+                          <MapPlaceListRow
                             key={item.place.id}
-                            onClick={() => {
-                              selectPlaceForEdit(item);
-                              setMobileShowDetailPane(true);
-                            }}
-                            style={{
-                              minHeight: '54px',
-                              padding: '7px 10px',
-                              borderRadius: '8px',
-                              marginBottom: '4px',
-                              cursor: 'pointer',
-                              boxSizing: 'border-box',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              justifyContent: 'center',
-                              gap: '3px',
-                              border: isSelected
-                                ? `1px solid ${theme.accent}`
-                                : pendingMap
-                                ? isDelReq
-                                  ? '1px solid #FCA5A5'
-                                  : '1px solid #FCD34D'
-                                : '1px solid transparent',
-                              background: isSelected
-                                ? theme.accentSoft
-                                : pendingMap
-                                ? isDelReq
-                                  ? '#FEF2F2'
-                                  : '#FFFBEB'
-                                : '#F8F6F1',
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '6px',
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: '12px',
-                                  fontWeight: 700,
-                                  color: theme.textPrimary,
-                                  minWidth: 0,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                                title={item.place.name}
-                              >
-                                {item.place.name}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: '11px',
-                                  flexShrink: 0,
-                                  lineHeight: 1,
-                                }}
-                              >
-                                {hasCoords ? '📍' : locationStatus === 'invalid' ? '🗺' : '⏳'}
-                              </span>
-                            </div>
-
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '6px',
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: '10.5px',
-                                  fontWeight: 600,
-                                  color: theme.textMuted,
-                                  minWidth: 0,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {catLabel}
-                              </span>
-
-                              {pendingMap ? (
-                                <span
-                                  style={{
-                                    fontSize: '10px',
-                                    fontWeight: 700,
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    background: isDelReq ? '#FEE2E2' : '#FEF3C7',
-                                    color: isDelReq ? '#B91C1C' : '#B45309',
-                                    whiteSpace: 'nowrap',
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {isDelReq ? 'Chờ xóa' : 'Chờ duyệt'}
-                                </span>
-                              ) : (
-                                <span
-                                  style={{
-                                    fontSize: '10px',
-                                    fontWeight: 600,
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    background: hasCoords
-                                      ? '#E6F7EF'
-                                      : locationStatus === 'invalid'
-                                      ? '#FEF2F2'
-                                      : '#FEF3C7',
-                                    color: hasCoords
-                                      ? '#047857'
-                                      : locationStatus === 'invalid'
-                                      ? '#DC2626'
-                                      : '#B45309',
-                                    whiteSpace: 'nowrap',
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {hasCoords
-                                    ? 'Đã định vị'
-                                    : locationStatus === 'invalid'
-                                    ? 'Lỗi link'
-                                    : 'Chưa định vị'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                            item={item}
+                            isSelected={isSelected}
+                            hasCoords={hasCoords}
+                            isLinkError={isLinkError}
+                            catLabel={catLabel}
+                            hasPendingMap={Boolean(pendingMap)}
+                            isDelReq={isDelReq}
+                            accentColor={theme.accent}
+                            accentSoft={theme.accentSoft}
+                            textPrimary={theme.textPrimary}
+                            textMuted={theme.textMuted}
+                            onSelect={handleSelectRowInMapsList}
+                          />
                         );
                       })
                     )}
@@ -4833,7 +5010,7 @@ export function AdminDashboardView({
                         boxSizing: 'border-box',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '13.5px', fontWeight: 800, color: theme.textPrimary, whiteSpace: 'nowrap' }}>
                           2. Định vị
                         </span>
@@ -4856,9 +5033,26 @@ export function AdminDashboardView({
                           }}
                         >
                           {editPlaceLat.trim() !== '' && editPlaceLng.trim() !== ''
-                            ? '📍 Đã ghim'
-                            : '⏳ Chưa ghim'}
+                            ? '📍 Đã định vị'
+                            : '⏳ Chưa định vị'}
                         </span>
+                        {getResolvedPlaceCoordsAndCat(selectedPlaceItem).isLinkError && (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '5px',
+                              background: '#FEF2F2',
+                              color: '#DC2626',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                            }}
+                            title="Link Google Maps lỗi hoặc chưa giải mã được tọa độ"
+                          >
+                            ⚠ Link Maps lỗi
+                          </span>
+                        )}
                       </div>
 
                       {/* NHÓM NÚT SECONDARY NHỎ + 1 NÚT PRIMARY DUY NHẤT */}
@@ -4963,6 +5157,7 @@ export function AdminDashboardView({
 
                         <button
                           type="button"
+                          disabled={isSavingPlace}
                           onClick={() => handleSavePlaceAndMenu()}
                           style={{
                             display: 'inline-flex',
@@ -4976,7 +5171,8 @@ export function AdminDashboardView({
                             color: '#FFFFFF',
                             fontSize: '11px',
                             fontWeight: 700,
-                            cursor: 'pointer',
+                            cursor: isSavingPlace ? 'wait' : 'pointer',
+                            opacity: isSavingPlace ? 0.8 : 1,
                             whiteSpace: 'nowrap',
                           }}
                         >
@@ -5214,6 +5410,7 @@ export function AdminDashboardView({
                               value={editPlaceMapsUrl || editPlaceMapsQuery}
                               onChange={e => {
                                 const val = e.target.value;
+                                setAdminGeoSuggestions([]);
                                 if (val.startsWith('http')) setEditPlaceMapsUrl(val);
                                 else {
                                   setEditPlaceMapsUrl('');
@@ -5229,7 +5426,15 @@ export function AdminDashboardView({
                                     `📍 Đã nhận diện tọa độ (${parsed.lat}, ${parsed.lng}) từ link Maps!`
                                   );
                                 } else if (/^https?:\/\//i.test(val.trim())) {
-                                  expandAndParseShortMapsUrl(val.trim()).then(expanded => {
+                                  resolveRequestIdRef.current += 1;
+                                  const reqId = resolveRequestIdRef.current;
+                                  if (resolveAbortRef.current) {
+                                    resolveAbortRef.current.abort();
+                                  }
+                                  const abortCtrl = new AbortController();
+                                  resolveAbortRef.current = abortCtrl;
+                                  expandAndParseShortMapsUrl(val.trim(), abortCtrl.signal).then(expanded => {
+                                    if (resolveRequestIdRef.current !== reqId) return;
                                     if (expanded) {
                                       setEditPlaceLat(String(expanded.lat));
                                       setEditPlaceLng(String(expanded.lng));
@@ -5250,7 +5455,17 @@ export function AdminDashboardView({
                               disabled={isAdminGeocoding}
                               onClick={async () => {
                                 triggerFeedback('tap');
+                                resolveRequestIdRef.current += 1;
+                                const reqId = resolveRequestIdRef.current;
+                                if (resolveAbortRef.current) {
+                                  resolveAbortRef.current.abort();
+                                }
+                                const abortCtrl = new AbortController();
+                                resolveAbortRef.current = abortCtrl;
+                                const targetPlaceId = selectedPlaceItem?.place.id;
+
                                 setIsAdminGeocoding(true);
+                                setAdminGeoSuggestions([]);
                                 setInlineActionFeedback(
                                   '⏳ Đang giải mã link Google Maps / địa chỉ & bay tới vị trí...'
                                 );
@@ -5261,7 +5476,10 @@ export function AdminDashboardView({
                                     address: editPlaceAddress,
                                     name: editPlaceName,
                                     allowGeocode: true,
+                                    signal: abortCtrl.signal,
                                   });
+                                  if (resolveRequestIdRef.current !== reqId) return;
+
                                   if (resolved.lat !== null && resolved.lng !== null) {
                                     const latNum = Number(resolved.lat.toFixed(6));
                                     const lngNum = Number(resolved.lng.toFixed(6));
@@ -5269,7 +5487,7 @@ export function AdminDashboardView({
                                     setEditPlaceLng(String(lngNum));
                                     setHasActivelyPinnedOnMap(true);
 
-                                    if (selectedPlaceItem) {
+                                    if (selectedPlaceItem && targetPlaceId === selectedPlaceItem.place.id) {
                                       const osmItem = osmLandmarkById.get(selectedPlaceItem.place.id);
                                       const isCivicItem =
                                         Boolean(osmItem) ||
@@ -5286,6 +5504,7 @@ export function AdminDashboardView({
                                           sectorTag: editPlaceSectorTag,
                                           mapCategory: editPlaceMapCategory,
                                           mapsUrl: editPlaceMapsUrl.trim(),
+                                          mapsLinkStatus: resolved.mapsLinkStatus || (editPlaceMapsUrl.trim() ? 'valid' : 'none'),
                                           mapsQuery:
                                             editPlaceMapsQuery.trim() ||
                                             `${editPlaceName.trim() || selectedPlaceItem.place.name} Xuân Hòa Phúc Yên`,
@@ -5293,7 +5512,7 @@ export function AdminDashboardView({
                                           lng: lngNum,
                                           coordinateVerified: autoApprovePin,
                                           adminPinApproved: autoApprovePin,
-                                          locationStatus: autoApprovePin ? 'located' : 'unlocated',
+                                          locationStatus: 'located',
                                           pendingMapApproval: autoApprovePin
                                             ? undefined
                                             : {
@@ -5303,7 +5522,12 @@ export function AdminDashboardView({
                                                 actionSummary: `Tìm tọa độ tự động (${latNum}, ${lngNum})`,
                                                 actionType: 'update',
                                               },
-                                          coordinateSource: 'admin_verified',
+                                          coordinateSource:
+                                            resolved.source === 'google_maps_resolved'
+                                              ? 'google_maps_resolved'
+                                              : resolved.source === 'geocoded_address'
+                                              ? 'nominatim_selected'
+                                              : 'admin_verified',
                                           lastVerifiedAt: new Date().toISOString().slice(0, 10),
                                         },
                                         'Định vị & ghim tọa độ tự động từ Tìm tọa độ'
@@ -5316,13 +5540,33 @@ export function AdminDashboardView({
                                     const msg = `Đã cập nhật & ghim "${editPlaceName || selectedPlaceItem?.place.name}"`;
                                     setInlineActionFeedback(msg);
                                     showToast(msg);
+                                  } else if (resolved.candidates && resolved.candidates.length > 1) {
+                                    setAdminGeoSuggestions(resolved.candidates);
+                                    const msg =
+                                      resolved.note ||
+                                      `Tìm thấy ${resolved.candidates.length} vị trí gần khớp — hãy bấm chọn đúng địa chỉ bên dưới!`;
+                                    setInlineActionFeedback(msg);
+                                    showToast(msg, 'tap');
                                   } else {
-                                    const msg = 'Chưa tìm thấy tự động — hãy chấm trực tiếp trên Bản đồ bên phải';
+                                    if (selectedPlaceItem && editPlaceMapsUrl.trim()) {
+                                      savePlaceAdminOverride(selectedPlaceItem.place.id, {
+                                        mapsUrl: editPlaceMapsUrl.trim(),
+                                        mapsLinkStatus: 'invalid',
+                                      });
+                                      setRefreshTick(t => t + 1);
+                                    }
+                                    const msg =
+                                      resolved.note ||
+                                      (editPlaceMapsUrl.trim()
+                                        ? 'Không thể đọc tọa độ chính xác từ Google Maps.'
+                                        : 'Chưa tìm thấy tự động — hãy chấm trực tiếp trên Bản đồ bên phải');
                                     setInlineActionFeedback(msg);
                                     showToast(msg, 'warn');
                                   }
                                 } finally {
-                                  setIsAdminGeocoding(false);
+                                  if (resolveRequestIdRef.current === reqId) {
+                                    setIsAdminGeocoding(false);
+                                  }
                                 }
                               }}
                               style={{
@@ -5347,6 +5591,67 @@ export function AdminDashboardView({
                               <span>{isAdminGeocoding ? 'Đang tìm...' : 'Tìm tọa độ'}</span>
                             </button>
                           </div>
+                          {adminGeoSuggestions.length > 0 && (
+                            <div
+                              style={{
+                                marginTop: '6px',
+                                padding: '6px',
+                                borderRadius: '8px',
+                                background: '#F8FAFC',
+                                border: '1px solid #CBD5E1',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px',
+                              }}
+                            >
+                              <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#334155' }}>
+                                Chọn vị trí phù hợp nhất ({adminGeoSuggestions.length} kết quả):
+                              </div>
+                              {adminGeoSuggestions.map((cand, idx) => (
+                                <button
+                                  key={`${cand.lat}_${cand.lng}_${idx}`}
+                                  type="button"
+                                  onClick={() => {
+                                    const latNum = Number(cand.lat.toFixed(6));
+                                    const lngNum = Number(cand.lng.toFixed(6));
+                                    setEditPlaceLat(String(latNum));
+                                    setEditPlaceLng(String(lngNum));
+                                    setHasActivelyPinnedOnMap(true);
+                                    setAdminGeoSuggestions([]);
+                                    if (selectedPlaceItem) {
+                                      savePlaceAdminOverride(
+                                        selectedPlaceItem.place.id,
+                                        {
+                                          lat: latNum,
+                                          lng: lngNum,
+                                          coordinateVerified: isSuperAdmin,
+                                          adminPinApproved: isSuperAdmin,
+                                          locationStatus: 'located',
+                                          coordinateSource: 'nominatim_selected',
+                                        },
+                                        `Chọn tọa độ gợi ý (${latNum}, ${lngNum})`
+                                      );
+                                    }
+                                    setMapFlyTrigger(t => t + 1);
+                                    setRefreshTick(t => t + 1);
+                                    showToast(`📍 Đã chọn tọa độ (${latNum}, ${lngNum})`, 'approve');
+                                  }}
+                                  style={{
+                                    textAlign: 'left',
+                                    padding: '5px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #E2E8F0',
+                                    background: '#FFFFFF',
+                                    fontSize: '11px',
+                                    color: '#0F172A',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <strong>📍 {cand.lat.toFixed(5)}, {cand.lng.toFixed(5)}</strong> — {cand.displayName}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {/* LAT + LNG CÙNG MỘT HÀNG (50% / 50%) */}

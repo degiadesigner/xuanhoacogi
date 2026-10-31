@@ -52,6 +52,8 @@ import {
 import {
   isAdminAuthenticated,
   isMapManagerAuthenticated,
+  isPlaceHiddenOrDeletedInAdmin,
+  logMapDebug,
   loginAdminWithCredentials,
   verifyAndClaimPlaceWithCode,
 } from '@/lib/admin-store';
@@ -279,6 +281,12 @@ export const City3DView: React.FC<City3DViewProps> = ({
   }, [propSelectedBuilding]);
   const handleSelectBuilding3D = useCallback(
     (b: MasterBuildingRecord | null) => {
+      if (b && b.name && isPlaceHiddenOrDeletedInAdmin(b.id, b.name)) {
+        const sanitized = { ...b, name: undefined };
+        setLocalSelectedBuilding(sanitized);
+        onSelectBuilding?.(sanitized);
+        return;
+      }
       setLocalSelectedBuilding(b);
       onSelectBuilding?.(b);
     },
@@ -441,27 +449,32 @@ export const City3DView: React.FC<City3DViewProps> = ({
     [places, savedPlaceIds]
   );
 
-  const placesWithCoords = useMemo(
-    () =>
-      places.filter((p) => {
-        if (p.lat === null || p.lng === null) return false;
-        if (selected?.id === p.id) return true;
-        if (!showLocationPins) return false;
-        if (savedPlaceIds.includes(p.id)) return true;
-        if (selectedCategories3D.includes(p.category)) return true;
-        if (activeShopGroup !== 'none' && getShopGroupOfPlace(p) === activeShopGroup) return true;
-        return false;
-      }),
-    [
-      places,
-      showLocationPins,
-      selectedCategories3D,
-      savedPlaceIds,
-      activeShopGroup,
-      getShopGroupOfPlace,
-      selected?.id,
-    ]
-  );
+  const placesWithCoords = useMemo(() => {
+    const filtered = places.filter((p) => {
+      if (p.lat === null || p.lng === null) return false;
+      if (p.visibilityStatus && p.visibilityStatus !== 'visible') return false;
+      if (isPlaceHiddenOrDeletedInAdmin(p.id, p.name)) return false;
+      if (selected?.id === p.id) return true;
+      if (!showLocationPins) return false;
+      if (savedPlaceIds.includes(p.id)) return true;
+      if (selectedCategories3D.includes(p.category)) return true;
+      if (activeShopGroup !== 'none' && getShopGroupOfPlace(p) === activeShopGroup) return true;
+      return false;
+    });
+    logMapDebug('3D MARKER UPDATE', {
+      inputPlaces: places.length,
+      visiblePins3D: filtered.length,
+    });
+    return filtered;
+  }, [
+    places,
+    showLocationPins,
+    selectedCategories3D,
+    savedPlaceIds,
+    activeShopGroup,
+    getShopGroupOfPlace,
+    selected?.id,
+  ]);
 
   // Tiền tính toán tọa độ local (lx, lz) và kích thước hộp chữ cho mọi ghim (tránh tính lại mỗi frame)
   const precomputedPins = useMemo<PrecomputedPin[]>(() => {
@@ -499,6 +512,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
     () =>
       labels
         .filter((lb) => {
+          // Ẩn nhãn tĩnh nếu địa điểm đã bị Admin xóa / ẩn / khóa (giữ nguyên khối nhà vật lý 3D)
+          if (isPlaceHiddenOrDeletedInAdmin(undefined, lb.name)) return false;
           // Ẩn nhãn tĩnh nếu đã có ghim địa danh động (precomputedPins) ở gần hoặc trùng tên để khi Admin đổi tên / ẩn sẽ cập nhật 100% tức thì
           for (const pin of precomputedPins) {
             if (Math.hypot(pin.lx - lb.x, pin.lz - lb.z) < 75) return false;

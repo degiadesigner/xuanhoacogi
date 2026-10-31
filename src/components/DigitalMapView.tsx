@@ -33,6 +33,8 @@ import type { UserAuthProfile } from '@/lib/auth';
 import {
   isAdminAuthenticated,
   isMapManagerAuthenticated,
+  isPlaceHiddenOrDeletedInAdmin,
+  logMapDebug,
   updatePlaceCoordinates,
   clearPlaceCoordinates,
   getAllMerchantSubmissions,
@@ -2178,6 +2180,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
           if (!isFeatureInView(f)) continue;
           const cleanName = f._cleanName || '';
           if (!cleanName) continue;
+          if (isPlaceHiddenOrDeletedInAdmin(f.properties?.id || f.id, cleanName)) continue;
           // Chỉ hiện mã tòa ngắn (S1-S4, A1-A3, Giảng đường...) để không lặp lại tên trường đã có ghim
           if (cleanName.length > 13 && !cleanName.startsWith('Giảng đường')) continue;
           const pt = projPt(f._midLng, f._midLat);
@@ -2249,6 +2252,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
 
           const name = String(props.name || '').trim();
           if (!name) continue;
+          if (isPlaceHiddenOrDeletedInAdmin(props.id || props.osm_id, name)) continue;
           const pt = projPt(pLng, pLat);
           if (pt.x < -80 || pt.x > width + 80 || pt.y < -40 || pt.y > height + 40) continue;
 
@@ -2581,8 +2585,9 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     };
   }, [syncTick, adminSyncVersion]);
 
+  const initialQualityReport = useMemo(() => buildDataQualityReport(), []);
   const dataQualityReport = useMemo(() => {
-    const baseReport = buildDataQualityReport();
+    const baseReport = embeddedInAdmin ? initialQualityReport : buildDataQualityReport();
     return {
       ...baseReport,
       stats: {
@@ -2593,7 +2598,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         catalogPendingVerificationCount: unverifiedCatalogPlaces.length,
       },
     };
-  }, [verifiedMapMarkers.length, unverifiedCatalogPlaces.length, syncTick, adminSyncVersion]);
+  }, [embeddedInAdmin, initialQualityReport, verifiedMapMarkers.length, unverifiedCatalogPlaces.length, syncTick, adminSyncVersion]);
 
   // Danh sách các địa điểm đã được lưu (★) của tài khoản hiện tại
   const savedPlaceObjects = useMemo(
@@ -2606,13 +2611,21 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     if (!layerVisibility.realPois) {
       return [];
     }
-    return verifiedMapMarkers.filter((loc) => {
+    const list = verifiedMapMarkers.filter((loc) => {
       if (!loc.coordinateVerified || loc.lat === null || loc.lng === null) return false;
+      if (loc.visibilityStatus && loc.visibilityStatus !== 'visible') return false;
+      if (isPlaceHiddenOrDeletedInAdmin(loc.id, loc.name)) return false;
       if (embeddedInAdmin && adminSelectedPlaceId && loc.id === adminSelectedPlaceId) return true;
       if (selectedCategories.includes('all')) return true;
       if (String(loc.category) === 'medical' && selectedCategories.includes('public')) return true;
       return selectedCategories.includes(loc.category);
     });
+    logMapDebug('2D MARKER UPDATE', {
+      embeddedInAdmin,
+      totalVerified: verifiedMapMarkers.length,
+      renderedMarkers2D: list.length,
+    });
+    return list;
   }, [
     verifiedMapMarkers,
     selectedCategories,
@@ -2872,7 +2885,11 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
 
       // Kiểm tra nếu người dùng chạm vào một công trình trong Master Dataset (21.436 công trình đồng bộ 2D <-> 3D)
       const masterDsForPick = geoLayersRef.current?.masterDataset || getLoadedMasterDataset();
-      const hitMasterBld = findMasterBuildingAtLngLat(masterDsForPick, pickedLng, pickedLat, 10);
+      const rawHitBld = findMasterBuildingAtLngLat(masterDsForPick, pickedLng, pickedLat, 10);
+      const hitMasterBld =
+        rawHitBld && rawHitBld.name && isPlaceHiddenOrDeletedInAdmin(rawHitBld.id, rawHitBld.name)
+          ? { ...rawHitBld, name: undefined }
+          : rawHitBld;
       if (hitMasterBld) {
         triggerFeedback('tap');
         setSelectedBuilding(hitMasterBld);
@@ -2949,6 +2966,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         ]);
       }
 
+      map.stop();
       map.flyTo({
         center: [lng, lat],
         zoom,
@@ -3007,10 +3025,9 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     ]
   );
 
-  // Tự động di chuyển Bản đồ số nhúng trong Cột 3 của Quản lý Maps tới tọa độ quán đang chọn (nhẹ tênh 180ms easeTo, không giật lag)
+  // Tự động di chuyển Bản đồ số nhúng trong Cột 3 của Quản lý Maps tới tọa độ quán đang chọn (nhẹ tênh 160ms easeTo, hủy animation cũ, không recompute store)
   useEffect(() => {
     if (!embeddedInAdmin) return;
-    setSyncTick((t) => t + 1);
     const map = mapInstanceRef.current;
     if (
       typeof adminPreviewLat === 'number' &&
@@ -3029,10 +3046,13 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         label: focusTargetRef.current.label,
       };
       if (map) {
+        map.stop();
+        const cur = map.getCenter();
+        const distDeg = Math.hypot(cur.lng - adminPreviewLng, cur.lat - adminPreviewLat);
         map.easeTo({
           center: [adminPreviewLng, adminPreviewLat],
           zoom: Math.max(map.getZoom(), 16.3),
-          duration: 180,
+          duration: distDeg < 0.0012 ? 120 : 180,
           essential: true,
         });
       }

@@ -8304,7 +8304,130 @@ export const bap1991DrinkDishes: Food[] = [
   },
 ];
 
+
+// ============================================================================
+// HAPPI KID COFFEE - TRÀ SỮA, SỮA CHUA, TRÀ HOA QUẢ & CÀ PHÊ PHIN PHÊ
+// Địa chỉ: KĐT Xuân Hoà (Đối diện trạm sạc VinFast Xuân Hoà), P. Xuân Hoà, Tỉnh Phú Thọ
+// SĐT: 0338 976 055 • Mở cửa: Ngày thường 15:00 - 22:30 | Cuối tuần: 08:00 - 12:00 & 15:00 - 22:30
+// ============================================================================
+export const happiKidDrinkDishes: Food[] = [
+  {
+    name: 'Trà sữa trân châu Hoàng Gia',
+    sub: 'Size M 30k / Size L 40k • Mua kèm vé vui chơi chỉ +19k • Happi Kid Coffee KĐT Xuân Hoà',
+    price: 30,
+    image: -2601,
+    customId: 'drink_happikid_ts_truyen_thong',
+    customImage: 'ai_studio_dish_happi_kid_coffee.jpg',
+    rarity: 1,
+    quip: 'Ly trà sữa trân châu đậm vị trà thơm béo tại Happi Kid Coffee (KĐT Xuân Hoà - đối diện trạm sạc VinFast). Đặc biệt mua kèm vé khu vui chơi lẻ chỉ +19k!',
+  },
+  {
+    name: 'Trà sữa kem trứng dừa nướng',
+    sub: 'Kem trứng béo mịn rắc dừa nướng giòn (Size M 35k / Size L 45k) • Happi Kid Coffee KĐT Xuân Hoà',
+    price: 35,
+    image: -2602,
+    customId: 'drink_happikid_ts_kem_trung_dua_nuong',
+    customImage: 'ai_studio_dish_cat_tien_kem_trung_dua_nuong.jpg',
+    rarity: 1,
+    quip: 'Trà sữa phủ lớp kem trứng đánh bông béo ngậy cùng dừa nướng giòn rụm thơm phức tại Happi Kid Coffee (SĐT: 0338 976 055).',
+  },
+  {
+    name: 'Trà sữa Olong kem mây',
+    sub: 'Trà Olong đậm vị phủ lớp kem mây bồng bềnh (Size M 35k / Size L 45k) • Happi Kid Coffee',
+    price: 35,
+    image: -2603,
+    customId: 'drink_happikid_ts_olong_kem_may',
+    customImage: 'ai_studio_dish_happi_kid_coffee.jpg',
+    rarity: 1,
+    quip: 'Hương trà Olong nướng thơm lừng quyện cùng lớp kem mây mịn màng tan ngay đầu lưỡi tại Happi Kid Coffee KĐT Xuân Hoà.',
+  },
+  {
+    name: 'Trà sữa kem cốm dẻo',
+    sub: 'Trà sữa quyện kem cốm non dẻo thơm hương lúa mới (Size L 45k) • Happi Kid Coffee',
+    price: 45,
+    image: -2604,
+    customId: 'drink_happikid_ts_kem_com_deo',
+    customImage: 'ai_studio_dish_me_tit_com_la_nep.jpg',
+    rarity: 2,
+    quip: 'Trà sữa kem cốm dẻo Size L đầy đặn, thơm nức mùi cốm non béo bùi tại Happi Kid Coffee.',
+  },
+  {
+    name: 'Matcha dừa bông tuyết đá xay',
+    sub: 'Matcha Nhật Bản xay bông tuyết cùng cốt dừa béo mát (45k) • Happi Kid Coffee KĐT Xuân Hoà',
+    price: 45,
+    image: -2605,
+    customId: 'drink_happikid_matcha_dua_bong_tuyet',
+    customImage: 'ai_studio_dish_matcha_latte.jpg',
+    rarity: 2,
+    quip: 'Đá xay Matcha dừa bông tuyết mát lạnh, kết hợp cùng Coco Matcha 40k, Dừa sen mây xanh 45k và Matcha yến mạch 35k tại Happi Kid Coffee.',
+  },
+  {
+    name: 'Cacao núi kem đá xay',
+    sub: 'Cacao nguyên chất đá xay phủ chóp kem whipping béo ngậy (45k) • Happi Kid Coffee',
+    price: 45,
+    image: -2606,
+    customId: 'drink_happikid_cacao_nui_kem',
+    customImage: 'ai_studio_dish_cacao_kem_trung.jpg',
+    rarity: 2,
+    quip: 'Ly Cacao núi kem đá xay 45k và Cacao latte kem muối 40k đậm đà sánh mịn tại Happi Kid Coffee KĐT Xuân Hoà.',
+  },
+  {
+    name: 'Sữa chua hoa quả Thiên đường',
+    sub: 'Sữa chua sánh mịn ngập tràn xoài, dâu tằm & trái cây nhiệt đới (45k) • Happi Kid Coffee',
+    price: 45,
+    image: -2607,
+    customId: 'drink_happikid_sc_hoa_qua_thien_duong',
+    customImage: 'ai_studio_dish_happi_kid_coffee.jpg',
+    rarity: 2,
+    quip: 'Best-seller giải nhiệt tại Happi Kid Coffee: Sữa chua hoa quả Thiên đường 45k, Sữa chua xoài nhiệt đới 45k, Sữa chua dâu tằm 45k và Sữa chua cốm dẻo 40k.',
+  },
+  {
+    name: 'Lựu ngọc trà tươi mát',
+    sub: 'Trà lựu đỏ tươi sắc ngọc ruby chua ngọt thanh khiết (45k) • Happi Kid Coffee KĐT Xuân Hoà',
+    price: 45,
+    image: -2608,
+    customId: 'drink_happikid_luu_ngoc_tra',
+    customImage: 'ai_studio_dish_cocokana_hong_luu.jpg',
+    rarity: 2,
+    quip: 'Sắc đỏ ngọc ruby bắt mắt của Lựu ngọc trà 45k, Trà thạch xoài kem mây 45k và Trà nhài dâu tằm 40k tại Happi Kid Coffee.',
+  },
+  {
+    name: 'Phê muối đậm đà',
+    sub: 'Cà phê Phin Phê phủ kem muối mặn béo thơm lừng (35k) • Happi Kid Coffee KĐT Xuân Hoà',
+    price: 35,
+    image: -2609,
+    customId: 'drink_happikid_phe_muoi',
+    customImage: 'ai_studio_dish_zino_cafe_muoi.jpg',
+    rarity: 1,
+    quip: 'Dòng Cà phê Phin Phê chuẩn gu tại Happi Kid Coffee: Phê muối 35k, Phê xỉu 35k, Cafe kem trứng 35k, Cafe cốt dừa đá xay 40k, Phê đen / Phê sữa 30k.',
+  },
+  {
+    name: 'Trà dưỡng nhan thảo mộc',
+    sub: 'Trà an nhiên dưỡng sinh táo đỏ kỷ tử long nhãn ấm áp (35k) • Happi Kid Coffee',
+    price: 35,
+    image: -2610,
+    customId: 'drink_happikid_tra_duong_nhan',
+    customImage: 'ai_studio_dish_tra_man_tuoi.jpg',
+    rarity: 1,
+    quip: 'Thư giãn an thần cùng bộ tứ Trà an nhiên đồng giá 35k tại Happi Kid Coffee: Trà dưỡng nhan, Trà hoa cúc mật ong, Trà gừng đường nâu và Trà atiso đường nâu.',
+  }
+];
+
+export const happiKidSnackDishes: Food[] = [
+  {
+    name: 'Heo khô cháy tỏi & Bỏng ngô bơ',
+    sub: 'Đồ nhâm nhi thơm giòn: Bỏng ngô 25k • Gà khô - Bò khô 25k • Heo khô cháy tỏi 25k • Happi Kid Coffee',
+    price: 25,
+    image: -2611,
+    customId: 'dish_happikid_heo_kho_bong_ngo',
+    customImage: 'ai_studio_dish_happi_kid_playground.jpg',
+    rarity: 0,
+    quip: 'Gọi đĩa Bỏng ngô bơ thơm 25k, Heo khô cháy tỏi 25k, Gà khô - Bò khô 25k hoặc Hướng dương 15k nhâm nhi tại Happi Kid Coffee & Khu Vui Chơi KĐT Xuân Hoà.',
+  }
+];
+
 export const anGiFoods: Food[] = [
+  ...happiKidSnackDishes,     // ĐỒ NHÂM NHI HAPPI KID COFFEE (KĐT Xuân Hoà): Heo khô cháy tỏi, Bỏng ngô, Gà khô - Bò khô 25k
   chaoLongChiHongDishes[0],   // MÓN MỚI CHỊ HỒNG: Cháo lòng thập cẩm 30k (Đầu Ngõ Kim Ngọc)
   chaoLongChiHongDishes[1],   // MÓN MỚI CHỊ HỒNG: Bún lòng thập cẩm 30k (Đầu Ngõ Kim Ngọc)
   bap1991FoodDishes[0],       // BESTSELLER BẮP 1991: Mỳ cay thập cẩm 55k (Lê Quang Đạo)
@@ -9504,6 +9627,7 @@ export const cocokanaFruitTeaDishes: Food[] = [
 export const cocokanaDishes = cocokanaFruitTeaDishes;
 
 export const uongGiItems: Food[] = [
+  ...happiKidDrinkDishes,     // ĐỒ UỐNG HAPPI KID COFFEE (KĐT Xuân Hoà - Đối diện trạm sạc VinFast): Trà sữa, Matcha, Sữa chua hoa quả, Cà phê Phin Phê
   ...bap1991DrinkDishes,      // ĐỒ UỐNG QUÁN BẮP 1991 (Lê Quang Đạo): Trà sữa kem trứng dừa nướng, Trà sữa trân châu đường đen, Trà quất lắc sữa
   ...chouChouDrinkDishes,     // BESTSELLER TIỆM NHÀ CHOU CHOU (Cổng ABC Xuân Hoà): Size 700ml 25k-30k, Trà Full Topping 15k & Nước ép M 15k / L 20k
   bepNhaCunDrinkDishes[0],    // BESTSELLER BẾP NHÀ CÚN: Trà chanh 12k

@@ -3,17 +3,18 @@ import { Food } from '@/lib/foods';
 import { FoodImage } from './FoodImage';
 import { getSpotsForDish, SpotInfo } from '@/lib/dish-places';
 import { getAllManagedPlaces } from '@/lib/admin-store';
-import { xuanHoaPlaces } from '@/lib/places-xuanhoa';
+import { xuanHoaPlaces, Place } from '@/lib/places-xuanhoa';
 import { getExpForRarity } from '@/lib/user-exp';
 import { 
   Share2, Check, MapPin, Phone, Navigation, X, Sparkles, Zap, Bike, 
-  UtensilsCrossed, MessageSquare, Send, Star, ChevronDown, Camera, Image as ImageIcon, Edit3 
+  UtensilsCrossed, MessageSquare, Send, Star, ChevronDown, Camera, Image as ImageIcon, Edit3, Eye, Store 
 } from 'lucide-react';
 import { formatTypography, cleanDishDisplayTitle } from '@/lib/utils';
 import { UserAuthProfile } from '@/lib/auth';
 import { GoogleGIcon } from './GoogleGIcon';
 import { getLocalDishReviews, saveLocalDishReview, DishReview } from '@/lib/reviews-storage';
 import { useI18n } from '@/lib/i18n';
+import { MapActionButtons } from './MapActionButtons';
 
 interface WinnerDialogProps {
   food: Food | null;
@@ -22,6 +23,7 @@ interface WinnerDialogProps {
   onSpinAgain?: () => void;
   allActiveFoods?: Food[];
   onSelectFood?: (food: Food) => void;
+  onSelectPlace?: (place: Place) => void;
   authUser?: UserAuthProfile | null;
   onOpenLogin?: () => void;
 }
@@ -74,6 +76,7 @@ export function WinnerDialog({
   food, 
   isOpen, 
   onClose,
+  onSelectPlace,
   authUser,
   onOpenLogin,
 }: WinnerDialogProps) {
@@ -94,7 +97,9 @@ export function WinnerDialog({
     const activeManaged = getAllManagedPlaces().filter(p => p.status === 'active');
     const basePlacesById = new Map(xuanHoaPlaces.map(p => [p.id, p]));
 
-    const toSpotInfo = (pItem: ReturnType<typeof getAllManagedPlaces>[number]): SpotInfo => ({
+    const toSpotInfo = (pItem: ReturnType<typeof getAllManagedPlaces>[number]): SpotInfo & { placeId?: string; matchedPlace?: Place } => ({
+      placeId: pItem.place.id,
+      matchedPlace: pItem.place,
       name: pItem.place.name,
       address: pItem.place.address,
       phone: pItem.place.phone || '',
@@ -118,7 +123,10 @@ export function WinnerDialog({
       const cleanName = pItem.place.name.toLowerCase().split(' - ')[0].split(' (')[0].trim();
       const matchSub = cleanName.length >= 4 && subLower.includes(cleanName);
       const matchMenu = (pItem.fullMenu || []).some(
-        m => !m.isLocked && m.name.toLowerCase().trim() === normDishName
+        m => !m.isLocked && (
+          m.name.toLowerCase().trim() === normDishName ||
+          (normDishName.length >= 6 && m.name.toLowerCase().includes(normDishName))
+        )
       );
       const matchCustomId = food.customId && food.customId.includes(pItem.place.id);
       return matchSub || matchMenu || matchCustomId;
@@ -134,13 +142,13 @@ export function WinnerDialog({
           (bs.phone && pItem.place.phone && bs.phone.replace(/\s+/g, '') === pItem.place.phone.replace(/\s+/g, ''))
         );
       });
-      if (matchedManaged && matchedManaged.isModified) {
+      if (matchedManaged) {
         return toSpotInfo(matchedManaged);
       }
-      return bs;
+      return bs as SpotInfo & { placeId?: string; matchedPlace?: Place };
     });
 
-    const mergedSpots: SpotInfo[] = [...directMatched.map(toSpotInfo), ...baseSpots];
+    const mergedSpots = [...directMatched.map(toSpotInfo), ...baseSpots];
     const seenNames = new Set<string>();
     return mergedSpots.filter(s => {
       const k = s.name.toLowerCase().split(' (')[0].trim();
@@ -365,151 +373,156 @@ export function WinnerDialog({
         </p>
 
         {/* ==============================================================
-            PHÂN BIỆT KHÁCH VÃNG LAI VS ĐÃ ĐĂNG NHẬP
-            Khách vãng lai: Khóa thông tin quán & địa chỉ, chỉ cho quay
-            Đã đăng nhập: Mở khóa đầy đủ quán, hotline, Google Maps & Đánh giá
+            DANH SÁCH QUÁN BÁN MÓN NÀY (HỆ THỐNG DUAL MAP ACTION)
+            Hiển thị: Có tại X quán -> [Xem quán] [🗺 Bản đồ số] [🌐 Google Maps] [☎ Gọi]
             ============================================================== */}
-        {!authUser || !authUser.isLoggedIn ? (
-          <div className="guest-spot-lock-card">
-            <div className="lock-icon-badge">🔒</div>
-            <h4 className="lock-title">Món này của quán nào tại Xuân Hòa?</h4>
-            <p className="lock-desc">
-              Bạn đang ở chế độ <strong>Khách Vãng Lai</strong> (chỉ trải nghiệm quay thử). Hãy đăng nhập tài khoản Google để mở khóa xem quán bán, hotline đặt ship &amp; chỉ đường Google Maps nhé!
-            </p>
-            <button
-              type="button"
-              className="auth-google-cta-btn guest-unlock-btn"
-              onClick={() => {
-                onClose();
-                onOpenLogin?.();
-              }}
-            >
-              <GoogleGIcon size={18} />
-              <span>Đăng nhập để xem Quán &amp; Địa chỉ</span>
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* THÔNG TIN QUÁN (Dành cho người đã đăng nhập) */}
-            {spot && (
-              <div className="winner-restaurant-box">
-                {spots.length > 1 && (
-                  <div style={{ marginBottom: '10px', textAlign: 'center' }}>
-                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
-                      Có tại <strong>{spots.length} quán</strong> ở Xuân Hòa · Bấm để chọn quán:
-                    </span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center' }}>
-                      {spots.map((s, idx) => (
+        {spots.length > 0 && (
+          <div className="winner-restaurant-box" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#fde047' }}>
+                Có tại {spots.length} quán:
+              </span>
+              <button
+                type="button"
+                className="action-btn-secondary share shrink-0 px-3 py-1 text-xs"
+                onClick={handleShare}
+                title="Sao chép liên kết chia sẻ"
+              >
+                {copied ? <Check size={13} className="text-emerald-400 shrink-0" /> : <Share2 size={13} className="shrink-0" />}
+                <span className="whitespace-nowrap">{copied ? 'Đã sao chép' : 'Chia sẻ món'}</span>
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {spots.map((s, idx) => {
+                const matchedPlace = s.matchedPlace;
+                const placeTarget: Place = matchedPlace || {
+                  id: s.placeId || s.name.toLowerCase().replace(/\s+/g, '-'),
+                  name: s.name,
+                  tagline: 'Địa điểm ẩm thực Xuân Hòa',
+                  category: 'restaurant',
+                  address: s.address,
+                  distance: '~500m ĐHSP2',
+                  zone: 'dhsp2',
+                  rating: 4.8,
+                  reviewCount: 45,
+                  priceRange: `${food.price}.000đ`,
+                  minPrice: food.price,
+                  maxPrice: food.price,
+                  imageUrl: '/brand/brand-icon-mark.webp',
+                  openHours: '07:00 - 22:30',
+                  serviceMode: s.serviceMode || 'both',
+                  deliveryNote: s.deliveryNote,
+                  phone: s.phone,
+                  mapsQuery: s.mapsQuery || `${s.name} Xuân Hòa`,
+                  mapsUrl: s.mapsUrl,
+                  rarity: 1,
+                  quip: food.name,
+                  signatureDish: { id: 'sig', name: food.name, price: food.price },
+                  menu: [],
+                  tags: ['Quán chuẩn'],
+                };
+
+                return (
+                  <div
+                    key={`${s.name}-${idx}`}
+                    style={{
+                      padding: '11px 12px',
+                      borderRadius: '14px',
+                      background: idx === selectedSpotIndex ? 'rgba(229, 184, 92, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+                      border: idx === selectedSpotIndex ? '1px solid rgba(229, 184, 92, 0.45)' : '1px solid rgba(255, 255, 255, 0.08)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                    }}
+                    onClick={() => setSelectedSpotIndex(idx)}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#f8fafc', lineHeight: 1.3 }}>
+                          {idx + 1}. {formatTypography(s.name)}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: '#cbd5e1', marginTop: '3px' }}>
+                          <MapPin size={12} className="text-amber-400 shrink-0" />
+                          <span>{formatTypography(s.address)}</span>
+                        </div>
+                      </div>
+                      <span className={`restaurant-badge ${s.verified ? 'verified' : ''}`} style={{ flexShrink: 0 }}>
+                        {s.verified ? '★ XÁC THỰC' : 'GỢI Ý'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                      {matchedPlace && onSelectPlace && (
                         <button
-                          key={s.name}
                           type="button"
-                          onClick={() => setSelectedSpotIndex(idx)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onClose();
+                            onSelectPlace(matchedPlace);
+                          }}
                           style={{
-                            padding: '3px 10px',
-                            borderRadius: '9999px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '6px 10px',
+                            borderRadius: '10px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            background: 'rgba(229, 184, 92, 0.18)',
+                            color: '#FDE68A',
+                            border: '1px solid rgba(229, 184, 92, 0.5)',
                             cursor: 'pointer',
-                            transition: 'all 0.2s',
-                            background: idx === selectedSpotIndex ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255, 255, 255, 0.06)',
-                            color: idx === selectedSpotIndex ? '#fde047' : '#cbd5e1',
-                            border: idx === selectedSpotIndex ? '1px solid rgba(245, 158, 11, 0.6)' : '1px solid rgba(255, 255, 255, 0.1)',
                           }}
                         >
-                          {s.name.split(' - ')[0].split(' • ')[0]}
+                          <Store size={12} />
+                          <span>Xem quán</span>
                         </button>
-                      ))}
+                      )}
+
+                      <MapActionButtons
+                        place={placeTarget}
+                        compact
+                        onAfterInternalMapClick={() => onClose()}
+                      />
+
+                      {s.phone && (
+                        <a
+                          href={`tel:${s.phone.split(/[-·,/]/)[0].replace(/[^0-9]/g, '')}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '6px 10px',
+                            borderRadius: '10px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            background: 'rgba(56, 189, 248, 0.14)',
+                            color: '#BAE6FD',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            textDecoration: 'none',
+                          }}
+                          title={`Gọi quán: ${s.phone}`}
+                        >
+                          <Phone size={12} />
+                          <span>☎ Gọi: {s.phone.split(/[-·,/]/)[0].trim()}</span>
+                        </a>
+                      )}
                     </div>
                   </div>
-                )}
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-                <div className="restaurant-badges-center">
-                  <span className={`restaurant-badge ${spot.verified ? 'verified' : ''}`}>
-                    {spot.verified ? '★ ĐỐI TÁC XÁC THỰC' : 'ĐỊA ĐIỂM GỢI Ý'}
-                  </span>
-                  {spot.serviceMode === 'delivery_only' ? (
-                    <span className="winner-spot-badge delivery inline-flex items-center gap-1">
-                      <Bike size={12} className="text-sky-400" />
-                      <span>{spot.deliveryNote?.includes('2h') ? 'Freeship Từ 1 Cốc Tới 2h Sáng' : 'Chuyên Ship Quanh XuHo'}</span>
-                    </span>
-                  ) : spot.serviceMode === 'dine_in_only' ? (
-                    <span className="winner-spot-badge dine inline-flex items-center gap-1">
-                      <UtensilsCrossed size={12} className="text-amber-400" />
-                      <span>Phục Vụ Tại Quán</span>
-                    </span>
-                  ) : (
-                    <span className="winner-spot-badge both inline-flex items-center gap-1">
-                      <Bike size={12} className="text-sky-400" />
-                      <span>Có Ship & Phục Vụ Tại Quán</span>
-                    </span>
-                  )}
-                </div>
-
-                {/* Tên Quán */}
-                <h4 className="restaurant-name-centered">{formatTypography(spot.name)}</h4>
-
-                {/* Địa chỉ & Tiện ích Ship */}
-                <div className="restaurant-meta-center">
-                  <div className="restaurant-address">
-                    <MapPin size={13} className="text-amber-400 shrink-0" />
-                    <span>{formatTypography(spot.address)}</span>
-                  </div>
-                  {spot.deliveryNote && (
-                    <div className="text-xs text-sky-300/90 mt-1 text-center font-medium flex items-center justify-center gap-1.5">
-                      <Bike size={13} className="text-sky-400 shrink-0" />
-                      <span>
-                        {spot.deliveryNote.replace(/[·•-]?\s*(Hotline|SĐT|ĐT|Liên hệ)[\s:]*([0-9\s.-]+)/gi, '').trim()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 3 Nút thao tác: Google Maps, Gọi Quán, Chia Sẻ */}
-            {spot && (
-              <div className="winner-actions-trio">
-                <a
-                  href={spot.mapsUrl || (spot.mapsQuery && spot.mapsQuery.startsWith('http') ? spot.mapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(spot.mapsQuery || spot.name + ' Xuân Hòa')}`)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="action-btn-primary maps"
-                >
-                  <Navigation size={16} />
-                  <span>Chỉ đường Google Maps</span>
-                </a>
-
-                <div className="flex gap-2 w-full">
-                  {spot.phone && (
-                    <a
-                      href={`tel:${spot.phone.split(/[-·,/]/)[0].replace(/[^0-9]/g, '')}`}
-                      className={`action-btn-secondary ${spot.serviceMode === 'delivery_only' ? 'delivery-btn' : 'call'} flex-1 min-w-0`}
-                      title={`${spot.serviceMode === 'delivery_only' ? 'Đặt Ship' : 'Gọi Quán'}: ${spot.phone}`}
-                    >
-                      <Phone size={14} className="shrink-0 text-amber-400" />
-                      <span className="truncate whitespace-nowrap text-xs font-semibold">
-                        {spot.serviceMode === 'delivery_only' ? 'Đặt Ship' : 'Gọi Quán'}: <span className="font-mono text-amber-300 font-bold whitespace-nowrap">{spot.phone}</span>
-                      </span>
-                    </a>
-                  )}
-
-                  <button 
-                    className="action-btn-secondary share shrink-0 px-3.5" 
-                    onClick={handleShare}
-                    title="Sao chép liên kết chia sẻ"
-                  >
-                    {copied ? <Check size={14} className="text-emerald-400 shrink-0" /> : <Share2 size={14} className="shrink-0" />}
-                    <span className="whitespace-nowrap">{copied ? 'Đã sao chép' : 'Chia sẻ'}</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* HỆ THỐNG ĐÁNH GIÁ THỰC KHÁCH SIÊU GỌN - ĐẲNG CẤP & CÂN ĐỐI */}
-            <div className="dish-review-section-wrap">
-              {/* THANH COMPACT DUY NHẤT: TINH GỌN, KHÔNG THỪA THÃI */}
-              <div className="dish-review-compact-bar">
-                <div 
+        {/* HỆ THỐNG ĐÁNH GIÁ THỰC KHÁCH SIÊU GỌN - ĐẲNG CẤP & CÂN ĐỐI */}
+        <>
+          <div className="dish-review-section-wrap">
+            {/* THANH COMPACT DUY NHẤT: TINH GỌN, KHÔNG THỪA THÃI */}
+            <div className="dish-review-compact-bar">
+              <div 
                   className={`dish-review-bar-left ${reviews.length > 0 ? 'cursor-pointer' : ''}`}
                   onClick={() => {
                     if (reviews.length > 0) {
@@ -735,7 +748,6 @@ export function WinnerDialog({
               )}
             </div>
           </>
-        )}
       </div>
     </div>
   );

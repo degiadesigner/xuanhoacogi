@@ -1,132 +1,232 @@
-import React from 'react';
-import { 
-  Place, 
-  getPlaceAmenity, 
-  getPlaceShortDistance, 
+import React, { useState } from 'react';
+import {
+  Place,
+  getPlaceShortDistance,
   getPlacePerPersonText,
   getPlaceHonorBadge,
-  getPlaceSignboardLines
+  getPlaceStyleGroup,
 } from '@/lib/places-xuanhoa';
-import { 
-  Star, MapPin, Sparkles, Navigation, Tent, Beer, Coffee, Flame, 
-  Soup, UtensilsCrossed, Utensils, Bike, Wind, Compass 
+import {
+  Star,
+  MapPin,
+  Sparkles,
+  Navigation,
+  Tent,
+  Beer,
+  Coffee,
+  Flame,
+  Soup,
+  UtensilsCrossed,
+  Utensils,
+  Bike,
+  Store,
 } from 'lucide-react';
 import { formatTypography } from '@/lib/utils';
+import { getPlaceMainCategories } from '@/lib/place-map-utils';
 
-interface PlaceCardProps {
+export interface PlaceCardProps {
   place: Place;
   onClick?: () => void;
   isReel?: boolean;
   slot?: number;
+  sectorTag?: string;
+  matchedDishHighlight?: string | null;
+  eagerImage?: boolean;
 }
 
-function renderPlaceCategoryIcon(place: Place) {
-  if (place.id === 'tram-du-de') return <Tent size={18} className="text-amber-400" />;
-  if (place.category === 'pub') return <Beer size={18} className="text-amber-400" />;
+function renderPlaceCategoryIcon(place: Place, size = 18) {
+  if (place.id === 'tram-du-de') return <Tent size={size} className="text-[#E5B85C]" />;
+  if (getPlaceStyleGroup(place) === 'vui-choi') return <Sparkles size={size} className="text-[#E5B85C]" />;
+  if (place.category === 'pub') return <Beer size={size} className="text-[#E5B85C]" />;
   if (
-    place.category === 'cafe' || 
-    place.tags.some(t => t.toLowerCase().includes('trà') || t.toLowerCase().includes('cafe') || t.toLowerCase().includes('matcha'))
+    place.category === 'cafe' ||
+    (place.tags || []).some(
+      (t) =>
+        t.toLowerCase().includes('trà') ||
+        t.toLowerCase().includes('cafe') ||
+        t.toLowerCase().includes('matcha')
+    )
   ) {
-    return <Coffee size={18} className="text-amber-400" />;
+    return <Coffee size={size} className="text-[#E5B85C]" />;
   }
   if (
-    place.tags.some(t => t.toLowerCase().includes('ăn vặt') || t.toLowerCase().includes('bánh mì') || t.toLowerCase().includes('bánh tráng') || t.toLowerCase().includes('chè'))
+    (place.tags || []).some(
+      (t) =>
+        t.toLowerCase().includes('ăn vặt') ||
+        t.toLowerCase().includes('bánh mì') ||
+        t.toLowerCase().includes('bánh tráng') ||
+        t.toLowerCase().includes('chè')
+    )
   ) {
-    return <Flame size={18} className="text-amber-400" />;
+    return <Flame size={size} className="text-[#E5B85C]" />;
   }
-  if (place.name.toLowerCase().includes('phở') || place.name.toLowerCase().includes('bún')) return <Soup size={18} className="text-amber-400" />;
-  if (place.category === 'restaurant') return <UtensilsCrossed size={18} className="text-amber-400" />;
-  return <Utensils size={18} className="text-amber-400" />;
-}
-
-function renderAmenityIcon(id: string) {
-  switch (id) {
-    case 'bep-ship':
-      return <Bike size={11} className="inline mr-1" />;
-    case 'dieu-hoa':
-      return <Wind size={11} className="inline mr-1" />;
-    case 'nhau-xom':
-      return <Flame size={11} className="inline mr-1" />;
-    case 'via-he':
-    default:
-      return <Compass size={11} className="inline mr-1" />;
-  }
+  if (place.name.toLowerCase().includes('phở') || place.name.toLowerCase().includes('bún'))
+    return <Soup size={size} className="text-[#E5B85C]" />;
+  if (place.category === 'restaurant')
+    return <UtensilsCrossed size={size} className="text-[#E5B85C]" />;
+  return <Utensils size={size} className="text-[#E5B85C]" />;
 }
 
 function getPlaceShortAddress(place: Place): string {
   const addr = place.address || '';
   if (addr.includes('Bá Thiện') || addr.includes('Bình Xuyên')) return 'KCN Bá Thiện 2';
   if (addr.includes('Cổng chào') || addr.includes('Tuấn Hiền')) return 'Cổng chào Xuân Hòa';
-  if (addr.includes('Vòng tròn') || addr.includes('Xuho') || addr.includes('Salty Name')) return 'Vòng tròn Xuho';
-  if (addr.includes('16') && addr.includes('Kim Ngọc')) return '16 Kim Ngọc';
-  if (addr.includes('Đầu ngõ Kim Ngọc') || addr.includes('ngõ Kim Ngọc')) return 'Đầu ngõ Kim Ngọc';
-  if (addr.includes('Số 3') && addr.includes('Kim Ngọc')) return 'Số 3 Kim Ngọc';
-  if (addr.includes('47') && addr.includes('Kim Ngọc')) return '47 Kim Ngọc';
-  if (addr.includes('11') && addr.includes('Kim Ngọc')) return '11 Kim Ngọc';
-  if (addr.includes('Số 9') && addr.includes('Kim Ngọc')) return 'Số 9 Kim Ngọc';
-  if (addr.includes('55') && addr.includes('Nguyễn Văn Linh')) return '55 Nguyễn Văn Linh';
-  if (addr.includes('90') && addr.includes('Nguyễn Văn Linh')) return '90 Nguyễn Văn Linh';
-  if (addr.includes('185')) return '185 Nguyễn Văn Linh';
-  if (addr.includes('78') && addr.includes('Trường Chinh')) return '78 Trường Chinh';
-  if (addr.includes('122') && addr.includes('Trường Chinh')) return '122 Trường Chinh';
-  if (addr.includes('512')) return '512 Trường Chinh';
-  if (addr.includes('27 Đồng Tâm')) return '27 Đồng Tâm';
-  if (addr.includes('9 Đồng Tâm') || (addr.includes('Số 9') && addr.includes('Đồng Tâm'))) return 'Số 9 Đồng Tâm';
-  if (addr.includes('Diamond')) return 'KĐT Mới (Diamond)';
-  if (addr.includes('Ban Quản Lý')) return 'Ban Quản Lý KĐT';
-  if (addr.includes('xe buýt 95') || addr.includes('95')) return 'Đối diện xe buýt 95';
-  if (addr.includes('Dốc KTX') || addr.includes('Dốc ktx')) return 'Dốc KTX Nguyễn Văn Linh';
-  if (addr.includes('Cổng Ký Túc Xá') || addr.includes('KTX')) return 'Cổng KTX ĐHSP2';
-  if (addr.includes('109 Nguyễn Văn Linh')) return '109 Nguyễn Văn Linh';
-  if (addr.includes('122 Nguyễn Văn Linh')) return '122 Nguyễn Văn Linh';
-  if (addr.includes('48 Nguyễn Văn Linh')) return '48 Nguyễn Văn Linh';
-  if (addr.includes('48B Nguyễn Văn Linh')) return '48B Nguyễn Văn Linh';
-  if (addr.includes('206 Nguyễn Văn Linh')) return '206 Nguyễn Văn Linh';
-  if (addr.includes('50 Trường Chinh')) return '50 Trường Chinh';
-  if (addr.includes('36 - 38 Điện Biên') || addr.includes('Điện Biên')) return '36-38 Điện Biên';
-  if (addr.includes('Lê Quang Đạo')) return 'Lê Quang Đạo';
-  if (addr.includes('Trần Phú')) return 'Trần Phú';
-  if (addr.includes('Dốc Chợ')) return 'Dốc Chợ Xuân Hòa';
-  if (addr.includes('Hiển Lễ')) return 'Hiển Lễ (Bếp Ship)';
-  if (addr.includes('88-90') || addr.includes('Võ Thị Sáu')) return '88-90 Võ Thị Sáu';
-  if (addr.includes('275')) return '275 Nguyễn Văn Linh';
-  if (addr.includes('ngõ 5') || addr.includes('02 ngõ 5')) return '02 ngõ 5 Nguyễn Văn Linh';
-  
+  if (addr.includes('Vòng tròn') || addr.includes('Xuho') || addr.includes('Salty Name'))
+    return 'Vòng tròn Xuho';
+  if (addr.includes('VinFast') || addr.includes('KĐT Xuân Hoà')) return 'KĐT Xuân Hoà';
   const parts = addr.split(',');
   return parts[0].trim();
 }
 
-export function PlaceCard({ place, onClick, isReel = false, slot }: PlaceCardProps) {
-  const honorBadge = getPlaceHonorBadge(place);
-  const signboard = getPlaceSignboardLines(place);
-  const rawImg = place.imageUrl || 'ai_studio_dish_com_68_suon.jpg';
-  const imgUrl = rawImg.startsWith('http') || rawImg.startsWith('/') || rawImg.startsWith('data:') ? rawImg : `/${rawImg}`;
-  const amenity = getPlaceAmenity(place);
-  const shortDist = getPlaceShortDistance(place);
-  const perPerson = getPlacePerPersonText(place);
+/**
+ * Mục 13: Chỉ hiện 1 category chính ngắn gọn (VD: Ăn vặt, Bi-a, Cafe, Vui chơi, Nhậu...)
+ */
+function getPrimaryShortCategory(place: Place, sectorTag?: string): { primary: string; extraCount: number } {
+  const combined = `${place.name || ''} ${place.tagline || ''} ${place.subcategory || ''} ${(place.tags || []).join(' ')}`.toLowerCase();
+  const mainCats = getPlaceMainCategories(place, sectorTag);
+  const extraCount = Math.max(0, mainCats.length - 1);
+
+  if (place.id?.startsWith('osm_') || sectorTag === 'dia-danh') {
+    if (combined.includes('đh ') || combined.includes('đại học') || combined.includes('cao đẳng') || combined.includes('trường')) {
+      return { primary: 'Trường học', extraCount: 0 };
+    }
+    if (combined.includes('hồ ') || combined.includes('quảng trường') || combined.includes('công viên')) {
+      return { primary: 'Địa danh', extraCount: 0 };
+    }
+    return { primary: 'Tiện ích', extraCount: 0 };
+  }
+
+  if (place.subcategory === 'Bi-a' || combined.includes('bi-a') || combined.includes('billiards')) {
+    return { primary: 'Bi-a', extraCount };
+  }
+  if (place.subcategory === 'Game' || combined.includes('cyber') || combined.includes('quán game')) {
+    return { primary: 'Game', extraCount };
+  }
+  if (place.subcategory === 'Karaoke' || combined.includes('karaoke')) {
+    return { primary: 'Karaoke', extraCount };
+  }
+  if (place.id === 'khu-vui-choi-happi-kid' || combined.includes('khu vui chơi') || place.subcategory === 'Giải trí') {
+    return { primary: 'Vui chơi', extraCount };
+  }
+  if (place.subcategory === 'Điện thoại' || sectorTag === 'dien-thoai' || combined.includes('điện thoại')) {
+    return { primary: 'Điện thoại', extraCount: 0 };
+  }
+  if (place.subcategory === 'Làm đẹp' || combined.includes('hair') || combined.includes('nail') || combined.includes('spa')) {
+    return { primary: 'Làm đẹp', extraCount: 0 };
+  }
+  if (place.subcategory === 'Tạp hóa' || combined.includes('tạp hóa') || combined.includes('siêu thị')) {
+    return { primary: 'Tạp hóa', extraCount: 0 };
+  }
+
+  const style = getPlaceStyleGroup(place);
+  if (style === 'nhau-lau') {
+    if (combined.includes('lẩu') || combined.includes('nướng')) return { primary: 'Lẩu · Nướng', extraCount };
+    return { primary: 'Nhậu', extraCount };
+  }
+  if (style === 'uong') {
+    if (combined.includes('trà sữa')) return { primary: 'Trà sữa', extraCount };
+    return { primary: 'Cafe', extraCount };
+  }
+  if (style === 'an-vat') {
+    return { primary: 'Ăn vặt', extraCount };
+  }
+  if (style === 'vui-choi') {
+    return { primary: 'Vui chơi', extraCount };
+  }
+  if (combined.includes('phở') || combined.includes('bún')) {
+    return { primary: 'Bún · Phở', extraCount };
+  }
+  if (combined.includes('bánh mì') || combined.includes('bánh cuốn')) {
+    return { primary: 'Bánh mì', extraCount };
+  }
+  return { primary: 'Cơm · Món', extraCount };
+}
+
+/**
+ * Mục 14 & 44: Một cụm ngắn gọn cho khoảng cách / khu vực (~300m hoặc Xuân Hòa)
+ */
+function getCompactLocationText(place: Place): string {
+  const rawDist = getPlaceShortDistance(place) || place.distance || '';
+  const meterMatch = rawDist.match(/~?\d+\s*(?:m|km)/i);
+  if (meterMatch) {
+    const token = meterMatch[0].replace(/\s+/g, '');
+    return token.startsWith('~') ? token : `~${token}`;
+  }
+  if (rawDist.toLowerCase().includes('kđt') || (place.address || '').toLowerCase().includes('kđt')) {
+    return 'Xuân Hòa';
+  }
+  return 'Xuân Hòa';
+}
+
+/**
+ * Mục 15 & 43: Giá ngắn gọn 1 dòng (VD: 20k–35k, Từ 55k, 60k/giờ), không lặp chữ "Món từ" hay "Khoảng giá"
+ */
+function getCompactPriceLabel(place: Place): string {
+  if (place.id?.startsWith('osm_') || (place.minPrice === 0 && place.maxPrice === 0)) {
+    return 'Công cộng';
+  }
+  const raw = (place.priceRange || '').trim();
+  if (raw.toLowerCase().includes('/giờ') || raw.toLowerCase().includes('/h')) {
+    if (place.minPrice > 0 && place.maxPrice > place.minPrice) {
+      return `${place.minPrice}k–${place.maxPrice}k/giờ`;
+    }
+    if (place.minPrice > 0) return `${place.minPrice}k/giờ`;
+  }
+  if (place.id === 'khu-vui-choi-happi-kid') {
+    return 'Từ 39k';
+  }
+  if (place.minPrice > 0 && place.maxPrice > 0) {
+    if (place.minPrice === place.maxPrice) {
+      return `${place.minPrice}k`;
+    }
+    return `${place.minPrice}k–${place.maxPrice}k`;
+  }
+  if (raw) {
+    return raw
+      .replace(/\.000\s*đ/gi, 'k')
+      .replace(/\/người|\/vé|\/suất|\/cốc|\/bát/gi, '')
+      .replace(/~/g, '')
+      .replace(/\s*-\s*/g, '–')
+      .trim();
+  }
+  return '25k–50k';
+}
+
+const PlaceCardInner: React.FC<PlaceCardProps> = ({
+  place,
+  onClick,
+  isReel = false,
+  slot,
+  sectorTag,
+  matchedDishHighlight,
+  eagerImage = false,
+}) => {
+  const [imgError, setImgError] = useState(false);
 
   if (isReel) {
+    const honorBadge = getPlaceHonorBadge(place);
+    const shortDist = getPlaceShortDistance(place);
+    const perPerson = getPlacePerPersonText(place);
     const shortAddr = getPlaceShortAddress(place);
 
     return (
-      <div 
+      <div
         className="reel-place-card brand-signboard-card"
         onClick={onClick}
         style={{
           position: 'absolute',
           top: 7,
           left: (slot ?? 0) * 260,
-          borderColor: honorBadge.color || '#F59E0B'
+          borderColor: honorBadge.color || '#F59E0B',
         }}
       >
-        {/* Top Badges Row */}
         <div className="signboard-top-row">
-          <span 
+          <span
             className="signboard-badge"
-            style={{ 
-              backgroundColor: honorBadge.bg, 
+            style={{
+              backgroundColor: honorBadge.bg,
               color: honorBadge.color,
-              borderColor: honorBadge.border
+              borderColor: honorBadge.border,
             }}
           >
             {honorBadge.label}
@@ -137,11 +237,8 @@ export function PlaceCard({ place, onClick, isReel = false, slot }: PlaceCardPro
           </span>
         </div>
 
-        {/* Central Signboard: Logo Icon & Distinct Typography Name */}
         <div className="signboard-center-area">
-          <div className="signboard-icon-disc">
-            {renderPlaceCategoryIcon(place)}
-          </div>
+          <div className="signboard-icon-disc">{renderPlaceCategoryIcon(place)}</div>
 
           <h3 className="signboard-brand-name" title={place.name}>
             {formatTypography(place.name)}
@@ -152,7 +249,6 @@ export function PlaceCard({ place, onClick, isReel = false, slot }: PlaceCardPro
           </p>
         </div>
 
-        {/* Bottom Details Row */}
         <div className="signboard-bottom-row">
           <div className="signboard-address-tag">
             <Navigation size={10} className="inline mr-1 text-slate-400 shrink-0" />
@@ -179,79 +275,114 @@ export function PlaceCard({ place, onClick, isReel = false, slot }: PlaceCardPro
     );
   }
 
+  // ============================================================================
+  // COMPACT 2-COLUMN DISCOVERY CARD (MỤC 8 -> 17, 26 -> 28, 35, 41 -> 45)
+  // Click cả card -> Mở PlaceModal Detail View đầy đủ thông tin + Dual Map
+  // ============================================================================
+  const rawImg = place.imageUrl || '';
+  const hasRealPhoto =
+    Boolean(rawImg) &&
+    !rawImg.includes('brand-icon-mark') &&
+    !imgError;
+  const imgUrl =
+    rawImg.startsWith('http') || rawImg.startsWith('/') || rawImg.startsWith('data:')
+      ? rawImg
+      : `/${rawImg}`;
+
+  const { primary: categoryName, extraCount } = getPrimaryShortCategory(place, sectorTag);
+  const locationText = getCompactLocationText(place);
+  const priceText = getCompactPriceLabel(place);
+  const displayRating = Number(place.rating || 4.9).toFixed(1);
+  const isFeatured = (place.rarity ?? 0) >= 3;
+
   return (
-    <div className="grid-place-card" onClick={onClick}>
-      <div className="grid-card-img-wrap">
-        <div className="place-signboard-banner">
-          <div className="signboard-plaque">
-            <div className="signboard-inner-border">
-              <h4 className="signboard-brand-primary">{signboard.line1}</h4>
-              {signboard.line2 && (
-                <span className="signboard-brand-secondary">{signboard.line2}</span>
+    <article
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
+      aria-label={`Xem chi tiết ${place.name}`}
+      className="xh-compact-place-card group"
+    >
+      {/* 1. ẢNH QUÁN (Aspect ratio 1.35:1 thống nhất, chiếm ~56% chiều cao card - Mục 10 & 12) */}
+      <div className="xh-compact-card-media">
+        {hasRealPhoto ? (
+          <img
+            src={imgUrl}
+            alt={place.name}
+            loading={eagerImage ? 'eager' : 'lazy'}
+            decoding="async"
+            onError={() => setImgError(true)}
+            className="xh-compact-card-img"
+          />
+        ) : (
+          <div className="xh-compact-card-placeholder">
+            <div className="xh-compact-placeholder-icon">
+              {place.id?.startsWith('osm_') ? (
+                <Store size={22} className="text-[#E5B85C]/80" />
+              ) : (
+                renderPlaceCategoryIcon(place, 22)
               )}
             </div>
-          </div>
-        </div>
-        <div className="grid-card-rating">
-          <Star size={12} fill="#FFB800" color="#FFB800" />
-          <span>{place.rating}</span>
-          <span className="text-xs opacity-75">({place.reviewCount})</span>
-        </div>
-      </div>
-
-      <div className="grid-card-content">
-        <div className="grid-card-tags">
-          <span className="dist-chip"><MapPin size={11} /> {shortDist}</span>
-
-          {place.serviceMode === 'delivery_only' && (
-            <span className="tag-chip service-delivery inline-flex items-center gap-1">
-              <Bike size={11} className="text-sky-400" /> Chuyên Ship
-            </span>
-          )}
-          {place.serviceMode === 'both' && (
-            <span className="tag-chip service-both inline-flex items-center gap-1">
-              <Bike size={11} className="text-sky-400" /> Ship & Quán
-            </span>
-          )}
-          {place.serviceMode === 'dine_in_only' && (
-            <span className="tag-chip service-dine inline-flex items-center gap-1">
-              <UtensilsCrossed size={11} className="text-amber-400" /> Tại Quán
-            </span>
-          )}
-
-          {/* Tiện ích quán badge */}
-          <span 
-            className="tag-chip font-semibold inline-flex items-center"
-            style={{ borderColor: amenity.badgeColor, color: amenity.badgeColor }}
-          >
-            {renderAmenityIcon(amenity.id)}
-            {amenity.label.split(' ')[0]} {amenity.label.split(' ')[1] || ''}
-          </span>
-        </div>
-
-        <h3 className="grid-place-title">{formatTypography(place.name)}</h3>
-        <p className="grid-place-tagline">{place.tagline}</p>
-
-        {place.signatureDish && (
-          <div className="grid-signature-box">
-            <div className="sig-row">
-              <span className="sig-label">Món tủ:</span>
-              <strong className="sig-name">{formatTypography(place.signatureDish.name)}</strong>
-              <span className="sig-price">~{place.signatureDish.price}k</span>
-            </div>
+            <span className="xh-compact-placeholder-cat">{categoryName}</span>
           </div>
         )}
 
-        <div className="grid-card-bottom">
-          <div className="flex flex-col text-left">
-            <span className="text-[11px] text-slate-400">Tầm giá:</span>
-            <strong className="text-amber-400 text-xs font-bold">{perPerson}</strong>
-          </div>
-          <button className="btn-view-details">
-            Xem Quán →
-          </button>
+        {/* Badge Nổi bật rất nhỏ (nếu là quán đặc sắc - Mục 42) */}
+        {isFeatured && (
+          <span className="xh-compact-featured-badge">Nổi bật</span>
+        )}
+
+        {/* Rating nhỏ gọn ở góc phải trên ảnh: ★ 5.0 (Mục 12) */}
+        <div className="xh-compact-rating-badge">
+          <Star size={10} fill="#E5B85C" color="#E5B85C" className="shrink-0" />
+          <span>{displayRating}</span>
+          {place.reviewCount > 0 && (
+            <span className="xh-compact-rating-count">· {place.reviewCount}</span>
+          )}
         </div>
       </div>
-    </div>
+
+      {/* 2. NỘI DUNG TỐI GIẢN (Tên + Category · Khoảng cách + Giá - Mục 8, 11, 13, 14, 15) */}
+      <div className="xh-compact-card-body">
+        {/* LEVEL 1: Tên quán (tối đa 2 dòng, cố định chiều cao đồng đều - Mục 11 & 26) */}
+        <h3 className="xh-compact-card-title" title={place.name}>
+          {formatTypography(place.name)}
+        </h3>
+
+        {/* LEVEL 3: Category chính · Khoảng cách / Khu vực (Mục 13 & 14) */}
+        <div className="xh-compact-card-meta">
+          <span className="xh-compact-meta-cat">
+            {categoryName}
+            {extraCount > 0 ? ` +${extraCount}` : ''}
+          </span>
+          <span className="xh-compact-meta-dot">·</span>
+          <span className="xh-compact-meta-dist">{locationText}</span>
+        </div>
+
+        {/* LEVEL 4: Giá ngắn gọn + Trạng thái mở / Món khớp tìm kiếm (Mục 15, 43, 45) */}
+        <div className="xh-compact-card-footer">
+          <span className="xh-compact-card-price">{priceText}</span>
+
+          {matchedDishHighlight ? (
+            <span className="xh-compact-dish-match" title={`Có bán: ${matchedDishHighlight}`}>
+              {matchedDishHighlight.split('(')[0].trim()}
+            </span>
+          ) : (
+            <span className="xh-compact-open-dot" title={place.openHours || 'Đang mở cửa'}>
+              <span className="xh-open-indicator" />
+              <span>Đang mở</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </article>
   );
-}
+};
+
+export const PlaceCard = React.memo(PlaceCardInner);

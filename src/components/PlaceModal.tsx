@@ -1,22 +1,40 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Place, 
-  getPlaceStyleGroup, 
-  getPlaceStyleLabel,
+import {
+  Place,
   getPlaceAmenity,
   getPlaceShortDistance,
-  getPlacePerPersonText
+  getPlacePerPersonText,
+  Review,
 } from '@/lib/places-xuanhoa';
-import { 
-  X, MapPin, Phone, Star, Sparkles, Navigation, RotateCw, UtensilsCrossed, 
-  ShieldCheck, DollarSign, Search, ChevronDown, Bike, Wind, Flame, Compass,
-  MessageSquare, Send, Camera
+import {
+  X,
+  MapPin,
+  Phone,
+  Star,
+  Sparkles,
+  UtensilsCrossed,
+  ShieldCheck,
+  DollarSign,
+  Search,
+  ChevronDown,
+  Bike,
+  Wind,
+  Flame,
+  Compass,
+  MessageSquare,
+  Send,
+  Camera,
+  Clock,
 } from 'lucide-react';
 import { formatTypography, cleanDishDisplayTitle } from '@/lib/utils';
-import { Review } from '@/lib/places-xuanhoa';
 import { getLocalReviews, saveLocalReview } from '@/lib/reviews-storage';
 import { UserAuthProfile } from '@/lib/auth';
 import { GoogleGIcon } from './GoogleGIcon';
+import { MapActionButtons } from './MapActionButtons';
+import {
+  getPlaceDisplayTypeBadge,
+  isEntertainmentOrServicePlace,
+} from '@/lib/place-map-utils';
 
 const QUICK_PLACE_TAGS = [
   '😋 Đồ ăn tươi ngon',
@@ -41,6 +59,56 @@ function renderAmenityIcon(id: string, size = 14) {
   }
 }
 
+type InPlaceMenuFilter = 'all' | 'an' | 'nhau' | 'uong';
+
+function classifyMenuItemType(name: string, tag?: string, desc?: string): 'an' | 'nhau' | 'uong' {
+  const text = `${name} ${tag || ''} ${desc || ''}`.toLowerCase();
+  if (
+    text.includes('trà') ||
+    text.includes('cafe') ||
+    text.includes('cà phê') ||
+    text.includes('phê ') ||
+    text.includes('bạc xỉu') ||
+    text.includes('sữa') ||
+    text.includes('nước ép') ||
+    text.includes('sinh tố') ||
+    text.includes('coca') ||
+    text.includes('cola') ||
+    text.includes('bò húc') ||
+    text.includes('sting') ||
+    text.includes('7up') ||
+    text.includes('matcha') ||
+    text.includes('cacao') ||
+    text.includes('milo') ||
+    text.includes('chè') ||
+    text.includes('tào phớ') ||
+    text.includes('đồ uống') ||
+    text.includes('giải nhiệt') ||
+    text.includes('giải khát')
+  ) {
+    return 'uong';
+  }
+  if (
+    text.includes('lẩu') ||
+    text.includes('nướng') ||
+    text.includes('bia') ||
+    text.includes('rượu') ||
+    text.includes('nhậu') ||
+    text.includes('ốc') ||
+    text.includes('trâu') ||
+    text.includes('ngựa') ||
+    text.includes('dồi') ||
+    text.includes('nầm') ||
+    text.includes('bò tảng') ||
+    text.includes('chảo gang') ||
+    text.includes('hải sản') ||
+    text.includes('mẹt')
+  ) {
+    return 'nhau';
+  }
+  return 'an';
+}
+
 interface PlaceModalProps {
   place: Place | null;
   isOpen: boolean;
@@ -52,17 +120,16 @@ interface PlaceModalProps {
   onOpenLogin?: () => void;
 }
 
-export function PlaceModal({ 
-  place, 
-  isOpen, 
-  onClose, 
-  onSpinAgain, 
+export function PlaceModal({
+  place,
+  isOpen,
+  onClose,
   authUser = null,
   onOpenLogin,
 }: PlaceModalProps) {
   const [currentPlace, setCurrentPlace] = useState<Place | null>(place);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
+  const [menuFilter, setMenuFilter] = useState<InPlaceMenuFilter>('all');
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [newRating, setNewRating] = useState<number>(5);
@@ -72,13 +139,12 @@ export function PlaceModal({
   const [reviewSuccess, setReviewSuccess] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Sync when prop place changes
   useEffect(() => {
     if (place) {
       setCurrentPlace(place);
-      setIsMenuOpen(false);
       setIsReviewOpen(false);
       setMenuSearch('');
+      setMenuFilter('all');
       setReviewSuccess(false);
       setSelectedTags([]);
       setNewPhoto('');
@@ -94,23 +160,39 @@ export function PlaceModal({
   }, [activePlace?.id]);
 
   const safeMenu = activePlace?.menu || [];
+  const isNonFoodVenue = isEntertainmentOrServicePlace(activePlace);
+  const isCivicLandmark = Boolean(activePlace?.id?.startsWith('osm_'));
 
-  // Filtered menu (MUST be called before early return to respect React Rules of Hooks)
+  const availableMenuCategories = useMemo(() => {
+    const counts = { an: 0, nhau: 0, uong: 0 };
+    for (const item of safeMenu) {
+      const cat = classifyMenuItemType(item.name, item.tag, item.description);
+      counts[cat]++;
+    }
+    return counts;
+  }, [safeMenu]);
+
   const displayMenu = useMemo(() => {
-    if (!menuSearch.trim()) return safeMenu;
     const query = menuSearch.trim().toLowerCase();
-    return safeMenu.filter(m => 
-      m.name.toLowerCase().includes(query) || 
-      (m.tag && m.tag.toLowerCase().includes(query)) ||
-      (m.description && m.description.toLowerCase().includes(query))
-    );
-  }, [safeMenu, menuSearch]);
+    return safeMenu.filter((m) => {
+      if (!isNonFoodVenue && menuFilter !== 'all') {
+        const cat = classifyMenuItemType(m.name, m.tag, m.description);
+        if (cat !== menuFilter) return false;
+      }
+      if (!query) return true;
+      return (
+        m.name.toLowerCase().includes(query) ||
+        (m.tag && m.tag.toLowerCase().includes(query)) ||
+        (m.description && m.description.toLowerCase().includes(query))
+      );
+    });
+  }, [safeMenu, menuSearch, menuFilter, isNonFoodVenue]);
 
   if (!place || !isOpen || !activePlace) return null;
 
   const handleToggleTag = (tag: string) => {
-    setSelectedTags(prev => 
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
   };
 
@@ -157,25 +239,24 @@ export function PlaceModal({
       photo: newPhoto.trim() || undefined,
       isVerified: true,
     });
-    setReviews(prev => [created, ...prev]);
+    setReviews((prev) => [created, ...prev]);
     setNewComment('');
     setSelectedTags([]);
     setNewPhoto('');
     setReviewSuccess(true);
     setTimeout(() => setReviewSuccess(false), 4000);
   };
-  const currentStyle = getPlaceStyleGroup(activePlace);
-  const currentStyleLabel = getPlaceStyleLabel(currentStyle);
+
+  const typeBadge = getPlaceDisplayTypeBadge(activePlace);
   const amenity = getPlaceAmenity(activePlace);
   const shortDist = getPlaceShortDistance(activePlace);
   const perPerson = getPlacePerPersonText(activePlace);
 
-  const rawImgUrl = activePlace.imageUrl || 'ai_studio_dish_com_68_suon.jpg';
-  const imgUrl = rawImgUrl.startsWith('http') || rawImgUrl.startsWith('/') || rawImgUrl.startsWith('data:')
-    ? rawImgUrl 
-    : `/${rawImgUrl}`;
-
-  const safeMapsQuery = activePlace.mapsQuery || `${activePlace.name} ${activePlace.address || 'Xuân Hòa'}`;
+  const rawImgUrl = activePlace.imageUrl || 'ai_studio_dish_com_rang_68_1.jpg';
+  const imgUrl =
+    rawImgUrl.startsWith('http') || rawImgUrl.startsWith('/') || rawImgUrl.startsWith('data:')
+      ? rawImgUrl
+      : `/${rawImgUrl}`;
 
   const handleCall = () => {
     if (activePlace.phone) {
@@ -184,62 +265,47 @@ export function PlaceModal({
     }
   };
 
-  const handleMaps = () => {
-    const url = activePlace.mapsUrl || (safeMapsQuery.startsWith('http') ? safeMapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(safeMapsQuery + (safeMapsQuery.includes('Phú Thọ') ? '' : ' Xuân Hòa'))}`);
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleSpinAgain = () => {
-    onClose();
-    if (onSpinAgain) {
-      setTimeout(() => onSpinAgain(), 150);
-    }
-  };
-
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-container golden-passport-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-container golden-passport-modal" onClick={(e) => e.stopPropagation()}>
         {/* VIP Top Ribbon */}
         <div className="golden-passport-ribbon">
           <div className="golden-ribbon-inner">
             <span className="golden-ribbon-star">★</span>
             <span className="golden-ribbon-text">
-              <span className="hidden sm:inline">TẤM THẺ TỌA ĐỘ VÀNG XUÂN HÒA · </span>BẢO CHỨNG THỰC TẾ 2026
+              <span className="hidden sm:inline">BẢN ĐỒ SỐ &amp; QUÁN XÁ XUÂN HÒA · </span>
+              THÔNG TIN XÁC THỰC
             </span>
             <span className="golden-ribbon-star">★</span>
           </div>
         </div>
 
-        {/* Hero Visual Card (Chỉ chứa ảnh + gradient + Tags & Nút Đóng tách bạch) */}
-        <div 
-          className="modal-hero-cover" 
-          style={{ backgroundImage: `url(${imgUrl})` }}
-        >
+        {/* Hero Visual Card */}
+        <div className="modal-hero-cover" style={{ backgroundImage: `url(${imgUrl})` }}>
           <div className="modal-hero-overlay" />
-          
-          {/* Top Bar inside Image: Tags bên trái, Nút đóng bên phải */}
+
           <div className="modal-hero-top-bar">
             <div className="modal-hero-top-tags">
-              <span className="badge-tag rating">
-                <Star size={12} fill="#FFB800" color="#FFB800" /> {activePlace.rating} ({activePlace.reviewCount})
-              </span>
-              <span className="badge-tag style-group">
-                {currentStyleLabel}
-              </span>
+              {!isCivicLandmark && (
+                <span className="badge-tag rating">
+                  <Star size={12} fill="#FFB800" color="#FFB800" /> {activePlace.rating} (
+                  {activePlace.reviewCount})
+                </span>
+              )}
+              <span className="badge-tag style-group">{typeBadge}</span>
             </div>
-            
+
             <button className="modal-close-btn" onClick={onClose} aria-label="Đóng" type="button">
               <X size={17} />
             </button>
           </div>
 
-          {/* Bottom of Image: Tiêu đề quán nổi bật */}
           <div className="modal-hero-bottom-title">
             <h2 className="modal-title golden-title">{formatTypography(activePlace.name)}</h2>
           </div>
         </div>
 
-        {/* Modal Body Content: Toàn bộ thông tin chữ hiển thị trên nền tối chuẩn, không bao giờ bị đè chữ */}
+        {/* Modal Body Content */}
         <div className="modal-body-content">
           {/* Hàng nhãn chứng thực & giờ mở cửa */}
           <div className="modal-status-row">
@@ -252,438 +318,573 @@ export function PlaceModal({
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span>{activePlace.openHours ? `Mở cửa: ${activePlace.openHours}` : 'Đang mở cửa'}</span>
+              <span>
+                {activePlace.openHours ? `Giờ: ${activePlace.openHours}` : 'Đang mở cửa'}
+              </span>
             </span>
-            <span 
-              className="badge-tag amenity-tag font-bold inline-flex items-center gap-1.5"
-              style={{ borderColor: amenity.badgeColor, color: amenity.badgeColor }}
-            >
-              {renderAmenityIcon(amenity.id, 12)}
-              <span>{amenity.label}</span>
-            </span>
+            {!isCivicLandmark && (
+              <span
+                className="badge-tag amenity-tag font-bold inline-flex items-center gap-1.5"
+                style={{ borderColor: amenity.badgeColor, color: amenity.badgeColor }}
+              >
+                {renderAmenityIcon(amenity.id, 12)}
+                <span>{amenity.label}</span>
+              </span>
+            )}
           </div>
-          
+
           {/* Lời tựa quán */}
-          <p className="modal-tagline">"{activePlace.tagline}"</p>
-          
+          {activePlace.tagline && <p className="modal-tagline">&ldquo;{activePlace.tagline}&rdquo;</p>}
+
           {/* Địa chỉ quán */}
           <p className="modal-address">
-            <MapPin size={14} className="text-amber-400 shrink-0 mt-0.5" /> 
+            <MapPin size={14} className="text-amber-400 shrink-0 mt-0.5" />
             <span>{formatTypography(activePlace.address)}</span>
           </p>
 
-          {/* 3 TỌA ĐỘ TRỌNG YẾU (Golden 3-Metrics Grid) */}
-          <div className="golden-coords-grid">
-          {/* 1. Cự ly */}
-          <div className="golden-coord-card">
-            <div className="coord-card-head">
-              <MapPin size={15} className="text-amber-400" />
-              <span className="coord-card-label">CỰ LY THỰC TẾ</span>
-            </div>
-            <strong className="coord-card-value">{shortDist}</strong>
-            <span className="coord-card-sub">
-              {activePlace.zone === 'dhsp2' ? 'Cụm ĐH Sư Phạm Hà Nội 2' : activePlace.zone === 'center' ? 'Khu trung tâm P. Xuân Hòa' : 'Khu vực phụ cận'}
-            </span>
+          {/* ==============================================================
+              KHU VỰC DUAL MAP ACTION + GỌI ĐIỆN (MỤC 15 & 25)
+              [🗺 Bản đồ số]  [🌐 Google Maps]  [☎ Gọi]
+              ============================================================== */}
+          <div
+            className="my-3 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2"
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(229, 184, 92, 0.28)',
+            }}
+          >
+            <MapActionButtons
+              place={activePlace}
+              onOpenInternalMap={() => onClose()}
+            />
+
+            {activePlace.phone ? (
+              <button
+                type="button"
+                onClick={handleCall}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold transition-all active:scale-[0.98] cursor-pointer"
+                style={{
+                  background: 'rgba(16, 185, 129, 0.14)',
+                  border: '1px solid rgba(16, 185, 129, 0.45)',
+                  color: '#6EE7B7',
+                }}
+                title={`Gọi ngay: ${activePlace.phone}`}
+              >
+                <Phone size={14} className="shrink-0" />
+                <span>☎ Gọi {activePlace.phone}</span>
+              </button>
+            ) : (
+              !isCivicLandmark && (
+                <span className="text-[11.5px] text-slate-400 px-2 py-1">Chưa có SĐT</span>
+              )
+            )}
           </div>
 
-          {/* 2. Tiện ích quán */}
-          <div className="golden-coord-card">
-            <div className="coord-card-head">
-              <span className="text-amber-400">{renderAmenityIcon(amenity.id, 16)}</span>
-              <span className="coord-card-label">TIỆN ÍCH QUÁN</span>
-            </div>
-            <strong className="coord-card-value" style={{ color: amenity.badgeColor }}>
-              {amenity.label}
-            </strong>
-            <span className="coord-card-sub">
-              {activePlace.serviceMode === 'delivery_only' 
-                ? 'Bếp chuyên ship tận nơi' 
-                : activePlace.serviceMode === 'both' 
-                ? 'Phục vụ tại quán & ship' 
-                : 'Thưởng thức tại quán'}
-            </span>
-          </div>
-
-          {/* 3. Tầm giá / người */}
-          <div className="golden-coord-card">
-            <div className="coord-card-head">
-              <DollarSign size={15} className="text-emerald-400" />
-              <span className="coord-card-label">TẦM GIÁ / NGƯỜI</span>
-            </div>
-            <strong className="coord-card-value text-amber-300">{perPerson}</strong>
-            <span className="coord-card-sub">Niêm yết: {activePlace.priceRange}</span>
-          </div>
-        </div>
-
-        {/* MÓN TỦ BẮT BUỘC THỬ (Signature Spotlight) */}
-        {activePlace.signatureDish && (
-          <div className="golden-signature-banner">
-            <div className="golden-sig-badge">
-              <Sparkles size={13} className="text-amber-400 inline mr-1" />
-              <span>MÓN TỦ BẮT BUỘC THỬ TẠI QUÁN</span>
-            </div>
-            <div className="golden-sig-content">
-              <div className="golden-sig-left">
-                <h3 className="golden-sig-name">{formatTypography(activePlace.signatureDish.name)}</h3>
-                {activePlace.signatureDish.description && (
-                  <p className="golden-sig-desc">{activePlace.signatureDish.description}</p>
-                )}
+          {/* 3 TỌA ĐỘ TRỌNG YẾU (Hoặc Thông tin Dịch vụ cho Quán Vui chơi / Dịch vụ - Mục 27) */}
+          {!isCivicLandmark && (
+            <div className="golden-coords-grid">
+              {/* 1. Loại hình / Dịch vụ hoặc Cự ly */}
+              <div className="golden-coord-card">
+                <div className="coord-card-head">
+                  <MapPin size={15} className="text-amber-400" />
+                  <span className="coord-card-label">
+                    {isNonFoodVenue ? 'DỊCH VỤ CHÍNH' : 'CỰ LY THỰC TẾ'}
+                  </span>
+                </div>
+                <strong className="coord-card-value">
+                  {isNonFoodVenue ? typeBadge : shortDist}
+                </strong>
+                <span className="coord-card-sub">
+                  {isNonFoodVenue
+                    ? shortDist
+                    : activePlace.zone === 'dhsp2'
+                    ? 'Cụm ĐH Sư Phạm Hà Nội 2'
+                    : activePlace.zone === 'center'
+                    ? 'Khu trung tâm P. Xuân Hòa'
+                    : 'Khu vực phụ cận'}
+                </span>
               </div>
-              <div className="golden-sig-right">
-                <span className="golden-sig-price">{activePlace.signatureDish.price}.000đ</span>
-                <span className="golden-sig-tag">{activePlace.signatureDish.tag || 'Đặc sản bán chạy'}</span>
+
+              {/* 2. Giờ mở cửa / Tiện ích */}
+              <div className="golden-coord-card">
+                <div className="coord-card-head">
+                  <span className="text-amber-400">
+                    {isNonFoodVenue ? <Clock size={15} /> : renderAmenityIcon(amenity.id, 16)}
+                  </span>
+                  <span className="coord-card-label">
+                    {isNonFoodVenue ? 'GIỜ HOẠT ĐỘNG' : 'TIỆN ÍCH QUÁN'}
+                  </span>
+                </div>
+                <strong className="coord-card-value" style={{ color: amenity.badgeColor }}>
+                  {isNonFoodVenue ? activePlace.openHours || '08:00 - 24:00' : amenity.label}
+                </strong>
+                <span className="coord-card-sub">
+                  {activePlace.serviceMode === 'delivery_only'
+                    ? 'Bếp chuyên ship tận nơi'
+                    : activePlace.serviceMode === 'both'
+                    ? 'Phục vụ tại chỗ & ship'
+                    : 'Phục vụ trực tiếp tại chỗ'}
+                </span>
+              </div>
+
+              {/* 3. Giá / Tầm giá */}
+              <div className="golden-coord-card">
+                <div className="coord-card-head">
+                  <DollarSign size={15} className="text-emerald-400" />
+                  <span className="coord-card-label">
+                    {isNonFoodVenue ? 'MỨC GIÁ' : 'TẦM GIÁ / NGƯỜI'}
+                  </span>
+                </div>
+                <strong className="coord-card-value text-amber-300">
+                  {isNonFoodVenue ? activePlace.priceRange || perPerson : perPerson}
+                </strong>
+                <span className="coord-card-sub">Niêm yết: {activePlace.priceRange}</span>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* ==============================================================
-            PHÂN BIỆT KHÁCH VÃNG LAI VS ĐÃ ĐĂNG NHẬP
-            Khách vãng lai: Khóa thông tin hotline, Google maps, thực đơn
-            Đã đăng nhập: Mở khóa đầy đủ bộ tiện ích 2x2, thực đơn và feedback
-            ============================================================== */}
-        {!authUser || !authUser.isLoggedIn ? (
-          <div className="guest-spot-lock-card place-lock-card">
-            <div className="lock-icon-badge">🔒</div>
-            <h4 className="lock-title">Mở khóa thông tin liên hệ &amp; Thực đơn quán</h4>
-            <p className="lock-desc">
-              Bạn đang ở chế độ <strong>Khách Vãng Lai</strong> (chỉ trải nghiệm quay thử). Hãy đăng nhập tài khoản Google để xem địa chỉ chính xác, hotline gọi điện, toàn bộ thực đơn và gửi feedback cho quán nhé!
-            </p>
-            <button
-              type="button"
-              className="auth-google-cta-btn guest-unlock-btn"
-              onClick={() => {
-                onClose();
-                onOpenLogin?.();
-              }}
-            >
-              <GoogleGIcon size={18} />
-              <span>Đăng nhập để xem đầy đủ Quán</span>
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* BỘ TIỆN ÍCH 1-CHẠM: GRID 2X2 CÂN XỨNG TUYỆT ĐỐI */}
-            <div className="golden-1touch-grid">
-          {/* Nút 1: Gọi điện thoại */}
-          {activePlace.phone ? (
-            <a 
-              href={`tel:${activePlace.phone.split(/[-·,/]/)[0].replace(/[^0-9]/g, '')}`} 
-              className="golden-grid-btn call"
-              title={`Bấm gọi hotline ${activePlace.phone}`}
-              onClick={(e) => {
-                e.preventDefault();
-                handleCall();
-              }}
-            >
-              <Phone size={15} className="shrink-0" /> 
-              <span className="truncate">Gọi Quán: {activePlace.phone}</span>
-            </a>
-          ) : (
-            <button 
-              type="button" 
-              className="golden-grid-btn disabled"
-              disabled
-            >
-              <Phone size={15} className="shrink-0 opacity-50" />
-              <span className="truncate">Chưa có Hotline</span>
-            </button>
           )}
 
-          {/* Nút 2: Google Maps */}
-          <a 
-            href={activePlace.mapsUrl || (safeMapsQuery.startsWith('http') ? safeMapsQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(safeMapsQuery + (safeMapsQuery.includes('Phú Thọ') ? '' : ' Xuân Hòa'))}`)}
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="golden-grid-btn map"
-            title="Mở Google Maps chỉ đường trực tiếp"
-            onClick={(e) => {
-              e.preventDefault();
-              handleMaps();
-            }}
-          >
-            <Navigation size={15} className="shrink-0" /> 
-            <span className="truncate">Chỉ Đường Google Maps</span>
-          </a>
-
-          {/* Nút 3: Xem Thực Đơn (Xổ xuống) */}
-          <button
-            type="button"
-            className={`golden-grid-btn menu ${isMenuOpen ? 'active' : ''}`}
-            onClick={() => {
-              setIsMenuOpen(!isMenuOpen);
-              if (!isMenuOpen) setIsReviewOpen(false);
-            }}
-            title={isMenuOpen ? "Đóng danh sách thực đơn" : "Xem danh sách thực đơn niêm yết"}
-          >
-            <UtensilsCrossed size={15} className="shrink-0" />
-            <span className="truncate">
-              {isMenuOpen ? `Đóng Menu (${safeMenu.length})` : `Xem Menu (${safeMenu.length})`}
-            </span>
-            <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isMenuOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          {/* Nút 4: Góp Ý & Feedback (Xổ xuống) */}
-          <button
-            type="button"
-            className={`golden-grid-btn feedback-toggle-btn ${isReviewOpen ? 'active' : ''}`}
-            onClick={() => {
-              setIsReviewOpen(!isReviewOpen);
-              if (!isReviewOpen) setIsMenuOpen(false);
-            }}
-            title="Đánh giá & Gửi feedback thực tế cho quán"
-          >
-            <MessageSquare size={15} className="shrink-0" />
-            <span className="truncate">
-              {isReviewOpen ? 'Đóng Góp Ý' : `Góp Ý & Feedback (${reviews.length})`}
-            </span>
-            <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isReviewOpen ? 'rotate-180' : ''}`} />
-          </button>
-        </div>
-
-        {/* THỰC ĐƠN XỔ XUỐNG KHI BẤM "XEM MENU" */}
-        {isMenuOpen && (
-          <div className="golden-menu-dropdown animate-fadeIn">
-            <div className="golden-menu-header">
-              <div className="flex items-center gap-2">
-                <UtensilsCrossed size={14} className="text-amber-400" />
-                <span className="font-bold text-xs uppercase tracking-wider text-amber-300">
-                  Thực Đơn Niêm Yết ({safeMenu.length} món)
+          {/* HÌNH ẢNH BẢNG GIÁ VÉ & MENU THỰC TẾ CỦA HAPPI KID */}
+          {(activePlace.id === 'khu-vui-choi-happi-kid' ||
+            activePlace.id === 'happi-kid-coffee') && (
+            <div className="mt-3 mb-3 p-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/25">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-amber-400" />
+                  Bảng Giá Vé Khu Vui Chơi &amp; Menu Thực Tế Happi Kid
+                </span>
+                <span className="text-[11px] text-emerald-400 font-semibold">
+                  Combo Vé + Trà sữa chỉ +19k
                 </span>
               </div>
-              {safeMenu.length > 5 && (
-                <div className="golden-menu-search">
-                  <Search size={12} className="text-slate-400 shrink-0" />
-                  <input 
-                    type="text" 
-                    placeholder="Tìm món nhanh..." 
-                    value={menuSearch}
-                    onChange={e => setMenuSearch(e.target.value)}
-                    className="golden-menu-search-input"
-                    autoFocus
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="golden-menu-list">
-              {displayMenu.map(item => (
-                <div key={item.id} className="golden-menu-row">
-                  <div className="golden-menu-row-left">
-                    <span className="golden-menu-dish-name">{formatTypography(cleanDishDisplayTitle(item.name))}</span>
-                    {item.tag && <span className="golden-menu-dish-tag">{item.tag}</span>}
-                    {item.serviceTag === 'ship' && (
-                      <span className="dish-service-tag ship text-[10px] py-0.5 px-1.5 inline-flex items-center gap-1">
-                        <Bike size={10} className="text-sky-400" /> Ship
-                      </span>
-                    )}
-                    {item.serviceTag === 'both' && (
-                      <span className="dish-service-tag both text-[10px] py-0.5 px-1.5 inline-flex items-center gap-1">
-                        <Bike size={10} className="text-sky-400" /> Ship & Quán
-                      </span>
-                    )}
-                    {item.serviceTag === 'dine_in' && (
-                      <span className="dish-service-tag dine text-[10px] py-0.5 px-1.5 inline-flex items-center gap-1">
-                        <UtensilsCrossed size={10} className="text-amber-400" /> Tại Quán
-                      </span>
-                    )}
-                    {item.description && (
-                      <p className="golden-menu-dish-desc">{item.description}</p>
-                    )}
-                  </div>
-                  <strong className="golden-menu-dish-price">{item.price}.000đ</strong>
-                </div>
-              ))}
-              {displayMenu.length === 0 && (
-                <div className="text-center py-6 text-slate-400 text-xs">
-                  Không tìm thấy món "{menuSearch}" trong thực đơn quán.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* KHU VỰC ĐÁNH GIÁ & GÓP Ý QUÁN CHO KHÁCH & NGƯỜI DÙNG */}
-        {isReviewOpen && (
-          <div className="golden-menu-dropdown animate-fadeIn place-reviews-dropdown">
-            <div className="golden-menu-header">
-              <div className="flex items-center gap-2">
-                <MessageSquare size={14} className="text-amber-400" />
-                <span className="font-bold text-xs uppercase tracking-wider text-amber-300">
-                  Góp Ý &amp; Đánh Giá Cho Quán ({reviews.length})
-                </span>
-              </div>
-            </div>
-
-            {/* FORM GỬI ĐÁNH GIÁ HOẶC THÔNG BÁO CHO KHÁCH VÃNG LAI */}
-            {!authUser || !authUser.isLoggedIn ? (
-              <div className="guest-review-gate-box">
-                <p className="guest-review-gate-text">
-                  🔒 <strong>Chế độ Khách Vãng Lai:</strong> Đăng nhập tài khoản Google để gửi nhận xét, bình chọn sao và tải ảnh feedback trực tiếp cho quán nhé!
-                </p>
-                <button
-                  type="button"
-                  className="auth-google-cta-btn guest-review-btn"
-                  onClick={() => {
-                    onClose();
-                    onOpenLogin?.();
-                  }}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <a
+                  href="/happi_kid_ticket_real.jpg"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative block rounded-lg overflow-hidden border border-white/15 bg-black/40"
                 >
-                  <GoogleGIcon size={16} />
-                  <span>Đăng nhập để gửi Feedback</span>
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmitReview} className="place-review-form">
-                <div className="place-review-form-header">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{authUser.avatar || '🐱'}</span>
-                    <strong className="text-xs text-white">{authUser.nickname}</strong>
-                    <span className="verified-badge-mini">✓ Đã ghé quán</span>
-                  </div>
-                  {/* Rating stars */}
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setNewRating(star)}
-                        className={`star-select-btn ${star <= newRating ? 'active' : ''}`}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Quick tags picker */}
-                <div className="quick-tags-picker">
-                  <span className="quick-tags-label">Cảm nhận nhanh:</span>
-                  <div className="quick-tags-list">
-                    {QUICK_PLACE_TAGS.map(tag => (
-                      <button
-                        key={tag}
-                        type="button"
-                        className={`quick-tag-chip ${selectedTags.includes(tag) ? 'active' : ''}`}
-                        onClick={() => handleToggleTag(tag)}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <textarea
-                  className="place-review-textarea"
-                  placeholder="Nhận xét hương vị, chất lượng món ăn, phục vụ để feedback cho quán..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  rows={2}
-                  maxLength={300}
-                  required
-                />
-
-                {/* Upload ảnh thực tế */}
-                <div className="review-photo-row">
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    ref={fileInputRef} 
-                    style={{ display: 'none' }} 
-                    onChange={handleFileUpload} 
+                  <img
+                    src="/happi_kid_ticket_real.jpg"
+                    alt="Bảng Giá Vé Khu Vui Chơi Happi Kid"
+                    loading="lazy"
+                    className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
                   />
-                  <button
-                    type="button"
-                    className="photo-upload-btn"
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Tải ảnh đĩa thức ăn hoặc không gian quán thực tế"
-                  >
-                    <Camera size={13} />
-                    <span>{newPhoto ? 'Đổi ảnh chụp' : 'Đính kèm ảnh thực tế (Tùy chọn)'}</span>
-                  </button>
+                  <div className="p-1.5 text-center bg-black/75 text-[11px] font-semibold text-amber-200">
+                    🎈 Bảng Giá Vé Happi Kid (T2: 39k | Thường: 55k | Cuối tuần: 65k)
+                  </div>
+                </a>
+                <a
+                  href="/happi_kid_menu_real.jpg"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative block rounded-lg overflow-hidden border border-white/15 bg-black/40"
+                >
+                  <img
+                    src="/happi_kid_menu_real.jpg"
+                    alt="Menu Đồ Uống Happi Kid Coffee"
+                    loading="lazy"
+                    className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="p-1.5 text-center bg-black/75 text-[11px] font-semibold text-amber-200">
+                    🧋 Menu Đồ Uống &amp; Cà Phê Phin Phê Happi Kid Coffee
+                  </div>
+                </a>
+              </div>
+            </div>
+          )}
 
-                  {newPhoto && (
-                    <div className="photo-preview-box">
-                      <img src={newPhoto} alt="Xem trước" className="photo-preview-thumb" />
-                      <button 
-                        type="button" 
-                        className="remove-photo-btn"
-                        onClick={() => setNewPhoto('')}
-                        title="Xóa ảnh"
-                      >
-                        <X size={12} />
-                      </button>
+          {/* ==============================================================
+              TRONG QUÁN CÓ GÌ? (MỤC 28)
+              Search trong quán: "Tìm món trong quán…"
+              Filter: [ Ăn ] [ Nhậu ] [ Uống ]
+              Danh sách món / dịch vụ + giá
+              ============================================================== */}
+          {!isCivicLandmark && safeMenu.length > 0 && (
+            <div className="golden-menu-dropdown mt-3">
+              <div className="flex flex-col gap-2.5 pb-3 border-b border-white/10">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <UtensilsCrossed size={14} className="text-amber-400" />
+                    <span className="font-bold text-xs uppercase tracking-wider text-amber-300">
+                      {isNonFoodVenue
+                        ? `Bảng Dịch Vụ & Giá Niêm Yết (${displayMenu.length})`
+                        : `Trong quán có gì? (${displayMenu.length}/${safeMenu.length} món)`}
+                    </span>
+                  </div>
+
+                  {/* Filter [ Ăn ] [ Nhậu ] [ Uống ] cho quán ăn/uống (Mục 28) */}
+                  {!isNonFoodVenue && (
+                    <div className="flex items-center gap-1">
+                      {(
+                        [
+                          { id: 'all', label: 'Tất cả', show: true },
+                          { id: 'an', label: 'Ăn', show: availableMenuCategories.an > 0 },
+                          { id: 'nhau', label: 'Nhậu', show: availableMenuCategories.nhau > 0 },
+                          { id: 'uong', label: 'Uống', show: availableMenuCategories.uong > 0 },
+                        ] as const
+                      )
+                        .filter((tab) => tab.show)
+                        .map((tab) => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setMenuFilter(tab.id)}
+                            className="px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer"
+                            style={{
+                              background:
+                                menuFilter === tab.id
+                                  ? 'rgba(229, 184, 92, 0.22)'
+                                  : 'rgba(255, 255, 255, 0.05)',
+                              border:
+                                menuFilter === tab.id
+                                  ? '1px solid rgba(229, 184, 92, 0.55)'
+                                  : '1px solid rgba(255, 255, 255, 0.1)',
+                              color: menuFilter === tab.id ? '#F4CE74' : '#9CA3AF',
+                            }}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
                     </div>
                   )}
                 </div>
 
-                <div className="place-review-form-footer">
-                  <button type="submit" className="place-review-submit-btn w-full justify-center">
-                    <Send size={13} />
-                    <span>Gửi Góp Ý Cho Quán</span>
-                  </button>
+                {/* Search trong quán: "Tìm món trong quán…" */}
+                <div className="golden-menu-search w-full">
+                  <Search size={13} className="text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    placeholder={
+                      isNonFoodVenue ? 'Tìm dịch vụ trong quán…' : 'Tìm món trong quán…'
+                    }
+                    value={menuSearch}
+                    onChange={(e) => setMenuSearch(e.target.value)}
+                    className="golden-menu-search-input w-full"
+                  />
+                  {menuSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setMenuSearch('')}
+                      className="text-slate-400 hover:text-white text-xs px-1"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
+              </div>
 
-                {reviewSuccess && (
-                  <div className="place-review-success-msg">
-                    ✓ Đã gửi đánh giá thành công! Cảm ơn bạn đã đóng góp cho quán ăn Xuân Hòa.
+              <div className="golden-menu-list mt-2">
+                {displayMenu.map((item) => (
+                  <div key={item.id} className="golden-menu-row">
+                    <div className="golden-menu-row-left">
+                      <span className="golden-menu-dish-name">
+                        {formatTypography(cleanDishDisplayTitle(item.name))}
+                      </span>
+                      {item.tag && <span className="golden-menu-dish-tag">{item.tag}</span>}
+                      {item.serviceTag === 'ship' && (
+                        <span className="dish-service-tag ship text-[10px] py-0.5 px-1.5 inline-flex items-center gap-1">
+                          <Bike size={10} className="text-sky-400" /> Ship
+                        </span>
+                      )}
+                      {item.serviceTag === 'both' && (
+                        <span className="dish-service-tag both text-[10px] py-0.5 px-1.5 inline-flex items-center gap-1">
+                          <Bike size={10} className="text-sky-400" /> Ship &amp; Quán
+                        </span>
+                      )}
+                      {item.serviceTag === 'dine_in' && (
+                        <span className="dish-service-tag dine text-[10px] py-0.5 px-1.5 inline-flex items-center gap-1">
+                          <UtensilsCrossed size={10} className="text-amber-400" /> Tại chỗ
+                        </span>
+                      )}
+                      {item.description && (
+                        <p className="golden-menu-dish-desc">{item.description}</p>
+                      )}
+                    </div>
+                    {item.price > 0 && (
+                      <strong className="golden-menu-dish-price">{item.price}.000đ</strong>
+                    )}
+                  </div>
+                ))}
+                {displayMenu.length === 0 && (
+                  <div className="text-center py-6 text-slate-400 text-xs">
+                    Không tìm thấy kết quả phù hợp với &ldquo;{menuSearch}&rdquo;.
                   </div>
                 )}
-              </form>
-            )}
+              </div>
+            </div>
+          )}
 
-            {/* DANH SÁCH CÁC ĐÁNH GIÁ HIỆN CÓ */}
-            <div className="place-reviews-list">
-              {reviews.map((rev) => (
-                <div key={rev.id} className="place-review-item">
-                  <div className="review-card-header">
-                    <div className="review-card-avatar-wrap">
-                      <span>{rev.avatar || '👤'}</span>
+          {/* Nút Góp Ý & Feedback */}
+          {!isCivicLandmark && (
+            <div className="mt-3">
+              <button
+                type="button"
+                className={`golden-grid-btn feedback-toggle-btn w-full justify-center ${
+                  isReviewOpen ? 'active' : ''
+                }`}
+                onClick={() => setIsReviewOpen(!isReviewOpen)}
+              >
+                <MessageSquare size={15} className="shrink-0" />
+                <span className="truncate">
+                  {isReviewOpen ? 'Đóng Góp Ý' : `Góp Ý & Đánh Giá Thực Khách (${reviews.length})`}
+                </span>
+                <ChevronDown
+                  size={14}
+                  className={`shrink-0 transition-transform duration-200 ${
+                    isReviewOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+            </div>
+          )}
+
+          {/* KHU VỰC ĐÁNH GIÁ & GÓP Ý QUÁN */}
+          {isReviewOpen && (
+            <div className="golden-menu-dropdown animate-fadeIn place-reviews-dropdown mt-2">
+              <div className="golden-menu-header">
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={14} className="text-amber-400" />
+                  <span className="font-bold text-xs uppercase tracking-wider text-amber-300">
+                    Góp Ý &amp; Đánh Giá Cho Quán ({reviews.length})
+                  </span>
+                </div>
+              </div>
+
+              {!authUser || !authUser.isLoggedIn ? (
+                <div className="guest-review-gate-box">
+                  <p className="guest-review-gate-text">
+                    🔒 Đăng nhập tài khoản Google để gửi nhận xét, bình chọn sao và tải ảnh
+                    feedback trực tiếp cho quán nhé!
+                  </p>
+                  <button
+                    type="button"
+                    className="auth-google-cta-btn guest-review-btn"
+                    onClick={() => {
+                      onClose();
+                      onOpenLogin?.();
+                    }}
+                  >
+                    <GoogleGIcon size={16} />
+                    <span>Đăng nhập để gửi Feedback</span>
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitReview} className="place-review-form">
+                  <div className="place-review-form-header">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{authUser.avatar || '🐱'}</span>
+                      <strong className="text-xs text-white">{authUser.nickname}</strong>
+                      <span className="verified-badge-mini">✓ Đã ghé quán</span>
                     </div>
-                    <div className="review-card-main-col">
-                      <div className="review-card-author-row">
-                        <span className="review-card-author-name">{rev.author}</span>
-                      </div>
-                      <div className="review-card-sub-meta">
-                        <div className="review-card-stars" aria-label={`${rev.rating || 5} sao`}>
-                          {'★'.repeat(rev.rating || 5)}
-                        </div>
-                        <span className="review-card-meta-dot">·</span>
-                        <span className="review-card-date">{rev.date}</span>
-                      </div>
-                    </div>
-                  </div>
-                  {rev.tags && rev.tags.length > 0 && (
-                    <div className="review-card-tags-row">
-                      {rev.tags.map(t => (
-                        <span key={t} className="review-card-tag-pill">{t}</span>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setNewRating(star)}
+                          className={`star-select-btn ${star <= newRating ? 'active' : ''}`}
+                        >
+                          ★
+                        </button>
                       ))}
                     </div>
-                  )}
-                  <p className="place-review-content">{rev.content}</p>
-                  {rev.photo && (
-                    <img src={rev.photo} alt="Ảnh đánh giá" className="place-review-photo" />
-                  )}
-                </div>
-              ))}
-              {reviews.length === 0 && (
-                <div className="text-center py-6 text-slate-400 text-xs">
-                  Chưa có đánh giá nào cho quán này. Hãy là người đầu tiên gửi feedback nhé!
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-          </>
-        )}
+                  </div>
 
-        {/* GHI CHÚ GIAO HÀNG & PHỤC VỤ (Delivery Note) */}
-        {activePlace.deliveryNote && (
-          <div className="modal-delivery-notice golden-delivery-notice">
-            <span className="notice-icon"><Bike size={15} className="text-sky-400" /></span>
-            <span className="notice-text">{activePlace.deliveryNote}</span>
+                  <div className="quick-tags-picker">
+                    <span className="quick-tags-label">Cảm nhận nhanh:</span>
+                    <div className="quick-tags-list">
+                      {QUICK_PLACE_TAGS.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          className={`quick-tag-chip ${
+                            selectedTags.includes(tag) ? 'active' : ''
+                          }`}
+                          onClick={() => handleToggleTag(tag)}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <textarea
+                    className="place-review-textarea"
+                    placeholder="Nhận xét hương vị, chất lượng phục vụ để feedback cho quán..."
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    rows={2}
+                    maxLength={300}
+                    required
+                  />
+
+                  <div className="review-photo-row">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={fileInputRef}
+                      style={{ display: 'none' }}
+                      onChange={handleFileUpload}
+                    />
+                    <button
+                      type="button"
+                      className="photo-upload-btn"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Camera size={13} />
+                      <span>{newPhoto ? 'Đổi ảnh chụp' : 'Đính kèm ảnh thực tế (Tùy chọn)'}</span>
+                    </button>
+
+                    {newPhoto && (
+                      <div className="photo-preview-box">
+                        <img src={newPhoto} alt="Xem trước" className="photo-preview-thumb" />
+                        <button
+                          type="button"
+                          className="remove-photo-btn"
+                          onClick={() => setNewPhoto('')}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="place-review-form-footer">
+                    <button
+                      type="submit"
+                      className="place-review-submit-btn w-full justify-center"
+                    >
+                      <Send size={13} />
+                      <span>Gửi Góp Ý Cho Quán</span>
+                    </button>
+                  </div>
+
+                  {reviewSuccess && (
+                    <div className="place-review-success-msg">
+                      ✓ Đã gửi đánh giá thành công! Cảm ơn bạn đã đóng góp cho Xuân Hòa.
+                    </div>
+                  )}
+                </form>
+              )}
+
+              <div className="place-reviews-list">
+                {reviews.map((rev) => (
+                  <div key={rev.id} className="place-review-item">
+                    <div className="review-card-header">
+                      <div className="review-card-avatar-wrap">
+                        <span>{rev.avatar || '👤'}</span>
+                      </div>
+                      <div className="review-card-main-col">
+                        <div className="review-card-author-row">
+                          <span className="review-card-author-name">{rev.author}</span>
+                        </div>
+                        <div className="review-card-sub-meta">
+                          <div className="review-card-stars">
+                            {'★'.repeat(rev.rating || 5)}
+                          </div>
+                          <span className="review-card-meta-dot">·</span>
+                          <span className="review-card-date">{rev.date}</span>
+                        </div>
+                      </div>
+                    </div>
+                    {rev.tags && rev.tags.length > 0 && (
+                      <div className="review-card-tags-row">
+                        {rev.tags.map((t) => (
+                          <span key={t} className="review-card-tag-pill">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="place-review-content">{rev.content}</p>
+                    {rev.photo && (
+                      <img src={rev.photo} alt="Ảnh đánh giá" className="place-review-photo" />
+                    )}
+                  </div>
+                ))}
+                {reviews.length === 0 && (
+                  <div className="text-center py-6 text-slate-400 text-xs">
+                    Chưa có đánh giá nào. Hãy là người đầu tiên gửi feedback nhé!
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* GHI CHÚ GIAO HÀNG & PHỤC VỤ */}
+          {activePlace.deliveryNote && (
+            <div className="modal-delivery-notice golden-delivery-notice mt-3">
+              <span className="notice-icon">
+                <Bike size={15} className="text-sky-400" />
+              </span>
+              <span className="notice-text">{activePlace.deliveryNote}</span>
+            </div>
+          )}
+        </div>
+
+        {/* STICKY BOTTOM ACTION BAR (Mục 18, 19, 20): Luôn hiển thị Bản đồ số / Google Maps / Gọi điện */}
+        <div
+          style={{
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 25,
+            padding: '10px 14px',
+            background: 'rgba(13, 17, 25, 0.96)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.09)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <MapActionButtons
+            place={activePlace}
+            compact
+            onOpenInternalMap={() => onClose()}
+          />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+            {activePlace.phone && (
+              <button
+                type="button"
+                onClick={handleCall}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '6px 11px',
+                  borderRadius: '8px',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  background: 'rgba(16, 185, 129, 0.16)',
+                  border: '1px solid rgba(16, 185, 129, 0.45)',
+                  color: '#34D399',
+                  cursor: 'pointer',
+                }}
+              >
+                <Phone size={12} />
+                <span>☎ Gọi</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '6px 11px',
+                borderRadius: '8px',
+                fontSize: '11.5px',
+                fontWeight: 700,
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: '#CBD5E1',
+                cursor: 'pointer',
+              }}
+            >
+              Đóng
+            </button>
           </div>
-        )}
         </div>
       </div>
     </div>

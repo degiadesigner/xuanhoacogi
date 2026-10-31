@@ -190,6 +190,7 @@ const SHOP_NAMES_TO_STRIP = [
   '102 Nguyễn Văn Linh', '102 NVL',
   '1975 Cà Phê', 'Cafe 1975',
   'Quán Bắp 1991', 'Bắp 1991',
+  'Happi Kid Coffee', 'Khu Vui Chơi Happi Kid', 'Happi Kids', 'Happi Kid',
   'Chị Hồng',
   'Nhà Mơ - Chou Chou', 'Nhà Mơ',
   'Tiệm Nhà Chou Chou', 'Chou Chou',

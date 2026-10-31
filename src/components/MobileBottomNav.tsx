@@ -1,22 +1,15 @@
 'use client';
 
 import React from 'react';
-import { 
-  RotateCw, 
-  UtensilsCrossed, 
-  Store, 
-  Map,
-  User,
-  Settings
-} from 'lucide-react';
+import { RotateCw, Store, Map, Settings } from 'lucide-react';
 import { AppView } from '../app/page';
 import { UserAuthProfile } from '../lib/auth';
-
 import { Language, translations } from '../lib/i18n';
 
 interface MobileBottomNavProps {
   currentView: AppView;
   onNavigate: (view: AppView) => void;
+  onOpenMap?: () => void;
   onOpenScoreboard: () => void;
   onOpenSettings?: () => void;
   onOpenLogin: () => void;
@@ -29,12 +22,8 @@ interface MobileBottomNavProps {
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   currentView,
   onNavigate,
-  onOpenScoreboard,
+  onOpenMap,
   onOpenSettings,
-  onOpenLogin,
-  onOpenProfile,
-  authUser,
-  level,
   lang = 'vi',
 }) => {
   const triggerHaptic = () => {
@@ -47,16 +36,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     }
   };
 
-  const isLoggedIn = !!(authUser && authUser.isLoggedIn);
   const t = translations[lang] || translations.vi;
 
   return (
-    <nav 
-      className="mobile-bottom-nav-dock" 
-      aria-label="Thanh điều hướng di động"
-    >
-      <div className="mobile-dock-inner">
-        {/* 1. Nút Vòng Quay (Quay Món) */}
+    <nav className="mobile-bottom-nav-dock" aria-label="Thanh điều hướng di động">
+      <div className="mobile-dock-inner grid grid-cols-4 w-full">
+        {/* 1. Quay Món */}
         <button
           type="button"
           className={`mobile-dock-tab ${currentView === 'spin' ? 'active' : ''}`}
@@ -67,28 +52,70 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           aria-label={t.dock_spin}
         >
           <div className="mobile-dock-icon-wrap">
-            <RotateCw size={20} className={currentView === 'spin' ? 'text-amber-400 rotate-icon' : 'text-slate-400'} />
+            <RotateCw
+              size={20}
+              style={{ color: currentView === 'spin' ? '#E5B85C' : '#8E96A4' }}
+              className={currentView === 'spin' ? 'rotate-icon' : ''}
+            />
           </div>
-          <span className="mobile-dock-label">{t.dock_spin}</span>
+          <span
+            className="mobile-dock-label"
+            style={{ color: currentView === 'spin' ? '#E5B85C' : '#8E96A4' }}
+          >
+            {t.dock_spin}
+          </span>
         </button>
 
-        {/* 2. Nút Bản Đồ Số */}
+        {/* 2. Quán Xá */}
+        <button
+          type="button"
+          className={`mobile-dock-tab ${currentView === 'places' ? 'active' : ''}`}
+          onClick={() => {
+            triggerHaptic();
+            onNavigate('places');
+          }}
+          aria-label={t.dock_places}
+        >
+          <div className="mobile-dock-icon-wrap">
+            <Store
+              size={20}
+              style={{ color: currentView === 'places' ? '#E5B85C' : '#8E96A4' }}
+            />
+          </div>
+          <span
+            className="mobile-dock-label"
+            style={{ color: currentView === 'places' ? '#E5B85C' : '#8E96A4' }}
+          >
+            {t.dock_places}
+          </span>
+        </button>
+
+        {/* 3. Bản Đồ Số */}
         <button
           type="button"
           className={`mobile-dock-tab ${currentView === 'map' ? 'active' : ''}`}
           onClick={() => {
             triggerHaptic();
-            onNavigate('map');
+            if (onOpenMap) onOpenMap();
+            else onNavigate('map');
           }}
           aria-label={lang === 'en' ? 'Digital Map' : 'Bản Đồ Số'}
         >
           <div className="mobile-dock-icon-wrap">
-            <Map size={20} className={currentView === 'map' ? 'text-amber-400' : 'text-slate-400'} />
+            <Map
+              size={20}
+              style={{ color: currentView === 'map' ? '#E5B85C' : '#8E96A4' }}
+            />
           </div>
-          <span className="mobile-dock-label">{lang === 'en' ? 'Digital Map' : 'Bản Đồ Số'}</span>
+          <span
+            className="mobile-dock-label"
+            style={{ color: currentView === 'map' ? '#E5B85C' : '#8E96A4' }}
+          >
+            {lang === 'en' ? 'Digital Map' : 'Bản Đồ Số'}
+          </span>
         </button>
 
-        {/* 3. Nút Cài Đặt */}
+        {/* 4. Cài Đặt */}
         <button
           type="button"
           className="mobile-dock-tab"
@@ -99,9 +126,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           aria-label={t.dock_settings}
         >
           <div className="mobile-dock-icon-wrap">
-            <Settings size={20} className="text-slate-400" />
+            <Settings size={20} style={{ color: '#8E96A4' }} />
           </div>
-          <span className="mobile-dock-label">{t.dock_settings}</span>
+          <span className="mobile-dock-label" style={{ color: '#8E96A4' }}>
+            {t.dock_settings}
+          </span>
         </button>
       </div>
     </nav>

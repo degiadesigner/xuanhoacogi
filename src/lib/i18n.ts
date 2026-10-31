@@ -28,7 +28,7 @@ export const translations = {
   vi: {
     brand_domain: 'XUÂNHÒACÓGÌ',
     brand_suffix: '.COM',
-    brand_tagline: 'Chuyên trị: “Ăn gì cũng được”',
+    brand_tagline: 'Bản đồ số • Ăn uống • Vui chơi',
     login: 'Đăng nhập',
     logout: 'Đăng xuất',
     guest: 'Khách Vãng Lai',
@@ -115,7 +115,6 @@ export const translations = {
     dock_spin: 'Quay Món',
     dock_dishes: 'Món Ngon',
     dock_places: 'Quán Xá',
-    dock_map: 'Bản Đồ',
     dock_login: 'Đăng Nhập',
     dock_profile: 'Tài Khoản',
     dock_settings: 'Cài Đặt',
@@ -202,8 +201,8 @@ export const translations = {
     keo_group: 'Nhóm bạn & Gia đình',
     keo_ship: 'Gọi ship tận nơi',
 
-    map_coming_soon: 'Bản đồ số đang triển khai',
-    toast_map_title: 'Bản đồ số đang triển khai',
+    map_coming_soon: 'Bản Đồ Số (Đang phát triển)',
+    toast_map_title: 'Bản đồ Số : Sắp ra mắt',
     close: 'Đóng',
     back: 'Quay lại',
 
@@ -226,7 +225,7 @@ export const translations = {
   en: {
     brand_domain: 'XUANHOACOGI',
     brand_suffix: '.COM',
-    brand_tagline: 'Curing: "Anything is fine"',
+    brand_tagline: 'Digital Map • Food & Drink • Fun',
     login: 'Sign In',
     logout: 'Sign Out',
     guest: 'Guest Explorer',
@@ -314,7 +313,6 @@ export const translations = {
     dock_spin: 'Spin',
     dock_dishes: 'Dishes',
     dock_places: 'Places',
-    dock_map: 'Map',
     dock_login: 'Sign In',
     dock_profile: 'Profile',
     dock_settings: 'Settings',

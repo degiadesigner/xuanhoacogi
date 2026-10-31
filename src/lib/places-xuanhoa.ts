@@ -2,9 +2,33 @@ export type CategoryType = 'fast_food' | 'restaurant' | 'pub' | 'cafe';
 export type ZoneType = 'dhsp2' | 'center' | 'expanded';
 export type ServiceMode = 'both' | 'delivery_only' | 'dine_in_only';
 
-export type PlaceStyleGroup = 'nhau-lau' | 'an-chinh' | 'uong' | 'an-vat';
+export type PlaceStyleGroup = 'nhau-lau' | 'an-chinh' | 'uong' | 'an-vat' | 'vui-choi';
 
 export function getPlaceStyleGroup(place: Place): PlaceStyleGroup {
+  const lowerName = place.name.toLowerCase();
+  const lowerTags = (place.tags || []).map(t => t.toLowerCase());
+  if (
+    place.id === 'khu-vui-choi-happi-kid' ||
+    lowerName.includes('khu vui chơi') ||
+    lowerName.includes('bi-a') ||
+    lowerName.includes('billiards') ||
+    lowerName.includes('cyber') ||
+    lowerName.includes('quán game') ||
+    lowerName.includes('quán net') ||
+    lowerName.includes('pickleball') ||
+    lowerName.includes('karaoke') ||
+    lowerTags.some(t =>
+      t.includes('khu vui chơi') ||
+      t.includes('bi-a') ||
+      t.includes('cyber game') ||
+      t.includes('quán game') ||
+      t.includes('quán net') ||
+      t.includes('pickleball') ||
+      t.includes('vui chơi giải trí')
+    )
+  ) {
+    return 'vui-choi';
+  }
   if (
     place.category === 'pub' || 
     ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'trang-hai-san', 'lau-cuong-duong', 'lau-nuong-ba-muoi', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'nha-hang-khanh-huong', 'nha-hang-binh-nam', 'nha-hang-468', 'quan-chim-lan-anh', 'xuho-bistro', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'lau-nuong-1968', 'xien-nuong-trung-hoa', 'lau-ngua-tay-bac', 'lau-nuong-phong-viet', 'lau-thai-ha-tinh'].includes(place.id)
@@ -16,7 +40,7 @@ export function getPlaceStyleGroup(place: Place): PlaceStyleGroup {
   }
   if (
     place.category === 'cafe' || 
-    ['soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-sua-tocotoco', 'tiem-tra-thanh-thanh', 'cat-tien-xuan-hoa', 'zino-cafe'].includes(place.id)
+    ['soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-sua-tocotoco', 'tiem-tra-thanh-thanh', 'cat-tien-xuan-hoa', 'zino-cafe', 'happi-kid-coffee'].includes(place.id)
   ) {
     return 'uong';
   }
@@ -29,6 +53,7 @@ export function getPlaceStyleLabel(style: PlaceStyleGroup): string {
     case 'an-chinh': return 'Quán Cơm & Bún Phở';
     case 'uong': return 'Cafe & Đồ Uống';
     case 'an-vat': return 'Quán Ăn Vặt';
+    case 'vui-choi': return 'Vui Chơi & Giải Trí';
   }
 }
 
@@ -76,6 +101,9 @@ export interface Place {
   tags: string[];
   mapsQuery: string;
   mapsUrl?: string;
+  lat?: number | null;
+  lng?: number | null;
+  subcategory?: string;
   phone?: string;
   openHours?: string;
   rarity: number; // 0: Phổ thông, 1: Ngon rẻ, 2: Đặc sắc, 3: Cao cấp, 4: Huyền thoại / Món tủ Xuân Hòa
@@ -233,6 +261,12 @@ export function getPlacePerPersonText(place: Place): string {
   if (place.id === 'cocokana-tra-trai-cay') {
     return '~25k - 35k/người';
   }
+  if (place.id === 'khu-vui-choi-happi-kid') {
+    return '39k - 65k/vé';
+  }
+  if (place.id === 'happi-kid-coffee') {
+    return '~20k - 45k/người';
+  }
   const style = getPlaceStyleGroup(place);
   if (style === 'nhau-lau') {
     if (['trau-phi-xuyen', 'trau-gio-dong', 'trang-hai-san', 'nha-hang-468', 'lon-ga-xuyen-phi'].includes(place.id)) {
@@ -246,11 +280,15 @@ export function getPlacePerPersonText(place: Place): string {
   if (style === 'an-vat') {
     return '~20k - 35k/người';
   }
+  if (style === 'vui-choi') {
+    return place.priceRange || '~35k - 65k/người';
+  }
   return '~35k - 50k/người';
 }
 
 // Cự ly ngắn gọn và chuẩn xác từ ĐHSP2 / trung tâm Xuân Hòa
 export function getPlaceShortDistance(place: Place): string {
+  if (place.id === 'khu-vui-choi-happi-kid' || place.id === 'happi-kid-coffee') return 'KĐT Xuân Hoà';
   const dist = place.distance || '';
   const addr = place.address || '';
 
@@ -289,6 +327,13 @@ export interface PlaceSignboardLines {
 }
 
 const SIGNBOARD_CUSTOM_LINES: Record<string, PlaceSignboardLines> = {
+  'happi-kid-coffee': { line1: 'HAPPI KID COFFEE', line2: 'TRÀ SỮA • SỮA CHUA • PHIN PHÊ' },
+  'khu-vui-choi-happi-kid': { line1: 'HAPPI KID', line2: 'KHU VUI CHƠI & KIDS CAFE' },
+  'ho-dai-lai-play': { line1: 'HỒ ĐẠI LẢI', line2: 'ĐẠP VỊT • CHÈO SUP • DÃ NGOẠI' },
+  'quang-truong-chim-xanh-play': { line1: 'QUẢNG TRƯỜNG XUÂN HÒA', line2: 'CON CHIM XANH • DẠO MÁT & SKATE' },
+  'pickleball-kdt-xuan-hoa': { line1: 'TỔ HỢP PICKLEBALL', line2: 'THỂ THAO & CẦU LÔNG KĐT XUÂN HOÀ' },
+  'clb-bia-cyber-xuan-hoa': { line1: 'CLB BI-A & CYBER GAME', line2: 'GIẢI TRÍ • NGUYỄN VĂN LINH' },
+  'tram-du-de-camping-play': { line1: 'TRẠM DỦ DẺ CHILL', line2: 'ACOUSTIC • BOARDGAME • HẸN HÒ' },
   'quan-bap-1991': { line1: 'QUÁN BẮP 1991', line2: 'MỲ CAY • KEM DỪA MÃ LAI' },
   'chao-long-chi-hong': { line1: 'CHÁO LÒNG CHỊ HỒNG', line2: 'BÚN LÒNG • ĐẦU NGÕ KIM NGỌC' },
   'xh_custom_1792229707991': { line1: 'CHÁO LÒNG CHỊ HỒNG', line2: 'BÚN LÒNG • ĐẦU NGÕ KIM NGỌC' },
@@ -436,7 +481,7 @@ export function getPlaceAmenity(place: Place): PlaceAmenityInfo {
 
   // 2. Không gian điều hòa mát rượi
   if (
-    ['cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'tiem-tra-thanh-thanh', 'ruby-quan', 'my-cay-seoul', 'sui-cao-tieu-lau-quan', 'nha-hang-468', 'trau-phi-xuyen', 'trau-gio-dong', 'xoai-corner', 'com-tam-xuan-hoa'].includes(place.id)
+    ['cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'tiem-tra-thanh-thanh', 'ruby-quan', 'my-cay-seoul', 'sui-cao-tieu-lau-quan', 'nha-hang-468', 'trau-phi-xuyen', 'trau-gio-dong', 'xoai-corner', 'com-tam-xuan-hoa', 'happi-kid-coffee', 'khu-vui-choi-happi-kid'].includes(place.id) || getPlaceStyleGroup(place) === 'vui-choi'
   ) {
     return {
       id: 'dieu-hoa',
@@ -497,7 +542,7 @@ export function isPlaceMatchKeo(place: Place, keo: PlaceKeoType): boolean {
 
   if (keo === 'hen-ho') {
     return (
-      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-thanh-thanh', 'ruby-quan', 'xoai-corner', 'sui-cao-tieu-lau-quan', 'my-cay-seoul', 'com-tam-xuan-hoa', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-88', 'zino-cafe', 'hi-tea', 'lau-thai-ha-tinh', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991'].includes(place.id) ||
+      ['nhungs-corner', 'banh-trang-55-nguyen-van-linh', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'cuon-moc-xuan-hoa', 'beef88-xuan-hoa', 'tiem-tra-sua-tocotoco', 'soh-tea', 'cafe-1975-xuan-hoa', 'tiem-tra-thanh-thanh', 'ruby-quan', 'xoai-corner', 'sui-cao-tieu-lau-quan', 'my-cay-seoul', 'com-tam-xuan-hoa', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-88', 'zino-cafe', 'hi-tea', 'lau-thai-ha-tinh', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991', 'happi-kid-coffee'].includes(place.id) ||
       place.category === 'cafe'
     );
   }
@@ -511,14 +556,14 @@ export function isPlaceMatchKeo(place: Place, keo: PlaceKeoType): boolean {
 
   if (keo === 'nhom-dong') {
     return (
-      ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'nhat-ha', 'xien-nuong-trung-hoa', 'lau-nuong-1968', 'xuho-bistro', 'lau-nuong-ba-muoi', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'trang-hai-san', 'lau-cuong-duong', 'quan-chim-lan-anh', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'nha-hang-binh-nam', 'nha-hang-khanh-huong', 'nha-hang-468', 'tho-coii', 'ruby-quan', 'nem-nuong-88', 'lau-thai-ha-tinh', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991'].includes(place.id) ||
+      ['vanh-dai-quan', 'san-bia-247', 'bia-sai-gon-tuan-hien', 'nhat-ha', 'xien-nuong-trung-hoa', 'lau-nuong-1968', 'xuho-bistro', 'lau-nuong-ba-muoi', 'beef88-xuan-hoa', 'cuon-moc-xuan-hoa', 'quan-oc-ngon', 'oc-2000-xuan-hoa', 'trang-hai-san', 'lau-cuong-duong', 'quan-chim-lan-anh', 'trau-phi-xuyen', 'lon-ga-xuyen-phi', 'trau-gio-dong', 'nha-hang-binh-nam', 'nha-hang-khanh-huong', 'nha-hang-468', 'tho-coii', 'ruby-quan', 'nem-nuong-88', 'lau-thai-ha-tinh', 'hi-tea', 'an-vat-nha-phuong', 'umee-tea-food', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991', 'happi-kid-coffee'].includes(place.id) ||
       place.category === 'pub'
     );
   }
 
   if (keo === 'ship') {
     return (
-      ['vanh-dai-quan', 'nhungs-corner', 'san-bia-247', 'banh-trang-55-nguyen-van-linh', 'bia-sai-gon-tuan-hien', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'xien-nuong-trung-hoa', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'bm-nuong-muoi-ot-ngoc-quy', 'oc-2000-xuan-hoa', 'tiem-nha-me-beo', 'gamitra-xuan-hoa', 'thuy-beo', 'banh-mi-bo-u', 'ruby-quan', 'xoai-corner', 'tiem-tra-sua-tocotoco', 'soh-tea', 'tiem-tra-thanh-thanh', 'com-rang-nguyen-van-linh', 'com-tam-xuan-hoa', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991'].includes(place.id) ||
+      ['vanh-dai-quan', 'nhungs-corner', 'san-bia-247', 'banh-trang-55-nguyen-van-linh', 'bia-sai-gon-tuan-hien', 'tiem-banh-a-salty-name', 'thanh-hang-gateaux', 'nhat-ha', 'che-xuan-mai', 'xien-nuong-trung-hoa', 'thi-lan-tea', 'cat-tien-xuan-hoa', 'bm-nuong-muoi-ot-ngoc-quy', 'oc-2000-xuan-hoa', 'tiem-nha-me-beo', 'gamitra-xuan-hoa', 'thuy-beo', 'banh-mi-bo-u', 'ruby-quan', 'xoai-corner', 'tiem-tra-sua-tocotoco', 'soh-tea', 'tiem-tra-thanh-thanh', 'com-rang-nguyen-van-linh', 'com-tam-xuan-hoa', 'tao-pho-chi-beo', 'bep-thanh', 'tra-chanh-zian', 'mr-tea-xuan-hoa', 'tiem-lan-phuong', 'goky-xuan-hoa', 'tram-du-de', 'le-la-cafe', 'xoi-com-185', 'nem-nuong-nha-mo-chou-chou', 'quan-bap-1991', 'happi-kid-coffee'].includes(place.id) ||
       place.serviceMode === 'both'
     );
   }
@@ -6098,6 +6143,7 @@ export const xuanHoaPlaces: Place[] = [
 
       // 3. Đồ ăn chín
       { id: 'bepnhabong-ga-popcorn', name: 'Gà popcorn', price: 35, tag: 'Ăn vặt giòn rụm', serviceTag: 'both', rarity: 1, description: 'Gà viên popcorn lắc bột chiên xù vàng ươm giòn rụm chấm tương ớt béo cay.' },
+      { id: 'bepnhabong-nem-chua-ran', name: 'Nem chua rán', price: 35, tag: 'Ăn vặt nóng giòn', serviceTag: 'both', rarity: 1, description: 'Nem chua rán vàng ruộm giòn tan bên ngoài, mềm ngọt bên trong chấm tương ớt cay nồng.' },
       { id: 'bepnhabong-ca-mom-rim-mam-toi', name: 'Cá mờm rim mắm tỏi', price: 40, tag: 'Đậm đà tốn cơm', serviceTag: 'both', rarity: 2, description: 'Cá mờm rim khô ngấm đẫm sốt mắm tỏi ớt chua ngọt cay tê, ăn cùng cơm tấm cực kỳ bén miệng.' },
       { id: 'bepnhabong-pate-gan', name: 'Pate gan nhà làm', price: 40, tag: 'Béo ngậy', serviceTag: 'both', rarity: 2, description: 'Pate gan heo mịn mượt thơm lừng béo ngậy tự nấu chuẩn công thức gia truyền.' },
       { id: 'bepnhabong-thit-chung-mam-tep', name: 'Thịt chưng mắm tép', price: 50, tag: 'Đặc sản gia truyền', serviceTag: 'both', rarity: 3, description: 'Thịt nạc vai băm chưng cùng mắm tép tươi và sả ớt vàng ruộm thơm nức mũi, chuẩn vị tốn cơm.' },
@@ -6112,8 +6158,11 @@ export const xuanHoaPlaces: Place[] = [
       { id: 'bepnhabong-cola-cola', name: 'Cola Cola (lon)', price: 10, serviceTag: 'both', rarity: 0, description: 'Lon Coca Cola ướp lạnh mát lạnh đã khát.' },
       { id: 'bepnhabong-bo-huc', name: 'Bò húc (lon)', price: 15, serviceTag: 'both', rarity: 0, description: 'Lon nước tăng lực Red Bull mát lạnh phục hồi thể lực.' }
     ],
-    tags: ['Bếp Nhà Bống', 'Cơm tấm sườn nướng', 'Cơm tấm gà nướng', 'Sườn bì chả', 'Gà popcorn', 'Cá mờm rim', 'Thịt chưng mắm tép', 'Pate gan', 'Phố Kim Đồng', '0812516606', '0812 516 606'],
+    tags: ['Bếp Nhà Bống', 'Cơm tấm sườn nướng', 'Cơm tấm gà nướng', 'Sườn bì chả', 'Gà popcorn', 'Nem chua rán', 'Cá mờm rim', 'Thịt chưng mắm tép', 'Pate gan', 'Phố Kim Đồng', '0812516606', '0812 516 606'],
     mapsQuery: 'So 4A Ngo 3 Kim Dong Xuan Hoa Phuc Yen Phu Tho',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28166,105.72895',
+    lat: 21.28166,
+    lng: 105.72895,
     phone: '0812 516 606',
     openHours: '10:00 - 13:00 | 18:00 - 20:00',
     rarity: 1,
@@ -6832,9 +6881,739 @@ export const xuanHoaPlaces: Place[] = [
     rarity: 2,
     quip: 'Quán Bắp 1991 tại đường Lê Quang Đạo (gần KĐT Điện Nước Xuân Hoà) mở cửa 10h - 22h30! Nổi tiếng với Mỳ cay 40k-65k, Tokbokki 50k, Kem dừa Mã Lai 35k, Set kem dừa 2-4 người (80k-140k), Trà sữa & đồ ăn vặt. SĐT: 0961 898 991.',
     mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late', 'drink']
+  },
+  {
+    id: 'happi-kid-coffee',
+    name: 'Happi Kid Coffee',
+    tagline: 'Trà sữa, Sữa chua hoa quả, Cà phê Phin Phê & Khu vui chơi tại KĐT Xuân Hoà (Đối diện trạm sạc VinFast)',
+    category: 'cafe',
+    zone: 'center',
+    distance: 'KĐT Xuân Hoà (Đối diện trạm sạc VinFast)',
+    address: 'KĐT Xuân Hoà (Đối diện trạm sạc VinFast Xuân Hoà), P. Xuân Hoà, Tỉnh Phú Thọ',
+    priceRange: '15k - 45k',
+    minPrice: 15,
+    maxPrice: 45,
+    rating: 4.95,
+    reviewCount: 218,
+    imageUrl: 'ai_studio_dish_happi_kid_coffee.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Mở cửa: Ngày thường 15:00 - 22:30 | Cuối tuần (T7-CN): Sáng 08:00 - 12:00 & Chiều 15:00 - 22:30 · Nhận ship quanh Xuân Hoà · SĐT: 0338 976 055 · Combo Vé vui chơi + Trà sữa chỉ +19k',
+    signatureDish: {
+      id: 'happikid-ts-kem-trung-dua-nuong',
+      name: 'Trà sữa kem trứng dừa nướng (M 35k / L 45k)',
+      price: 35,
+      tag: 'Best Seller',
+      serviceTag: 'both',
+      rarity: 1,
+      description: 'Trà sữa thơm béo phủ lớp kem trứng sánh mịn và dừa nướng giòn tan (Size M 35k / Size L 45k). Ưu đãi mua kèm vé vui chơi chỉ +19k!'
+    },
+    menu: [
+      // === 1. TRÀ SỮA (NÓNG - LẠNH) [SIZE M / L] ===
+      { id: 'hk-ts-happi', name: 'Trà sữa truyền thống (M 30k / L 40k)', price: 30, tag: 'Signature', serviceTag: 'both', rarity: 1, description: 'Trà sữa trân châu đậm vị trà thơm béo đặc trưng (Size M 30k / Size L 40k). Mua kèm vé khu vui chơi chỉ +19k!' },
+      { id: 'hk-ts-kem-trung-dua-nuong', name: 'Trà sữa kem trứng dừa nướng (M 35k / L 45k)', price: 35, tag: 'Best Seller', serviceTag: 'both', rarity: 1, description: 'Trà sữa phủ kem trứng béo ngậy rắc dừa nướng giòn thơm (Size M 35k / Size L 45k).' },
+      { id: 'hk-ts-olong-kem-may', name: 'Trà sữa Olong kem mây (M 35k / L 45k)', price: 35, tag: 'Hot Trend', serviceTag: 'both', rarity: 1, description: 'Trà sữa Olong nướng đậm vị phủ lớp kem mây bồng bềnh béo mịn (Size M 35k / Size L 45k).' },
+      { id: 'hk-ts-olong-nhai', name: 'Trà sữa Olong Nhài (M 30k / L 40k)', price: 30, tag: 'Thơm thanh', serviceTag: 'both', rarity: 0, description: 'Trà sữa Olong ủ hương hoa nhài thanh khiết dịu nhẹ (Size M 30k / Size L 40k).' },
+      { id: 'hk-ts-gao-rang', name: 'Trà sữa gạo rang (M 30k / L 40k)', price: 30, tag: 'Bùi thơm', serviceTag: 'both', rarity: 0, description: 'Trà sữa gạo rang Hàn Quốc thơm bùi dịu ngọt dễ uống (Size M 30k / Size L 40k).' },
+      { id: 'hk-ts-kem-com-deo', name: 'Trà sữa kem cốm dẻo (Size L)', price: 45, tag: 'Đặc biệt', serviceTag: 'both', rarity: 2, description: 'Trà sữa quyện kem cốm non dẻo thơm nức hương lúa mới (Size L 45k).' },
+
+      // === 2. MATCHA - CACAO ===
+      { id: 'hk-matcha-latte', name: 'Matcha latte', price: 35, tag: 'Matcha', serviceTag: 'both', rarity: 1, description: 'Matcha trà xanh Nhật Bản đánh bông cùng sữa tươi thanh mát.' },
+      { id: 'hk-matcha-yen-mach', name: 'Matcha yến mạch', price: 35, tag: 'Healthy', serviceTag: 'both', rarity: 1, description: 'Matcha kết hợp sữa hạt yến mạch bùi thơm dinh dưỡng.' },
+      { id: 'hk-coco-matcha', name: 'Coco matcha', price: 40, tag: 'Bán chạy', serviceTag: 'both', rarity: 1, description: 'Nước dừa tươi mát lành phủ lớp foam Matcha xanh mướt.' },
+      { id: 'hk-matcha-dua-bong-tuyet', name: 'Matcha dừa bông tuyết (Đá xay)', price: 45, tag: 'Đá xay', serviceTag: 'both', rarity: 2, description: 'Matcha cốt dừa đá xay bông tuyết mát lạnh béo thơm.' },
+      { id: 'hk-dua-sen-may-xanh', name: 'Dừa sen mây xanh', price: 45, tag: 'Signature', serviceTag: 'both', rarity: 2, description: 'Sự kết hợp độc đáo giữa dừa tươi, hạt sen bùi và lớp kem mây xanh biếc.' },
+      { id: 'hk-cacao-nui-kem', name: 'Cacao núi kem (Đá xay)', price: 45, tag: 'Đá xay', serviceTag: 'both', rarity: 2, description: 'Cacao nguyên chất đá xay phủ chóp núi kem whipping béo ngậy.' },
+      { id: 'hk-cacao-latte-kem-muoi', name: 'Cacao latte kem muối', price: 40, tag: 'Bán chạy', serviceTag: 'both', rarity: 1, description: 'Cacao latte đậm đà quyện lớp kem muối mặn ngọt sánh mịn.' },
+      { id: 'hk-cacao-yen-mach', name: 'Cacao yến mạch (Nóng / Lạnh)', price: 35, tag: 'Nóng/Lạnh', serviceTag: 'both', rarity: 1, description: 'Cacao sữa yến mạch bùi thơm phục vụ cả nóng và lạnh.' },
+
+      // === 3. MÁT LẠNH - SỮA CHUA ===
+      { id: 'hk-long-nhan-nui-tuyet', name: 'Long nhãn núi tuyết (Đá xay)', price: 45, tag: 'Đá xay', serviceTag: 'both', rarity: 2, description: 'Đá xay long nhãn ngọt thanh mát lạnh kèm cùi nhãn giòn sần sật.' },
+      { id: 'hk-chanh-tuyet', name: 'Chanh tuyết (Đá xay)', price: 40, tag: 'Giải nhiệt', serviceTag: 'both', rarity: 1, description: 'Chanh tươi xay tuyết bông mịn chua ngọt sảng khoái tức thì.' },
+      { id: 'hk-sc-hoa-qua-thien-duong', name: 'Sữa chua hoa quả Thiên đường', price: 45, tag: 'Best Seller', serviceTag: 'both', rarity: 2, description: 'Sữa chua sánh mịn ngập tràn các loại trái cây tươi nhiệt đới.' },
+      { id: 'hk-sc-xoai-nhiet-doi', name: 'Sữa chua xoài nhiệt đới', price: 45, tag: 'Mát lạnh', serviceTag: 'both', rarity: 2, description: 'Sữa chua lắc xoài chín tươi ngọt lịm thơm nức.' },
+      { id: 'hk-sc-dau-tam-nhiet-doi', name: 'Sữa chua dâu tằm nhiệt đới', price: 45, tag: 'Mát lạnh', serviceTag: 'both', rarity: 2, description: 'Sữa chua quyện mứt dâu tằm tươi chua ngọt giàu vitamin.' },
+      { id: 'hk-sc-kieu-mach', name: 'Sữa chua kiều mạch', price: 40, tag: 'Healthy', serviceTag: 'both', rarity: 1, description: 'Sữa chua mát lạnh rắc hạt kiều mạch nổ giòn rụm thơm bùi.' },
+      { id: 'hk-sc-com-deo', name: 'Sữa chua cốm dẻo', price: 40, tag: 'Được yêu thích', serviceTag: 'both', rarity: 1, description: 'Sữa chua sánh mịn quyện cốm non dẻo thơm.' },
+
+      // === 4. TRÀ HOA QUẢ TƯƠI ===
+      { id: 'hk-luu-ngoc-tra', name: 'Lựu ngọc trà', price: 45, tag: 'Best Seller', serviceTag: 'both', rarity: 2, description: 'Trà lựu đỏ tươi sắc ngọc ruby chua ngọt thanh mát giàu chất chống oxy hóa.' },
+      { id: 'hk-tra-thach-xoai-kem-may', name: 'Trà thạch xoài kem mây', price: 45, tag: 'Hot Trend', serviceTag: 'both', rarity: 2, description: 'Trà xoài tươi kèm thạch xoài núng nính phủ lớp kem mây béo mịn.' },
+      { id: 'hk-tra-nhai-dau-tam', name: 'Trà nhài dâu tằm', price: 40, tag: 'Thanh mát', serviceTag: 'both', rarity: 1, description: 'Lục trà nhài kết hợp dâu tằm tươi chua ngọt giải nhiệt.' },
+      { id: 'hk-sen-dua-lanh', name: 'Sen dừa lạnh', price: 40, tag: 'Thanh mát', serviceTag: 'both', rarity: 1, description: 'Nước dừa tươi mát lạnh kết hợp hạt sen bùi ngọt.' },
+      { id: 'hk-tra-sen-vang', name: 'Trà sen vàng (Nóng / Lạnh)', price: 40, tag: 'Nóng/Lạnh', serviceTag: 'both', rarity: 1, description: 'Trà Olong sen vàng kem mặn hạt sen bùi thơm (Phục vụ Nóng / Lạnh).' },
+      { id: 'hk-tra-chanh-vang-mat-ong', name: 'Trà chanh vàng mật ong (Nóng / Lạnh)', price: 30, tag: 'Nóng/Lạnh', serviceTag: 'both', rarity: 0, description: 'Trà chanh vàng Mỹ ngâm mật ong dịu cổ họng (Phục vụ Nóng / Lạnh).' },
+      { id: 'hk-nuoc-ep-cam-dua-hau', name: 'Nước ép cam / dưa hấu', price: 35, tag: 'Nước ép tươi', serviceTag: 'both', rarity: 1, description: 'Nước ép cam tươi hoặc dưa hấu nguyên chất 100%.' },
+      { id: 'hk-sinh-to-xoai', name: 'Sinh tố xoài', price: 40, tag: 'Sinh tố', serviceTag: 'both', rarity: 1, description: 'Sinh tố xoài chín xay mịn màng ngọt thơm.' },
+      { id: 'hk-nuoc-ep-luu', name: 'Nước ép lựu', price: 40, tag: 'Nước ép tươi', serviceTag: 'both', rarity: 1, description: 'Nước ép lựu đỏ tươi nguyên chất đẹp da mát lành.' },
+      { id: 'hk-tra-chanh-nha-dam', name: 'Trà chanh nha đam', price: 20, tag: 'Giải khát', serviceTag: 'both', rarity: 0, description: 'Trà chanh tươi mát lạnh kèm topping nha đam giòn sần sật chỉ 20k.' },
+
+      // === 5. COFFEE NÓNG - LẠNH (CÀ PHÊ PHIN PHÊ) ===
+      { id: 'hk-phe-den', name: 'Phê đen (Cà phê Phin Phê)', price: 30, tag: 'Phin Phê', serviceTag: 'both', rarity: 0, description: 'Cà phê phin truyền thống đậm đà thơm nồng (Nóng / Lạnh).' },
+      { id: 'hk-phe-sua', name: 'Phê sữa (Cà phê Phin Phê)', price: 30, tag: 'Phin Phê', serviceTag: 'both', rarity: 0, description: 'Cà phê phin pha sữa đặc sánh quyện thơm lừng (Nóng / Lạnh).' },
+      { id: 'hk-phe-xiu', name: 'Phê xỉu', price: 35, tag: 'Bán chạy', serviceTag: 'both', rarity: 1, description: 'Bạc xỉu nhiều sữa thơm ngậy dịu vị cà phê phin.' },
+      { id: 'hk-phe-muoi', name: 'Phê muối', price: 35, tag: 'Must Try', serviceTag: 'both', rarity: 1, description: 'Cà phê phin phủ lớp kem muối mặn béo dậy mùi thơm quyến rũ.' },
+      { id: 'hk-cafe-kem-trung', name: 'Cafe kem trứng', price: 35, tag: 'Béo mịn', serviceTag: 'both', rarity: 1, description: 'Cà phê phin kết hợp lớp kem trứng đánh bông béo mịn không tanh.' },
+      { id: 'hk-cafe-cot-dua', name: 'Cafe cốt dừa (Đá xay)', price: 40, tag: 'Đá xay', serviceTag: 'both', rarity: 1, description: 'Cốt dừa đá xay bông tuyết quyện cà phê phin đậm đà.' },
+
+      // === 6. TRÀ AN NHIÊN (DƯỠNG SINH ẤM BỤNG) ===
+      { id: 'hk-tra-gung-duong-nau', name: 'Trà gừng đường nâu', price: 35, tag: 'Trà an nhiên', serviceTag: 'both', rarity: 1, description: 'Trà gừng tươi nấu đường nâu ấm bụng giải cảm.' },
+      { id: 'hk-tra-duong-nhan', name: 'Trà dưỡng nhan', price: 35, tag: 'Trà an nhiên', serviceTag: 'both', rarity: 1, description: 'Trà thảo mộc dưỡng nhan táo đỏ kỷ tử long nhãn thanh tao.' },
+      { id: 'hk-tra-hoa-cuc-mat-ong', name: 'Trà hoa cúc mật ong', price: 35, tag: 'Trà an nhiên', serviceTag: 'both', rarity: 1, description: 'Trà hoa cúc chi ủ mật ong rừng thư giãn an thần.' },
+      { id: 'hk-tra-atiso-duong-nau', name: 'Trà atiso đường nâu', price: 35, tag: 'Trà an nhiên', serviceTag: 'both', rarity: 1, description: 'Trà hoa atiso nấu đường nâu thanh nhiệt mát gan.' },
+
+      // === 7. ĐỒ NHÂM NHI ===
+      { id: 'hk-bong-ngo', name: 'Bỏng ngô bơ thơm', price: 25, tag: 'Nhâm nhi', serviceTag: 'both', rarity: 0, description: 'Bỏng ngô nổ bơ vàng giòn rụm thơm phức cho bé và gia đình.' },
+      { id: 'hk-ga-kho-bo-kho', name: 'Gà khô - Bò khô', price: 25, tag: 'Nhâm nhi', serviceTag: 'both', rarity: 0, description: 'Đĩa khô gà lá chanh hoặc bò khô vắt chanh nhâm nhi cùng trà.' },
+      { id: 'hk-heo-kho-chay-toi', name: 'Heo khô cháy tỏi', price: 25, tag: 'Nhâm nhi', serviceTag: 'both', rarity: 0, description: 'Heo khô sợi mềm thơm lừng tỏi phi giòn rụm.' },
+      { id: 'hk-huong-duong', name: 'Hướng dương rang củi', price: 15, tag: 'Nhâm nhi', serviceTag: 'both', rarity: 0, description: 'Đĩa hạt hướng dương bùi thơm cắn rôm rốp.' },
+
+      // === 8. COMBO KHU VUI CHƠI CHO BÉ ===
+      { id: 'hk-combo-ve-tra-sua', name: 'Combo Ưu Đãi: Mua kèm Trà sữa (khi mua vé vui chơi lẻ)', price: 19, tag: 'Combo Ưu Đãi', serviceTag: 'dine_in', rarity: 2, description: 'Ưu đãi đặc biệt: Chỉ +19k có ngay 1 ly Trà sữa Happi khi mua kèm vé vui chơi lẻ tại Khu Vui Chơi Happi Kid!' }
+    ],
+    tags: ['Happi Kid Coffee', 'Happi Kid', 'KĐT Xuân Hoà', 'Đối diện trạm sạc VinFast', 'Trà sữa', 'Cà phê Phin Phê', 'Kids Cafe', 'Khu vui chơi trẻ em', '0338976055'],
+    mapsQuery: 'Happi Kid KĐT Xuân Hoà Phúc Yên',
+    mapsUrl: 'https://maps.app.goo.gl/nT1hviRgRibEPUzU9?g_st=ic',
+    lat: 21.28095,
+    lng: 105.72112,
+    subcategory: 'Trà sữa',
+    phone: '0338 976 055',
+    openHours: 'T2-T6: 15:00 - 22:30 | T7-CN: 08:00 - 12:00 & 15:00 - 22:30',
+    rarity: 3,
+    quip: 'Happi Kid Coffee tại KĐT Xuân Hoà (đối diện trạm sạc VinFast) — điểm hẹn hoàn hảo vừa có Trà sữa, Sữa chua hoa quả, Cà phê Phin Phê cực ngon cho bố mẹ & bạn trẻ, vừa có Khu vui chơi xịn sò cho bé! Hotline: 0338 976 055.',
+    mealSessions: ['morning', 'afternoon', 'dinner', 'late', 'drink']
+  },
+  {
+    id: 'khu-vui-choi-happi-kid',
+    name: 'Khu Vui Chơi Happi Kid',
+    tagline: 'Khu vui chơi trong nhà máy lạnh kết hợp Cafe & Trà sữa tại KĐT Xuân Hoà (Đối diện trạm sạc VinFast)',
+    category: 'cafe',
+    zone: 'center',
+    distance: 'KĐT Xuân Hoà (Đối diện trạm sạc VinFast)',
+    address: 'KĐT Xuân Hoà (Đối diện trạm sạc VinFast Xuân Hoà), P. Xuân Hoà, Tỉnh Phú Thọ',
+    priceRange: '39k - 65k/vé',
+    minPrice: 39,
+    maxPrice: 65,
+    rating: 4.98,
+    reviewCount: 245,
+    imageUrl: 'ai_studio_dish_happi_kid_playground.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Giờ mở cửa: Ngày thường 15:00 - 22:30 | Cuối tuần (T7 - CN): Sáng 08:00 - 12:00 & Chiều 15:00 - 22:30 · Hotline: 0338 976 055 · Mua kèm Trà sữa chỉ +19k',
+    signatureDish: {
+      id: 've-happi-kid-ngay-thuong',
+      name: 'Vé ngày thường 55k • Thứ Hai 39k • Cuối tuần 65k',
+      price: 55,
+      tag: 'Vé Vui Chơi',
+      serviceTag: 'dine_in',
+      rarity: 3,
+      description: 'Bé thỏa sức vui chơi tại nhà bóng pastel, cầu trượt xoắn, khu hướng nghiệp & vận động liên hoàn. Thứ Hai đầu tuần ưu đãi chỉ 39k!'
+    },
+    menu: [
+      { id: 've-hk-thu-hai', name: '🌈 Vé Ưu Đãi Thứ Hai đầu tuần', price: 39, tag: 'Siêu Ưu Đãi T2', serviceTag: 'dine_in', rarity: 2, description: 'Ưu đãi đặc biệt mỗi ngày Thứ Hai: Chỉ 39.000đ/vé cho bé vui chơi thả ga toàn bộ khu liên hoàn trong nhà!' },
+      { id: 've-hk-ngay-thuong', name: '☀️ Vé vui chơi Ngày thường (Thứ 3 - Thứ 6)', price: 55, tag: 'Vé Ngày Thường', serviceTag: 'dine_in', rarity: 2, description: 'Vé vào cổng ngày thường (15:00 - 22:30): Nhà bóng, cầu trượt ống xoắn, hồ hạt, khu nấu ăn & lắp ráp sáng tạo.' },
+      { id: 've-hk-cuoi-tuan', name: '📅 Vé vui chơi Cuối tuần & Ngày lễ (T7 - CN)', price: 65, tag: 'Vé Cuối Tuần', serviceTag: 'dine_in', rarity: 2, description: 'Vé cuối tuần mở cửa cả ngày (Sáng 08:00 - 12:00 | Chiều 15:00 - 22:30) và các ngày lễ.' },
+      { id: 've-hk-combo-tra-sua', name: '🧋 Combo Ưu Đãi: Mua kèm Trà sữa (khi mua vé vui chơi lẻ)', price: 19, tag: 'Combo Hot +19k', serviceTag: 'dine_in', rarity: 3, description: 'Đặc quyền tại Happi Kid: Mua vé vui chơi lẻ cho bé, bố mẹ được mua kèm 1 ly Trà sữa Happi thơm ngon với giá chỉ +19.000đ!' },
+      { id: 've-hk-combo-ngay-thuong-full', name: '💖 Trọn gói: 1 Vé Ngày thường (55k) + 1 Trà sữa Ưu đãi (19k)', price: 74, tag: 'Combo Bố Mẹ & Bé', serviceTag: 'dine_in', rarity: 3, description: 'Combo tiết kiệm ngày thường gồm 1 vé vui chơi cho bé (55k) + 1 ly trà sữa cho phụ huynh (19k) = 74k.' },
+      { id: 've-hk-combo-cuoi-tuan-full', name: '💖 Trọn gói: 1 Vé Cuối tuần (65k) + 1 Trà sữa Ưu đãi (19k)', price: 84, tag: 'Combo Cuối Tuần', serviceTag: 'dine_in', rarity: 3, description: 'Combo cuối tuần gồm 1 vé vui chơi cho bé (65k) + 1 ly trà sữa cho phụ huynh (19k) = 84k.' },
+      { id: 've-hk-10-buoi', name: '🎫 Thẻ Vé 10 buổi (Chỉ 49k/buổi - Tiết kiệm tới 160k)', price: 490, tag: 'Thẻ Tiết Kiệm', serviceTag: 'dine_in', rarity: 4, description: 'Thẻ 10 buổi vui chơi linh hoạt cho bé (490.000đ/10 buổi), dùng được cả ngày thường & cuối tuần cực kỳ kinh tế.' },
+      { id: 've-hk-ve-thang', name: '👑 Thẻ Vé Tháng VIP (Bé chơi thả ga cả tháng)', price: 890, tag: 'Thẻ Tháng VIP', serviceTag: 'dine_in', rarity: 4, description: 'Thẻ Vé Tháng 890.000đ cho bé đi chơi không giới hạn số buổi trong suốt 30 ngày.' },
+      { id: 've-hk-drink-ts-kem-trung', name: 'Trà sữa kem trứng dừa nướng (M 35k / L 45k)', price: 35, tag: 'Đồ uống Bố Mẹ', serviceTag: 'both', rarity: 1, description: 'Bố mẹ vừa nhâm nhi trà sữa kem trứng dừa nướng mát lạnh vừa quan sát bé chơi ngay tầm mắt.' },
+      { id: 've-hk-drink-sc-thien-duong', name: 'Sữa chua hoa quả Thiên đường', price: 45, tag: 'Cho Mẹ & Bé', serviceTag: 'both', rarity: 1, description: 'Sữa chua hoa quả tươi mát lành bổ sung vitamin cho mẹ và bé sau giờ vận động.' },
+      { id: 've-hk-drink-phe-muoi', name: 'Phê muối / Phê xỉu (Cà phê Phin Phê)', price: 35, tag: 'Cà phê cho Bố', serviceTag: 'both', rarity: 1, description: 'Ly cà phê phin kem muối đậm đà tỉnh táo cho bố trong lúc chờ bé chơi.' },
+      { id: 've-hk-snack-bong-ngo', name: 'Bỏng ngô / Gà khô / Heo khô cháy tỏi (25k) • Hướng dương (15k)', price: 25, tag: 'Nhâm nhi', serviceTag: 'both', rarity: 0, description: 'Đồ ăn vặt nhâm nhi thơm giòn cho cả gia đình.' }
+    ],
+    tags: ['Happi Kid', 'Khu vui chơi cho bé', 'Kids Cafe Xuân Hoà', 'KĐT Xuân Hoà', 'Đối diện trạm sạc VinFast', 'Chơi gì ở Xuân Hoà', '0338976055'],
+    mapsQuery: 'Happi Kid KĐT Xuân Hoà Phúc Yên',
+    mapsUrl: 'https://maps.app.goo.gl/nT1hviRgRibEPUzU9?g_st=ic',
+    lat: 21.28092,
+    lng: 105.72108,
+    subcategory: 'Giải trí',
+    phone: '0338 976 055',
+    openHours: 'T2-T6: 15:00 - 22:30 | T7-CN: Sáng 08:00 - 12:00 & Chiều 15:00 - 22:30',
+    rarity: 4,
+    quip: 'Điểm vui chơi cho bé số 1 tại KĐT Xuân Hoà (Đối diện trạm sạc VinFast)! Giá vé chỉ từ 39k (Thứ 2), 55k (Ngày thường), 65k (Cuối tuần), đặc biệt mua kèm Trà sữa chỉ +19k!',
+    mealSessions: ['morning', 'afternoon', 'dinner', 'late', 'drink']
+  },
+  {
+    id: 'billiards-91-club',
+    name: 'Billiards 91 Club',
+    tagline: '🎱 CLB Bi-a Lỗ & Carom Tiêu Chuẩn Thi Đấu • Phòng Máy Lạnh 24/7 • Đồ Ăn Nhẹ & Giải Khát Tận Bàn',
+    category: 'cafe',
+    subcategory: 'Bi-a',
+    zone: 'dhsp2',
+    distance: '~250m từ ĐHSP2 (Đường Nguyễn Văn Linh, P. Xuân Hòa)',
+    address: 'Đường Nguyễn Văn Linh, P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '60.000đ/giờ',
+    minPrice: 45,
+    maxPrice: 60,
+    rating: 4.92,
+    reviewCount: 185,
+    imageUrl: 'ai_studio_dish_zino_cafe_muoi.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Mở cửa 08:00 - 24:00 · Phòng máy lạnh mát rượi, bàn nỉ chuẩn thi đấu, phục vụ đồ uống & ăn vặt tại bàn',
+    signatureDish: {
+      id: 'b91-ban-pool-vip',
+      name: 'Bàn Bi-a Lỗ (Pool 9 Bi) Tiêu Chuẩn Thi Đấu',
+      price: 60,
+      tag: '🎱 Bi-a',
+      serviceTag: 'dine_in',
+      rarity: 2,
+      description: 'Bàn Bi-a nỉ nhập khẩu phẳng mượt, bóng Aramith, gậy carbon thẳng tắp, điều hòa mát lạnh phục vụ anh em cơ thủ Xuân Hòa.'
+    },
+    menu: [
+      { id: 'b91-ban-pool-vip', name: 'Giờ chơi Bàn Bi-a Lỗ (Pool) Tiêu chuẩn (60.000đ/giờ)', price: 60, tag: '🎱 Bi-a', serviceTag: 'dine_in', rarity: 2, description: 'Bàn thi đấu tiêu chuẩn, nhân viên xếp bi chuyên nghiệp, điều hòa 24/7.' },
+      { id: 'b91-ban-sinh-vien', name: 'Giờ chơi Khung giờ Sinh viên Ban ngày (45.000đ/giờ)', price: 45, tag: 'Ưu đãi SV', serviceTag: 'dine_in', rarity: 1, description: 'Ưu đãi khung giờ sáng & đầu giờ chiều cho sinh viên ĐHSP2.' },
+      { id: 'b91-nem-chua-ran', name: 'Nem chua rán', price: 35, tag: 'Ăn vặt tại bàn', serviceTag: 'dine_in', rarity: 1, description: 'Đĩa nem chua rán nóng giòn chấm tương ớt phục vụ trực tiếp cho anh em vừa cơ vừa nhâm nhi.' },
+      { id: 'b91-mi-tom-trung', name: 'Mì tôm 2 trứng bò khô / xúc xích', price: 25, tag: 'Nạp năng lượng', serviceTag: 'dine_in', rarity: 1, description: 'Bát mì nóng hổi tiếp sức cho những ca cơ xuyên đêm.' },
+      { id: 'b91-bo-huc-sting', name: 'Bò húc / Sting / Trà đào cam sả / Cafe muối', price: 20, tag: 'Giải khát', serviceTag: 'dine_in', rarity: 0, description: 'Đồ uống mát lạnh phục vụ tận bàn.' }
+    ],
+    tags: ['Billiards 91 Club', '91 Club', 'Bi-a', 'CLB Bi-a', 'Bi-a Xuân Hòa', 'Nem chua rán', 'Vui chơi', 'Giải trí'],
+    mapsQuery: 'Billiards 91 Club Nguyễn Văn Linh Xuân Hòa',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28135,105.72505',
+    lat: 21.28135,
+    lng: 105.72505,
+    phone: '0988 919 191',
+    openHours: '08:00 - 24:00',
+    rarity: 3,
+    quip: 'Billiards 91 Club Xuân Hòa — Bàn nỉ phẳng mượt, gậy xịn, điều hòa mát lạnh 08:00 - 24:00 với giá chỉ 60.000đ/giờ!',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'clb-bia-cyber-xuan-hoa',
+    name: 'Cyber Game & Bi-a Esport Nguyễn Văn Linh',
+    tagline: '🎮 Dàn PC Gaming Màn Hình 240Hz • Phòng VIP Máy Lạnh • CLB Bi-a & Đồ Ăn Nhẹ 24/7',
+    category: 'cafe',
+    subcategory: 'Game',
+    zone: 'dhsp2',
+    distance: '~250m từ cổng ĐHSP2 (Đường Nguyễn Văn Linh, P. Xuân Hòa)',
+    address: 'Trục đường Nguyễn Văn Linh (Gần ĐHSP2), P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '12k - 55k/giờ',
+    minPrice: 12,
+    maxPrice: 55,
+    rating: 4.88,
+    reviewCount: 210,
+    imageUrl: 'ai_studio_dish_zino_cafe_muoi.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Mở cửa 08:00 - 24:00 · Dàn PC Esport RTX 4060 màn 240Hz, bàn Bi-a Pool máy lạnh & đồ ăn đêm tại chỗ',
+    signatureDish: {
+      id: 'cyber-vip-gio',
+      name: 'Dàn PC Gaming VIP RTX 4060 • Màn 240Hz',
+      price: 15,
+      tag: '🎮 Cyber Game',
+      serviceTag: 'dine_in',
+      rarity: 2,
+      description: 'Cấu hình Esport chiến mượt Liên Minh, Valorant, CS2, FC Online, PUBG kèm ghế gaming êm ái.'
+    },
+    menu: [
+      { id: 'cyber-vip-gio', name: 'Giờ chơi Dàn PC Gaming VIP (Màn 240Hz, Gear cơ)', price: 15, tag: '🎮 Game', serviceTag: 'dine_in', rarity: 2, description: 'Cấu hình cao cấp phòng lạnh riêng biệt.' },
+      { id: 'cyber-combo-3h', name: 'Combo 3 Giờ chơi Cyber Game + 1 Nước ngọt', price: 45, tag: 'Combo Game', serviceTag: 'dine_in', rarity: 2, description: 'Combo tiết kiệm cho game thủ.' },
+      { id: 'bia-pool-gio', name: 'Giờ chơi Bàn Bi-a Lỗ (Pool) máy lạnh', price: 55, tag: '🎱 Bi-a', serviceTag: 'dine_in', rarity: 1, description: 'Bàn Bi-a tiêu chuẩn giải trí cùng hội bạn.' },
+      { id: 'cyber-com-rang-mi', name: 'Cơm rang đùi gà / Mì xào bò phục vụ tại máy', price: 35, tag: 'Đồ ăn Game thủ', serviceTag: 'dine_in', rarity: 1, description: 'Bếp nóng phục vụ tận ghế gaming.' }
+    ],
+    tags: ['Cyber Game', 'Quán Game', 'Quán Net ĐHSP2', 'Bi-a', 'Game Xuân Hòa', 'Vui chơi'],
+    mapsQuery: 'Cyber Game Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28140,105.72495',
+    lat: 21.28140,
+    lng: 105.72495,
+    phone: '0972 686 868',
+    openHours: '08:00 - 24:00',
+    rarity: 2,
+    quip: 'Tụ điểm chiến game Liên Minh, Valorant, CS2 và giao lưu Bi-a máy lạnh cực chất ngay cổng ĐHSP2!',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'karaoke-xuan-hoa-vip',
+    name: 'Karaoke Hoàng Gia KĐT Xuân Hòa',
+    tagline: '🎤 Phòng Hát Gia Đình & Hội Nhóm Hiện Đại • Âm Thanh Ánh Sáng Chuẩn Lounge • KĐT Xuân Hòa',
+    category: 'cafe',
+    subcategory: 'Karaoke',
+    zone: 'center',
+    distance: '~500m từ ĐHSP2 (KĐT Xuân Hòa - Lê Quang Đạo)',
+    address: 'Khu đô thị Xuân Hòa (Trục Lê Quang Đạo), P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '150k - 250k/giờ',
+    minPrice: 150,
+    maxPrice: 250,
+    rating: 4.89,
+    reviewCount: 132,
+    imageUrl: 'ai_studio_dish_cocokana_tra_hong_luu_suong_mai.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Mở cửa 10:00 - 24:00 · Nhận đặt phòng sinh nhật, liên hoan lớp, hội nhóm sinh viên & gia đình',
+    signatureDish: {
+      id: 'krk-phong-vip-gio',
+      name: 'Phòng Hát VIP Tiêu Chuẩn (10 - 15 người)',
+      price: 180,
+      tag: '🎤 Karaoke',
+      serviceTag: 'dine_in',
+      rarity: 2,
+      description: 'Hệ thống âm thanh JBL cực êm, màn hình chọn bài cảm ứng cập nhật nhạc trẻ Remix & Bolero mới nhất.'
+    },
+    menu: [
+      { id: 'krk-phong-tieu-chuan', name: 'Giờ hát Phòng Tiêu Chuẩn Ban ngày (10:00 - 18:00)', price: 150, tag: '🎤 Karaoke', serviceTag: 'dine_in', rarity: 1, description: 'Ưu đãi giờ hát ban ngày cho sinh viên và gia đình.' },
+      { id: 'krk-phong-vip-toi', name: 'Giờ hát Phòng VIP Buổi tối (18:00 - 24:00)', price: 220, tag: 'Phòng VIP', serviceTag: 'dine_in', rarity: 2, description: 'Phòng rộng, ánh sáng LED sân khấu hiện đại.' },
+      { id: 'krk-hoa-qua-dia', name: 'Đĩa Hoa quả thập cẩm theo mùa & Đồ khô nhâm nhi', price: 120, tag: 'Combo Bàn', serviceTag: 'dine_in', rarity: 1, description: 'Hoa quả tươi cắt sẵn mát lạnh.' }
+    ],
+    tags: ['Karaoke', 'Karaoke Xuân Hòa', 'Phòng hát', 'Giải trí', 'Vui chơi', 'KĐT Xuân Hòa'],
+    mapsQuery: 'Karaoke KĐT Xuân Hòa Phúc Yên',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28015,105.72125',
+    lat: 21.28015,
+    lng: 105.72125,
+    phone: '0966 888 268',
+    openHours: '10:00 - 24:00',
+    rarity: 2,
+    quip: 'Ăn lẩu nướng xong kéo hội bạn qua Karaoke Hoàng Gia KĐT Xuân Hòa xả giọng là trọn vẹn cuộc vui!',
+    mealSessions: ['lunch', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'pickleball-kdt-xuan-hoa',
+    name: 'Tổ Hợp Sân Pickleball & Thể Thao KĐT Xuân Hoà',
+    tagline: '🎾 Cụm Sân Pickleball Tiêu Chuẩn Ánh Sáng Chống Chói • Mặt Sân Êm Ái & Giao Lưu Thể Thao',
+    category: 'cafe',
+    subcategory: 'Giải trí',
+    zone: 'center',
+    distance: '~500m từ ĐHSP2 (Khu đô thị Xuân Hoà - Lê Quang Đạo)',
+    address: 'Khu đô thị Xuân Hoà (Trục đường Lê Quang Đạo), P. Xuân Hoà, Tỉnh Phú Thọ',
+    priceRange: '100k - 150k/giờ',
+    minPrice: 40,
+    maxPrice: 150,
+    rating: 4.92,
+    reviewCount: 165,
+    imageUrl: 'ai_studio_dish_cocokana_tra_dua.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Mở cửa 05:30 - 22:30 · Có cho thuê vợt Pickleball Carbon, bóng thi đấu & quầy nước giải khát tại sân',
+    signatureDish: {
+      id: 'pk-thue-san-gio',
+      name: 'Thuê sân Pickleball tiêu chuẩn (100k - 150k/giờ)',
+      price: 100,
+      tag: '🎾 Thể thao & Giải trí',
+      serviceTag: 'dine_in',
+      rarity: 2,
+      description: 'Mặt sân thảm chuẩn thi đấu, đèn LED chống lóa, khu vực nghỉ ngơi thoáng mát cho hội nhóm giao lưu.'
+    },
+    menu: [
+      { id: 'pk-san-ban-ngay', name: 'Thuê sân khung giờ Ban ngày (05:30 - 16:30) / giờ', price: 100, tag: 'Giờ ban ngày', serviceTag: 'dine_in', rarity: 1, description: 'Khung giờ sáng sớm và chiều mát cực kỳ lý tưởng để tập luyện.' },
+      { id: 'pk-san-buoi-toi', name: 'Thuê sân khung giờ Cao điểm tối (16:30 - 22:30) / giờ', price: 150, tag: 'Giờ vàng tối', serviceTag: 'dine_in', rarity: 2, description: 'Bật full hệ thống đèn LED tiêu chuẩn, không khí giao lưu cực kỳ sôi nổi.' },
+      { id: 'pk-thue-vot', name: 'Thuê vợt Pickleball Carbon & Bóng tập', price: 20, tag: 'Dụng cụ', serviceTag: 'dine_in', rarity: 0, description: 'Có sẵn vợt chất lượng cao cho người mới bắt đầu trải nghiệm bộ môn Pickleball.' }
+    ],
+    tags: ['Pickleball Xuân Hoà', 'Cầu lông Xuân Hòa', 'Thể thao KĐT Xuân Hoà', 'Vui chơi', 'Giải trí'],
+    mapsQuery: 'Khu đô thị Xuân Hòa Phúc Yên',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28055,105.72130',
+    lat: 21.28055,
+    lng: 105.72130,
+    phone: '0912 368 568',
+    openHours: '05:30 - 22:30',
+    rarity: 3,
+    quip: 'Lập team 4 người ra làm vài set Pickleball vừa khỏe người vừa vui hết nấc tại KĐT Xuân Hoà!',
+    mealSessions: ['morning', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'dien-thoai-xuan-hoa-mobile',
+    name: 'Xuân Hòa Mobile - Điện Thoại, Phụ Kiện & Sửa Chữa Lấy Ngay',
+    tagline: '📱 Mua Bán iPhone, Android Chính Hãng • Ép Kính, Thay Pin, Sửa Laptop & Phụ Kiện Sinh Viên',
+    category: 'fast_food',
+    subcategory: 'Điện thoại',
+    zone: 'dhsp2',
+    distance: '~200m từ cổng ĐHSP2 (Đường Nguyễn Văn Linh, P. Xuân Hòa)',
+    address: 'Số 68 Đường Nguyễn Văn Linh, P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '30k - 500k',
+    minPrice: 30,
+    maxPrice: 500,
+    rating: 4.91,
+    reviewCount: 154,
+    imageUrl: 'ai_studio_dish_zino_cafe_muoi.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Mở cửa 08:00 - 21:30 · Bảo hành uy tín, dán cường lực & vệ sinh máy miễn phí cho sinh viên ĐHSP2',
+    signatureDish: {
+      id: 'dt-dan-cuong-luc-phu-kien',
+      name: 'Dán cường lực chống nhìn trộm & Cáp sạc nhanh PD 20W',
+      price: 50,
+      tag: '📱 Điện thoại & Phụ kiện',
+      serviceTag: 'both',
+      rarity: 1,
+      description: 'Đầy đủ ốp lưng, kính cường lực, củ cáp sạc nhanh, tai nghe Bluetooth và dịch vụ thay pin chính hãng lấy ngay.'
+    },
+    menu: [
+      { id: 'dt-cuong-luc', name: 'Dán kính cường lực Full màn iPhone / Samsung', price: 30, tag: 'Phụ kiện', serviceTag: 'dine_in', rarity: 0, description: 'Kính cường lực siêu trong, vuốt mượt chống bám vân tay.' },
+      { id: 'dt-sac-nhanh', name: 'Bộ Sạc nhanh 20W / Cáp bọc dù tự ngắt', price: 120, tag: 'Bảo hành 12T', serviceTag: 'both', rarity: 1, description: 'Lỗi 1 đổi 1 trong 12 tháng.' },
+      { id: 'dt-thay-pin', name: 'Thay Pin dung lượng chuẩn / Ép kính lấy ngay', price: 250, tag: 'Sửa chữa', serviceTag: 'dine_in', rarity: 2, description: 'Kỹ thuật viên làm trực tiếp trước mặt khách, lấy ngay sau 20 phút.' }
+    ],
+    tags: ['Điện thoại', 'Sửa điện thoại Xuân Hòa', 'Phụ kiện điện thoại', 'Laptop', 'Dịch vụ'],
+    mapsQuery: '68 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.27998,105.72648',
+    lat: 21.27998,
+    lng: 105.72648,
+    phone: '0986 555 247',
+    openHours: '08:00 - 21:30',
+    rarity: 2,
+    quip: 'Cần dán cường lực, mua sạc cáp, sửa điện thoại hay vệ sinh laptop lấy ngay thì ghé Xuân Hòa Mobile 68 Nguyễn Văn Linh!',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner']
+  },
+  {
+    id: 'salon-toc-beauty-xuan-hoa',
+    name: 'The Muse Hair & Nail Studio Xuân Hòa',
+    tagline: '💇‍♀️ Cắt Tóc Nam Nữ, Uốn Nhuộm Thời Trang, Gội Đầu Dưỡng Sinh & Làm Nail Hàn Quốc',
+    category: 'cafe',
+    subcategory: 'Làm đẹp',
+    zone: 'dhsp2',
+    distance: '~300m từ cổng ĐHSP2 (Phố Kim Ngọc - Nguyễn Văn Linh)',
+    address: 'Phố Kim Ngọc (Cạnh Quảng trường Con Chim Xanh), P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '40k - 350k',
+    minPrice: 40,
+    maxPrice: 350,
+    rating: 4.94,
+    reviewCount: 178,
+    imageUrl: 'ai_studio_dish_happi_kid_coffee.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Mở cửa 08:30 - 21:00 · Ưu đãi giảm 15% combo Uốn/Nhuộm & Làm Nail cho sinh viên tại Xuân Hòa',
+    signatureDish: {
+      id: 'beauty-goi-duong-sinh',
+      name: 'Gội đầu dưỡng sinh thảo dược & Massage cổ vai gáy (60 phút)',
+      price: 69,
+      tag: '💆‍♀️ Làm đẹp & Thư giãn',
+      serviceTag: 'dine_in',
+      rarity: 2,
+      description: 'Thư giãn sâu với nước gội bồ kết sả chanh gừng ấm, massage bấm huyệt cổ vai gáy xua tan mệt mỏi.'
+    },
+    menu: [
+      { id: 'beauty-cat-toc', name: 'Cắt tóc thiết kế Nam / Nữ + Gội sấy tạo kiểu', price: 60, tag: 'Hair Salon', serviceTag: 'dine_in', rarity: 1, description: 'Tư vấn form tóc hợp khuôn mặt chuẩn Hàn Quốc.' },
+      { id: 'beauty-goi-duong-sinh', name: 'Gội đầu dưỡng sinh thảo mộc + Massage vai gáy', price: 69, tag: 'Dưỡng sinh', serviceTag: 'dine_in', rarity: 2, description: 'Thư giãn 60 phút nhẹ tênh đầu óc.' },
+      { id: 'beauty-nail-gel', name: 'Sơn Gel Hàn Quốc & Chăm sóc móng (Nail Art)', price: 99, tag: 'Nail Studio', serviceTag: 'dine_in', rarity: 1, description: 'Sơn gel bền đẹp, đính đá & vẽ mẫu xinh xắn.' }
+    ],
+    tags: ['Làm đẹp', 'Salon tóc Xuân Hòa', 'Gội đầu dưỡng sinh', 'Nail Xuân Hòa', 'Spa', 'Dịch vụ'],
+    mapsQuery: 'Phố Kim Ngọc Xuân Hòa Phúc Yên',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.27982,105.72448',
+    lat: 21.27982,
+    lng: 105.72448,
+    phone: '0979 368 999',
+    openHours: '08:30 - 21:00',
+    rarity: 2,
+    quip: 'Địa chỉ làm tóc, sơn nail và gội đầu dưỡng sinh quen thuộc của hội chị em sinh viên ĐHSP2 & cư dân Xuân Hòa!',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner']
+  },
+  {
+    id: 'tap-hoa-sieu-thi-xuan-hoa',
+    name: 'Siêu Thị Mini & Tạp Hóa Tiện Lợi Xuân Hòa Mart',
+    tagline: '🛒 Thực Phẩm Tươi Sạch, Đồ Gia Dụng, Bánh Kẹo Nhập Khẩu & Nhu Yếu Phẩm Sinh Viên',
+    category: 'fast_food',
+    subcategory: 'Tạp hóa',
+    zone: 'dhsp2',
+    distance: '~180m từ KTX ĐHSP2 (Phố Võ Thị Sáu, P. Xuân Hòa)',
+    address: 'Số 45 Phố Võ Thị Sáu (Gần KTX ĐHSP2), P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '5k - 200k',
+    minPrice: 5,
+    maxPrice: 200,
+    rating: 4.89,
+    reviewCount: 140,
+    imageUrl: 'ai_studio_dish_bap1991_kem_dua_ma_lai.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Mở cửa 06:30 - 23:00 · Có nhận ship thùng mì, nước khoáng, đồ gia dụng tận cổng KTX ĐHSP2',
+    signatureDish: {
+      id: 'mart-combo-sinh-vien',
+      name: 'Đồ dùng sinh hoạt, Bánh kẹo, Sữa tươi & Thực phẩm tiện lợi',
+      price: 25,
+      tag: '🛒 Tạp hóa & Siêu thị',
+      serviceTag: 'both',
+      rarity: 1,
+      description: 'Đầy đủ hàng tiêu dùng, đồ ăn vặt đóng gói, nước giải khát, kem và đồ gia dụng thiết yếu giá niêm yết.'
+    },
+    menu: [
+      { id: 'mart-do-an-nhanh', name: 'Mì ly, Xúc xích, Cơm nắm, Sữa tươi & Bánh ngọt ăn sáng', price: 15, tag: 'Tiện lợi', serviceTag: 'both', rarity: 0, description: 'Luôn có sẵn nước sôi và lò vi sóng hâm nóng tại quầy.' },
+      { id: 'mart-gia-dung', name: 'Đồ gia dụng phòng trọ / KTX (Ấm siêu tốc, ổ điện, móc áo...)', price: 50, tag: 'Gia dụng', serviceTag: 'both', rarity: 1, description: 'Trọn bộ đồ dùng cần thiết cho tân sinh viên.' }
+    ],
+    tags: ['Tạp hóa', 'Siêu thị mini', 'Cửa hàng tiện lợi', 'Tạp hóa Xuân Hòa', 'Võ Thị Sáu', 'Dịch vụ', 'Dịch vụ khác'],
+    mapsQuery: '45 Võ Thị Sáu Xuân Hòa Phúc Yên',
+    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28325,105.72410',
+    lat: 21.28325,
+    lng: 105.72410,
+    phone: '0963 888 115',
+    openHours: '06:30 - 23:00',
+    rarity: 1,
+    quip: 'Siêu thị mini ngay sát KTX ĐHSP2 — cần mua gì từ cây kim cuộn chỉ, đồ ăn đêm đến đồ gia dụng phòng trọ đều có đủ!',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late']
   }
-];
-
+];
+
+
+
+// ============================================================================
+// DANH MỤC ĐỊA ĐIỂM VUI CHƠI & GIẢI TRÍ XUÂN HÒA - ĐẠI LẢI ("HÔM NAY CHƠI GÌ")
+// ============================================================================
+export type PlayCategoryType = 'all' | 'kids-family' | 'chill-camping' | 'billiards-game' | 'sports';
+
+export interface PlayCategoryFilterItem {
+  id: PlayCategoryType;
+  label: string;
+  shortLabel: string;
+  desc: string;
+}
+
+export const PLAY_CATEGORY_LIST: PlayCategoryFilterItem[] = [
+  { id: 'all', label: 'Hôm Nay Chơi Gì (Tất Cả)', shortLabel: 'Tất Cả Chỗ Chơi', desc: 'Toàn bộ điểm vui chơi, khu trẻ em, dã ngoại, bi-a & thể thao tại Xuân Hòa - Đại Lải' },
+  { id: 'kids-family', label: 'Khu Vui Chơi & Gia Đình', shortLabel: 'Cho Bé & Gia Đình', desc: 'Kids Cafe, khu vui chơi trong nhà máy lạnh, quảng trường dạo mát cho bé & gia đình' },
+  { id: 'chill-camping', label: 'Dã Ngoại & Chill Đại Lải', shortLabel: 'Dã Ngoại & Chill', desc: 'Đạp vịt, chèo SUP, cắm trại ven hồ Đại Lải, nghe nhạc Acoustic & hẹn hò cuối tuần' },
+  { id: 'billiards-game', label: 'Bi-a, Cyber Game & Giải Trí', shortLabel: 'Bi-a & Cyber Game', desc: 'CLB Bi-a máy lạnh, Cyber Game cấu hình cao, Boardgame tụ tập bạn bè' },
+  { id: 'sports', label: 'Thể Thao & Vận Động', shortLabel: 'Pickleball & Thể Thao', desc: 'Sân Pickleball, cầu lông, bóng đá cỏ nhân tạo rèn luyện sức khỏe mỗi chiều' },
+];
+
+export interface PlaySpot extends Place {
+  playCategory: Exclude<PlayCategoryType, 'all'>;
+  playBadge: string;
+  galleryPhotos?: { url: string; caption: string }[];
+}
+
+export const xuanHoaPlaySpots: PlaySpot[] = [
+  {
+    id: 'khu-vui-choi-happi-kid',
+    playCategory: 'kids-family',
+    playBadge: '🎈 Kids Cafe & Khu Vui Chơi Số 1 Xuân Hoà',
+    name: 'Khu Vui Chơi Cho Bé & Kids Cafe Happi Kid - KĐT Xuân Hoà',
+    tagline: 'Thiên đường vui chơi trong nhà máy lạnh an toàn cho bé kết hợp Cafe & Trà sữa thư giãn cho bố mẹ (Đối diện trạm sạc VinFast Xuân Hoà)',
+    category: 'cafe',
+    zone: 'center',
+    distance: '~450m từ ĐHSP2 (KĐT Xuân Hoà, đối diện trạm sạc VinFast)',
+    address: 'KĐT Xuân Hoà (Đối diện trạm sạc VinFast Xuân Hoà), P. Xuân Hoà, Tỉnh Phú Thọ',
+    priceRange: '39k - 65k/vé',
+    minPrice: 39,
+    maxPrice: 65,
+    rating: 4.98,
+    reviewCount: 245,
+    imageUrl: 'ai_studio_dish_happi_kid_playground.jpg',
+    galleryPhotos: [
+      { url: 'happi_kid_ticket_real.jpg', caption: 'Bảng Giá Vé Khu Vui Chơi Happi Kid & Combo Ưu Đãi +19k Trà Sữa' },
+      { url: 'happi_kid_menu_real.jpg', caption: 'Menu Đồ Uống & Đồ Nhâm Nhi Happi Kid Coffee' },
+    ],
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Giờ mở cửa: Ngày thường 15:00 - 22:30 | Cuối tuần (T7 - CN): Sáng 08:00 - 12:00 & Chiều 15:00 - 22:30 · Hotline đặt vé/tổ chức sinh nhật: 0338 976 055',
+    signatureDish: {
+      id: 've-happi-kid-ngay-thuong',
+      name: 'Vé vui chơi Ngày thường (55k) • Thứ Hai ưu đãi 39k',
+      price: 55,
+      tag: 'Vé Vui Chơi',
+      serviceTag: 'dine_in',
+      rarity: 3,
+      description: 'Bé thỏa sức vui chơi không giới hạn thời gian tại nhà bóng pastel, cầu trượt xoắn, khu hướng nghiệp & vận động liên hoàn. Thứ Hai đầu tuần ưu đãi chỉ 39k!'
+    },
+    menu: [
+      // === BẢNG GIÁ VÉ KHU VUI CHƠI HAPPI KID ===
+      { id: 've-hk-thu-hai', name: '🌈 Vé Ưu Đãi Thứ Hai đầu tuần', price: 39, tag: 'Siêu Ưu Đãi T2', serviceTag: 'dine_in', rarity: 2, description: 'Ưu đãi đặc biệt mỗi ngày Thứ Hai: Chỉ 39.000đ/vé cho bé vui chơi thả ga toàn bộ khu liên hoàn trong nhà!' },
+      { id: 've-hk-ngay-thuong', name: '☀️ Vé vui chơi Ngày thường (Thứ 3 - Thứ 6)', price: 55, tag: 'Vé Ngày Thường', serviceTag: 'dine_in', rarity: 2, description: 'Vé vào cổng ngày thường (15:00 - 22:30): Nhà bóng, cầu trượt ống xoắn, hồ hạt, khu nấu ăn & lắp ráp sáng tạo.' },
+      { id: 've-hk-cuoi-tuan', name: '📅 Vé vui chơi Cuối tuần & Ngày lễ (T7 - CN)', price: 65, tag: 'Vé Cuối Tuần', serviceTag: 'dine_in', rarity: 2, description: 'Vé cuối tuần mở cửa cả ngày (Sáng 08:00 - 12:00 | Chiều 15:00 - 22:30) và các ngày lễ.' },
+      { id: 've-hk-combo-tra-sua', name: '🧋 Combo Ưu Đãi: Mua kèm Trà sữa (khi mua vé vui chơi lẻ)', price: 19, tag: 'Combo Hot +19k', serviceTag: 'dine_in', rarity: 3, description: 'Đặc quyền tại Happi Kid: Mua vé vui chơi lẻ cho bé, bố mẹ được mua kèm 1 ly Trà sữa Happi thơm ngon với giá chỉ +19.000đ!' },
+      { id: 've-hk-combo-ngay-thuong-full', name: '💖 Trọn gói: 1 Vé Ngày thường (55k) + 1 Trà sữa Ưu đãi (19k)', price: 74, tag: 'Combo Bố Mẹ & Bé', serviceTag: 'dine_in', rarity: 3, description: 'Combo tiết kiệm ngày thường gồm 1 vé vui chơi cho bé (55k) + 1 ly trà sữa cho phụ huynh (19k) = 74k.' },
+      { id: 've-hk-combo-cuoi-tuan-full', name: '💖 Trọn gói: 1 Vé Cuối tuần (65k) + 1 Trà sữa Ưu đãi (19k)', price: 84, tag: 'Combo Cuối Tuần', serviceTag: 'dine_in', rarity: 3, description: 'Combo cuối tuần gồm 1 vé vui chơi cho bé (65k) + 1 ly trà sữa cho phụ huynh (19k) = 84k.' },
+      { id: 've-hk-10-buoi', name: '🎫 Thẻ Vé 10 buổi (Chỉ 49k/buổi - Tiết kiệm tới 160k)', price: 490, tag: 'Thẻ Tiết Kiệm', serviceTag: 'dine_in', rarity: 4, description: 'Thẻ 10 buổi vui chơi linh hoạt cho bé (490.000đ/10 buổi), dùng được cả ngày thường & cuối tuần cực kỳ kinh tế.' },
+      { id: 've-hk-ve-thang', name: '👑 Thẻ Vé Tháng VIP (Bé chơi thả ga cả tháng)', price: 890, tag: 'Thẻ Tháng VIP', serviceTag: 'dine_in', rarity: 4, description: 'Thẻ Vé Tháng 890.000đ cho bé đi chơi không giới hạn số buổi trong suốt 30 ngày.' },
+
+      // === ĐỒ UỐNG & NHÂM NHI CHO BỐ MẸ NGỒI ĐỢI BÉ ===
+      { id: 've-hk-drink-ts-kem-trung', name: 'Trà sữa kem trứng dừa nướng (M 35k / L 45k)', price: 35, tag: 'Đồ uống Bố Mẹ', serviceTag: 'both', rarity: 1, description: 'Bố mẹ vừa nhâm nhi trà sữa kem trứng dừa nướng mát lạnh vừa quan sát bé chơi ngay tầm mắt.' },
+      { id: 've-hk-drink-sc-thien-duong', name: 'Sữa chua hoa quả Thiên đường', price: 45, tag: 'Cho Mẹ & Bé', serviceTag: 'both', rarity: 1, description: 'Sữa chua hoa quả tươi mát lành bổ sung vitamin cho mẹ và bé sau giờ vận động.' },
+      { id: 've-hk-drink-phe-muoi', name: 'Phê muối / Phê xỉu (Cà phê Phin Phê)', price: 35, tag: 'Cà phê cho Bố', serviceTag: 'both', rarity: 1, description: 'Ly cà phê phin kem muối đậm đà tỉnh táo cho bố trong lúc chờ bé chơi.' },
+      { id: 've-hk-snack-bong-ngo', name: 'Bỏng ngô / Gà khô / Heo khô cháy tỏi (25k) • Hướng dương (15k)', price: 25, tag: 'Nhâm nhi', serviceTag: 'both', rarity: 0, description: 'Đồ ăn vặt nhâm nhi thơm giòn cho cả gia đình.' }
+    ],
+    tags: ['Happi Kid', 'Khu vui chơi trẻ em', 'Kids Cafe Xuân Hoà', 'KĐT Xuân Hoà', 'Đối diện trạm sạc VinFast', 'Chơi gì ở Xuân Hoà', 'Cho bé đi chơi', '0338976055'],
+    mapsQuery: 'Happi Kid KĐT Xuân Hoà Phúc Yên',
+    mapsUrl: 'https://maps.app.goo.gl/nT1hviRgRibEPUzU9?g_st=ic',
+    phone: '0338 976 055',
+    openHours: 'T2-T6: 15:00 - 22:30 | T7-CN: Sáng 08:00 - 12:00 & Chiều 15:00 - 22:30',
+    rarity: 4,
+    quip: 'Điểm vui chơi cho bé số 1 tại KĐT Xuân Hoà (Đối diện trạm sạc VinFast)! Giá vé chỉ từ 39k (Thứ 2), 55k (Ngày thường), 65k (Cuối tuần), đặc biệt mua kèm Trà sữa chỉ +19k!',
+    mealSessions: ['morning', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'ho-dai-lai-play',
+    playCategory: 'chill-camping',
+    playBadge: '🌊 Dã Ngoại & Đạp Vịt Hồ Đại Lải',
+    name: 'Hồ Đại Lải - Đạp Vịt, Chèo SUP & Bãi Cỏ Dã Ngoại Hoàng Hôn',
+    tagline: 'Điểm hóng gió, đạp vịt, cắm trại nướng BBQ và ngắm hoàng hôn mặt hồ kinh điển chỉ cách trung tâm Xuân Hòa 3km',
+    category: 'cafe',
+    zone: 'expanded',
+    distance: '~3km từ ĐHSP2 (Đường Nguyễn Văn Linh kéo dài ra Hồ Đại Lải)',
+    address: 'Khu du lịch Hồ Đại Lải, P. Xuân Hòa - Ngọc Thanh, Tỉnh Phú Thọ',
+    priceRange: '30k - 100k',
+    minPrice: 30,
+    maxPrice: 100,
+    rating: 4.9,
+    reviewCount: 412,
+    imageUrl: 'ai_studio_dish_dua_tuoi.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Mở cửa cả ngày · Đẹp nhất từ 15:30 - 18:30 ngắm hoàng hôn trên mặt hồ và tối dạo mát uống nước dừa',
+    signatureDish: {
+      id: 'dl-dap-vit-60p',
+      name: 'Thuê thuyền Đạp vịt mặt hồ Đại Lải (60 phút)',
+      price: 60,
+      tag: 'Trải nghiệm Hot',
+      serviceTag: 'dine_in',
+      rarity: 2,
+      description: 'Đạp vịt hóng gió mát rượi giữa mặt hồ Đại Lải mênh mông, ngắm hoàng hôn buông xuống dãy Tam Đảo.'
+    },
+    menu: [
+      { id: 'dl-dap-vit', name: 'Đạp vịt thiên nga trên Hồ Đại Lải (2 - 4 người / giờ)', price: 60, tag: 'Vui chơi mặt nước', serviceTag: 'dine_in', rarity: 2, description: 'Thuyền thiên nga đạp nước ngắm cảnh mặt hồ cực chill cho cặp đôi và nhóm bạn.' },
+      { id: 'dl-cano-dao-ngoc', name: 'Đi tàu / Cano tham quan Đảo Ngọc giữa hồ (khứ hồi/người)', price: 80, tag: 'Khám phá', serviceTag: 'dine_in', rarity: 2, description: 'Lướt sóng cano ra Đảo Ngọc tham quan rừng thông, chùa Linh Thông và check-in giữa lòng hồ.' },
+      { id: 'dl-bai-co-camping', name: 'Thuê bạt & Bàn ghế Camping ven hồ ngắm hoàng hôn', price: 50, tag: 'Camping Chill', serviceTag: 'dine_in', rarity: 1, description: 'Trải bạt picnic trên thảm cỏ thông reo ven hồ, hóng gió mát lành cùng hội bạn.' },
+      { id: 'dl-nuoc-dua-ngo-nuong', name: 'Nước dừa xiêm lạnh & Ngô khoai nướng ven hồ', price: 35, tag: 'Nhâm nhi', serviceTag: 'dine_in', rarity: 0, description: 'Thưởng thức dừa tươi mát lạnh, ngô nướng, trứng nướng thơm phức bên bờ hồ buổi tối.' }
+    ],
+    tags: ['Hồ Đại Lải', 'Đạp vịt Đại Lải', 'Dã ngoại Xuân Hòa', 'Ngắm hoàng hôn', 'Camping Đại Lải', 'Hẹn hò'],
+    mapsQuery: 'Hồ Đại Lải Phúc Yên',
+    openHours: '06:00 - 22:30',
+    rarity: 4,
+    quip: 'Chiều chiều rủ người thương hoặc hội bạn thân ra bờ Hồ Đại Lải đạp vịt, trải bạt đón gió trời và ngắm hoàng hôn tím rịm thì bao nhiêu muộn phiền đều tan biến!',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'quang-truong-chim-xanh-play',
+    playCategory: 'kids-family',
+    playBadge: '🕊️ Quảng Trường Trung Tâm Xuân Hòa',
+    name: 'Quảng Trường Con Chim Xanh & Phố Đi Bộ Tối Xuân Hòa',
+    tagline: 'Không gian quảng trường thoáng rộng giữa trung tâm Xuân Hòa — nơi trẻ em đi xe điện, trượt patin, tô tượng & sinh viên dạo mát mỗi tối',
+    category: 'cafe',
+    zone: 'dhsp2',
+    distance: '~200m từ cổng ĐHSP2 (Ngã tư Nguyễn Văn Linh - Trường Chinh)',
+    address: 'Ngã tư Con Chim Xanh (Giao lộ Nguyễn Văn Linh - Trường Chinh), P. Xuân Hòa',
+    priceRange: '15k - 40k',
+    minPrice: 15,
+    maxPrice: 40,
+    rating: 4.88,
+    reviewCount: 320,
+    imageUrl: 'ai_studio_dish_bap1991_kem_dua_ma_lai.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Đông vui nhộn nhịp nhất từ 17:00 - 22:30 hàng ngày · Miễn phí vé vào quảng trường',
+    signatureDish: {
+      id: 'qt-to-tuong-xe-dien',
+      name: 'Tô tượng thạch cao & Thuê xe điện / Patin buổi tối',
+      price: 25,
+      tag: 'Vui chơi tối',
+      serviceTag: 'dine_in',
+      rarity: 1,
+      description: 'Hoạt động giải trí buổi tối cực vui cho các bé, các cặp đôi hẹn hò tô tượng và nhóm sinh viên dạo phố.'
+    },
+    menu: [
+      { id: 'qt-to-tuong', name: 'Tô tượng thạch cao nghệ thuật (kèm màu & cọ vẽ)', price: 25, tag: 'Hẹn hò & Trẻ em', serviceTag: 'dine_in', rarity: 1, description: 'Đủ mẫu tượng hoạt hình, Bearbrick lớn nhỏ cho các cặp đôi và các bé thỏa sức sáng tạo.' },
+      { id: 'qt-xe-dien-tre-em', name: 'Thuê xe ô tô điện / xe cân bằng phát sáng cho bé (20 phút)', price: 30, tag: 'Cho bé', serviceTag: 'dine_in', rarity: 1, description: 'Sân quảng trường rộng rãi an toàn cho bé lái xe điện lung linh ánh đèn.' },
+      { id: 'qt-tra-chanh-dao-pho', name: 'Trà chanh giã tay & Ăn vặt xiên que dạo phố quanh Quảng trường', price: 20, tag: 'Dạo phố', serviceTag: 'dine_in', rarity: 0, description: 'Vừa ngồi ghế đá hóng gió vừa nhâm nhi trà chanh, cá viên chiên, bánh tráng nướng.' }
+    ],
+    tags: ['Quảng trường Xuân Hòa', 'Con Chim Xanh', 'Tô tượng', 'Dạo phố buổi tối', 'Cho bé chơi tối'],
+    mapsQuery: 'Ngã tư Xuân Hòa Phúc Yên',
+    openHours: '16:30 - 23:00',
+    rarity: 3,
+    quip: 'Biểu tượng nhịp sống buổi tối của phường Xuân Hòa — cứ sau 5h chiều là gió mát lộng, đèn sáng rực rỡ, trẻ con chạy nhảy, sinh viên đàn hát rôm rả!',
+    mealSessions: ['afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'pickleball-kdt-xuan-hoa',
+    playCategory: 'sports',
+    playBadge: '🎾 Sân Pickleball & Thể Thao Hot Trend',
+    name: 'Tổ Hợp Sân Pickleball, Cầu Lông & Thể Thao KĐT Xuân Hoà',
+    tagline: 'Cụm sân Pickleball tiêu chuẩn ánh sáng chống chói, mặt sân êm ái & giao lưu thể thao sôi động nhất khu đô thị Xuân Hoà',
+    category: 'cafe',
+    zone: 'center',
+    distance: '~500m từ ĐHSP2 (Khu đô thị Xuân Hoà - Lê Quang Đạo)',
+    address: 'Khu đô thị Xuân Hoà (Trục đường Lê Quang Đạo), P. Xuân Hoà, Tỉnh Phú Thọ',
+    priceRange: '40k - 80k/người',
+    minPrice: 40,
+    maxPrice: 80,
+    rating: 4.92,
+    reviewCount: 165,
+    imageUrl: 'ai_studio_dish_cocokana_tra_dua.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Mở cửa 05:30 - 22:30 · Có cho thuê vợt Pickleball, bóng thi đấu & quầy nước giải khát tại sân',
+    signatureDish: {
+      id: 'pk-thue-san-gio',
+      name: 'Thuê sân Pickleball tiêu chuẩn (Chia đầu người ~40k-50k)',
+      price: 50,
+      tag: 'Thể thao Hot',
+      serviceTag: 'dine_in',
+      rarity: 2,
+      description: 'Mặt sân thảm chuẩn thi đấu, đèn LED chống lóa, khu vực nghỉ ngơi thoáng mát cho hội nhóm giao lưu.'
+    },
+    menu: [
+      { id: 'pk-san-ban-ngay', name: 'Thuê sân khung giờ Ban ngày (05:30 - 16:30) / giờ', price: 100, tag: 'Giờ ban ngày', serviceTag: 'dine_in', rarity: 1, description: 'Khung giờ sáng sớm và chiều mát cực kỳ lý tưởng để tập luyện.' },
+      { id: 'pk-san-buoi-toi', name: 'Thuê sân khung giờ Cao điểm tối (16:30 - 22:30) / giờ', price: 150, tag: 'Giờ vàng tối', serviceTag: 'dine_in', rarity: 2, description: 'Bật full hệ thống đèn LED tiêu chuẩn, không khí giao lưu cực kỳ sôi nổi.' },
+      { id: 'pk-thue-vot', name: 'Thuê vợt Pickleball Carbon & Bóng tập', price: 20, tag: 'Dụng cụ', serviceTag: 'dine_in', rarity: 0, description: 'Có sẵn vợt chất lượng cao cho người mới bắt đầu trải nghiệm bộ môn Pickleball.' }
+    ],
+    tags: ['Pickleball Xuân Hoà', 'Cầu lông Xuân Hòa', 'Thể thao KĐT Xuân Hoà', 'Chơi gì chiều nay'],
+    mapsQuery: 'Khu đô thị Xuân Hòa Phúc Yên',
+    openHours: '05:30 - 22:30',
+    rarity: 3,
+    quip: 'Ăn no rồi phải vận động! Lập team 4 người ra làm vài set Pickleball vừa khỏe người, vừa bắt kịp bộ môn thể thao hot nhất năm nay tại Xuân Hoà.',
+    mealSessions: ['morning', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'clb-bia-cyber-xuan-hoa',
+    playCategory: 'billiards-game',
+    playBadge: '🎱 Bi-a Máy Lạnh & Cyber Game ĐHSP2',
+    name: 'Tổ Hợp CLB Bi-a Lỗ & Cyber Game Giải Trí Nguyễn Văn Linh',
+    tagline: 'Phòng máy lạnh mát rượi, bàn Bi-a phẳng mượt chuẩn thi đấu & dàn PC Gaming màn hình tần số quét cao ngay trục đường sinh viên',
+    category: 'cafe',
+    zone: 'dhsp2',
+    distance: '~250m từ cổng ĐHSP2 (Đường Nguyễn Văn Linh, P. Xuân Hòa)',
+    address: 'Trục đường Nguyễn Văn Linh (Gần ĐHSP2), P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '25k - 60k/giờ',
+    minPrice: 25,
+    maxPrice: 60,
+    rating: 4.86,
+    reviewCount: 210,
+    imageUrl: 'ai_studio_dish_zino_cafe_muoi.jpg',
+    serviceMode: 'dine_in_only',
+    deliveryNote: 'Mở cửa 08:00 - 24:00 · Điều hòa 24/7, phục vụ đồ uống, mì tôm trứng & cơm rang tại bàn',
+    signatureDish: {
+      id: 'bia-ban-tieu-chuan',
+      name: 'Bàn Bi-a Pool 9 bi máy lạnh (Tính theo giờ)',
+      price: 55,
+      tag: 'Giải trí Bạn bè',
+      serviceTag: 'dine_in',
+      rarity: 1,
+      description: 'Bàn nỉ mới phẳng mượt, gậy thẳng tắp, điều hòa mát lạnh thích hợp so cơ cùng hội anh em.'
+    },
+    menu: [
+      { id: 'bia-pool-gio', name: 'Giờ chơi Bàn Bi-a Lỗ (Pool) tiêu chuẩn máy lạnh', price: 55, tag: 'Bi-a Lỗ', serviceTag: 'dine_in', rarity: 1, description: 'Không gian rộng rãi không vướng gậy, nhân viên xếp bi nhiệt tình.' },
+      { id: 'cyber-vip-gio', name: 'Combo 3 Giờ chơi Cyber Game dàn VIP (Tặng kèm 1 nước)', price: 35, tag: 'Cyber Game', serviceTag: 'dine_in', rarity: 1, description: 'Màn hình 240Hz, gear cơ chuẩn Esports chiến mượt Liên Minh, Valorant, CS2, FC Online.' },
+      { id: 'bia-nuoc-mi-trung', name: 'Mì tôm 2 trứng bò khô & Trà đào / Bò húc phục vụ tận bàn', price: 25, tag: 'Nạp năng lượng', serviceTag: 'dine_in', rarity: 0, description: 'Đói bụng giữa ca chơi có ngay bát mì trứng nóng hổi hoặc ly nước mát lạnh.' }
+    ],
+    tags: ['Bi-a Xuân Hòa', 'Quán Net ĐHSP2', 'Cyber Game Nguyễn Văn Linh', 'Giải trí sinh viên'],
+    mapsQuery: 'Bi-a Nguyễn Văn Linh Xuân Hòa Phúc Yên',
+    openHours: '08:00 - 24:00',
+    rarity: 2,
+    quip: 'Trưa nắng hay tối rảnh chưa biết đi đâu thì rủ ngay chiến hữu vào phòng điều hòa mát lạnh làm vài cơ Bi-a hoặc combat vài trận game là chuẩn bài!',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late']
+  },
+  {
+    id: 'tram-du-de-camping-play',
+    playCategory: 'chill-camping',
+    playBadge: '🎸 Boardgame, Acoustic & Góc Chill Hẹn Hò',
+    name: 'Trạm Dủ Dẻ - Không Gian Chill, Boardgame & Hẹn Hò Xuân Hòa',
+    tagline: 'Góc trú ẩn bình yên mang vibe Đà Lạt thu nhỏ với các trò chơi Boardgame, Uno, Mèo Nổ và góc chụp ảnh sống ảo cực thơ tại Xuân Hòa',
+    category: 'cafe',
+    zone: 'dhsp2',
+    distance: '~300m từ ĐHSP2 (P. Xuân Hòa)',
+    address: 'Khu vực ĐHSP2, P. Xuân Hòa, Tỉnh Phú Thọ',
+    priceRange: '25k - 45k',
+    minPrice: 25,
+    maxPrice: 45,
+    rating: 4.9,
+    reviewCount: 195,
+    imageUrl: 'ai_studio_dish_matcha_latte.jpg',
+    serviceMode: 'both',
+    deliveryNote: 'Mở cửa 08:00 - 22:30 · Miễn phí mượn bộ bài Uno, Ma Sói, Mèo Nổ, Cá Ngựa khi gọi đồ uống tại quán',
+    signatureDish: {
+      id: 'chill-combo-boardgame',
+      name: 'Đồ uống Chill + Chơi Boardgame (Uno, Mèo Nổ, Rút Gỗ)',
+      price: 30,
+      tag: 'Tụ tập & Hẹn hò',
+      serviceTag: 'dine_in',
+      rarity: 1,
+      description: 'Gọi 1 ly đồ uống bất kỳ, hội bạn thoải mái mượn các bộ Boardgame vui nhộn ngồi chơi hàng giờ.'
+    },
+    menu: [
+      { id: 'chill-boardgame-free', name: 'Combo Đồ uống + Mượn bộ Uno / Mèo Nổ / Rút Gỗ miễn phí', price: 30, tag: 'Boardgame', serviceTag: 'dine_in', rarity: 1, description: 'Không gian ấm cúng, nhạc chill nhẹ nhàng cực hợp cho nhóm bạn hoặc cặp đôi.' },
+      { id: 'chill-check-in', name: 'Check-in góc sân vườn & thưởng thức Trà hoa quả nhiệt đới', price: 35, tag: 'Sống ảo', serviceTag: 'dine_in', rarity: 1, description: 'Nhiều góc decor gỗ và cây xanh lên ảnh cực xinh không cần đi xa.' }
+    ],
+    tags: ['Boardgame Xuân Hòa', 'Cafe Acoustic', 'Hẹn hò Xuân Hòa', 'Trạm Dủ Dẻ'],
+    mapsQuery: 'Trạm Dủ Dẻ Xuân Hòa',
+    openHours: '08:00 - 22:30',
+    rarity: 3,
+    quip: 'Không cần đi đâu xa xôi, muốn tìm một góc yên bình nghe nhạc, chụp ảnh xinh và chơi vài ván Uno, Rút gỗ cười nghiêng ngả cùng lũ bạn thì ghé ngay!',
+    mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late', 'drink']
+  }
+];
+
 export const INITIAL_REVIEWS: Record<string, Review[]> = {
   'lau-nuong-1968': [
     {
@@ -7908,6 +8687,42 @@ export const INITIAL_REVIEWS: Record<string, Review[]> = {
       date: 'Hôm qua',
       role: 'Cư dân KĐT Điện Nước Xuân Hoà',
       content: 'Tụ tập bạn bè ở Bắp 1991 gọi mẹt khoai tây chiên lắc phô mai, nem chua phô mai, lạp xưởng Hà Khẩu 15k và Trà sữa kem trứng dừa nướng uống cực cuốn. Mở cửa từ 10h sáng đến 22h30 tối, gọi ship 0961 898 991 giao rất nhanh!',
+    }
+  ],
+  'happi-kid-coffee': [
+    {
+      id: 'r_hk_coffee_1',
+      author: 'Chị Nguyễn Minh Phương',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Cư dân KĐT Xuân Hoà',
+      content: 'Happi Kid Coffee ở ngay đối diện trạm sạc VinFast Xuân Hoà không gian sáng sủa, sạch đẹp và mát lạnh! Trà sữa kem trứng dừa nướng 35k với Sữa chua hoa quả Thiên đường 45k uống ngon xuất sắc. Mua vé cho bé chơi còn được mua kèm trà sữa giá ưu đãi chỉ 19k quá hời!',
+    },
+    {
+      id: 'r_hk_coffee_2',
+      author: 'Trần Hoàng Nam',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Phụ huynh tại Xuân Hoà',
+      content: 'Cuối tuần quán mở cả sáng (8h-12h) lẫn chiều tối (15h-22h30) rất tiện. Bố ngồi uống cốc Phê muối 35k đậm đà chuẩn vị cà phê phin, mẹ uống Lựu ngọc trà 45k thanh mát còn con thì chơi mê mẩn trong khu nhà bóng không muốn về!',
+    }
+  ],
+  'khu-vui-choi-happi-kid': [
+    {
+      id: 'r_hk_play_1',
+      author: 'Mẹ Bắp Cải (Lê Thu Hương)',
+      rating: 5,
+      date: 'Hôm nay',
+      role: 'Phụ huynh KĐT Xuân Hoà',
+      content: 'Cuối cùng Xuân Hoà cũng có một khu vui chơi trong nhà xịn sò, sạch sẽ và an toàn cho các bé như Happi Kid! Đồ chơi mới tinh, tông màu pastel cực xinh, điều hòa mát rượi. Thứ Hai đầu tuần giá vé ưu đãi chỉ 39k, ngày thường 55k mà mua kèm ly trà sữa cho mẹ chỉ thêm có 19k!',
+    },
+    {
+      id: 'r_hk_play_2',
+      author: 'Anh Vũ Tuấn Anh',
+      rating: 5,
+      date: 'Hôm qua',
+      role: 'Phụ huynh Phúc Yên - Xuân Hoà',
+      content: 'Mình mua luôn thẻ Vé 10 buổi 490k (tính ra chưa đến 50k/buổi) cho 2 bé nhà mình ra chơi mỗi chiều sau giờ học. Khu vực ghế ngồi cafe của bố mẹ quan sát được toàn bộ khu vui chơi của con, nhân viên thân thiện và chu đáo 10 điểm!',
     }
   ]
 };

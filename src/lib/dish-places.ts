@@ -1905,6 +1905,31 @@ export const xuanHoaSpots: Record<string, SpotInfo> = {
       'Trà sữa trân châu đường đen / Socola / Việt quất / Bạc hà / Matcha: 25k (M) / 30k (L)',
       'Hồng trà sữa: 20k (M) / 25k (L) | Trà quất lắc sữa: 15k (M) / 20k (L) | Trà quất: 10k (M) / 15k (L)'
     ]
+  },
+
+  // 52. Happi Kid Coffee & Khu Vui Chơi Cho Bé (KĐT Xuân Hoà - Đối diện trạm sạc VinFast)
+  happi_kid_coffee: {
+    name: 'Happi Kid Coffee & Khu Vui Chơi Cho Bé - KĐT Xuân Hoà',
+    address: 'KĐT Xuân Hoà (Đối diện trạm sạc VinFast Xuân Hoà), P. Xuân Hoà, Tỉnh Phú Thọ',
+    phone: '0338 976 055',
+    mapsQuery: 'Happi Kid KĐT Xuân Hoà Phúc Yên',
+    verified: true,
+    serviceMode: 'both',
+    deliveryNote: 'Mở cửa: Ngày thường 15:00 - 22:30 | Cuối tuần (T7-CN): Sáng 08:00 - 12:00 & Chiều 15:00 - 22:30 · Hotline: 0338 976 055',
+    notes: 'Happi Kid Coffee & Khu Vui Chơi Cho Bé · KĐT Xuân Hoà (Đối diện trạm sạc VinFast Xuân Hoà) · SĐT: 0338 976 055 · Menu đa dạng: Trà sữa (30k-45k), Matcha - Cacao (35k-45k), Sữa chua hoa quả (40k-45k), Trà hoa quả tươi (20k-45k), Cà phê Phin Phê (30k-40k), Trà an nhiên (35k), Đồ nhâm nhi (15k-25k). Vé Khu Vui Chơi Cho Bé: Thứ Hai 39k, Ngày thường 55k, Cuối tuần & Lễ 65k, Vé 10 buổi 490k, Vé tháng 890k (Mua kèm Trà sữa chỉ +19k).',
+    menuHighlights: [
+      'Trà sữa Happi / Olong Nhài / Gạo rang: 30k (M) - 40k (L) | Kem cốm dẻo: 45k (L)',
+      'Trà sữa kem trứng dừa nướng / Olong kem mây: 35k (M) - 45k (L)',
+      'Matcha dừa bông tuyết / Dừa sen mây xanh / Cacao núi kem (Đá xay): 45.000đ',
+      'Coco matcha / Cacao latte kem muối: 40.000đ | Matcha latte / Yến mạch / Cacao yến mạch: 35.000đ',
+      'Sữa chua hoa quả Thiên đường / Xoài nhiệt đới / Dâu tằm / Long nhãn núi tuyết: 45.000đ',
+      'Sữa chua kiều mạch / Sữa chua cốm dẻo / Chanh tuyết: 40.000đ',
+      'Lựu ngọc trà / Trà thạch xoài kem mây: 45.000đ | Trà nhài dâu tằm / Sen dừa lạnh / Trà sen vàng: 40.000đ',
+      'Cà phê Phin Phê: Phê đen / Phê sữa 30k | Phê xỉu / Phê muối / Cafe kem trứng 35k | Cafe cốt dừa 40k',
+      'Trà an nhiên (Gừng đường nâu / Dưỡng nhan / Hoa cúc mật ong / Atiso): 35.000đ',
+      'Nhâm nhi: Bỏng ngô / Gà khô - Bò khô / Heo khô cháy tỏi 25k | Hướng dương 15k',
+      'Giá vé Khu Vui Chơi: Thứ Hai 39k | Ngày thường 55k | Cuối tuần & Lễ 65k | Combo +19k Trà sữa'
+    ]
   }
 };
 

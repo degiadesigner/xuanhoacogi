@@ -212,6 +212,80 @@ body {
 }
 
 /* ==============================================================
+   THANH ĐIỀU HƯỚNG 4 CỤC TRUNG TÂM TRÊN WEB PC
+   (Quay Món • Quán Xá • Bản Đồ Số • Cài Đặt)
+   ============================================================== */
+.desktop-header-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  background: rgba(18, 22, 33, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.desktop-header-nav-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #94A3B8;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.desktop-header-nav-tab:hover {
+  color: #F4F4F5;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.desktop-header-nav-tab.active {
+  color: #FDE68A;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.1));
+  border-color: rgba(245, 158, 11, 0.42);
+  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.16);
+}
+
+.desktop-header-nav-icon {
+  flex-shrink: 0;
+  color: #64748B;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.desktop-header-nav-tab:hover .desktop-header-nav-icon {
+  color: #E2E8F0;
+}
+
+.desktop-header-nav-tab.active .desktop-header-nav-icon {
+  color: #F59E0B;
+}
+
+@media (max-width: 1024px) {
+  .desktop-header-nav-tab {
+    padding: 0 11px;
+    font-size: 12px;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 768px) {
+  .desktop-header-nav {
+    display: none !important;
+  }
+}
+
+/* ==============================================================
    CỘT CÂN ĐỐI: CẤP ĐỘ + THANH KÉO ĐIỂM Ở TRÊN, TỔNG LƯỢT QUAY Ở DƯỚI
    ============================================================== */
 .header-level-progress-pill {
@@ -225,6 +299,7 @@ body {
   padding: 2px 10px 2px 4px;
   backdrop-filter: blur(12px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   box-sizing: border-box;
@@ -234,66 +309,7 @@ body {
   border-color: rgba(245, 158, 11, 0.65);
   background: rgba(24, 30, 44, 0.95);
   box-shadow: 0 4px 16px rgba(245, 158, 11, 0.2);
-}
-
-.header-level-auth-merged {
-  gap: 6px;
-  padding: 2px 8px 2px 4px;
-}
-
-.header-level-merged-left {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  color: inherit;
-  font-family: inherit;
-}
-
-.header-level-auth-divider {
-  width: 1px;
-  height: 14px;
-  background: rgba(212, 175, 55, 0.3);
-  flex-shrink: 0;
-}
-
-.header-auth-merged-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(245, 158, 11, 0.14);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  border-radius: 999px;
-  padding: 2px 8px;
-  height: 21px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 750;
-  color: #FDE68A;
-  white-space: nowrap;
-  transition: all 0.18s ease;
-}
-
-.header-auth-merged-btn:hover {
-  background: rgba(245, 158, 11, 0.28);
-  border-color: #F59E0B;
-  color: #FFFFFF;
-}
-
-.header-auth-merged-avatar {
-  font-size: 12.5px;
-  line-height: 1;
-}
-
-.header-auth-merged-name {
-  max-width: 72px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  transform: translateY(-1px);
 }
 
 .header-level-pill-badge {
@@ -336,7 +352,7 @@ body {
   white-space: nowrap;
 }
 
-/* Nhóm các icon thao tác cạnh nhau (Bản đồ, Cài đặt) */
+/* Nhóm các icon thao tác cạnh nhau (Đăng nhập, Bản đồ, Cài đặt) */
 .header-action-icons-wrap {
   display: flex;
   align-items: center;
@@ -502,7 +518,7 @@ body {
 
 /* Ảnh 1: Hôm nay ăn gì, nhậu gì, uống gì -> Dàn đều 3 cột cân đối 100% */
 .category-nav-bar-dish {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
 }
 
 /* Ảnh 2: Tất cả quán, quán cơm, bún phở... -> Cùng 1 dòng 5 cột cân đối, không bị trôi xuống dòng */
@@ -2668,21 +2684,21 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 }
 
 /* ==========================================================================
-   SITE FOOTER (Clean & Compact like Trưa Nay Ăn Gì)
+   SITE FOOTER (International Standard — MinhTT Signature Edition)
    ========================================================================== */
 .site-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px 48px;
+  gap: 16px 32px;
   width: calc(100% - 80px);
   max-width: 1240px;
-  margin: 48px auto 0;
-  padding: 24px 0 34px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  color: #9DA5B4;
-  font-size: 13px;
-  line-height: 1.5;
+  margin: 28px auto 0;
+  padding: 18px 0 26px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8E98A8;
+  font-size: 12.5px;
+  line-height: 1.45;
   background: transparent;
 }
 
@@ -2690,28 +2706,19 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 6px;
-}
-
-.site-footer-brand-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  gap: 2px;
 }
 
 .site-footer-brand {
-  display: inline-block;
+  display: inline-flex;
+  align-items: baseline;
   text-decoration: none;
-  color: #FFFFFF;
-  font-size: 16px;
+  color: #F4F4F5;
+  font-size: 13.5px;
   font-weight: 850;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  line-height: 1.25;
-  transition: color 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 
 .site-footer-brand span {
@@ -2719,103 +2726,110 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 }
 
 .site-footer-brand:hover {
-  color: var(--gold-primary, #FFA52E);
+  opacity: 0.85;
 }
 
-.site-footer-tagline {
-  margin: 0;
-  font-size: 12.5px;
+.site-footer-rights {
+  font-size: 11.5px;
   font-weight: 500;
-  color: #B4BDCC;
-  letter-spacing: 0.2px;
-  line-height: 1.4;
+  color: #71717A;
+  letter-spacing: 0.01em;
 }
 
-.site-footer-quick-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.site-footer-quick-nav button.footer-link-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(212, 175, 55, 0.08) 100%);
-  border: 1px solid rgba(245, 158, 11, 0.42);
-  border-radius: 999px;
-  padding: 5px 13px;
-  color: #FDE68A;
-  font-size: 12px;
+.site-footer-rights strong {
+  color: #E4E4E7;
   font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-  line-height: 1.2;
-  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.12);
-}
-
-.site-footer-quick-nav button.footer-link-btn svg {
-  color: #F59E0B;
-}
-
-.site-footer-quick-nav button.footer-link-btn:hover,
-.site-footer-quick-nav button.footer-link-btn.active {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.26) 0%, rgba(217, 119, 6, 0.18) 100%);
-  border-color: #F59E0B;
-  color: #FFFBEB;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.24);
-  text-decoration: none;
 }
 
 .site-footer-links {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
+  align-items: center;
+  justify-content: flex-end;
   min-width: 0;
-  gap: 7px;
+  gap: 20px;
 }
 
-.site-footer-contact {
+.site-footer nav {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
+}
+
+.site-footer nav a {
   color: #8E98A8;
-  font-size: 12.5px;
+  text-decoration: none;
+  font-size: 12px;
+  transition: color 0.2s ease;
+}
+
+.site-footer nav a:hover {
+  color: #FFA52E;
+}
+
+.site-footer-signature {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.site-footer-sig-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #F59E0B;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.65);
+  flex-shrink: 0;
+}
+
+.site-footer-sig-label {
+  color: #8E98A8;
   font-weight: 500;
-  letter-spacing: 0.2px;
-  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.site-footer-sig-owner {
+  color: #FAFAFA;
+  font-weight: 800;
+  letter-spacing: 0.03em;
 }
 
 @media (max-width: 768px) {
   .site-footer {
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    text-align: center;
-    gap: 12px;
-    width: calc(100% - 32px);
-    margin-top: 24px;
-    padding: 18px 0 24px;
+    justify-content: space-between;
+    gap: 10px;
+    width: calc(100% - 20px);
+    margin-top: 14px;
+    padding: 12px 2px 16px;
   }
 
-  .site-footer-identity {
-    width: 100%;
-    align-items: center;
-    gap: 4px;
+  .site-footer-brand {
+    font-size: 12px;
   }
 
-  .site-footer-brand-row {
-    width: 100%;
-    justify-content: center;
-    gap: 8px;
+  .site-footer-rights {
+    font-size: 10.5px;
   }
 
   .site-footer-links {
-    width: 100%;
     align-items: center;
     gap: 8px;
+  }
+
+  .site-footer-signature {
+    padding: 4px 9px;
+    font-size: 10.5px;
   }
 }
 
@@ -2838,7 +2852,7 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 
 @media (max-width: 860px) {
   .category-nav-bar-dish {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 8px;
   }
   .category-nav-bar-place {
@@ -2853,7 +2867,7 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 
 @media (max-width: 768px) {
   .category-nav-bar-dish {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 6px;
   }
   .category-nav-bar-place {
@@ -2971,7 +2985,7 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
   justify-content: center;
   gap: 12px;
   margin: 0 auto 16px;
-  max-width: 640px;
+  max-width: 680px;
   width: 100%;
 }
 
@@ -9114,8 +9128,8 @@ html, body {
 
 .mobile-category-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
   width: 100%;
 }
 
@@ -13578,45 +13592,22 @@ html, body {
 
   .header-level-progress-pill {
     height: 24px !important;
-    padding: 1px 4px 1px 3px !important;
-    gap: 4px !important;
-  }
-
-  .header-level-merged-left {
-    gap: 4px !important;
+    padding: 1px 6px 1px 3px !important;
+    gap: 5px !important;
   }
 
   .header-level-mini-progress {
-    width: 24px !important;
-    height: 4.5px !important;
+    width: 36px !important;
+    height: 5px !important;
   }
 
   .header-level-pill-badge {
-    font-size: 9.5px !important;
+    font-size: 10px !important;
     padding: 1px 5px !important;
   }
 
   .header-level-pill-points {
-    font-size: 9.5px !important;
-  }
-
-  .header-level-unit {
-    display: none !important;
-  }
-
-  .header-level-auth-divider {
-    height: 12px !important;
-  }
-
-  .header-auth-merged-btn {
-    height: 19px !important;
-    padding: 1px 6px !important;
     font-size: 10px !important;
-    gap: 3px !important;
-  }
-
-  .header-auth-merged-name {
-    max-width: 54px !important;
   }
 
   .header-unified-user-pill.guest {
@@ -13923,8 +13914,7 @@ html, body {
     justify-content: center;
     gap: 3px;
     flex: 1;
-    min-width: 0;
-    padding: 5px 1px;
+    padding: 5px 2px;
     border-radius: 10px;
     background: transparent;
     border: none;
@@ -13938,8 +13928,8 @@ html, body {
   }
 
   .mobile-dock-icon-wrap {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -13952,12 +13942,11 @@ html, body {
   }
 
   .mobile-dock-label {
-    font-size: 9.5px;
+    font-size: 10px;
     font-weight: 700;
     color: #94A3B8;
-    letter-spacing: 0px;
-    line-height: 1.1;
-    white-space: nowrap;
+    letter-spacing: 0.1px;
+    line-height: 1;
     transition: color 0.2s ease;
   }
 
@@ -13987,12 +13976,15 @@ html, body {
     border: 1px solid rgba(255, 255, 255, 0.2);
   }
 
-  /* Tránh thanh Bottom Dock che khuất nội dung trang & hiển thị gọn Món Ngon / Quán Xá ngay cạnh Logo ở Footer */
+  /* Tránh thanh Bottom Dock che khuất nội dung trang & Ẩn link thừa ở Footer trên Mobile (vì đã có Bottom Dock) */
   .main-wrapper {
-    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: 8px !important;
   }
   .site-footer {
-    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .site-footer nav {
+    display: none !important;
   }
 }
 
@@ -14118,3 +14110,644 @@ html, body {
 
 
 
+
+
+/* =========================================================
+   TINH GỌN QUAY MÓN (3 TAB) & QUÁN XÁ (1 HÀNG LỌC 50/50)
+   ========================================================= */
+.category-nav-bar-dish {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
+.mobile-category-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.375rem !important;
+}
+
+.mobile-cat-pill {
+  padding: 0.48rem 0.35rem !important;
+  font-size: 0.76rem !important;
+  gap: 0.3rem !important;
+  white-space: nowrap !important;
+}
+
+.catalog-2col-compact-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .catalog-header-top-row .catalog-back-pill-btn,
+  .catalog-header-top-row .catalog-header-places-btn,
+  .catalog-header-top-row .catalog-title-sub,
+  .catalog-header-top-row .catalog-header-badges-row {
+    display: none !important;
+  }
+  .catalog-header-bar {
+    padding: 0.65rem 0.75rem !important;
+    margin-bottom: 0.65rem !important;
+  }
+  .catalog-title-main {
+    font-size: 1.05rem !important;
+    margin-bottom: 0.35rem !important;
+  }
+}
+
+/* ==========================================================================
+   QUÁN XÁ XUÂN HÒA — COMPACT 2-COLUMN DISCOVERY HUB (MỤC 1 -> 49)
+   3 nhóm màu chính: GOLD (#E5B85C) | EMERALD (#10B981) | NEUTRAL DARK (#12161F)
+   ========================================================================== */
+.xh-places-hub-container {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 6px 10px 36px;
+  box-sizing: border-box;
+}
+
+.xh-places-hub-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  background: rgba(15, 19, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.xh-places-hub-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.xh-places-hub-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #F8FAFC;
+  line-height: 1.2;
+}
+
+.xh-places-hub-title span {
+  color: #E5B85C;
+}
+
+.xh-places-hub-subtitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94A3B8;
+}
+
+/* Search Full Width + Secondary Counter bên trong góc phải (Mục 6 & 34) */
+.xh-places-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 38px;
+  border-radius: 10px;
+  background: #0B0E14;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: border-color 0.15s ease;
+}
+
+.xh-places-search-wrap:focus-within {
+  border-color: rgba(229, 184, 92, 0.55);
+}
+
+.xh-places-search-icon {
+  position: absolute;
+  left: 11px;
+  color: #E5B85C;
+  pointer-events: none;
+}
+
+.xh-places-search-input {
+  width: 100%;
+  height: 100%;
+  padding: 0 82px 0 34px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #F8FAFC;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.xh-places-search-input::placeholder {
+  color: #64748B;
+}
+
+.xh-places-search-right {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.xh-places-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #CBD5E1;
+  border: none;
+  cursor: pointer;
+}
+
+.xh-places-search-count {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #64748B;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* 1 Hàng Filter 50% / 50%: [ Tất cả danh mục ▾ ] [ Đánh giá cao ▾ ] (Mục 3, 4, 31-34) */
+.xh-places-filter-bar-5050 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.xh-dropdown-col {
+  position: relative;
+  min-width: 0;
+}
+
+.xh-filter-dropdown-btn {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: #12161F;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #E2E8F0;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.xh-filter-dropdown-btn.active,
+.xh-filter-dropdown-btn:hover {
+  border-color: rgba(229, 184, 92, 0.55);
+  color: #F8FAFC;
+}
+
+.xh-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  z-index: 80;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(280px, 90vw);
+  padding: 6px;
+  border-radius: 11px;
+  background: #141923;
+  border: 1px solid rgba(229, 184, 92, 0.35);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.xh-dropdown-menu.left {
+  left: 0;
+}
+
+.xh-dropdown-menu.right {
+  right: 0;
+}
+
+.xh-dropdown-section-label {
+  padding: 4px 8px 3px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748B;
+}
+
+.xh-dropdown-option {
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: transparent;
+  border: none;
+  color: #CBD5E1;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.xh-dropdown-option:hover:not(.disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #F8FAFC;
+}
+
+.xh-dropdown-option.selected {
+  background: rgba(229, 184, 92, 0.14);
+  color: #E5B85C;
+  font-weight: 700;
+}
+
+.xh-dropdown-option.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.xh-dropdown-opt-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.xh-dropdown-opt-check {
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.xh-dropdown-opt-count {
+  font-size: 10.5px;
+  color: #64748B;
+  font-weight: 600;
+}
+
+.xh-dropdown-subcat-block {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.xh-dropdown-subcat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 3px 6px 4px;
+}
+
+.xh-subcat-mini-pill {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #CBD5E1;
+  cursor: pointer;
+}
+
+.xh-subcat-mini-pill.active {
+  background: rgba(229, 184, 92, 0.18);
+  border-color: rgba(229, 184, 92, 0.55);
+  color: #E5B85C;
+}
+
+/* ==========================================================================
+   GRID QUÁN 2 CỘT TRÊN MOBILE, 3 CỘT TABLET, 4 CỘT DESKTOP (MỤC 7, 26-29)
+   ========================================================================== */
+.xh-compact-places-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  width: 100%;
+}
+
+@media (max-width: 375px) {
+  .xh-compact-places-grid {
+    gap: 7px;
+  }
+}
+
+@media (min-width: 640px) {
+  .xh-compact-places-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .xh-compact-places-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+}
+
+/* ==========================================================================
+   COMPACT CARD QUÁN (~195-225px, đồng đều chiều cao 100% - MỤC 8 -> 17, 26, 27)
+   ========================================================================== */
+.xh-compact-place-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  border-radius: 11px;
+  background: #12161F;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .xh-compact-place-card:hover {
+    transform: translateY(-1px);
+    border-color: rgba(229, 184, 92, 0.42);
+  }
+}
+
+.xh-compact-card-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1.38 / 1;
+  background: #171C28;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.xh-compact-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.xh-compact-card-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: radial-gradient(circle at 50% 35%, rgba(229, 184, 92, 0.12), #151A24 75%);
+}
+
+.xh-compact-placeholder-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(229, 184, 92, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.xh-compact-placeholder-cat {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #94A3B8;
+}
+
+.xh-compact-featured-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(11, 14, 20, 0.82);
+  border: 1px solid rgba(229, 184, 92, 0.45);
+  color: #E5B85C;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.xh-compact-rating-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(11, 14, 20, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #F8FAFC;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 1.2;
+}
+
+.xh-compact-rating-count {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: #94A3B8;
+}
+
+.xh-compact-card-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  padding: 8px 9px 9px;
+  gap: 4px;
+}
+
+.xh-compact-card-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 750;
+  color: #F8FAFC;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 32px;
+}
+
+.xh-compact-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #94A3B8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.xh-compact-meta-cat {
+  font-weight: 600;
+  color: #CBD5E1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.xh-compact-meta-dot {
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.xh-compact-meta-dist {
+  color: #94A3B8;
+  flex-shrink: 0;
+}
+
+.xh-compact-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 1px;
+}
+
+.xh-compact-card-price {
+  font-size: 11.5px;
+  font-weight: 750;
+  color: #E5B85C;
+  white-space: nowrap;
+}
+
+.xh-compact-open-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #34D399;
+  white-space: nowrap;
+}
+
+.xh-open-indicator {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #10B981;
+}
+
+.xh-compact-dish-match {
+  font-size: 10px;
+  font-weight: 600;
+  color: #E5B85C;
+  background: rgba(229, 184, 92, 0.12);
+  padding: 1px 5px;
+  border-radius: 4px;
+  max-width: 58%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   XEM THÊM 12 QUÁN & EMPTY STATE & SKELETON (MỤC 21, 24, 25)
+   ========================================================================== */
+.xh-load-more-container {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 8px;
+}
+
+.xh-load-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 20px;
+  border-radius: 10px;
+  background: #141923;
+  border: 1px solid rgba(229, 184, 92, 0.4);
+  color: #E5B85C;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.xh-load-more-btn:hover {
+  background: rgba(229, 184, 92, 0.12);
+  border-color: rgba(229, 184, 92, 0.7);
+}
+
+.xh-load-more-sub {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94A3B8;
+}
+
+.xh-places-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 16px;
+  border-radius: 12px;
+  background: #12161F;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  text-align: center;
+}
+
+.xh-empty-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #CBD5E1;
+}
+
+.xh-empty-reset-btn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: rgba(229, 184, 92, 0.16);
+  border: 1px solid rgba(229, 184, 92, 0.45);
+  color: #E5B85C;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.xh-compact-skeleton-card {
+  border-radius: 11px;
+  background: #12161F;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.xh-skeleton-media {
+  width: 100%;
+  aspect-ratio: 1.38 / 1;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.xh-skeleton-body {
+  padding: 8px 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.xh-skeleton-line {
+  height: 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+}

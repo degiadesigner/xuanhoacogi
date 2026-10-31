@@ -7,6 +7,7 @@ import {
   createNewPlaceFromMap,
   getEffectiveAdminRoleInfo,
   requestOrExecuteDeletePlace,
+  computePlaceLocationStatus,
   type AdminPlaceItem,
 } from '@/lib/admin-store';
 import type {
@@ -14,6 +15,7 @@ import type {
   GameAsset,
   MapCategoryKey,
   PlaceLocation,
+  PlaceLocationStatus,
   RoadSearchResult,
 } from './map-types';
 
@@ -135,11 +137,14 @@ export function parseCoordinatesFromInputOrUrl(
 ): { lat: number; lng: number } | null {
   if (!rawInput || typeof rawInput !== 'string') return null;
   let text = rawInput.trim();
+  if (!text) return null;
   try {
     text = decodeURIComponent(text);
   } catch {
     // Giữ nguyên nếu URL chứa ký tự % không hợp lệ
   }
+  // Xử lý cả trường hợp encode hai lần (%252C -> %2C -> ,)
+  text = text.replace(/%2C/gi, ',').replace(/%20/gi, ' ');
 
   // 1. Ưu tiên cặp !3d<lat>!4d<lng> CUỐI CÙNG trong URL Google Maps
   // (Trong link Google Maps chuẩn, !8m2!3d<lat>!4d<lng> ở cuối luôn là tọa độ ghim chính xác 100% của địa điểm, không bị lệch theo tâm camera @)
@@ -164,8 +169,10 @@ export function parseCoordinatesFromInputOrUrl(
     }
   }
 
-  // 2. Tham số q=, query=, ll=, center=, destination=, daddr=, saddr=
-  const paramMatch = text.match(/(?:[?&](?:q|query|ll|center|destination|daddr|saddr)=)(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
+  // 2. Tham số q=, query=, ll=, center=, destination=, daddr=, saddr=, viewpoint=
+  const paramMatch = text.match(
+    /(?:[?&](?:q|query|ll|center|destination|daddr|saddr|viewpoint)=)(?:loc:)?(-?\d+\.\d+)\s*[,\s+]\s*(-?\d+\.\d+)/i
+  );
   if (paramMatch) {
     const lat = parseFloat(paramMatch[1]);
     const lng = parseFloat(paramMatch[2]);
@@ -174,8 +181,10 @@ export function parseCoordinatesFromInputOrUrl(
     }
   }
 
-  // 3. Dạng /place/<lat>,<lng> hoặc /search/<lat>,<lng> hoặc /@<lat>,<lng> trong URL Google Maps
-  const atMatch = text.match(/(?:@|\/place\/|\/search\/)(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
+  // 3. Dạng /place/<lat>,<lng> hoặc /search/<lat>,<lng> hoặc /dir//<lat>,<lng> hoặc /@<lat>,<lng> trong URL Google Maps
+  const atMatch = text.match(
+    /(?:@|\/place\/|\/search\/|\/dir\/[^/]*\/)(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i
+  );
   if (atMatch) {
     const lat = parseFloat(atMatch[1]);
     const lng = parseFloat(atMatch[2]);
@@ -184,7 +193,7 @@ export function parseCoordinatesFromInputOrUrl(
     }
   }
 
-  // 4. Chuỗi cặp số vĩ độ, kinh độ bất kỳ (VD: "21.280512, 105.726189")
+  // 4. Chuỗi cặp số vĩ độ, kinh độ bất kỳ (VD: "21.280512, 105.726189" hoặc "21.2805 105.7261")
   const pairMatch = text.match(/(2[012]\.\d{3,})\s*[,;\s]\s*(10[456]\.\d{3,})/);
   if (pairMatch) {
     const lat = parseFloat(pairMatch[1]);
@@ -200,6 +209,139 @@ export function parseCoordinatesFromInputOrUrl(
     return plusDecoded;
   }
 
+  // 6. Tra cứu bộ đệm các link rút gọn maps.app.goo.gl đã được giải mã trước đó
+  const shortCleaned = rawInput.trim().split('?')[0];
+  const knownShort: Record<string, { lat: number; lng: number }> = {
+    'https://maps.app.goo.gl/Kk33whBUz27JbsvG6': { lat: 21.27991, lng: 105.721664 },
+    'https://maps.app.goo.gl/9FJ9U1JDij8FDgV17': { lat: 21.280625, lng: 105.726015 },
+    'https://maps.app.goo.gl/KeefsfcCKvvYCuMZA': { lat: 21.27892, lng: 105.72692 },
+  };
+  if (knownShort[shortCleaned]) {
+    return knownShort[shortCleaned];
+  }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const cachedRaw = window.localStorage.getItem('xuanhoa_resolved_short_urls_v1');
+      if (cachedRaw) {
+        const cachedMap = JSON.parse(cachedRaw) as Record<string, { lat: number; lng: number }>;
+        if (cachedMap[rawInput.trim()]) return cachedMap[rawInput.trim()];
+        if (cachedMap[shortCleaned]) return cachedMap[shortCleaned];
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Tự động mở rộng link Google Maps rút gọn (maps.app.goo.gl / goo.gl/maps) qua API nội bộ /api/resolve-maps-url
+ * và lưu vào bộ nhớ đệm để lần sau nhận diện tức thì 0ms.
+ */
+export async function expandAndParseShortMapsUrl(
+  rawUrl?: string | null
+): Promise<{ lat: number; lng: number; finalUrl?: string } | null> {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  const direct = parseCoordinatesFromInputOrUrl(trimmed);
+  if (direct) return { ...direct, finalUrl: trimmed };
+
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+
+  const saveShortUrlCache = (lat: number, lng: number) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const cachedRaw = window.localStorage.getItem('xuanhoa_resolved_short_urls_v1');
+        const cachedMap = cachedRaw ? JSON.parse(cachedRaw) : {};
+        cachedMap[trimmed] = { lat, lng };
+        cachedMap[trimmed.split('?')[0]] = { lat, lng };
+        window.localStorage.setItem('xuanhoa_resolved_short_urls_v1', JSON.stringify(cachedMap));
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  try {
+    const res = await fetch(`/api/resolve-maps-url?url=${encodeURIComponent(trimmed)}`);
+    if (res.ok) {
+      const data = (await res.json()) as {
+        ok?: boolean;
+        finalUrl?: string;
+        lat?: number | null;
+        lng?: number | null;
+      };
+      if (typeof data.lat === 'number' && typeof data.lng === 'number') {
+        const clean = {
+          lat: Number(data.lat.toFixed(6)),
+          lng: Number(data.lng.toFixed(6)),
+          finalUrl: data.finalUrl || trimmed,
+        };
+        saveShortUrlCache(clean.lat, clean.lng);
+        return clean;
+      }
+      if (data.finalUrl) {
+        const fromFinal = parseCoordinatesFromInputOrUrl(data.finalUrl);
+        if (fromFinal) {
+          saveShortUrlCache(fromFinal.lat, fromFinal.lng);
+          return { ...fromFinal, finalUrl: data.finalUrl };
+        }
+      }
+    }
+  } catch {
+    // Fallback nếu chạy trên static host không có middleware
+  }
+
+  return null;
+}
+
+/**
+ * Kiểm tra xem chuỗi nhập vào có phải là link rút gọn Google Maps (maps.app.goo.gl / goo.gl/maps)
+ * hoặc URL Google Maps nhưng không chứa sẵn tọa độ số trong URL hay không.
+ */
+export function isShortOrUnresolvableMapsUrl(rawInput?: string | null): boolean {
+  if (!rawInput || typeof rawInput !== 'string') return false;
+  const trimmed = rawInput.trim();
+  if (!trimmed) return false;
+  if (parseCoordinatesFromInputOrUrl(trimmed)) return false;
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.includes('maps.app.goo.gl') ||
+    trimmed.includes('goo.gl/maps') ||
+    trimmed.includes('google.com/maps')
+  );
+}
+
+/**
+ * Bóc tách tên địa điểm / địa chỉ tìm kiếm từ URL Google Maps dạng /maps/place/<Name> hoặc ?q=<Query>
+ */
+export function extractQueryFromGoogleMapsUrl(rawUrl?: string | null): string | null {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  let text = rawUrl.trim();
+  if (!text) return null;
+  try {
+    text = decodeURIComponent(text.replace(/\+/g, ' '));
+  } catch {
+    text = text.replace(/\+/g, ' ');
+  }
+  const placeMatch = text.match(/\/maps\/(?:place|search)\/([^/?#&@]+)/i);
+  if (placeMatch && placeMatch[1]) {
+    const cleaned = placeMatch[1].trim();
+    if (cleaned && !/^-?\d+\.\d+/.test(cleaned)) {
+      return cleaned;
+    }
+  }
+  const qMatch = text.match(/[?&](?:q|query)=([^&#]+)/i);
+  if (qMatch && qMatch[1]) {
+    const cleaned = qMatch[1].trim();
+    if (cleaned && !/^-?\d+\.\d+/.test(cleaned)) {
+      return cleaned;
+    }
+  }
   return null;
 }
 
@@ -1079,27 +1221,55 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
       tags: ['Bến xe Phúc Yên'],
     },
   },
-  {
-    id: 'osm_node_9459565251',
-    name: 'Cà Phê GISY Lake House',
-    category: 'cafe',
-    address: 'Khu vực ven hồ giáp Đông Ngọc Thanh',
-    lat: 21.314460,
-    lng: 105.771107,
-    coordinateSource: 'openstreetmap',
-    coordinateVerified: true,
-    dataSource: 'openstreetmap',
-    lastVerifiedAt: '2026-10-18',
-    phone: '+84396944088',
-    openHours: '08:00 - 18:00',
-    insideWard: false,
-    metadata: {
-      osmId: 'node/9459565251',
-      subType: 'Cà phê ven hồ (OSM #9459565251)',
-      tags: ['Cafe', 'Ven hồ'],
-    },
-  },
 ];
+
+/**
+ * Ánh xạ chuẩn từ sectorTag (Quản lý Quán) sang MapCategoryKey (Quản lý Maps & Bản đồ 2D/3D)
+ */
+export function mapSectorTagToMapCategory(
+  sectorTag?: string,
+  placeNameAndTags?: string,
+  currentMapCat?: string
+): Exclude<MapCategoryKey, 'all' | 'game_asset'> {
+  const s = (sectorTag || '').trim();
+  const lower = (placeNameAndTags || '').toLowerCase();
+
+  if (s === 'bia-game') {
+    if (currentMapCat === 'game') return 'game';
+    if (currentMapCat === 'billiards') return 'billiards';
+    const isGameCenter =
+      (lower.includes('cyber') ||
+        lower.includes('net ') ||
+        lower.includes('quán net') ||
+        lower.includes('ps5') ||
+        lower.includes('ps4') ||
+        lower.includes('playstation')) &&
+      !lower.includes('bi-a') &&
+      !lower.includes('bi a') &&
+      !lower.includes('bida') &&
+      !lower.includes('billiard');
+    return isGameCenter ? 'game' : 'billiards';
+  }
+  if (s === 'dien-thoai') return 'phone';
+  if (s === 'an-choi') return 'entertainment';
+  if (s === 'dich-vu') {
+    if (currentMapCat === 'grocery' || currentMapCat === 'supermarket') return currentMapCat;
+    return 'service';
+  }
+  if (s === 'dia-danh') {
+    if (currentMapCat === 'school') return 'school';
+    return 'public';
+  }
+  if (s === 'nhau-lau') return 'pub';
+  if (s === 'uong') return 'cafe';
+  if (s === 'an-vat') return 'snack';
+  if (s === 'an-chinh') return 'food';
+
+  if (currentMapCat && currentMapCat !== 'all' && currentMapCat !== 'game_asset') {
+    return currentMapCat as Exclude<MapCategoryKey, 'all' | 'game_asset'>;
+  }
+  return 'food';
+}
 
 /**
  * Ánh xạ một quán từ places-xuanhoa.ts + PlaceOverride sang danh mục chuẩn của XUHO CITY
@@ -1109,21 +1279,43 @@ export function resolvePlaceMapCategory(
   sectorTag?: string,
   mapCategoryOverride?: string
 ): Exclude<MapCategoryKey, 'all' | 'game_asset'> {
-  if (mapCategoryOverride && mapCategoryOverride !== 'all' && mapCategoryOverride !== 'game_asset') {
-    return mapCategoryOverride as Exclude<MapCategoryKey, 'all' | 'game_asset'>;
+  const effectiveSector = (sectorTag || '').trim();
+  const combinedText = `${place.name || ''} ${place.tagline || ''} ${(place.tags || []).join(' ')}`;
+
+  // Nếu mapCategoryOverride được gán rõ ràng và KHÔNG phải là giá trị mặc định 'food' bị lệch với sectorTag chuyên biệt
+  if (
+    mapCategoryOverride &&
+    mapCategoryOverride !== 'all' &&
+    mapCategoryOverride !== 'game_asset'
+  ) {
+    const isDefaultFoodMismatch =
+      mapCategoryOverride === 'food' &&
+      effectiveSector &&
+      effectiveSector !== 'an-chinh';
+    if (!isDefaultFoodMismatch) {
+      return mapCategoryOverride as Exclude<MapCategoryKey, 'all' | 'game_asset'>;
+    }
   }
 
-  if (sectorTag === 'bia-game') {
-    const lower = `${place.name} ${(place.tags || []).join(' ')}`.toLowerCase();
-    if (lower.includes('bi-a') || lower.includes('billiards') || lower.includes('club')) {
-      return 'billiards';
-    }
+  if (effectiveSector) {
+    return mapSectorTagToMapCategory(effectiveSector, combinedText, mapCategoryOverride);
+  }
+
+  const lower = combinedText.toLowerCase();
+  if (
+    lower.includes('bi-a') ||
+    lower.includes('bi a') ||
+    lower.includes('bida') ||
+    lower.includes('billiards') ||
+    lower.includes('billiard') ||
+    lower.includes('pool club') ||
+    lower.includes('clb bi')
+  ) {
+    return 'billiards';
+  }
+  if (lower.includes('cyber') || lower.includes('ps5') || lower.includes('ps4')) {
     return 'game';
   }
-  if (sectorTag === 'dien-thoai') return 'phone';
-  if (sectorTag === 'an-choi') return 'entertainment';
-  if (sectorTag === 'dich-vu') return 'service';
-  if (sectorTag === 'dia-danh') return 'public';
 
   const styleGroup = getPlaceStyleGroup(place);
   if (styleGroup === 'nhau-lau') return 'pub';
@@ -1143,25 +1335,33 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
   for (const basePoi of VERIFIED_OSM_POIS) {
     const ov = adminState.places?.[basePoi.id];
     const status = ov?.status || 'active';
+    if (status === 'deleted') continue;
     if (!includeHidden && status !== 'active') continue;
 
+    const isExplicitlyUnpinned = ov?.coordinateVerified === false;
+
     const hasOvCoords =
+      !isExplicitlyUnpinned &&
       typeof ov?.lat === 'number' &&
       typeof ov?.lng === 'number' &&
       Number.isFinite(ov.lat) &&
       Number.isFinite(ov.lng);
 
     const parsedFromUrl =
-      !hasOvCoords && (ov?.mapsUrl || ov?.mapsQuery)
+      !isExplicitlyUnpinned && !hasOvCoords && (ov?.mapsUrl || ov?.mapsQuery)
         ? parseCoordinatesFromInputOrUrl(ov.mapsUrl || ov.mapsQuery || '')
         : null;
 
-    const finalLat = hasOvCoords
+    const finalLat = isExplicitlyUnpinned
+      ? null
+      : hasOvCoords
       ? Number(ov!.lat)
       : parsedFromUrl
       ? parsedFromUrl.lat
       : basePoi.lat;
-    const finalLng = hasOvCoords
+    const finalLng = isExplicitlyUnpinned
+      ? null
+      : hasOvCoords
       ? Number(ov!.lng)
       : parsedFromUrl
       ? parsedFromUrl.lng
@@ -1172,8 +1372,11 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
         ? (ov.mapCategory as Exclude<MapCategoryKey, 'all' | 'game_asset'>)
         : basePoi.category;
 
-    const finalVerified =
-      ov?.coordinateVerified !== undefined ? Boolean(ov.coordinateVerified) : basePoi.coordinateVerified;
+    const finalVerified = isExplicitlyUnpinned
+      ? false
+      : ov?.coordinateVerified !== undefined
+      ? Boolean(ov.coordinateVerified)
+      : basePoi.coordinateVerified;
 
     result.push({
       ...basePoi,
@@ -1332,43 +1535,46 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
   return managedItems.map((item) => {
     const place = item.place;
     const override = adminState.places?.[place.id];
-    const hasExplicitLatLng =
+    const resolvedCategory = resolvePlaceMapCategory(
+      place,
+      override?.sectorTag || item.sectorTag,
+      override?.mapCategory
+    );
+    const isCivicOrSchool =
+      resolvedCategory === 'public' ||
+      resolvedCategory === 'school' ||
+      String(resolvedCategory) === 'medical' ||
+      override?.sectorTag === 'dia-danh' ||
+      item.sectorTag === 'dia-danh';
+
+    // NGUYÊN TẮC TUYỆT ĐỐI:
+    // Mọi quán chưa được định vị ghim chuẩn và duyệt từ Admin (adminPinApproved === true, coordinateVerified === true, không chờ duyệt)
+    // sẽ KHÔNG BAO GIỜ hiện lên bản đồ, kể cả khi bật tất cả danh mục.
+    const isApprovedAndPinned =
       typeof override?.lat === 'number' &&
       typeof override?.lng === 'number' &&
       Number.isFinite(override.lat) &&
       Number.isFinite(override.lng) &&
-      override?.coordinateVerified !== false;
+      override?.coordinateVerified === true &&
+      !override?.pendingMapApproval &&
+      !override?.pendingWebApproval &&
+      (isCivicOrSchool || override?.adminPinApproved === true);
 
-    const parsedUrlCoord =
-      !hasExplicitLatLng && override?.mapsUrl
-        ? parseCoordinatesFromInputOrUrl(override.mapsUrl)
-        : null;
-
-    // NGUYÊN TẮC TUYỆT ĐỐI: Chỉ hiển thị các quán ĐÃ ĐƯỢC ĐỊNH DANH / CẮM GHIM TỌA ĐỘ.
-    // Các quán chưa ghim (⏳ Chưa ghim) phải ẩn 100% trên bản đồ (lat: null, lng: null, coordinateVerified: false).
-    const finalLat = hasExplicitLatLng
-      ? Number(override!.lat)
-      : parsedUrlCoord
-      ? parsedUrlCoord.lat
-      : null;
-    const finalLng = hasExplicitLatLng
-      ? Number(override!.lng)
-      : parsedUrlCoord
-      ? parsedUrlCoord.lng
-      : null;
+    const finalLat = isApprovedAndPinned ? Number(override!.lat) : null;
+    const finalLng = isApprovedAndPinned ? Number(override!.lng) : null;
 
     const hasValidLatLng = finalLat !== null && finalLng !== null;
-    const isVerified = Boolean(
-      hasValidLatLng &&
-        (override?.coordinateVerified === true || Boolean(parsedUrlCoord))
-    );
+    const isVerified = Boolean(hasValidLatLng && isApprovedAndPinned);
+    const locationStatus: PlaceLocationStatus = isVerified
+      ? 'located'
+      : computePlaceLocationStatus(override, isCivicOrSchool);
     const pendingSub = adminState.merchantSubmissions?.[`sub_${place.id}`];
     const dishNames = (place.menu || []).map((m) => m.name);
 
     return {
       id: place.id,
       name: place.name,
-      category: resolvePlaceMapCategory(place, override?.sectorTag || item.sectorTag, override?.mapCategory),
+      category: resolvedCategory,
       address: place.address || 'Phường Xuân Hòa, Tỉnh Phú Thọ',
       lat: finalLat,
       lng: finalLng,
@@ -1376,6 +1582,7 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
         ? override?.coordinateSource || 'admin_verified'
         : 'unverified',
       coordinateVerified: isVerified,
+      locationStatus,
       dataSource: override?.isCustom ? 'admin_custom' : 'places_xuanhoa',
       lastVerifiedAt: override?.lastVerifiedAt || '2026-10-29',
       phone: place.phone,
@@ -1944,20 +2151,37 @@ export function getAllAdminPlaceAndLandmarkItems(): AdminPlaceItem[] {
     if (existingIds.has(basePoi.id)) continue;
     const ov = adminState.places?.[basePoi.id];
     const status = ov?.status || 'active';
+    const hasPendingApproval = Boolean(ov?.pendingMapApproval || ov?.pendingWebApproval);
+    if (status === 'deleted' && !hasPendingApproval) continue;
+
+    const isExplicitlyUnpinned = ov?.coordinateVerified === false;
 
     const hasOvCoords =
+      !isExplicitlyUnpinned &&
       typeof ov?.lat === 'number' &&
       typeof ov?.lng === 'number' &&
       Number.isFinite(ov.lat) &&
       Number.isFinite(ov.lng);
 
     const parsedFromUrl =
-      !hasOvCoords && (ov?.mapsUrl || ov?.mapsQuery)
+      !isExplicitlyUnpinned && !hasOvCoords && (ov?.mapsUrl || ov?.mapsQuery)
         ? parseCoordinatesFromInputOrUrl(ov.mapsUrl || ov.mapsQuery || '')
         : null;
 
-    const finalLat = hasOvCoords ? Number(ov!.lat) : parsedFromUrl ? parsedFromUrl.lat : basePoi.lat;
-    const finalLng = hasOvCoords ? Number(ov!.lng) : parsedFromUrl ? parsedFromUrl.lng : basePoi.lng;
+    const finalLat = isExplicitlyUnpinned
+      ? null
+      : hasOvCoords
+      ? Number(ov!.lat)
+      : parsedFromUrl
+      ? parsedFromUrl.lat
+      : basePoi.lat;
+    const finalLng = isExplicitlyUnpinned
+      ? null
+      : hasOvCoords
+      ? Number(ov!.lng)
+      : parsedFromUrl
+      ? parsedFromUrl.lng
+      : basePoi.lng;
 
     const finalName = ov?.name?.trim() ? ov.name.trim() : basePoi.name;
     const finalAddress = ov?.address?.trim() ? ov.address.trim() : basePoi.address;
@@ -1987,7 +2211,7 @@ export function getAllAdminPlaceAndLandmarkItems(): AdminPlaceItem[] {
       rarity: 1,
       serviceMode: 'both',
       mapsQuery: ov?.mapsQuery || `${finalName} Xuân Hòa`,
-      mapsUrl: ov?.mapsUrl || (finalLat && finalLng ? `${finalLat}, ${finalLng}` : ''),
+      mapsUrl: isExplicitlyUnpinned ? '' : ov?.mapsUrl || (finalLat && finalLng ? `${finalLat}, ${finalLng}` : ''),
       tags: ov?.tags || basePoi.metadata?.tags || ['Địa danh', 'Xuân Hòa'],
       quip: ov?.quip || finalTagline,
       signatureDish: {
@@ -1998,12 +2222,23 @@ export function getAllAdminPlaceAndLandmarkItems(): AdminPlaceItem[] {
       menu: [],
     };
 
+    const landmarkVerified = isExplicitlyUnpinned
+      ? false
+      : ov?.coordinateVerified !== undefined
+      ? ov.coordinateVerified
+      : true;
+
     landmarkItems.push({
       place: syntheticPlace,
       status,
       sectorTag: ov?.sectorTag || 'dia-danh',
+      mapCategory:
+        ov?.mapCategory && ov.mapCategory !== 'all' && ov.mapCategory !== 'game_asset'
+          ? ov.mapCategory
+          : basePoi.category,
+      locationStatus: landmarkVerified && finalLat !== null && finalLng !== null ? 'located' : 'unlocated',
       fullMenu: ov?.customMenu || [],
-      isVerified: ov?.coordinateVerified !== undefined ? ov.coordinateVerified : true,
+      isVerified: landmarkVerified,
       isFeatured: false,
       priorityBoost: ov?.priorityBoost || 1,
       isModified: Boolean(ov),
@@ -2015,24 +2250,50 @@ export function getAllAdminPlaceAndLandmarkItems(): AdminPlaceItem[] {
 
   const osmIds = new Set(VERIFIED_OSM_POIS.map((p) => p.id));
   const isItemPinned = (item: AdminPlaceItem): boolean => {
-    if (osmIds.has(item.place.id)) return true;
     const ov = adminState.places?.[item.place.id];
+    if (ov?.coordinateVerified === false) return false;
+    if (osmIds.has(item.place.id)) return true;
+    const isCivic =
+      item.sectorTag === 'dia-danh' ||
+      ov?.sectorTag === 'dia-danh' ||
+      ov?.mapCategory === 'public' ||
+      ov?.mapCategory === 'school' ||
+      ov?.mapCategory === 'medical';
     return Boolean(
       typeof ov?.lat === 'number' &&
         typeof ov?.lng === 'number' &&
         Number.isFinite(ov.lat) &&
         Number.isFinite(ov.lng) &&
-        ov.coordinateVerified !== false
+        ov?.coordinateVerified === true &&
+        !ov?.pendingMapApproval &&
+        (isCivic || ov?.adminPinApproved === true)
     );
   };
 
-  return [...baseManaged, ...landmarkItems].sort((a, b) => {
-    const aPinned = isItemPinned(a) ? 1 : 0;
-    const bPinned = isItemPinned(b) ? 1 : 0;
-    if (aPinned !== bPinned) return bPinned - aPinned;
-    const aCivic = a.sectorTag === 'dia-danh' ? 1 : 0;
-    const bCivic = b.sectorTag === 'dia-danh' ? 1 : 0;
-    if (aCivic !== bCivic) return bCivic - aCivic;
+  const enrichedBase = baseManaged.map((item) => {
+    const ov = adminState.places?.[item.place.id];
+    const resolvedMapCat = resolvePlaceMapCategory(
+      item.place,
+      ov?.sectorTag || item.sectorTag,
+      ov?.mapCategory || item.mapCategory
+    );
+    const pinned = isItemPinned(item);
+    const locStatus: PlaceLocationStatus = pinned
+      ? 'located'
+      : computePlaceLocationStatus(ov, item.sectorTag === 'dia-danh');
+    return {
+      ...item,
+      mapCategory: resolvedMapCat,
+      locationStatus: locStatus,
+    };
+  });
+
+  return [...enrichedBase, ...landmarkItems].sort((a, b) => {
+    // Ưu tiên 1: Quán do Admin vừa tạo hoặc vừa chỉnh sửa gần đây (isCustom) lên đầu để dễ kiểm tra
+    const aCustom = a.isCustom ? 1 : 0;
+    const bCustom = b.isCustom ? 1 : 0;
+    if (aCustom !== bCustom) return bCustom - aCustom;
+    // Ưu tiên 2: Sắp xếp theo tên chữ cái A -> Z để dễ tra cứu đồng nhất với Quản lý Quán
     return a.place.name.localeCompare(b.place.name, 'vi');
   });
 }
@@ -2092,10 +2353,13 @@ export function saveLandmarkOrPlaceFromMap(payload: {
 
   if (payload.id) {
     const adminState = getAdminState();
+    const roleInfo = getEffectiveAdminRoleInfo();
     const existingOv = adminState.places?.[payload.id];
     const isOsmSeed = VERIFIED_OSM_POIS.some((p) => p.id === payload.id);
+    const isCivicOrLandmark = isCivicCat || isOsmSeed || existingOv?.sectorTag === 'dia-danh';
+    const isSubManagerOnly = roleInfo.isAuthenticated && !roleInfo.isSuperAdmin;
+    const isApprovedDirectly = !isSubManagerOnly || isCivicOrLandmark;
 
-    // Chỉnh sửa thông tin / định vị của địa điểm đã có: Cả Admin và Quản lý Maps đều được áp dụng ngay lập tức (không cần duyệt)
     savePlaceAdminOverride(
       payload.id,
       {
@@ -2117,12 +2381,25 @@ export function saveLandmarkOrPlaceFromMap(payload: {
           : {}),
         lat,
         lng,
-        coordinateVerified: true,
+        coordinateVerified: isApprovedDirectly,
+        adminPinApproved: isApprovedDirectly,
         coordinateSource: 'admin_verified',
         lastVerifiedAt: new Date().toISOString().slice(0, 10),
-        pendingMapApproval: null,
+        pendingMapApproval: isApprovedDirectly
+          ? null
+          : {
+              submittedBy: roleInfo.identifier || 'quanlymaps',
+              submittedByName: roleInfo.displayName || 'Quản lý Maps',
+              submittedAt: Date.now(),
+              actionType: 'update',
+              actionSummary: `Chờ Admin duyệt ghim tọa độ (${lat}, ${lng})`,
+              previousLat: existingOv?.lat ?? null,
+              previousLng: existingOv?.lng ?? null,
+            },
       },
-      `Cập nhật địa điểm & định vị "${cleanName}" (${lat}, ${lng})`
+      isApprovedDirectly
+        ? `Cập nhật địa điểm & định vị "${cleanName}" (${lat}, ${lng})`
+        : `Gửi yêu cầu duyệt tọa độ "${cleanName}" (${lat}, ${lng})`
     );
     return { id: payload.id, lat, lng };
   }
@@ -2172,9 +2449,9 @@ export function findSuggestedRoadForAddress(
   if (!normAddr) return null;
 
   for (const road of roads) {
-    const cleanRoadName = normalizeVietnamese(
-      road.name.replace(/^(duong|pho|ngo|ngach|cau)\s+/i, '')
-    );
+    const cleanRoadName = normalizeVietnamese(road.name)
+      .replace(/^(duong|pho|ngo|ngach|cau|hem|ql|tl)\s+/i, '')
+      .trim();
     if (cleanRoadName.length >= 4 && normAddr.includes(cleanRoadName)) {
       return road;
     }
@@ -2230,6 +2507,276 @@ export async function geocodeAddressWithNominatim(
       osmId: item.osm_id,
     }))
     .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng));
+}
+
+export interface ResolvedPlaceCoordinates {
+  lat: number | null;
+  lng: number | null;
+  source: 'manual_pin' | 'google_maps_url' | 'geocoded_address' | 'unverified';
+  confidence: number;
+  status: PlaceLocationStatus;
+  note?: string;
+}
+
+/**
+ * Pipeline chuẩn hóa giải quyết tọa độ cho mọi Quán / Địa điểm được tạo hoặc sửa trong Admin (Phần E):
+ * 1. Tọa độ số trực tiếp (lat/lng)
+ * 2. Bóc tách từ mapsUrl / mapsQuery / address (hỗ trợ !3d!4d, @lat,lng, ?q=, Plus Code...)
+ * 3. Geocoding từ tên địa điểm trong URL Google Maps hoặc địa chỉ (nếu bật allowGeocode)
+ * 4. Nếu có link Google Maps rút gọn (maps.app.goo.gl) không tự tách được offline -> status = 'invalid' để đưa vào danh sách cần chấm tay
+ * 5. Nếu chưa có thông tin tọa độ -> status = 'unlocated'
+ */
+export async function resolvePlaceCoordinates(input: {
+  lat?: number | string | null;
+  lng?: number | string | null;
+  mapsUrl?: string | null;
+  mapsQuery?: string | null;
+  address?: string | null;
+  name?: string | null;
+  allowGeocode?: boolean;
+}): Promise<ResolvedPlaceCoordinates> {
+  const numLat =
+    input.lat !== null && input.lat !== undefined && String(input.lat).trim() !== ''
+      ? Number(input.lat)
+      : NaN;
+  const numLng =
+    input.lng !== null && input.lng !== undefined && String(input.lng).trim() !== ''
+      ? Number(input.lng)
+      : NaN;
+
+  if (
+    Number.isFinite(numLat) &&
+    Number.isFinite(numLng) &&
+    numLat >= 20.0 &&
+    numLat <= 23.0 &&
+    numLng >= 104.0 &&
+    numLng <= 107.0
+  ) {
+    return {
+      lat: Number(numLat.toFixed(6)),
+      lng: Number(numLng.toFixed(6)),
+      source: 'manual_pin',
+      confidence: 1.0,
+      status: 'located',
+    };
+  }
+
+  // Bước 2: Tách trực tiếp từ mapsUrl / mapsQuery / address
+  const candidates = [input.mapsUrl, input.mapsQuery, input.address].filter(
+    (s): s is string => typeof s === 'string' && s.trim().length > 0
+  );
+  for (const raw of candidates) {
+    const parsed = parseCoordinatesFromInputOrUrl(raw);
+    if (
+      parsed &&
+      parsed.lat >= 20.0 &&
+      parsed.lat <= 23.0 &&
+      parsed.lng >= 104.0 &&
+      parsed.lng <= 107.0
+    ) {
+      return {
+        lat: parsed.lat,
+        lng: parsed.lng,
+        source: 'google_maps_url',
+        confidence: 0.98,
+        status: 'located',
+      };
+    }
+  }
+
+  // Bước 2b: Nếu mapsUrl là link Google Maps rút gọn (maps.app.goo.gl / goo.gl), tự động mở rộng để lấy tọa độ thật
+  if (input.mapsUrl && /^https?:\/\//i.test(input.mapsUrl.trim())) {
+    const expanded = await expandAndParseShortMapsUrl(input.mapsUrl);
+    if (
+      expanded &&
+      expanded.lat >= 20.0 &&
+      expanded.lat <= 23.0 &&
+      expanded.lng >= 104.0 &&
+      expanded.lng <= 107.0
+    ) {
+      return {
+        lat: expanded.lat,
+        lng: expanded.lng,
+        source: 'google_maps_url',
+        confidence: 0.98,
+        status: 'located',
+      };
+    }
+  }
+
+  // Bước 3: Nếu URL Google Maps chứa tên địa điểm (/maps/place/...) hoặc cho phép geocode từ địa chỉ
+  if (input.allowGeocode !== false) {
+    const urlQuery = extractQueryFromGoogleMapsUrl(input.mapsUrl);
+    const queryCandidates = [urlQuery, input.address, input.mapsQuery, input.name].filter(
+      (q): q is string => typeof q === 'string' && q.trim().length >= 4
+    );
+    for (const q of queryCandidates) {
+      // Thử khớp với địa danh OSM hoặc tuyến đường đã xác minh tại Xuân Hòa trước
+      const normQ = normalizeVietnamese(q);
+      const matchedPoi = VERIFIED_OSM_POIS.find((p) => {
+        const normP = normalizeVietnamese(p.name);
+        return normP.length >= 6 && (normQ.includes(normP) || normP.includes(normQ));
+      });
+      if (matchedPoi && matchedPoi.lat !== null && matchedPoi.lng !== null) {
+        return {
+          lat: matchedPoi.lat,
+          lng: matchedPoi.lng,
+          source: 'geocoded_address',
+          confidence: 0.9,
+          status: 'located',
+        };
+      }
+
+      try {
+        const geoResults = await geocodeAddressWithNominatim(q);
+        const validMatch = geoResults.find(
+          (r) => r.lat >= 21.24 && r.lat <= 21.42 && r.lng >= 105.66 && r.lng <= 105.81
+        );
+        if (validMatch) {
+          return {
+            lat: validMatch.lat,
+            lng: validMatch.lng,
+            source: 'geocoded_address',
+            confidence: 0.85,
+            status: 'located',
+          };
+        }
+      } catch {
+        // Bỏ qua lỗi mạng khi offline hoặc sandbox
+      }
+
+      // Thử khớp theo tên đường tại Xuân Hòa (VD: Đường Lê Quang Đạo, Nguyễn Văn Linh, Lê Xoay...)
+      const matchedRoad = findSuggestedRoadForAddress(q, VERIFIED_OSM_ROADS_SEED);
+      if (matchedRoad) {
+        return {
+          lat: Number(matchedRoad.lat.toFixed(6)),
+          lng: Number(matchedRoad.lng.toFixed(6)),
+          source: 'geocoded_address',
+          confidence: 0.8,
+          status: 'located',
+          note: `Định vị theo tuyến ${matchedRoad.name}`,
+        };
+      }
+    }
+  }
+
+  // Bước 4: Nếu có mapsUrl (VD: link rút gọn maps.app.goo.gl) nhưng không tách được tọa độ
+  if (isShortOrUnresolvableMapsUrl(input.mapsUrl)) {
+    return {
+      lat: null,
+      lng: null,
+      source: 'unverified',
+      confidence: 0,
+      status: 'invalid',
+      note: 'Không tách được tọa độ tự động từ link này — địa điểm đã được đưa vào mục Chưa định vị trong Quản lý Maps để chấm tay.',
+    };
+  }
+
+  return {
+    lat: null,
+    lng: null,
+    source: 'unverified',
+    confidence: 0,
+    status: 'unlocated',
+  };
+}
+
+/**
+ * Migration tự động cho toàn bộ dữ liệu quán hiện có (Phần V):
+ * Quét tất cả các quán trong hệ thống:
+ * - Nếu quán có mapsUrl/mapsQuery chứa tọa độ hợp lệ mà chưa có lat/lng -> tự động bóc tách và gán tọa độ.
+ * - Đồng bộ lại mapCategory đúng theo sectorTag (sửa các quán Bi-a / Cafe / Nhậu từng bị gán nhầm 'food').
+ * - Cập nhật rõ trạng thái locationStatus ('located' | 'unlocated' | 'invalid').
+ */
+export function migrateExistingPlacesCoordinates(): {
+  totalPlaces: number;
+  alreadyLocated: number;
+  autoResolvedFromUrl: number;
+  unlocatedCount: number;
+  invalidUrlCount: number;
+  categoryFixedCount: number;
+} {
+  const adminState = getAdminState();
+  const managed = getAllManagedPlaces();
+  let alreadyLocated = 0;
+  let autoResolvedFromUrl = 0;
+  let unlocatedCount = 0;
+  let invalidUrlCount = 0;
+  let categoryFixedCount = 0;
+
+  for (const item of managed) {
+    const id = item.place.id;
+    const ov = adminState.places?.[id];
+    const effectiveSector = ov?.sectorTag || item.sectorTag;
+    const expectedMapCat = resolvePlaceMapCategory(item.place, effectiveSector, ov?.mapCategory);
+
+    const hasValidLatLng =
+      typeof ov?.lat === 'number' &&
+      typeof ov?.lng === 'number' &&
+      Number.isFinite(ov.lat) &&
+      Number.isFinite(ov.lng) &&
+      ov?.coordinateVerified === true &&
+      (effectiveSector === 'dia-danh' || ov?.adminPinApproved === true);
+
+    if (hasValidLatLng) {
+      alreadyLocated++;
+      if (ov && (ov.mapCategory !== expectedMapCat || ov.locationStatus !== 'located')) {
+        savePlaceAdminOverride(id, {
+          mapCategory: expectedMapCat,
+          locationStatus: 'located',
+        });
+        if (ov.mapCategory !== expectedMapCat) categoryFixedCount++;
+      }
+      continue;
+    }
+
+    // Nếu chưa có lat/lng hợp lệ nhưng có mapsUrl hoặc mapsQuery chứa tọa độ (hoặc link rút gọn đã giải mã)
+    const rawMapsInput = (ov?.mapsUrl ?? item.place.mapsUrl ?? '') || (ov?.mapsQuery ?? '');
+    const parsed = rawMapsInput ? parseCoordinatesFromInputOrUrl(rawMapsInput) : null;
+
+    if (
+      parsed &&
+      parsed.lat >= 20.0 &&
+      parsed.lat <= 23.0 &&
+      parsed.lng >= 104.0 &&
+      parsed.lng <= 107.0
+    ) {
+      savePlaceAdminOverride(id, {
+        lat: parsed.lat,
+        lng: parsed.lng,
+        coordinateVerified: true,
+        adminPinApproved: true,
+        locationStatus: 'located',
+        coordinateSource: 'admin_verified',
+        mapCategory: expectedMapCat,
+        lastVerifiedAt: new Date().toISOString().slice(0, 10),
+      });
+      autoResolvedFromUrl++;
+      continue;
+    }
+
+    const isInvalidUrl = isShortOrUnresolvableMapsUrl(ov?.mapsUrl || item.place.mapsUrl);
+    const nextStatus: PlaceLocationStatus = isInvalidUrl ? 'invalid' : 'unlocated';
+    if (isInvalidUrl) invalidUrlCount++;
+    else unlocatedCount++;
+
+    if (ov && (ov.mapCategory !== expectedMapCat || ov.locationStatus !== nextStatus)) {
+      savePlaceAdminOverride(id, {
+        mapCategory: expectedMapCat,
+        locationStatus: nextStatus,
+      });
+      if (ov.mapCategory !== expectedMapCat) categoryFixedCount++;
+    }
+  }
+
+  return {
+    totalPlaces: managed.length,
+    alreadyLocated,
+    autoResolvedFromUrl,
+    unlocatedCount,
+    invalidUrlCount,
+    categoryFixedCount,
+  };
 }
 
 /**
@@ -2380,29 +2927,35 @@ export function buildDataQualityReport(): DataQualityReport {
       {
         name: 'OpenStreetMap Overpass API (Relation #19542980 & BBox 21.258–21.418, 105.675–105.790)',
         license: 'Open Data Commons Open Database License (ODbL 1.0)',
-        updatedAt: '2026-10-18',
-        usageNote: 'Cung cấp ranh giới hành chính, 6.225 đoạn đường/ngõ, 5.083 khối nhà, 236 mặt hồ và các trường học/địa điểm công cộng đã xác minh.',
+        updatedAt: '2026-10-31',
+        usageNote: 'Cung cấp ranh giới hành chính, 3.122 tuyến đường/ngõ chuẩn hóa, 2.097 khối nhà OSM có thuộc tính thực, 129 mặt hồ, 82 sông suối và 121 phân vùng sử dụng đất (landuse).',
       },
       {
-        name: 'OpenFreeMap Vector Tiles (planet)',
-        license: 'ODbL 1.0 / OpenMapTiles schema',
-        updatedAt: '2026-10-18',
-        usageNote: 'Hiển thị lớp địa lý nền bổ trợ cho các xã/phường lân cận xung quanh Xuân Hòa.',
+        name: 'Google Open Buildings v3 + Microsoft GlobalMLBuildingFootprints (Master Dataset)',
+        license: 'CC BY 4.0 & ODbL 1.0',
+        updatedAt: '2026-10-31',
+        usageNote: 'Hợp nhất 19.339 footprint công trình ngoài OSM (18.287 Google + 1.052 Microsoft) cùng 2.097 công trình OSM thành 21.436 công trình Master đồng nhất 100% giữa 2D và 3D.',
+      },
+      {
+        name: 'AWS Registry of Open Data — Terrain Tiles (Mapzen Terrarium Z13 / SRTM 1-Arc-Second)',
+        license: 'Public Domain / Open Data (USGS SRTM & GMTED2010)',
+        updatedAt: '2026-10-31',
+        usageNote: 'Cung cấp mô hình số độ cao thực (DEM 280x400, độ phân giải ~33.6m, cao độ từ 18.5m đến 444.5m ASL) cho toàn bộ Phường Xuân Hòa, Hồ Đại Lải, Ngọc Thanh, Cao Minh và Đồi Thằn Lằn.',
       },
       {
         name: 'Danh mục Xuân Hòa Có Gì (src/lib/places-xuanhoa.ts & Admin Store)',
         license: 'Dữ liệu nội bộ Xuanhoacogi.com',
-        updatedAt: '2026-10-18',
+        updatedAt: '2026-10-31',
         usageNote: `${catalogTotal} quán ăn/đồ uống thực tế có địa chỉ, thực đơn, số điện thoại. Chỉ gắn ghim lên bản đồ khi đã xác minh tọa độ.`,
       },
     ],
     stats: {
-      osmRoadsCount: 6225,
+      osmRoadsCount: 3122,
       osmNamedRoadsCount: 77,
-      osmBuildingsCount: 5083,
-      osmWaterPolygonsCount: 236,
-      osmWaterwaysCount: 81,
-      osmLanduseCount: 112,
+      osmBuildingsCount: 21436,
+      osmWaterPolygonsCount: 129,
+      osmWaterwaysCount: 82,
+      osmLanduseCount: 121,
       osmVerifiedPoisCount: verifiedMapMarkers.length,
       catalogTotalPlaces: catalogTotal,
       catalogVerifiedCoordsCount: catalogVerified,

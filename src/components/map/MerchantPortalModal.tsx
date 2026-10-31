@@ -518,7 +518,6 @@ export const MerchantPortalModal: React.FC<MerchantPortalModalProps> = ({
   return (
     <div
       className="xuho-merchant-light-modal fixed inset-0 z-[120] bg-[#F8F5EE]/65 backdrop-blur-xs flex items-center justify-center p-2.5 pb-16 sm:p-4"
-      onClick={onClose}
     >
       <style>{`
         .xuho-merchant-light-modal select,

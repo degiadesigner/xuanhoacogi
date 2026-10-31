@@ -27,3 +27,4 @@ Thumbs.db
 *.sw?
 *.tsbuildinfo
 *.zip
+scripts/.cache/

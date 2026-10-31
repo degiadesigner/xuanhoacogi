@@ -114,10 +114,11 @@ export const MapControls: React.FC<MapControlsProps> = ({
             {(
               [
                 { key: 'realPois', label: 'Hiện ghim định vị' },
-                { key: 'buildings', label: 'Hiện khối nhà & công trình' },
+                { key: 'buildings', label: 'Hiện khối nhà & công trình (21,4k)' },
                 { key: 'baseGeography', label: 'Hiện đường phố & ngõ nhỏ' },
                 { key: 'waterAndParks', label: 'Hiện mặt hồ & công viên' },
                 { key: 'wardBoundary', label: 'Hiện ranh giới Phường' },
+                { key: 'decorativeZones', label: 'Lớp minh họa quy hoạch (Tùy chọn)' },
               ] as Array<{ key: keyof MapLayerVisibility; label: string }>
             ).map((item) => (
               <label
@@ -129,7 +130,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
                 </span>
                 <input
                   type="checkbox"
-                  checked={layerVisibility[item.key]}
+                  checked={Boolean(layerVisibility[item.key])}
                   onChange={() => onToggleLayer(item.key)}
                   className="w-4 h-4 accent-[#39B980] rounded cursor-pointer"
                 />

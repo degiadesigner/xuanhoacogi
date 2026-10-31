@@ -102,6 +102,13 @@ import {
   getCommercialAdminPlaceItems,
   getManagedOsmLandmarks,
   parseCoordinatesFromInputOrUrl,
+  expandAndParseShortMapsUrl,
+  isShortOrUnresolvableMapsUrl,
+  resolvePlaceMapCategory,
+  mapSectorTagToMapCategory,
+  resolvePlaceCoordinates,
+  migrateExistingPlacesCoordinates,
+  normalizeVietnamese,
   geocodeAddressWithNominatim,
   findSuggestedRoadForAddress,
   VERIFIED_OSM_ROADS_SEED,
@@ -279,7 +286,7 @@ export function AdminDashboardView({
   const [mapListTab, setMapListTab] = useState<'all' | 'pending_maps'>('all');
   const [mapSearch, setMapSearch] = useState('');
   const [mapCatFilter, setMapCatFilter] = useState<string>('all');
-  const [mapCoordFilter, setMapCoordFilter] = useState<'all' | 'verified' | 'unverified' | 'locked'>('all');
+  const [mapCoordFilter, setMapCoordFilter] = useState<'all' | 'verified' | 'unverified' | 'invalid' | 'locked'>('all');
 
   // Thêm nhanh phân khu ngành nghề ngay trong cài đặt của Quán
   const [isAddingSectorInline, setIsAddingSectorInline] = useState(false);
@@ -392,7 +399,7 @@ export function AdminDashboardView({
     toastTimerRef.current = window.setTimeout(() => {
       setToast('');
       toastTimerRef.current = null;
-    }, 2100);
+    }, 2400);
   };
 
   const jumpToMapUrl = (hashRoute: string) => {
@@ -420,6 +427,12 @@ export function AdminDashboardView({
   useEffect(() => {
     initAdminCloudSync();
     seedDemoMembersIfEmpty();
+    try {
+      const mig = migrateExistingPlacesCoordinates();
+      if (mig.autoResolvedFromUrl > 0 || mig.categoryFixedCount > 0) {
+        setRefreshTick(t => t + 1);
+      }
+    } catch {}
     prefetchDigitalMapGeoLayers().catch(() => {});
     const onSync = () => setRefreshTick(t => t + 1);
     const onAuthChange = (e: Event) => {
@@ -519,11 +532,11 @@ export function AdminDashboardView({
   };
 
   const prevSectionRef = useRef<AdminSection>(activeSection);
+  const loadedPlaceIdRef = useRef<string | null>(null);
   const [inlineActionFeedback, setInlineActionFeedback] = useState<string>('');
 
   useEffect(() => {
     const activeList = activeSection === 'maps' ? allMapPlaces : commercialPlaces;
-    const sectionJustChanged = prevSectionRef.current !== activeSection;
     prevSectionRef.current = activeSection;
 
     if (!selectedPlaceId && activeList.length > 0) {
@@ -532,17 +545,7 @@ export function AdminDashboardView({
       const inActiveList = activeList.find(p => p.place.id === selectedPlaceId);
       if (!inActiveList && activeList.length > 0) {
         selectPlaceForEdit(activeList[0], false);
-      } else if (
-        sectionJustChanged &&
-        activeSection === 'maps' &&
-        inActiveList &&
-        inActiveList.sectorTag !== 'dia-danh' &&
-        !adminState.places?.[inActiveList.place.id]?.coordinateVerified &&
-        activeList.length > 0
-      ) {
-        // Chỉ khi VỪA chuyển tab từ mục khác sang Quản lý Maps thì mới chọn mốc Hành chính đã ghim đầu tiên; khi đang ở trong Quản lý Maps, bấm vào bất kỳ địa điểm nào sẽ giữ nguyên 100% ở địa điểm đó!
-        selectPlaceForEdit(activeList[0], false);
-      } else if (inActiveList && editPlaceName === '') {
+      } else if (inActiveList && loadedPlaceIdRef.current !== inActiveList.place.id) {
         selectPlaceForEdit(inActiveList, false);
       }
     }
@@ -550,6 +553,7 @@ export function AdminDashboardView({
 
   const selectPlaceForEdit = (item: AdminPlaceItem, playFeedback = true) => {
     if (playFeedback) triggerFeedback('tap');
+    loadedPlaceIdRef.current = item.place.id;
     setSelectedPlaceId(item.place.id);
     setEditPlaceName(item.place.name);
     setEditPlaceTagline(item.place.tagline);
@@ -575,35 +579,103 @@ export function AdminDashboardView({
 
     const ov = adminState.places?.[item.place.id];
     const osmItem = osmLandmarkById.get(item.place.id);
+    const isCivic =
+      Boolean(osmItem) ||
+      item.sectorTag === 'dia-danh' ||
+      ov?.sectorTag === 'dia-danh' ||
+      ov?.mapCategory === 'public' ||
+      ov?.mapCategory === 'school' ||
+      ov?.mapCategory === 'medical';
+    const isExplicitlyUnpinned =
+      ov?.coordinateVerified === false &&
+      !ov?.pendingMapApproval &&
+      !(ov?.mapsUrl || item.place.mapsUrl);
     const hasVerifiedOvCoords =
+      !isExplicitlyUnpinned &&
       typeof ov?.lat === 'number' &&
       typeof ov?.lng === 'number' &&
-      ov?.coordinateVerified !== false;
-    const resolvedLat = hasVerifiedOvCoords ? ov!.lat : osmItem?.lat;
-    const resolvedLng = hasVerifiedOvCoords ? ov!.lng : osmItem?.lng;
+      (isCivic || ov?.adminPinApproved === true || Boolean(ov?.pendingMapApproval));
+    const parsedFromMapsUrl =
+      !hasVerifiedOvCoords && (ov?.mapsUrl || item.place.mapsUrl)
+        ? parseCoordinatesFromInputOrUrl(ov?.mapsUrl || item.place.mapsUrl || '')
+        : null;
+    const resolvedLat = isExplicitlyUnpinned
+      ? null
+      : hasVerifiedOvCoords
+      ? ov!.lat
+      : parsedFromMapsUrl
+      ? parsedFromMapsUrl.lat
+      : osmItem?.lat ?? null;
+    const resolvedLng = isExplicitlyUnpinned
+      ? null
+      : hasVerifiedOvCoords
+      ? ov!.lng
+      : parsedFromMapsUrl
+      ? parsedFromMapsUrl.lng
+      : osmItem?.lng ?? null;
     const hasResolvedCoords = typeof resolvedLat === 'number' && typeof resolvedLng === 'number';
     setEditPlaceLat(hasResolvedCoords ? String(resolvedLat) : '');
     setEditPlaceLng(hasResolvedCoords ? String(resolvedLng) : '');
     setHasActivelyPinnedOnMap(hasResolvedCoords);
+    if (hasResolvedCoords && parsedFromMapsUrl && !hasVerifiedOvCoords) {
+      savePlaceAdminOverride(
+        item.place.id,
+        {
+          lat: parsedFromMapsUrl.lat,
+          lng: parsedFromMapsUrl.lng,
+          coordinateVerified: true,
+          adminPinApproved: true,
+          locationStatus: 'located',
+          coordinateSource: 'admin_verified',
+          lastVerifiedAt: new Date().toISOString().slice(0, 10),
+        }
+      );
+      setMapFlyTrigger(t => t + 1);
+      setRefreshTick(t => t + 1);
+    } else if (!hasResolvedCoords && (ov?.mapsUrl || item.place.mapsUrl)) {
+      const candidateShortUrl = (ov?.mapsUrl || item.place.mapsUrl || '').trim();
+      if (/^https?:\/\//i.test(candidateShortUrl)) {
+        expandAndParseShortMapsUrl(candidateShortUrl).then(expanded => {
+          if (expanded) {
+            setEditPlaceLat(String(expanded.lat));
+            setEditPlaceLng(String(expanded.lng));
+            setHasActivelyPinnedOnMap(true);
+            savePlaceAdminOverride(
+              item.place.id,
+              {
+                lat: expanded.lat,
+                lng: expanded.lng,
+                coordinateVerified: true,
+                adminPinApproved: true,
+                locationStatus: 'located',
+                coordinateSource: 'admin_verified',
+                lastVerifiedAt: new Date().toISOString().slice(0, 10),
+              },
+              'Tự động giải mã tọa độ từ link Google Maps rút gọn'
+            );
+            setMapFlyTrigger(t => t + 1);
+            setRefreshTick(t => t + 1);
+            setInlineActionFeedback(
+              `📍 Đã tự động giải mã & ghim tọa độ (${expanded.lat}, ${expanded.lng}) lên Bản đồ!`
+            );
+          }
+        });
+      }
+    }
     if (playFeedback) {
       setInlineActionFeedback(
         hasResolvedCoords
           ? `🎯 Đang chọn: "${item.place.name}" (${resolvedLat}, ${resolvedLng})`
-          : `🎯 Đang chọn: "${item.place.name}" — Chưa ghim tọa độ (Bấm lên Bản đồ Cột 3 để ghim ngay)`
+          : `🎯 Đang chọn: "${item.place.name}" — Chưa ghim tọa độ (Bấm "Tìm tọa độ" hoặc chấm trực tiếp lên Bản đồ Cột 3)`
       );
     }
 
-    const resolvedMapCat = (ov?.mapCategory ||
-      osmItem?.category ||
-      (item.sectorTag === 'dia-danh'
-        ? 'public'
-        : item.sectorTag === 'nhau-lau'
-        ? 'pub'
-        : item.sectorTag === 'uong'
-        ? 'cafe'
-        : item.sectorTag === 'an-vat'
-        ? 'snack'
-        : 'food')) as EditableMapCategory;
+    const resolvedMapCat = (osmItem?.category ||
+      resolvePlaceMapCategory(
+        item.place,
+        ov?.sectorTag || item.sectorTag,
+        ov?.mapCategory || item.mapCategory
+      )) as EditableMapCategory;
     setEditPlaceMapCategory(resolvedMapCat);
     setAdminGeoSuggestions([]);
 
@@ -657,42 +729,96 @@ export function AdminDashboardView({
   const getResolvedPlaceCoordsAndCat = (item: AdminPlaceItem) => {
     const ov = adminState.places?.[item.place.id];
     const osmItem = osmLandmarkById.get(item.place.id);
+    const isCivic =
+      Boolean(osmItem) ||
+      item.sectorTag === 'dia-danh' ||
+      ov?.sectorTag === 'dia-danh' ||
+      ov?.mapCategory === 'public' ||
+      ov?.mapCategory === 'school' ||
+      ov?.mapCategory === 'medical';
+    const isExplicitlyUnpinned = ov?.coordinateVerified === false;
     const hasVerifiedOv =
+      !isExplicitlyUnpinned &&
       typeof ov?.lat === 'number' &&
       typeof ov?.lng === 'number' &&
-      ov?.coordinateVerified !== false;
-    const lat = hasVerifiedOv ? ov!.lat! : osmItem?.lat ?? null;
-    const lng = hasVerifiedOv ? ov!.lng! : osmItem?.lng ?? null;
+      ov?.coordinateVerified === true &&
+      !ov?.pendingMapApproval &&
+      (isCivic || ov?.adminPinApproved === true);
+    const lat = isExplicitlyUnpinned ? null : hasVerifiedOv ? ov!.lat! : osmItem?.lat ?? null;
+    const lng = isExplicitlyUnpinned ? null : hasVerifiedOv ? ov!.lng! : osmItem?.lng ?? null;
     const hasCoords = typeof lat === 'number' && typeof lng === 'number';
-    const mapCat = (ov?.mapCategory ||
-      osmItem?.category ||
-      (item.sectorTag === 'dia-danh'
-        ? 'public'
-        : item.sectorTag === 'nhau-lau'
-        ? 'pub'
-        : item.sectorTag === 'uong'
-        ? 'cafe'
-        : item.sectorTag === 'an-vat'
-        ? 'snack'
-        : 'food')) as EditableMapCategory;
-    return { lat, lng, hasCoords, mapCat };
+    const mapCat = (osmItem?.category ||
+      resolvePlaceMapCategory(
+        item.place,
+        ov?.sectorTag || item.sectorTag,
+        ov?.mapCategory || item.mapCategory
+      )) as EditableMapCategory;
+    const rawMapsUrl = (ov?.mapsUrl ?? item.place.mapsUrl ?? '').trim();
+    const hasUnresolvedUrl =
+      !hasCoords &&
+      (ov?.locationStatus === 'invalid' || isShortOrUnresolvableMapsUrl(rawMapsUrl));
+    const locationStatus: 'located' | 'unlocated' | 'invalid' = hasCoords
+      ? 'located'
+      : hasUnresolvedUrl
+      ? 'invalid'
+      : 'unlocated';
+    return { lat, lng, hasCoords, mapCat, locationStatus, rawMapsUrl };
   };
 
+  // Thống kê số lượng trạng thái định vị cho Quản lý Maps (Tất cả = Đã định vị + Chưa định vị)
+  const mapLocationStats = useMemo(() => {
+    let located = 0;
+    let unlocated = 0;
+    let invalid = 0;
+    for (const item of allMapPlaces) {
+      const { hasCoords, locationStatus } = getResolvedPlaceCoordsAndCat(item);
+      if (hasCoords) located++;
+      else {
+        unlocated++;
+        if (locationStatus === 'invalid') invalid++;
+      }
+    }
+    return {
+      total: allMapPlaces.length,
+      located,
+      unlocated,
+      invalid,
+      commercialCount: commercialPlaces.length,
+      landmarkCount: Math.max(0, allMapPlaces.length - commercialPlaces.length),
+    };
+  }, [allMapPlaces, commercialPlaces.length, adminState, osmLandmarkById]);
+
   const filteredMapPlaces = useMemo(() => {
-    const q = mapSearch.trim().toLowerCase();
+    const qRaw = mapSearch.trim().toLowerCase();
+    const qNorm = normalizeVietnamese(mapSearch);
     const sourceList = mapListTab === 'pending_maps' ? pendingMapPlaces : allMapPlaces;
     const list = sourceList.filter(item => {
-      const { hasCoords, mapCat } = getResolvedPlaceCoordsAndCat(item);
-      if (mapCatFilter !== 'all' && mapCat !== mapCatFilter) return false;
+      const { hasCoords, mapCat, locationStatus, rawMapsUrl } = getResolvedPlaceCoordsAndCat(item);
+      if (mapCatFilter !== 'all') {
+        const matchesExactCat = mapCat === mapCatFilter;
+        const matchesBiaAlias =
+          mapCatFilter === 'billiards' &&
+          (item.sectorTag === 'bia-game' ||
+            normalizeVietnamese(`${item.place.name} ${(item.place.tags || []).join(' ')}`).includes('bi a') ||
+            item.place.name.toLowerCase().includes('bi-a') ||
+            item.place.name.toLowerCase().includes('billiards') ||
+            item.place.name.toLowerCase().includes('bida'));
+        const matchesGameAlias =
+          mapCatFilter === 'game' && item.sectorTag === 'bia-game';
+        if (!matchesExactCat && !matchesBiaAlias && !matchesGameAlias) return false;
+      }
       if (mapCoordFilter === 'verified' && !hasCoords) return false;
       if (mapCoordFilter === 'unverified' && hasCoords) return false;
+      if (mapCoordFilter === 'invalid' && locationStatus !== 'invalid') return false;
       if (mapCoordFilter === 'locked' && item.status !== 'locked') return false;
-      if (!q) return true;
-      return (
-        item.place.name.toLowerCase().includes(q) ||
-        item.place.address.toLowerCase().includes(q) ||
-        (item.place.phone || '').toLowerCase().includes(q)
-      );
+      if (!qRaw) return true;
+
+      const catLabel = EDITABLE_MAP_CATEGORIES.find(c => c.id === mapCat)?.label || mapCat;
+      const sectorLabel = getSectorShortLabel(item.sectorTag || '');
+      const haystackRaw = `${item.place.name} ${item.place.address} ${item.place.phone || ''} ${catLabel} ${sectorLabel} ${mapCat} ${item.sectorTag} ${(item.place.tags || []).join(' ')} ${item.place.mapsQuery || ''} ${rawMapsUrl}`.toLowerCase();
+      if (haystackRaw.includes(qRaw)) return true;
+      if (qNorm && normalizeVietnamese(haystackRaw).includes(qNorm)) return true;
+      return false;
     });
     return [...list].sort((a, b) => a.place.name.localeCompare(b.place.name, 'vi'));
   }, [allMapPlaces, pendingMapPlaces, mapListTab, mapSearch, mapCatFilter, mapCoordFilter, adminState, managedOsmLandmarks]);
@@ -774,7 +900,8 @@ export function AdminDashboardView({
             : ctx.editPlaceSectorTag,
         lat: cleanLat,
         lng: cleanLng,
-        coordinateVerified: true,
+        coordinateVerified: ctx.isSuperAdmin,
+        adminPinApproved: ctx.isSuperAdmin,
         coordinateSource: 'admin_verified',
         ...(ctx.isSuperAdmin
           ? {
@@ -782,7 +909,17 @@ export function AdminDashboardView({
               pendingMapApproval: null,
               pendingWebApproval: null,
             }
-          : {}),
+          : {
+              pendingMapApproval: {
+                submittedBy: roleInfo.identifier || 'quanlymaps',
+                submittedByName: roleInfo.displayName || 'Quản lý Maps',
+                submittedAt: Date.now(),
+                actionType: 'update',
+                actionSummary: `Chờ Admin duyệt ghim tọa độ (${cleanLat}, ${cleanLng})`,
+                previousLat: null,
+                previousLng: null,
+              },
+            }),
       },
       `Ghim tọa độ (${cleanLat}, ${cleanLng}) cho "${targetName}"`
     );
@@ -914,7 +1051,20 @@ export function AdminDashboardView({
       isEditingMapsSection &&
       (editPlaceMapCategory === 'public' || editPlaceMapCategory === 'school');
 
-    const resolvedSectorTag = isLandmarkCat ? 'dia-danh' : editPlaceSectorTag === 'dia-danh' && !isEditingMapsSection ? 'an-chinh' : editPlaceSectorTag;
+    const resolvedSectorTag = isLandmarkCat
+      ? 'dia-danh'
+      : editPlaceSectorTag === 'dia-danh' && !isEditingMapsSection
+      ? 'an-chinh'
+      : editPlaceSectorTag;
+
+    const resolvedMapCat: EditableMapCategory = isEditingMapsSection
+      ? editPlaceMapCategory
+      : mapSectorTagToMapCategory(
+          resolvedSectorTag,
+          `${editPlaceName} ${editPlaceTagline} ${editPlaceTagsText}`,
+          editPlaceMapCategory
+        );
+
     const menuToSave = isLandmarkCat
       ? []
       : customMenuOverride !== undefined
@@ -926,13 +1076,20 @@ export function AdminDashboardView({
       .filter(Boolean);
 
     let mappedCategory: Place['category'] = editPlaceCategory;
-    if (resolvedSectorTag === 'nhau-lau') mappedCategory = 'pub';
-    else if (resolvedSectorTag === 'uong') mappedCategory = 'cafe';
-    else if (resolvedSectorTag === 'an-vat') mappedCategory = 'fast_food';
-    else if (resolvedSectorTag === 'an-chinh') mappedCategory = 'restaurant';
+    if (resolvedSectorTag === 'nhau-lau' || resolvedSectorTag === 'bia-game' || resolvedSectorTag === 'an-choi') {
+      mappedCategory = 'pub';
+    } else if (resolvedSectorTag === 'uong' || resolvedSectorTag === 'dien-thoai' || resolvedSectorTag === 'dich-vu') {
+      mappedCategory = 'cafe';
+    } else if (resolvedSectorTag === 'an-vat') {
+      mappedCategory = 'fast_food';
+    } else if (resolvedSectorTag === 'an-chinh') {
+      mappedCategory = 'restaurant';
+    }
 
     // Tự động trích xuất tọa độ từ link Google Maps / Plus Code nếu có
-    const parsedFromUrl = parseCoordinatesFromInputOrUrl(editPlaceMapsUrl || editPlaceMapsQuery);
+    const parsedFromUrl = parseCoordinatesFromInputOrUrl(
+      editPlaceMapsUrl || editPlaceMapsQuery || editPlaceAddress
+    );
     const numLat = editPlaceLat.trim() !== '' ? Number(editPlaceLat) : parsedFromUrl?.lat;
     const numLng = editPlaceLng.trim() !== '' ? Number(editPlaceLng) : parsedFromUrl?.lng;
     const hasValidCoords =
@@ -940,18 +1097,24 @@ export function AdminDashboardView({
       typeof numLng === 'number' &&
       !Number.isNaN(numLat) &&
       !Number.isNaN(numLng) &&
-      numLat >= 20.5 &&
-      numLat <= 22.0 &&
-      numLng >= 105.0 &&
-      numLng <= 106.5;
+      numLat >= 20.0 &&
+      numLat <= 23.0 &&
+      numLng >= 104.0 &&
+      numLng <= 107.0;
+
+    const isUnresolvedMapsLink =
+      !hasValidCoords && isShortOrUnresolvableMapsUrl(editPlaceMapsUrl);
+
+    const targetPlaceId = selectedPlaceItem.place.id;
+    const cleanPlaceName = editPlaceName.trim() || selectedPlaceItem.place.name;
 
     savePlaceAdminOverride(
-      selectedPlaceItem.place.id,
+      targetPlaceId,
       {
-        name: editPlaceName.trim() || selectedPlaceItem.place.name,
+        name: cleanPlaceName,
         tagline: editPlaceTagline.trim(),
         sectorTag: resolvedSectorTag,
-        mapCategory: editPlaceMapCategory,
+        mapCategory: resolvedMapCat,
         category: mappedCategory,
         tags: parsedTags,
         address: editPlaceAddress.trim(),
@@ -963,7 +1126,7 @@ export function AdminDashboardView({
         priorityBoost: editPlacePriorityBoost,
         isFeatured: editPlacePriorityBoost > 1,
         deliveryNote: editPlaceDeliveryNote.trim(),
-        mapsQuery: editPlaceMapsQuery.trim() || `${editPlaceName.trim()} Xuân Hòa Phúc Yên`,
+        mapsQuery: editPlaceMapsQuery.trim() || `${cleanPlaceName} Xuân Hòa Phúc Yên`,
         mapsUrl: editPlaceMapsUrl.trim(),
         minPrice: isLandmarkCat ? 0 : Number(editPlaceMinPrice) || 20,
         maxPrice: isLandmarkCat ? 0 : Number(editPlaceMaxPrice) || 60,
@@ -976,8 +1139,27 @@ export function AdminDashboardView({
           ? {
               lat: Number(numLat!.toFixed(6)),
               lng: Number(numLng!.toFixed(6)),
-              coordinateVerified: true,
+              coordinateVerified: isSuperAdmin || isLandmarkCat,
+              adminPinApproved: isSuperAdmin || isLandmarkCat,
+              locationStatus: isSuperAdmin || isLandmarkCat ? 'located' : 'unlocated',
               coordinateSource: 'admin_verified',
+              ...(!isSuperAdmin && !isLandmarkCat
+                ? {
+                    pendingMapApproval: {
+                      submittedBy: roleInfo.identifier || 'quanlymaps',
+                      submittedByName: roleInfo.displayName || 'Quản lý Maps',
+                      submittedAt: Date.now(),
+                      actionType: 'update',
+                      actionSummary: `Chờ Admin duyệt tọa độ (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})`,
+                      previousLat: null,
+                      previousLng: null,
+                    },
+                  }
+                : {}),
+            }
+          : isUnresolvedMapsLink
+          ? {
+              locationStatus: 'invalid',
             }
           : {}),
         // Chỉnh sửa thông tin/tọa độ có hiệu lực ngay lập tức. Nếu Admin lưu trên mục đang chờ duyệt thì tự động duyệt luôn!
@@ -989,22 +1171,67 @@ export function AdminDashboardView({
             }
           : {}),
       },
-      toastLabel || `Cập nhật "${editPlaceName}"`
+      toastLabel || `Cập nhật "${cleanPlaceName}"`
     );
-    setRefreshTick(t => t + 1);
-    setJustSavedPlace(true);
-    setTimeout(() => setJustSavedPlace(false), 1800);
+
+    setEditPlaceMapCategory(resolvedMapCat);
     if (hasValidCoords) {
+      const cleanLat = Number(numLat!.toFixed(6));
+      const cleanLng = Number(numLng!.toFixed(6));
+      setEditPlaceLat(String(cleanLat));
+      setEditPlaceLng(String(cleanLng));
       setHasActivelyPinnedOnMap(true);
       setMapFlyTrigger(t => t + 1);
     }
+
+    setRefreshTick(t => t + 1);
+    setJustSavedPlace(true);
+    setTimeout(() => setJustSavedPlace(false), 1800);
+
     const finalMsg =
       toastLabel ||
       (hasValidCoords
-        ? `✅ Đã cập nhật "${editPlaceName}" (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})`
-        : `✅ Đã cập nhật "${editPlaceName}"`);
+        ? `✅ Đã cập nhật & ghim Bản đồ "${cleanPlaceName}" (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})`
+        : isUnresolvedMapsLink
+        ? `⚠️ Đã lưu "${cleanPlaceName}" — Link Maps rút gọn chưa có sẵn tọa độ số, đã đưa vào mục Chưa định vị trong Quản lý Maps để chấm tay!`
+        : `✅ Đã cập nhật "${cleanPlaceName}"`);
     setInlineActionFeedback(finalMsg);
-    showToast(finalMsg, 'approve');
+    showToast(finalMsg, isUnresolvedMapsLink ? 'warn' : 'approve');
+
+    // Nếu người dùng dán link Maps hoặc địa chỉ nhưng chưa tách được tọa độ ngay, thử giải quyết bất đồng bộ qua pipeline resolvePlaceCoordinates
+    if (!hasValidCoords && (editPlaceMapsUrl.trim() || editPlaceAddress.trim())) {
+      resolvePlaceCoordinates({
+        mapsUrl: editPlaceMapsUrl.trim(),
+        mapsQuery: editPlaceMapsQuery.trim(),
+        address: editPlaceAddress.trim(),
+        name: cleanPlaceName,
+        allowGeocode: Boolean(editPlaceMapsUrl.trim()),
+      })
+        .then(resolved => {
+          if (resolved.status === 'located' && resolved.lat !== null && resolved.lng !== null) {
+            savePlaceAdminOverride(targetPlaceId, {
+              lat: resolved.lat,
+              lng: resolved.lng,
+              coordinateVerified: isSuperAdmin || isLandmarkCat,
+              adminPinApproved: isSuperAdmin || isLandmarkCat,
+              locationStatus: 'located',
+              coordinateSource:
+                resolved.source === 'geocoded_address' ? 'nominatim_geocoded' : 'admin_verified',
+            });
+            if (loadedPlaceIdRef.current === targetPlaceId) {
+              setEditPlaceLat(String(resolved.lat));
+              setEditPlaceLng(String(resolved.lng));
+              setHasActivelyPinnedOnMap(true);
+              setMapFlyTrigger(t => t + 1);
+            }
+            setRefreshTick(t => t + 1);
+            const autoMsg = `📍 Đã tự động xác định tọa độ (${resolved.lat}, ${resolved.lng}) và ghim "${cleanPlaceName}" lên Bản đồ!`;
+            setInlineActionFeedback(autoMsg);
+            showToast(autoMsg, 'approve');
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   const handleChangePriorityBoost = (nextBoost: 1 | 2 | 3) => {
@@ -1089,7 +1316,10 @@ export function AdminDashboardView({
   };
 
   const handleCreatePlace = () => {
-    if (!newPlaceForm.name.trim()) return;
+    if (!newPlaceForm.name.trim()) {
+      showToast('⚠️ Vui lòng nhập Tên địa điểm / Tên quán trước khi bấm Tạo!', 'warn');
+      return;
+    }
     const isFromMapsSection = activeSection === 'maps';
     const isLandmarkCat =
       isFromMapsSection &&
@@ -1103,9 +1333,23 @@ export function AdminDashboardView({
 
     const newId = `xh_custom_${Date.now()}`;
     let mappedCategory: Place['category'] = 'restaurant';
-    if (resolvedSectorTag === 'nhau-lau') mappedCategory = 'pub';
-    else if (resolvedSectorTag === 'uong') mappedCategory = 'cafe';
-    else if (resolvedSectorTag === 'an-vat') mappedCategory = 'fast_food';
+    if (resolvedSectorTag === 'nhau-lau' || resolvedSectorTag === 'bia-game' || resolvedSectorTag === 'an-choi') {
+      mappedCategory = 'pub';
+    } else if (resolvedSectorTag === 'uong' || resolvedSectorTag === 'dien-thoai' || resolvedSectorTag === 'dich-vu') {
+      mappedCategory = 'cafe';
+    } else if (resolvedSectorTag === 'an-vat') {
+      mappedCategory = 'fast_food';
+    }
+
+    const resolvedMapCat: EditableMapCategory = isFromMapsSection
+      ? newPlaceForm.mapCategory
+      : mapSectorTagToMapCategory(
+          resolvedSectorTag,
+          `${newPlaceForm.name} ${newPlaceForm.address}`,
+          newPlaceForm.mapCategory
+        );
+    const mapCatLabel =
+      EDITABLE_MAP_CATEGORIES.find(c => c.id === resolvedMapCat)?.label || resolvedMapCat;
 
     const created: Place = {
       id: newId,
@@ -1116,7 +1360,7 @@ export function AdminDashboardView({
         : `${newPlaceForm.name.trim()} • Xuân Hòa`,
       tags: isLandmarkCat
         ? [newPlaceForm.mapCategory === 'school' ? 'Trường học' : 'Hành chính', 'Xuân Hòa']
-        : [getSectorShortLabel(resolvedSectorTag), 'Xuân Hòa'],
+        : [getSectorShortLabel(resolvedSectorTag), mapCatLabel, 'Xuân Hòa'],
       serviceMode: 'dine_in_only',
       zone: 'dhsp2',
       address: newPlaceForm.address.trim(),
@@ -1153,25 +1397,42 @@ export function AdminDashboardView({
         : 'Quán tại Xuân Hòa Có Gì.',
     };
     createNewCustomPlace(created);
-    const parsedFromUrl = parseCoordinatesFromInputOrUrl(newPlaceForm.mapsUrl || newPlaceForm.address);
+    const parsedFromUrl = parseCoordinatesFromInputOrUrl(
+      newPlaceForm.mapsUrl || newPlaceForm.address
+    );
     const numLat = newPlaceForm.lat.trim() !== '' ? Number(newPlaceForm.lat) : parsedFromUrl?.lat;
     const numLng = newPlaceForm.lng.trim() !== '' ? Number(newPlaceForm.lng) : parsedFromUrl?.lng;
     const hasCoords =
       typeof numLat === 'number' &&
       typeof numLng === 'number' &&
       !Number.isNaN(numLat) &&
-      !Number.isNaN(numLng);
+      !Number.isNaN(numLng) &&
+      numLat >= 20.0 &&
+      numLat <= 23.0 &&
+      numLng >= 104.0 &&
+      numLng <= 107.0;
+
+    const isUnresolvedMapsLink =
+      !hasCoords && isShortOrUnresolvableMapsUrl(newPlaceForm.mapsUrl);
 
     savePlaceAdminOverride(newId, {
       status: 'active',
       sectorTag: resolvedSectorTag,
-      mapCategory: isFromMapsSection ? newPlaceForm.mapCategory : 'food',
+      mapCategory: resolvedMapCat,
       customMenu: isLandmarkCat ? [] : undefined,
+      locationStatus: hasCoords
+        ? isSuperAdmin
+          ? 'located'
+          : 'unlocated'
+        : isUnresolvedMapsLink
+        ? 'invalid'
+        : 'unlocated',
       ...(hasCoords
         ? {
             lat: Number(numLat!.toFixed(6)),
             lng: Number(numLng!.toFixed(6)),
-            coordinateVerified: true,
+            coordinateVerified: isSuperAdmin,
+            adminPinApproved: isSuperAdmin,
             coordinateSource: 'admin_verified',
           }
         : {}),
@@ -1207,17 +1468,126 @@ export function AdminDashboardView({
             pendingMapApproval: null,
           }),
     });
+
+    // Mở khóa toàn bộ bộ lọc tìm kiếm ở Cột 1 của cả Quản lý Quán và Quản lý Maps để mục vừa thêm luôn hiện 100%
+    setMapListTab('all');
+    setMapSearch('');
+    setMapCatFilter('all');
+    setMapCoordFilter('all');
+    setPlaceListTab('all');
+    setPlaceSearch('');
+    setPlaceSectorFilter('all');
+    setPlaceStatusFilter('all');
+
+    loadedPlaceIdRef.current = newId;
+    setSelectedPlaceId(newId);
+    setEditPlaceName(created.name);
+    setEditPlaceTagline(created.tagline);
+    setEditPlaceSectorTag(resolvedSectorTag);
+    setEditPlaceCategory(created.category);
+    setEditPlaceTagsText((created.tags || []).join(', '));
+    setEditPlaceAddress(created.address);
+    setEditPlacePhone(created.phone || '');
+    setEditPlaceHours(created.openHours || '07:00 - 22:00');
+    setEditPlaceMapCategory(resolvedMapCat);
+    setEditPlaceMapsQuery(created.mapsQuery || `${created.name} Xuân Hòa Phúc Yên`);
+    setEditPlaceMapsUrl(created.mapsUrl || '');
+    if (hasCoords) {
+      const cleanLat = Number(numLat!.toFixed(6));
+      const cleanLng = Number(numLng!.toFixed(6));
+      setEditPlaceLat(String(cleanLat));
+      setEditPlaceLng(String(cleanLng));
+      setHasActivelyPinnedOnMap(true);
+      setMapFlyTrigger(t => t + 1);
+    } else {
+      setEditPlaceLat('');
+      setEditPlaceLng('');
+      setHasActivelyPinnedOnMap(false);
+    }
+
     setIsNewPlaceModalOpen(false);
     setRefreshTick(t => t + 1);
-    setSelectedPlaceId(newId);
-    showToast(
-      !isSuperAdmin
-        ? `✅ Đã tạo "${created.name}" và gửi vào Hộp Duyệt chờ Admin duyệt!`
-        : hasCoords
-        ? `✅ Admin đã thêm & cắm ghim ngay lập tức: ${created.name}`
-        : `✅ Admin đã thêm ngay lập tức: ${created.name}`,
-      'approve'
-    );
+    setJustSavedPlace(true);
+    setTimeout(() => setJustSavedPlace(false), 1800);
+
+    const addMsg = !isSuperAdmin
+      ? `✅ Đã thêm "${created.name}" và gửi vào Hộp Duyệt chờ Admin duyệt!`
+      : hasCoords
+      ? `✅ Đã thêm mới & ghim Bản đồ ngay lập tức: "${created.name}" (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})!`
+      : isUnresolvedMapsLink
+      ? `⚠️ Đã tạo "${created.name}"! Link Maps rút gọn không chứa sẵn tọa độ số — đã đưa vào mục Chưa định vị trong Quản lý Maps để chấm tay.`
+      : `✅ Đã tạo "${created.name}" (nằm trong mục Chưa định vị của Quản lý Maps)! Hãy dán link Maps hoặc bấm lên Bản đồ để ghim vị trí.`;
+    setInlineActionFeedback(addMsg);
+    showToast(addMsg, isUnresolvedMapsLink ? 'warn' : 'approve');
+
+    // Nếu tạo quán có kèm link Maps hoặc địa chỉ nhưng chưa có sẵn số tọa độ, tự động thử phân giải tọa độ bất đồng bộ
+    if (!hasCoords && (newPlaceForm.mapsUrl.trim() || newPlaceForm.address.trim())) {
+      resolvePlaceCoordinates({
+        mapsUrl: newPlaceForm.mapsUrl.trim(),
+        mapsQuery: created.mapsQuery,
+        address: newPlaceForm.address.trim(),
+        name: created.name,
+        allowGeocode: Boolean(newPlaceForm.mapsUrl.trim()),
+      })
+        .then(resolved => {
+          if (resolved.status === 'located' && resolved.lat !== null && resolved.lng !== null) {
+            savePlaceAdminOverride(newId, {
+              lat: resolved.lat,
+              lng: resolved.lng,
+              coordinateVerified: isSuperAdmin,
+              adminPinApproved: isSuperAdmin,
+              locationStatus: isSuperAdmin ? 'located' : 'unlocated',
+              coordinateSource:
+                resolved.source === 'geocoded_address' ? 'nominatim_geocoded' : 'admin_verified',
+            });
+            if (loadedPlaceIdRef.current === newId) {
+              setEditPlaceLat(String(resolved.lat));
+              setEditPlaceLng(String(resolved.lng));
+              setHasActivelyPinnedOnMap(true);
+              setMapFlyTrigger(t => t + 1);
+            }
+            setRefreshTick(t => t + 1);
+            const autoMsg = `📍 Đã tự động xác định tọa độ (${resolved.lat}, ${resolved.lng}) và ghim "${created.name}" lên Bản đồ!`;
+            setInlineActionFeedback(autoMsg);
+            showToast(autoMsg, 'approve');
+          }
+        })
+        .catch(() => {});
+    }
+  };
+
+  const handleDeletePlaceAction = (scope: 'web' | 'maps') => {
+    if (!selectedPlaceItem) return;
+    const targetId = selectedPlaceItem.place.id;
+    const targetName = selectedPlaceItem.place.name;
+    const currentList = scope === 'maps' ? filteredMapPlaces : filteredPlaces;
+    const currentIdx = currentList.findIndex(item => item.place.id === targetId);
+    const nextCandidate =
+      currentIdx >= 0
+        ? currentList[currentIdx + 1] || currentList[currentIdx - 1] || null
+        : currentList.find(item => item.place.id !== targetId) || null;
+
+    const res = requestOrExecuteDeletePlace(targetId, scope, targetName, isSuperAdmin);
+
+    if (res.executedImmediately) {
+      if (nextCandidate) {
+        selectPlaceForEdit(nextCandidate, false);
+      } else {
+        loadedPlaceIdRef.current = null;
+        setSelectedPlaceId('');
+        setEditPlaceName('');
+        setEditPlaceLat('');
+        setEditPlaceLng('');
+        setHasActivelyPinnedOnMap(false);
+      }
+    }
+
+    setRefreshTick(t => t + 1);
+    const delMsg = res.executedImmediately
+      ? `🗑️ Đã xóa "${targetName}" khỏi ${scope === 'maps' ? 'Bản đồ số' : 'danh sách Quán'} ngay lập tức!`
+      : `⏳ Đã gửi yêu cầu xóa "${targetName}" vào Hộp Duyệt chờ Admin!`;
+    setInlineActionFeedback(delMsg);
+    showToast(delMsg, res.executedImmediately ? 'approve' : 'warn');
   };
 
   const handleSaveAdminAccount = () => {
@@ -1578,8 +1948,8 @@ export function AdminDashboardView({
         fontFamily: "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-      {/* THÔNG BÁO NHẢY LÊN (POPUP TOAST) KHI LƯU / THÊM / XÓA / DUYỆT — HIỆN RÕ RỒI TỰ TẮT */}
-      {toast && (
+      {/* THÔNG BÁO NHẢY LÊN (POPUP TOAST) KHI LƯU / THÊM / XÓA / DUYỆT — HIỆN RÕ RỒI TỰ TẮT (TRỪ MỤC MAPS ĐÃ CÓ BANNER GỌN CỘT 2) */}
+      {toast && activeSection !== 'maps' && (
         <div
           key={toastId}
           onClick={() => setToast('')}
@@ -1602,7 +1972,7 @@ export function AdminDashboardView({
             border: toastKind === 'warn' ? '2px solid #F87171' : '2px solid #34D399',
             maxWidth: '92vw',
             cursor: 'pointer',
-            animation: 'xhToastJump 2.1s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            animation: 'xhToastJump 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
           <CheckCircle2
@@ -1853,7 +2223,7 @@ export function AdminDashboardView({
         </aside>
 
         {/* NỘI DUNG CHÍNH BÊN PHẢI */}
-        <main className="xh-admin-main">
+        <main className={`xh-admin-main ${activeSection === 'maps' ? 'xh-admin-main-maps' : ''}`}>
           {/* =================================================================== */}
           {/* 1. TỔNG QUAN                                                        */}
           {/* =================================================================== */}
@@ -2435,6 +2805,28 @@ export function AdminDashboardView({
                             </span>
                             <span>•</span>
                             <span>{item.fullMenu.length} món</span>
+                            <span>•</span>
+                            {(() => {
+                              const { hasCoords, locationStatus } = getResolvedPlaceCoordsAndCat(item);
+                              return (
+                                <span
+                                  style={{
+                                    fontWeight: 700,
+                                    color: hasCoords
+                                      ? '#047857'
+                                      : locationStatus === 'invalid'
+                                      ? '#DC2626'
+                                      : '#B45309',
+                                  }}
+                                >
+                                  {hasCoords
+                                    ? '📍 Đã định vị'
+                                    : locationStatus === 'invalid'
+                                    ? '🗺 Lỗi link Maps'
+                                    : '⏳ Chưa định vị'}
+                                </span>
+                              );
+                            })()}
                             {item.place.phone && (
                               <>
                                 <span>•</span>
@@ -2737,20 +3129,7 @@ export function AdminDashboardView({
 
                         {/* NÚT XÓA: ADMIN XÓA NGAY LẬP TỨC, QUẢN LÝ XÓA SẼ GỬI VÀO HỘP DUYỆT */}
                         <button
-                          onClick={() => {
-                            const res = requestOrExecuteDeletePlace(
-                              selectedPlaceItem.place.id,
-                              'web',
-                              selectedPlaceItem.place.name
-                            );
-                            setRefreshTick(t => t + 1);
-                            showToast(
-                              res.executedImmediately
-                                ? `🗑️ Admin đã xóa quán "${selectedPlaceItem.place.name}" ngay lập tức!`
-                                : `⏳ Đã gửi yêu cầu xóa quán "${selectedPlaceItem.place.name}" vào Hộp Duyệt chờ Admin!`,
-                              res.executedImmediately ? 'approve' : 'warn'
-                            );
-                          }}
+                          onClick={() => handleDeletePlaceAction('web')}
                           style={{
                             ...actionBtnStyle(theme, false),
                             padding: '6px 10px',
@@ -2788,6 +3167,45 @@ export function AdminDashboardView({
                         </button>
                       </div>
                     </div>
+
+                    {/* THÔNG BÁO THAO TÁC NHẢY LÊN TRỰC TIẾP NGAY TRONG CỘT 2 RỒI TỰ ĐỘNG TẮT */}
+                    {toast && (
+                      <div
+                        key={`web-toast-${toastId}`}
+                        onClick={() => setToast('')}
+                        style={{
+                          marginBottom: '12px',
+                          padding: '9px 13px',
+                          borderRadius: '10px',
+                          background: toastKind === 'warn' ? '#FEF2F2' : '#ECFDF5',
+                          border: toastKind === 'warn' ? '1.5px solid #EF4444' : '1.5px solid #10B981',
+                          color: toastKind === 'warn' ? '#991B1B' : '#065F46',
+                          fontSize: '12.5px',
+                          fontWeight: 800,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 12px rgba(16, 185, 129, 0.14)',
+                          animation: 'xhInlineBannerPop 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                          <CheckCircle2
+                            size={15}
+                            style={{
+                              color: toastKind === 'warn' ? '#DC2626' : '#059669',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span>{toast}</span>
+                        </div>
+                        <span style={{ fontSize: '10.5px', opacity: 0.75, whiteSpace: 'nowrap' }}>
+                          Tự tắt • Đóng ✕
+                        </span>
+                      </div>
+                    )}
 
                     {/* FORM THÔNG TIN QUÁN GỌN GÀNG TRONG CỘT 2 */}
                     <div className="xh-compact-grid">
@@ -2868,7 +3286,17 @@ export function AdminDashboardView({
                         {!isAddingSectorInline ? (
                           <select
                             value={editPlaceSectorTag === 'dia-danh' ? 'an-chinh' : editPlaceSectorTag}
-                            onChange={e => setEditPlaceSectorTag(e.target.value)}
+                            onChange={e => {
+                              const nextSec = e.target.value;
+                              setEditPlaceSectorTag(nextSec);
+                              setEditPlaceMapCategory(
+                                mapSectorTagToMapCategory(
+                                  nextSec,
+                                  `${editPlaceName} ${editPlaceTagline} ${editPlaceTagsText}`,
+                                  editPlaceMapCategory
+                                )
+                              );
+                            }}
                             style={{
                               ...lightSelectStyle(theme),
                               height: '38px',
@@ -2931,6 +3359,198 @@ export function AdminDashboardView({
                           <option value="dine_in_only">Chỉ phục vụ tại quán</option>
                           <option value="delivery_only">Chỉ giao hàng (Ship)</option>
                         </select>
+                      </div>
+
+                      {/* KHỐI ĐỊNH VỊ BẢN ĐỒ SỐ (LINK GOOGLE MAPS & TỌA ĐỘ ĐỒNG BỘ 100% SANG QUẢN LÝ MAPS & BẢN ĐỒ 2D/3D) */}
+                      <div
+                        className="xh-col-span-2"
+                        style={{
+                          marginTop: '4px',
+                          padding: '10px 12px',
+                          borderRadius: '10px',
+                          background: theme.bgElevated,
+                          border: `1px solid ${theme.border}`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                            marginBottom: '8px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <MapPin size={14} style={{ color: theme.accent }} />
+                            <span style={{ fontSize: '12px', fontWeight: 800, color: theme.textPrimary }}>
+                              Định vị Bản đồ 2D / 3D
+                            </span>
+                            {(() => {
+                              const hasCoordsNow =
+                                editPlaceLat.trim() !== '' &&
+                                editPlaceLng.trim() !== '' &&
+                                !Number.isNaN(Number(editPlaceLat)) &&
+                                !Number.isNaN(Number(editPlaceLng));
+                              const isInvalidUrlNow =
+                                !hasCoordsNow && isShortOrUnresolvableMapsUrl(editPlaceMapsUrl);
+                              return (
+                                <span
+                                  style={{
+                                    fontSize: '10.5px',
+                                    fontWeight: 800,
+                                    padding: '2px 7px',
+                                    borderRadius: '6px',
+                                    background: hasCoordsNow
+                                      ? '#E6F7EF'
+                                      : isInvalidUrlNow
+                                      ? '#FEF2F2'
+                                      : '#FEF3C7',
+                                    color: hasCoordsNow
+                                      ? '#047857'
+                                      : isInvalidUrlNow
+                                      ? '#DC2626'
+                                      : '#B45309',
+                                  }}
+                                >
+                                  {hasCoordsNow
+                                    ? `📍 Đã định vị (${editPlaceLat}, ${editPlaceLng})`
+                                    : isInvalidUrlNow
+                                    ? '🗺 Có link Maps — chưa lấy được tọa độ'
+                                    : '⏳ Chưa định vị'}
+                                </span>
+                              );
+                            })()}
+                          </div>
+
+                          {canManageMaps && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                triggerFeedback('tap');
+                                setMapListTab('all');
+                                setMapSearch('');
+                                setMapCatFilter('all');
+                                setMapCoordFilter('all');
+                                setActiveSection('maps');
+                              }}
+                              style={{
+                                ...smallRowBtnStyle(theme),
+                                background: theme.accentSoft,
+                                color: theme.accent,
+                                borderColor: theme.accentBorder,
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                padding: '4px 9px',
+                              }}
+                            >
+                              <MapPin size={11} /> Mở bên Quản lý Maps để chấm bản đồ
+                            </button>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px', marginBottom: '7px' }}>
+                          <input
+                            type="text"
+                            value={editPlaceMapsUrl}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditPlaceMapsUrl(val);
+                              const parsed = parseCoordinatesFromInputOrUrl(val);
+                              if (parsed) {
+                                setEditPlaceLat(String(parsed.lat));
+                                setEditPlaceLng(String(parsed.lng));
+                                setHasActivelyPinnedOnMap(true);
+                                setInlineActionFeedback(
+                                  `📍 Đã nhận diện tọa độ (${parsed.lat}, ${parsed.lng}) từ link Maps — bấm "Lưu Quán" để ghim ngay!`
+                                );
+                              } else if (/^https?:\/\//i.test(val.trim())) {
+                                expandAndParseShortMapsUrl(val.trim()).then(expanded => {
+                                  if (expanded) {
+                                    setEditPlaceLat(String(expanded.lat));
+                                    setEditPlaceLng(String(expanded.lng));
+                                    setHasActivelyPinnedOnMap(true);
+                                    setInlineActionFeedback(
+                                      `📍 Đã giải mã link rút gọn (${expanded.lat}, ${expanded.lng}) — bấm "Lưu Quán" để ghim ngay!`
+                                    );
+                                  }
+                                });
+                              }
+                            }}
+                            placeholder="Dán link Google Maps, Plus Code (VD: 7PQ6+VFP) hoặc tọa độ 21.2805, 105.7261..."
+                            style={{ ...compactInputStyle(theme), flex: 1 }}
+                          />
+                          <button
+                            type="button"
+                            disabled={isAdminGeocoding}
+                            onClick={async () => {
+                              triggerFeedback('tap');
+                              setIsAdminGeocoding(true);
+                              setInlineActionFeedback('⏳ Đang phân tích link Google Maps & địa chỉ để lấy tọa độ...');
+                              try {
+                                const resolved = await resolvePlaceCoordinates({
+                                  mapsUrl: editPlaceMapsUrl,
+                                  mapsQuery: editPlaceMapsQuery,
+                                  address: editPlaceAddress,
+                                  name: editPlaceName,
+                                  allowGeocode: true,
+                                });
+                                if (resolved.lat !== null && resolved.lng !== null) {
+                                  setEditPlaceLat(String(resolved.lat));
+                                  setEditPlaceLng(String(resolved.lng));
+                                  setHasActivelyPinnedOnMap(true);
+                                  setMapFlyTrigger(t => t + 1);
+                                  const msg = `📍 Đã tìm thấy tọa độ chuẩn (${resolved.lat}, ${resolved.lng}) — bấm "Lưu Quán" để ghim!`;
+                                  setInlineActionFeedback(msg);
+                                  showToast(msg);
+                                } else {
+                                  const msg =
+                                    'Chưa tìm thấy tự động — hãy bấm "Mở bên Quản lý Maps" để chấm trực tiếp lên bản đồ!';
+                                  setInlineActionFeedback(msg);
+                                  showToast(msg, 'warn');
+                                }
+                              } finally {
+                                setIsAdminGeocoding(false);
+                              }
+                            }}
+                            style={{
+                              ...smallRowBtnStyle(theme),
+                              background: theme.accent,
+                              color: '#FFFFFF',
+                              borderColor: theme.accent,
+                              padding: '0 12px',
+                              height: '38px',
+                              boxSizing: 'border-box',
+                            }}
+                          >
+                            <MapPin size={13} />
+                            <span>{isAdminGeocoding ? 'Đang tìm...' : 'Tìm tọa độ'}</span>
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                          <div>
+                            <label style={compactLabelStyle(theme)}>Vĩ độ (Lat)</label>
+                            <input
+                              type="text"
+                              value={editPlaceLat}
+                              onChange={e => setEditPlaceLat(e.target.value)}
+                              placeholder="VD: 21.2805..."
+                              style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={compactLabelStyle(theme)}>Kinh độ (Lng)</label>
+                            <input
+                              type="text"
+                              value={editPlaceLng}
+                              onChange={e => setEditPlaceLng(e.target.value)}
+                              placeholder="VD: 105.7261..."
+                              style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -3429,17 +4049,19 @@ export function AdminDashboardView({
           {/*     CỘT 1 (DANH SÁCH & DUYỆT MAPS) | CỘT 2 (THÔNG TIN ĐỊNH VỊ) |    */}
           {/*     CỘT 3 (BẢN ĐỒ SỐ TRỰC TIẾP NGAY TRONG TRANG QUẢN LÝ)           */}
           {/* =================================================================== */}
+          {/* =================================================================== */}
+          {/* 2B. QUẢN LÝ MAPS — DASHBOARD 3 CỘT TINH GỌN, THẲNG HÀNG, SẠCH      */}
+          {/* =================================================================== */}
           {activeSection === 'maps' && canManageMaps && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* HỘP DUYỆT ĐỊNH VỊ MAPS (THÊM MỚI / XÓA) — Ô DUYỆT HẲN HOI RÕ RÀNG */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* HỘP DUYỆT ĐỊNH VỊ MAPS (CHỈ HIỆN KHI CÓ YÊU CẦU CHỜ DUYỆT) */}
               {pendingMapPlaces.length > 0 && (
                 <div
                   style={{
                     background: '#FFFBEB',
-                    border: '2px solid #F59E0B',
-                    borderRadius: '14px',
-                    padding: '12px 16px',
-                    boxShadow: '0 4px 16px rgba(245, 158, 11, 0.14)',
+                    border: '1px solid #F59E0B',
+                    borderRadius: '12px',
+                    padding: '10px 14px',
                   }}
                 >
                   <div
@@ -3448,25 +4070,25 @@ export function AdminDashboardView({
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       gap: '10px',
-                      marginBottom: '10px',
+                      marginBottom: '8px',
                       flexWrap: 'wrap',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span
                         style={{
-                          padding: '3px 9px',
-                          borderRadius: '99px',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
                           background: '#D97706',
                           color: '#FFFFFF',
                           fontSize: '11px',
-                          fontWeight: 800,
+                          fontWeight: 700,
                         }}
                       >
-                        HỘP DUYỆT MAPS ({pendingMapPlaces.length})
+                        Duyệt Maps ({pendingMapPlaces.length})
                       </span>
-                      <span style={{ fontSize: '13px', fontWeight: 800, color: '#92400E' }}>
-                        Danh sách yêu cầu Thêm mới / Xóa Địa điểm từ Quản lý Maps chờ Admin duyệt
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#92400E' }}>
+                        Yêu cầu Thêm mới / Xóa địa điểm chờ Admin duyệt
                       </span>
                     </div>
                     {isSuperAdmin && pendingMapPlaces.length > 1 && (
@@ -3475,25 +4097,26 @@ export function AdminDashboardView({
                         onClick={() => {
                           const cnt = approveAllPendingPlaceItems('maps');
                           setRefreshTick(t => t + 1);
-                          showToast(`✅ Admin đã duyệt toàn bộ ${cnt} yêu cầu trên Bản đồ số!`, 'approve');
+                          showToast(`Đã duyệt toàn bộ ${cnt} yêu cầu trên Bản đồ số!`, 'approve');
                         }}
                         style={{
-                          padding: '6px 12px',
-                          borderRadius: '8px',
+                          height: '28px',
+                          padding: '0 10px',
+                          borderRadius: '6px',
                           border: 'none',
                           background: '#059669',
                           color: '#FFFFFF',
-                          fontSize: '12px',
-                          fontWeight: 800,
+                          fontSize: '11.5px',
+                          fontWeight: 700,
                           cursor: 'pointer',
                         }}
                       >
-                        ⚡ Duyệt tất cả ({pendingMapPlaces.length})
+                        ✓ Duyệt tất cả ({pendingMapPlaces.length})
                       </button>
                     )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '6px' }}>
                     {pendingMapPlaces.map(item => {
                       const ov = adminState.places?.[item.place.id];
                       const p = ov?.pendingMapApproval;
@@ -3505,41 +4128,50 @@ export function AdminDashboardView({
                           onClick={() => selectPlaceForEdit(item)}
                           style={{
                             background: '#FFFFFF',
-                            border: isDel ? '1.5px solid #FCA5A5' : '1.5px solid #6EE7B7',
-                            borderRadius: '10px',
-                            padding: '9px 12px',
+                            border: isDel ? '1px solid #FCA5A5' : '1px solid #A7F3D0',
+                            borderRadius: '8px',
+                            padding: '7px 10px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            gap: '10px',
+                            gap: '8px',
                             cursor: 'pointer',
                           }}
                         >
                           <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <span
                                 style={{
                                   fontSize: '10px',
-                                  fontWeight: 800,
-                                  padding: '2px 6px',
-                                  borderRadius: '5px',
+                                  fontWeight: 700,
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
                                   background: isDel ? '#FEE2E2' : '#D1FAE5',
                                   color: isDel ? '#B91C1C' : '#047857',
                                 }}
                               >
-                                {isDel ? '🔴 YÊU CẦU XÓA' : '🟢 THÊM MỚI'}
+                                {isDel ? 'Xóa' : 'Mới'}
                               </span>
-                              <span style={{ fontSize: '13px', fontWeight: 800, color: '#18181B' }}>
+                              <span
+                                style={{
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  color: '#18181B',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
                                 {item.place.name}
                               </span>
                             </div>
-                            <div style={{ fontSize: '11px', color: '#71717A', marginTop: '3px' }}>
-                              Bởi <strong>{p.submittedByName}</strong> • {p.actionSummary}
+                            <div style={{ fontSize: '10.5px', color: '#71717A', marginTop: '2px' }}>
+                              {p.submittedByName} • {p.actionSummary}
                             </div>
                           </div>
 
                           {isSuperAdmin ? (
-                            <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -3547,19 +4179,20 @@ export function AdminDashboardView({
                                   setRefreshTick(t => t + 1);
                                   showToast(
                                     isDel
-                                      ? `🗑️ Admin đã duyệt xóa địa điểm "${item.place.name}"!`
-                                      : `✅ Admin đã duyệt địa điểm "${item.place.name}"!`,
+                                      ? `Đã duyệt xóa "${item.place.name}"`
+                                      : `Đã duyệt địa điểm "${item.place.name}"`,
                                     'approve'
                                   );
                                 }}
                                 style={{
-                                  padding: '6px 10px',
-                                  borderRadius: '7px',
+                                  height: '26px',
+                                  padding: '0 8px',
+                                  borderRadius: '6px',
                                   border: 'none',
                                   background: isDel ? '#DC2626' : '#059669',
                                   color: '#FFFFFF',
-                                  fontSize: '11.5px',
-                                  fontWeight: 800,
+                                  fontSize: '11px',
+                                  fontWeight: 700,
                                   cursor: 'pointer',
                                 }}
                               >
@@ -3570,25 +4203,26 @@ export function AdminDashboardView({
                                 onClick={() => {
                                   rejectPendingPlaceItem(item.place.id, 'maps');
                                   setRefreshTick(t => t + 1);
-                                  showToast(`Đã từ chối yêu cầu với "${item.place.name}"`, 'warn');
+                                  showToast(`Đã hủy yêu cầu "${item.place.name}"`, 'warn');
                                 }}
                                 style={{
-                                  padding: '6px 9px',
-                                  borderRadius: '7px',
+                                  height: '26px',
+                                  padding: '0 7px',
+                                  borderRadius: '6px',
                                   border: '1px solid #FCA5A5',
                                   background: '#FEF2F2',
                                   color: '#B91C1C',
-                                  fontSize: '11.5px',
-                                  fontWeight: 800,
+                                  fontSize: '11px',
+                                  fontWeight: 700,
                                   cursor: 'pointer',
                                 }}
                               >
-                                ✕ Hủy
+                                ✕
                               </button>
                             </div>
                           ) : (
-                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#B45309', flexShrink: 0 }}>
-                              Chờ Admin
+                            <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#B45309', flexShrink: 0 }}>
+                              Chờ duyệt
                             </span>
                           )}
                         </div>
@@ -3598,158 +4232,376 @@ export function AdminDashboardView({
                 </div>
               )}
 
-              <div className="xh-three-col-layout xh-maps-three-col">
-              {/* CỘT 1: DANH SÁCH ĐỊA ĐIỂM MAPS + TAB DUYỆT MAPS */}
+              {/* THANH CHUYỂN TAB NHANH TRÊN MOBILE (CHỈ HIỆN TRÊN MOBILE) */}
               <div
-                className={`xh-places-list-pane ${mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
+                className="xh-show-mobile-only"
                 style={{
-                  background: theme.bgCard,
-                  borderRadius: '14px',
-                  border: `1px solid ${theme.border}`,
-                  boxShadow: theme.shadow,
+                  display: 'none',
+                  gap: '6px',
+                  background: '#FFFFFF',
+                  padding: '4px',
+                  borderRadius: '10px',
+                  border: '1px solid #E8E2D8',
                 }}
               >
-                <div style={{ padding: '12px', borderBottom: `1px solid ${theme.border}` }}>
-                  {/* NÚT CHUYỂN TAB TRÊN ĐẦU CỘT 1: ĐỊA ĐIỂM MAPS | DUYỆT MAPS */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '4px',
-                      padding: '3px',
-                      borderRadius: '10px',
-                      background: theme.bgInput,
-                      border: `1px solid ${theme.border}`,
-                      marginBottom: '10px',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setMapListTab('all')}
-                      style={{
-                        padding: '7px 8px',
-                        borderRadius: '7px',
-                        border: 'none',
-                        background: mapListTab === 'all' ? theme.bgCard : 'transparent',
-                        color: mapListTab === 'all' ? theme.textPrimary : theme.textMuted,
-                        fontWeight: 800,
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        boxShadow: mapListTab === 'all' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                      }}
-                    >
-                      Địa điểm ({allMapPlaces.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMapListTab('pending_maps')}
-                      style={{
-                        padding: '7px 8px',
-                        borderRadius: '7px',
-                        border: 'none',
-                        background:
-                          mapListTab === 'pending_maps'
-                            ? '#FEF3C7'
-                            : pendingMapPlaces.length > 0
-                            ? 'rgba(245, 158, 11, 0.1)'
-                            : 'transparent',
-                        color:
-                          mapListTab === 'pending_maps' || pendingMapPlaces.length > 0
-                            ? '#B45309'
-                            : theme.textMuted,
-                        fontWeight: 800,
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      {!isSuperAdmin && <Lock size={11} />}
-                      <span>Duyệt Maps ({pendingMapPlaces.length})</span>
-                    </button>
-                  </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileShowDetailPane(false)}
+                  style={{
+                    flex: 1,
+                    height: '32px',
+                    borderRadius: '7px',
+                    border: 'none',
+                    background: !mobileShowDetailPane ? theme.accentSoft : 'transparent',
+                    color: !mobileShowDetailPane ? theme.accent : theme.textSecondary,
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Danh sách ({filteredMapPlaces.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileShowDetailPane(true)}
+                  style={{
+                    flex: 1,
+                    height: '32px',
+                    borderRadius: '7px',
+                    border: 'none',
+                    background: mobileShowDetailPane ? theme.accentSoft : 'transparent',
+                    color: mobileShowDetailPane ? theme.accent : theme.textSecondary,
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Thông tin & Bản đồ
+                </button>
+              </div>
 
+              <div className="xh-three-col-layout xh-maps-three-col">
+                {/* ============================================================= */}
+                {/* CỘT 1: DANH SÁCH ĐỊA ĐIỂM                                     */}
+                {/* ============================================================= */}
+                <div
+                  className={`xh-places-list-pane ${mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
+                  style={{
+                    background: '#FFFFFF',
+                    borderRadius: '12px',
+                    border: '1px solid #E8E2D8',
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {/* HEADER CỘT 1 — THẲNG HÀNG CAO ĐỘ VỚI CỘT 2 VÀ CỘT 3 */}
                   <div
+                    className="xh-maps-col-header"
                     style={{
+                      minHeight: '46px',
+                      padding: '8px 12px',
+                      borderBottom: '1px solid #E8E2D8',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      marginBottom: '8px',
+                      gap: '6px',
+                      boxSizing: 'border-box',
                     }}
                   >
-                    <span style={{ fontSize: '13px', fontWeight: 800 }}>
-                      {mapListTab === 'pending_maps'
-                        ? `Chờ duyệt Maps (${filteredMapPlaces.length})`
-                        : `Định vị Maps (${filteredMapPlaces.length})`}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setNewPlaceForm(prev => ({
-                          ...prev,
-                          name: '',
-                          sectorTag: 'dia-danh',
-                          mapCategory: 'public',
-                        }));
-                        setIsNewPlaceModalOpen(true);
-                      }}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: theme.accent,
-                        color: '#FFFFFF',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Plus size={13} /> Thêm Định Vị
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                      <span style={{ fontSize: '14px', fontWeight: 800, color: theme.textPrimary, whiteSpace: 'nowrap' }}>
+                        1. Địa điểm
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          color: theme.textMuted,
+                          background: '#F4F1EA',
+                          padding: '1px 6px',
+                          borderRadius: '6px',
+                        }}
+                      >
+                        {filteredMapPlaces.length}/{allMapPlaces.length}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                      {pendingMapPlaces.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setMapListTab(mapListTab === 'pending_maps' ? 'all' : 'pending_maps')}
+                          style={{
+                            height: '28px',
+                            padding: '0 7px',
+                            borderRadius: '7px',
+                            border:
+                              mapListTab === 'pending_maps'
+                                ? '1px solid #D97706'
+                                : '1px solid #E8E2D8',
+                            background: mapListTab === 'pending_maps' ? '#FEF3C7' : '#FFFFFF',
+                            color: '#B45309',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Duyệt ({pendingMapPlaces.length})
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewPlaceForm(prev => ({
+                            ...prev,
+                            name: '',
+                            sectorTag: 'dia-danh',
+                            mapCategory: 'public',
+                          }));
+                          setIsNewPlaceModalOpen(true);
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          height: '28px',
+                          padding: '0 8px',
+                          borderRadius: '7px',
+                          border: `1px solid ${theme.accentBorder}`,
+                          background: theme.accentSoft,
+                          color: theme.accent,
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <Plus size={12} /> Thêm
+                      </button>
+                    </div>
                   </div>
 
-                  {/* TÌM ĐỊA ĐIỂM TRÊN MAPS */}
+                  {/* KHỐI FILTER 3 DÒNG GỌN SẠCH */}
                   <div
                     style={{
+                      padding: '8px 10px',
+                      borderBottom: '1px solid #E8E2D8',
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: '7px',
-                      padding: '7px 10px',
-                      borderRadius: '9px',
-                      background: theme.bgInput,
-                      border: `1px solid ${theme.border}`,
-                      marginBottom: '7px',
+                      flexDirection: 'column',
+                      gap: '6px',
+                      background: '#FCFBF9',
                     }}
                   >
-                    <Search size={13} style={{ color: theme.textMuted, flexShrink: 0 }} />
-                    <input
-                      type="text"
-                      value={mapSearch}
-                      onChange={e => setMapSearch(e.target.value)}
-                      placeholder="Tìm địa điểm, đường phố..."
+                    {/* DÒNG 1: [Tất cả] [Đã định vị] [Chưa định vị] [Lỗi] */}
+                    <div
                       style={{
-                        border: 'none',
-                        background: 'transparent',
-                        outline: 'none',
-                        width: '100%',
-                        fontSize: '12px',
-                        color: theme.textPrimary,
+                        display: 'grid',
+                        gridTemplateColumns:
+                          mapLocationStats.invalid > 0
+                            ? 'repeat(4, minmax(0, 1fr))'
+                            : 'repeat(3, minmax(0, 1fr))',
+                        gap: '4px',
                       }}
-                    />
-                  </div>
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMapListTab('all');
+                          setMapCoordFilter('all');
+                        }}
+                        style={{
+                          height: '30px',
+                          padding: '0 4px',
+                          borderRadius: '8px',
+                          border:
+                            mapListTab === 'all' && mapCoordFilter === 'all'
+                              ? `1px solid ${theme.accent}`
+                              : '1px solid #E8E2D8',
+                          background:
+                            mapListTab === 'all' && mapCoordFilter === 'all'
+                              ? theme.accentSoft
+                              : '#FFFFFF',
+                          color:
+                            mapListTab === 'all' && mapCoordFilter === 'all'
+                              ? theme.accent
+                              : theme.textSecondary,
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        Tất cả ({mapLocationStats.total})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMapListTab('all');
+                          setMapCoordFilter('verified');
+                        }}
+                        style={{
+                          height: '30px',
+                          padding: '0 4px',
+                          borderRadius: '8px',
+                          border:
+                            mapListTab === 'all' && mapCoordFilter === 'verified'
+                              ? '1px solid #059669'
+                              : '1px solid #E8E2D8',
+                          background:
+                            mapListTab === 'all' && mapCoordFilter === 'verified'
+                              ? '#E6F7EF'
+                              : '#FFFFFF',
+                          color:
+                            mapListTab === 'all' && mapCoordFilter === 'verified'
+                              ? '#047857'
+                              : theme.textSecondary,
+                          fontSize: '10.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        Đã ghim ({mapLocationStats.located})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMapListTab('all');
+                          setMapCoordFilter('unverified');
+                        }}
+                        style={{
+                          height: '30px',
+                          padding: '0 4px',
+                          borderRadius: '8px',
+                          border:
+                            mapListTab === 'all' && mapCoordFilter === 'unverified'
+                              ? '1px solid #D97706'
+                              : '1px solid #E8E2D8',
+                          background:
+                            mapListTab === 'all' && mapCoordFilter === 'unverified'
+                              ? '#FEF3C7'
+                              : '#FFFFFF',
+                          color:
+                            mapListTab === 'all' && mapCoordFilter === 'unverified'
+                              ? '#B45309'
+                              : theme.textSecondary,
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        Chưa ({mapLocationStats.unlocated})
+                      </button>
+                      {mapLocationStats.invalid > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMapListTab('all');
+                            setMapCoordFilter('invalid');
+                          }}
+                          style={{
+                            height: '30px',
+                            padding: '0 4px',
+                            borderRadius: '8px',
+                            border:
+                              mapListTab === 'all' && mapCoordFilter === 'invalid'
+                                ? '1px solid #DC2626'
+                                : '1px solid #E8E2D8',
+                            background:
+                              mapListTab === 'all' && mapCoordFilter === 'invalid'
+                                ? '#FEF2F2'
+                                : '#FFFFFF',
+                            color:
+                              mapListTab === 'all' && mapCoordFilter === 'invalid'
+                                ? '#DC2626'
+                                : theme.textSecondary,
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Lỗi ({mapLocationStats.invalid})
+                        </button>
+                      )}
+                    </div>
 
-                  {mapListTab === 'all' && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
+                    {/* DÒNG 2: SEARCH FULL WIDTH */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        height: '34px',
+                        padding: '0 9px',
+                        borderRadius: '8px',
+                        background: '#FFFFFF',
+                        border: '1px solid #E8E2D8',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      <Search size={13} style={{ color: theme.textMuted, flexShrink: 0 }} />
+                      <input
+                        type="text"
+                        value={mapSearch}
+                        onChange={e => setMapSearch(e.target.value)}
+                        placeholder="Tìm tên quán, đường, SĐT..."
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          outline: 'none',
+                          width: '100%',
+                          fontSize: '12px',
+                          color: theme.textPrimary,
+                        }}
+                      />
+                      {mapSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setMapSearch('')}
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            color: theme.textMuted,
+                            cursor: 'pointer',
+                            padding: 0,
+                            display: 'flex',
+                          }}
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* DÒNG 3: [Nhóm bản đồ ▼] [Trạng thái ▼] */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '6px' }}>
                       <select
                         value={mapCatFilter}
                         onChange={e => setMapCatFilter(e.target.value)}
-                        style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
+                        style={{
+                          width: '100%',
+                          minWidth: 0,
+                          height: '32px',
+                          padding: '0 6px',
+                          borderRadius: '8px',
+                          border: '1px solid #E8E2D8',
+                          backgroundColor: '#FFFFFF',
+                          color: theme.textPrimary,
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          outline: 'none',
+                          cursor: 'pointer',
+                          boxSizing: 'border-box',
+                        }}
                       >
-                        <option value="all">Mọi nhóm bản đồ</option>
+                        <option value="all">Nhóm bản đồ ({allMapPlaces.length})</option>
                         {EDITABLE_MAP_CATEGORIES.map(c => (
                           <option key={c.id} value={c.id}>
                             {c.label}
@@ -3759,334 +4611,238 @@ export function AdminDashboardView({
                       <select
                         value={mapCoordFilter}
                         onChange={e => setMapCoordFilter(e.target.value as any)}
-                        style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
+                        style={{
+                          width: '100%',
+                          minWidth: 0,
+                          height: '32px',
+                          padding: '0 6px',
+                          borderRadius: '8px',
+                          border: '1px solid #E8E2D8',
+                          backgroundColor: '#FFFFFF',
+                          color: theme.textPrimary,
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          outline: 'none',
+                          cursor: 'pointer',
+                          boxSizing: 'border-box',
+                        }}
                       >
-                        <option value="all">Mọi tọa độ</option>
-                        <option value="verified">📍 Đã ghim chuẩn</option>
-                        <option value="unverified">⏳ Chưa có tọa độ</option>
+                        <option value="all">Trạng thái ({mapLocationStats.total})</option>
+                        <option value="verified">Đã định vị ({mapLocationStats.located})</option>
+                        <option value="unverified">Chưa định vị ({mapLocationStats.unlocated})</option>
+                        {mapLocationStats.invalid > 0 && (
+                          <option value="invalid">Lỗi link ({mapLocationStats.invalid})</option>
+                        )}
+                        <option value="locked">Đang khóa (Block)</option>
                       </select>
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* DANH SÁCH ĐỊA ĐIỂM TRONG QUẢN LÝ MAPS */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
-                  {filteredMapPlaces.length === 0 ? (
-                    <div style={{ padding: '24px 12px', textAlign: 'center', fontSize: '12px', color: theme.textMuted }}>
-                      {mapListTab === 'pending_maps'
-                        ? 'Hiện không có vị trí nào chờ Admin duyệt.'
-                        : 'Không tìm thấy địa điểm phù hợp.'}
-                    </div>
-                  ) : (
-                    filteredMapPlaces.map(item => {
-                      const isSelected = selectedPlaceId === item.place.id;
-                      const ov = adminState.places?.[item.place.id];
-                      const { hasCoords, mapCat } = getResolvedPlaceCoordsAndCat(item);
-                      const catLabel =
-                        EDITABLE_MAP_CATEGORIES.find(c => c.id === mapCat)?.label || mapCat;
-                      const pendingMap = ov?.pendingMapApproval;
-                      const isDelReq = Boolean(pendingMap?.isDeleteRequest || pendingMap?.actionType === 'delete');
-                      return (
-                        <div
-                          key={item.place.id}
-                          onClick={() => {
-                            selectPlaceForEdit(item);
-                            setMobileShowDetailPane(true);
-                          }}
-                          style={{
-                            padding: '9px 11px',
-                            borderRadius: '10px',
-                            marginBottom: '6px',
-                            cursor: 'pointer',
-                            border: isSelected
-                              ? `1.5px solid ${theme.accent}`
-                              : pendingMap
-                              ? isDelReq
-                                ? '1.5px solid #EF4444'
-                                : '1.5px solid #F59E0B'
-                              : `1px solid ${theme.border}`,
-                            background: isSelected
-                              ? theme.accentSoft
-                              : pendingMap
-                              ? isDelReq
-                                ? 'rgba(254, 226, 226, 0.5)'
-                                : 'rgba(254, 243, 199, 0.45)'
-                              : theme.bgElevated,
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                            <span
-                              style={{
-                                fontSize: '12.5px',
-                                fontWeight: 700,
-                                color: theme.textPrimary,
-                                minWidth: 0,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                              title={item.place.name}
-                            >
-                              {item.place.name}
-                            </span>
-                            {pendingMap ? (
-                              <span
-                                style={{
-                                  fontSize: '9.5px',
-                                  fontWeight: 800,
-                                  padding: '1px 6px',
-                                  borderRadius: '4px',
-                                  background: isDelReq ? '#FEE2E2' : '#FEF3C7',
-                                  color: isDelReq ? '#B91C1C' : '#B45309',
-                                  whiteSpace: 'nowrap',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {isDelReq ? '🔴 Chờ xóa' : '🟢 Chờ duyệt'}
-                              </span>
-                            ) : (
-                              <span
-                                style={{
-                                  fontSize: '10px',
-                                  fontWeight: 700,
-                                  color: hasCoords ? '#047857' : '#B45309',
-                                  whiteSpace: 'nowrap',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {hasCoords ? '📍 Đã ghim' : '⏳ Chưa ghim'}
-                              </span>
-                            )}
-                          </div>
+                  {/* DANH SÁCH ĐỊA ĐIỂM GỌN (54–62px / item) */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
+                    {filteredMapPlaces.length === 0 ? (
+                      <div
+                        style={{
+                          padding: '24px 10px',
+                          textAlign: 'center',
+                          fontSize: '12px',
+                          color: theme.textMuted,
+                        }}
+                      >
+                        {mapListTab === 'pending_maps'
+                          ? 'Không có vị trí nào chờ duyệt.'
+                          : 'Không tìm thấy địa điểm phù hợp.'}
+                      </div>
+                    ) : (
+                      filteredMapPlaces.map(item => {
+                        const isSelected = selectedPlaceId === item.place.id;
+                        const ov = adminState.places?.[item.place.id];
+                        const { hasCoords, mapCat, locationStatus } = getResolvedPlaceCoordsAndCat(item);
+                        const catLabel =
+                          EDITABLE_MAP_CATEGORIES.find(c => c.id === mapCat)?.label || mapCat;
+                        const pendingMap = ov?.pendingMapApproval;
+                        const isDelReq = Boolean(
+                          pendingMap?.isDeleteRequest || pendingMap?.actionType === 'delete'
+                        );
+                        return (
                           <div
+                            key={item.place.id}
+                            onClick={() => {
+                              selectPlaceForEdit(item);
+                              setMobileShowDetailPane(true);
+                            }}
                             style={{
-                              fontSize: '11px',
-                              color: theme.textMuted,
-                              marginTop: '2px',
+                              minHeight: '54px',
+                              padding: '7px 10px',
+                              borderRadius: '8px',
+                              marginBottom: '4px',
+                              cursor: 'pointer',
+                              boxSizing: 'border-box',
                               display: 'flex',
-                              alignItems: 'center',
+                              flexDirection: 'column',
+                              justifyContent: 'center',
+                              gap: '3px',
+                              border: isSelected
+                                ? `1px solid ${theme.accent}`
+                                : pendingMap
+                                ? isDelReq
+                                  ? '1px solid #FCA5A5'
+                                  : '1px solid #FCD34D'
+                                : '1px solid transparent',
+                              background: isSelected
+                                ? theme.accentSoft
+                                : pendingMap
+                                ? isDelReq
+                                  ? '#FEF2F2'
+                                  : '#FFFBEB'
+                                : '#F8F6F1',
                             }}
                           >
-                            <span
-                              style={{
-                                fontWeight: 700,
-                                color:
-                                  mapCat === 'public' || mapCat === 'school'
-                                    ? '#047857'
-                                    : theme.accent,
-                              }}
-                            >
-                              {catLabel}
-                            </span>
-                          </div>
-                          {pendingMap && (
                             <div
                               style={{
-                                marginTop: '6px',
-                                paddingTop: '5px',
-                                borderTop: '1px dashed rgba(217, 119, 6, 0.3)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 gap: '6px',
                               }}
                             >
-                              <span style={{ fontSize: '10.5px', fontWeight: 700, color: isDelReq ? '#B91C1C' : '#B45309' }}>
-                                📍 {pendingMap.submittedByName}: {pendingMap.actionSummary}
-                              </span>
-                              {isSuperAdmin && (
-                                <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      approvePendingPlaceItem(item.place.id, 'maps');
-                                      setRefreshTick(t => t + 1);
-                                      showToast(`✅ Đã duyệt "${item.place.name}"!`, 'approve');
-                                    }}
-                                    style={{
-                                      padding: '2px 7px',
-                                      borderRadius: '5px',
-                                      border: 'none',
-                                      background: '#059669',
-                                      color: '#FFF',
-                                      fontSize: '10px',
-                                      fontWeight: 800,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    ✓ Duyệt
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      rejectPendingPlaceItem(item.place.id, 'maps');
-                                      setRefreshTick(t => t + 1);
-                                      showToast(`Đã hủy yêu cầu "${item.place.name}"`, 'warn');
-                                    }}
-                                    style={{
-                                      padding: '2px 6px',
-                                      borderRadius: '5px',
-                                      border: '1px solid #FCA5A5',
-                                      background: '#FEF2F2',
-                                      color: '#B91C1C',
-                                      fontSize: '10px',
-                                      fontWeight: 800,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* CỘT 2: THÔNG TIN ĐỊNH VỊ & TỌA ĐỘ MAPS — GỌN GÀNG, CÂN ĐỐI */}
-              {selectedPlaceItem ? (
-                <div
-                  className={`xh-col-middle-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
-                  style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
-                >
-                  <div
-                    style={{
-                      background: theme.bgCard,
-                      borderRadius: '14px',
-                      border: `1px solid ${theme.border}`,
-                      boxShadow: theme.shadow,
-                      padding: '14px 16px',
-                      boxSizing: 'border-box',
-                    }}
-                  >
-                    {/* KHUNG DUYỆT MAPS (CHỈ ADMIN ĐƯỢC DUYỆT, QUẢN LÝ MAPS BỊ KHÓA) */}
-                    {(() => {
-                      const ov = adminState.places?.[selectedPlaceItem.place.id];
-                      const pending = ov?.pendingMapApproval;
-                      if (!pending) return null;
-                      const isDel = pending.isDeleteRequest || pending.actionType === 'delete';
-                      return (
-                        <div
-                          style={{
-                            padding: '11px 13px',
-                            borderRadius: '10px',
-                            background: isDel ? '#FEF2F2' : '#FFFBEB',
-                            border: isDel ? '1.5px solid #EF4444' : '1.5px solid #F59E0B',
-                            marginBottom: '12px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '10px',
-                            flexWrap: 'wrap',
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontSize: '12px', fontWeight: 800, color: isDel ? '#B91C1C' : '#B45309' }}>
-                              {isDel
-                                ? '🔴 Yêu cầu XÓA Địa điểm khỏi Bản đồ đang chờ Admin duyệt'
-                                : '🟢 Địa điểm MỚI thêm trên Bản đồ đang chờ Admin duyệt'}
-                            </div>
-                            <div style={{ fontSize: '11.5px', color: isDel ? '#991B1B' : '#92400E', marginTop: '2px' }}>
-                              Người gửi: <strong>{pending.submittedByName}</strong> ({pending.submittedBy}) •{' '}
-                              {pending.actionSummary}
-                            </div>
-                          </div>
-
-                          {isSuperAdmin ? (
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  approvePendingPlaceItem(selectedPlaceItem.place.id, 'maps');
-                                  setRefreshTick(t => t + 1);
-                                  showToast(
-                                    isDel
-                                      ? `🗑️ Đã duyệt xóa địa điểm "${selectedPlaceItem.place.name}"!`
-                                      : `✅ Đã duyệt định vị "${selectedPlaceItem.place.name}"!`,
-                                    'approve'
-                                  );
-                                }}
+                              <span
                                 style={{
-                                  padding: '6px 12px',
-                                  borderRadius: '8px',
-                                  border: 'none',
-                                  background: isDel ? '#DC2626' : '#059669',
-                                  color: '#FFFFFF',
-                                  fontSize: '12px',
-                                  fontWeight: 800,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                {isDel ? '✓ Duyệt Xóa' : '✓ Duyệt Maps'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  rejectPendingPlaceItem(selectedPlaceItem.place.id, 'maps');
-                                  setRefreshTick(t => t + 1);
-                                  showToast(`Đã từ chối yêu cầu của "${selectedPlaceItem.place.name}"`, 'warn');
-                                }}
-                                style={{
-                                  padding: '6px 10px',
-                                  borderRadius: '8px',
-                                  border: '1px solid #FCA5A5',
-                                  background: '#FEF2F2',
-                                  color: '#B91C1C',
                                   fontSize: '12px',
                                   fontWeight: 700,
-                                  cursor: 'pointer',
+                                  color: theme.textPrimary,
+                                  minWidth: 0,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={item.place.name}
+                              >
+                                {item.place.name}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  flexShrink: 0,
+                                  lineHeight: 1,
                                 }}
                               >
-                                Từ chối
-                              </button>
+                                {hasCoords ? '📍' : locationStatus === 'invalid' ? '🗺' : '⏳'}
+                              </span>
                             </div>
-                          ) : (
-                            <span
+
+                            <div
                               style={{
-                                display: 'inline-flex',
+                                display: 'flex',
                                 alignItems: 'center',
-                                gap: '4px',
-                                padding: '5px 10px',
-                                borderRadius: '7px',
-                                background: '#FEF3C7',
-                                color: '#92400E',
-                                fontSize: '11.5px',
-                                fontWeight: 800,
+                                justifyContent: 'space-between',
+                                gap: '6px',
                               }}
                             >
-                              <Lock size={12} /> Chờ Admin duyệt
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })()}
+                              <span
+                                style={{
+                                  fontSize: '10.5px',
+                                  fontWeight: 600,
+                                  color: theme.textMuted,
+                                  minWidth: 0,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {catLabel}
+                              </span>
 
+                              {pendingMap ? (
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: isDelReq ? '#FEE2E2' : '#FEF3C7',
+                                    color: isDelReq ? '#B91C1C' : '#B45309',
+                                    whiteSpace: 'nowrap',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {isDelReq ? 'Chờ xóa' : 'Chờ duyệt'}
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    background: hasCoords
+                                      ? '#E6F7EF'
+                                      : locationStatus === 'invalid'
+                                      ? '#FEF2F2'
+                                      : '#FEF3C7',
+                                    color: hasCoords
+                                      ? '#047857'
+                                      : locationStatus === 'invalid'
+                                      ? '#DC2626'
+                                      : '#B45309',
+                                    whiteSpace: 'nowrap',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {hasCoords
+                                    ? 'Đã định vị'
+                                    : locationStatus === 'invalid'
+                                    ? 'Lỗi link'
+                                    : 'Chưa định vị'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* ============================================================= */}
+                {/* CỘT 2: THÔNG TIN ĐỊNH VỊ (CAO THEO NỘI DUNG, GỌN SẠCH)        */}
+                {/* ============================================================= */}
+                {selectedPlaceItem ? (
+                  <div
+                    className={`xh-col-middle-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
+                    style={{
+                      background: '#FFFFFF',
+                      borderRadius: '12px',
+                      border: '1px solid #E8E2D8',
+                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+                      boxSizing: 'border-box',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* HEADER CỘT 2 — THẲNG HÀNG CAO ĐỘ VỚI CỘT 1 VÀ CỘT 3 */}
                     <div
+                      className="xh-maps-col-header"
                       style={{
+                        minHeight: '46px',
+                        padding: '8px 12px',
+                        borderBottom: '1px solid #E8E2D8',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        gap: '8px',
-                        paddingBottom: '10px',
-                        borderBottom: `1px solid ${theme.border}`,
-                        marginBottom: '12px',
-                        flexWrap: 'wrap',
+                        gap: '6px',
+                        boxSizing: 'border-box',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '14.5px', fontWeight: 800, whiteSpace: 'nowrap' }}>
-                          2. Thông tin Định vị Bản đồ
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                        <span style={{ fontSize: '13.5px', fontWeight: 800, color: theme.textPrimary, whiteSpace: 'nowrap' }}>
+                          2. Định vị
                         </span>
                         <span
                           style={{
-                            fontSize: '11px',
-                            fontWeight: 800,
-                            padding: '2px 8px',
-                            borderRadius: '6px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '5px',
                             background:
                               editPlaceLat.trim() !== '' && editPlaceLng.trim() !== ''
                                 ? '#E6F7EF'
@@ -4095,6 +4851,8 @@ export function AdminDashboardView({
                               editPlaceLat.trim() !== '' && editPlaceLng.trim() !== ''
                                 ? '#047857'
                                 : '#B45309',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
                           }}
                         >
                           {editPlaceLat.trim() !== '' && editPlaceLng.trim() !== ''
@@ -4103,9 +4861,10 @@ export function AdminDashboardView({
                         </span>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                        {/* NÚT BLOCK (TẠM KHÓA) TRÊN MAPS */}
+                      {/* NHÓM NÚT SECONDARY NHỎ + 1 NÚT PRIMARY DUY NHẤT */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                         <button
+                          type="button"
                           onClick={() => {
                             const nextStatus = selectedPlaceItem.status === 'active' ? 'locked' : 'active';
                             savePlaceAdminOverride(
@@ -4116,26 +4875,34 @@ export function AdminDashboardView({
                             setRefreshTick(t => t + 1);
                             const msg =
                               nextStatus === 'locked'
-                                ? `🔒 Đã Block "${selectedPlaceItem.place.name}" trên Bản đồ`
-                                : `🔓 Đã mở khóa "${selectedPlaceItem.place.name}" trên Bản đồ`;
+                                ? `Đã khóa "${selectedPlaceItem.place.name}" trên Bản đồ`
+                                : `Đã mở khóa "${selectedPlaceItem.place.name}" trên Bản đồ`;
                             setInlineActionFeedback(msg);
                             showToast(msg);
                           }}
                           style={{
-                            ...actionBtnStyle(theme, false),
-                            height: '32px',
-                            padding: '0 10px',
-                            fontSize: '11.5px',
-                            color: selectedPlaceItem.status === 'active' ? '#B45309' : '#047857',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            height: '28px',
+                            padding: '0 6px',
+                            borderRadius: '6px',
+                            border: '1px solid #E8E2D8',
+                            background: '#F8F6F1',
+                            color: selectedPlaceItem.status === 'active' ? theme.textSecondary : '#047857',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          {selectedPlaceItem.status === 'active' ? <Lock size={12} /> : <Unlock size={12} />}
-                          <span>{selectedPlaceItem.status === 'active' ? 'Block' : 'Mở khóa'}</span>
+                          {selectedPlaceItem.status === 'active' ? <Lock size={11} /> : <Unlock size={11} />}
+                          <span>{selectedPlaceItem.status === 'active' ? 'Block' : 'Mở'}</span>
                         </button>
 
-                        {/* NÚT GỠ GHIM TỌA ĐỘ (ĐƯA VỀ TRẠNG THÁI CHƯA GHIM) */}
                         {editPlaceLat.trim() !== '' && editPlaceLng.trim() !== '' && (
                           <button
+                            type="button"
                             onClick={() => {
                               clearPlaceCoordinates(
                                 selectedPlaceItem.place.id,
@@ -4145,309 +4912,520 @@ export function AdminDashboardView({
                               setEditPlaceLng('');
                               setHasActivelyPinnedOnMap(false);
                               setRefreshTick(t => t + 1);
-                              const msg = `⏳ Đã gỡ ghim tọa độ của "${selectedPlaceItem.place.name}" về Chưa định vị!`;
+                              const msg = `Đã gỡ ghim "${selectedPlaceItem.place.name}" về Chưa định vị`;
                               setInlineActionFeedback(msg);
                               showToast(msg, 'tap');
                             }}
                             style={{
-                              ...actionBtnStyle(theme, false),
-                              height: '32px',
-                              padding: '0 10px',
-                              fontSize: '11.5px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              height: '28px',
+                              padding: '0 6px',
+                              borderRadius: '6px',
+                              border: '1px solid #E8E2D8',
+                              background: '#F8F6F1',
+                              color: theme.textSecondary,
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
                             }}
-                            title="Gỡ ghim tọa độ để chuyển địa điểm này về trạng thái Chưa ghim"
+                            title="Gỡ ghim tọa độ"
                           >
-                            <RotateCcw size={12} />
-                            <span>Gỡ ghim</span>
+                            <RotateCcw size={11} />
+                            <span>Gỡ</span>
                           </button>
                         )}
 
-                        {/* NÚT XÓA: ADMIN XÓA NGAY LẬP TỨC, QUẢN LÝ XÓA SẼ GỬI VÀO HỘP DUYỆT */}
                         <button
-                          onClick={() => {
-                            const res = requestOrExecuteDeletePlace(
-                              selectedPlaceItem.place.id,
-                              'maps',
-                              selectedPlaceItem.place.name
-                            );
-                            setRefreshTick(t => t + 1);
-                            const msg = res.executedImmediately
-                              ? `🗑️ Admin đã xóa địa điểm "${selectedPlaceItem.place.name}" khỏi Bản đồ ngay lập tức!`
-                              : `⏳ Đã gửi yêu cầu xóa "${selectedPlaceItem.place.name}" vào Hộp Duyệt chờ Admin!`;
-                            setInlineActionFeedback(msg);
-                            showToast(msg, res.executedImmediately ? 'approve' : 'warn');
-                          }}
+                          type="button"
+                          onClick={() => handleDeletePlaceAction('maps')}
                           style={{
-                            ...actionBtnStyle(theme, false),
-                            height: '32px',
-                            padding: '0 10px',
-                            fontSize: '11.5px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            height: '28px',
+                            padding: '0 6px',
+                            borderRadius: '6px',
+                            border: '1px solid #FECACA',
+                            background: '#FEF2F2',
                             color: '#B91C1C',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          <Trash2 size={12} />
-                          <span>{isSuperAdmin ? 'Xóa ngay' : 'Xóa (Chờ duyệt)'}</span>
+                          <Trash2 size={11} />
+                          <span>Xóa</span>
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => handleSavePlaceAndMenu()}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '5px',
-                            height: '32px',
-                            padding: '0 12px',
-                            borderRadius: '8px',
+                            gap: '4px',
+                            height: '28px',
+                            padding: '0 9px',
+                            borderRadius: '6px',
                             border: 'none',
-                            background: justSavedPlace ? '#059669' : theme.accent,
+                            background: '#047857',
                             color: '#FFFFFF',
-                            fontSize: '12px',
-                            fontWeight: 800,
+                            fontSize: '11px',
+                            fontWeight: 700,
                             cursor: 'pointer',
-                            transition: 'all 0.15s ease',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          {justSavedPlace ? <Check size={13} /> : <Save size={13} />}
-                          <span>{justSavedPlace ? 'Đã Lưu' : 'Lưu Định Vị'}</span>
+                          {justSavedPlace ? <Check size={12} /> : <Save size={12} />}
+                          <span>{justSavedPlace ? '✓ Đã lưu' : 'Lưu Định Vị'}</span>
                         </button>
                       </div>
                     </div>
 
-                    <div className="xh-compact-grid">
-                      <div className="xh-col-span-2">
-                        <label style={compactLabelStyle(theme)}>Tên hiển thị trên Bản đồ 2D/3D</label>
-                        <input
-                          type="text"
-                          value={editPlaceName}
-                          onChange={e => setEditPlaceName(e.target.value)}
-                          style={compactInputStyle(theme)}
-                        />
-                      </div>
+                    {/* BODY FORM GỌN SẠCH — KHOẢNG CÁCH 10–12px */}
+                    <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {/* DUYỆT NHANH NẾU ĐỊA ĐIỂM ĐANG CHỜ DUYỆT */}
+                      {(() => {
+                        const ov = adminState.places?.[selectedPlaceItem.place.id];
+                        const pending = ov?.pendingMapApproval;
+                        if (!pending) return null;
+                        const isDel = pending.isDeleteRequest || pending.actionType === 'delete';
+                        return (
+                          <div
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              background: isDel ? '#FEF2F2' : '#FFFBEB',
+                              border: isDel ? '1px solid #FCA5A5' : '1px solid #FCD34D',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '8px',
+                              fontSize: '11px',
+                            }}
+                          >
+                            <div style={{ color: isDel ? '#991B1B' : '#92400E', fontWeight: 600 }}>
+                              <strong>{pending.submittedByName}</strong>: {pending.actionSummary}
+                            </div>
+                            {isSuperAdmin && (
+                              <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    approvePendingPlaceItem(selectedPlaceItem.place.id, 'maps');
+                                    setRefreshTick(t => t + 1);
+                                    showToast(`Đã duyệt "${selectedPlaceItem.place.name}"`, 'approve');
+                                  }}
+                                  style={{
+                                    height: '26px',
+                                    padding: '0 8px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: isDel ? '#DC2626' : '#059669',
+                                    color: '#FFFFFF',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  ✓ Duyệt
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    rejectPendingPlaceItem(selectedPlaceItem.place.id, 'maps');
+                                    setRefreshTick(t => t + 1);
+                                    showToast(`Đã từ chối "${selectedPlaceItem.place.name}"`, 'warn');
+                                  }}
+                                  style={{
+                                    height: '26px',
+                                    padding: '0 7px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #FCA5A5',
+                                    background: '#FFFFFF',
+                                    color: '#B91C1C',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Từ chối
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
-                      <div>
-                        <label style={compactLabelStyle(theme)}>Biểu tượng & Nhóm Bản đồ</label>
-                        <select
-                          value={editPlaceMapCategory}
-                          onChange={e => {
-                            triggerFeedback('tap');
-                            const nextCat = e.target.value as EditableMapCategory;
-                            setEditPlaceMapCategory(nextCat);
-                            if (nextCat === 'public' || nextCat === 'school') {
-                              setEditPlaceSectorTag('dia-danh');
-                            }
-                          }}
+                      {/* COMPACT SUCCESS BANNER (42–50px) — CHỈ HIỆN TẠM THỜI SAU THAO TÁC */}
+                      {toast && (
+                        <div
+                          key={`maps-toast-${toastId}`}
+                          onClick={() => setToast('')}
                           style={{
-                            ...lightSelectStyle(theme),
-                            height: '38px',
-                            padding: '0 10px',
-                            fontSize: '13px',
-                            fontWeight: 700,
+                            minHeight: '42px',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            background: toastKind === 'warn' ? '#FEF2F2' : '#ECFDF5',
+                            border: toastKind === 'warn' ? '1px solid #FCA5A5' : '1px solid #A7F3D0',
+                            color: toastKind === 'warn' ? '#991B1B' : '#065F46',
+                            fontSize: '11.5px',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                            cursor: 'pointer',
                             boxSizing: 'border-box',
                           }}
                         >
-                          {EDITABLE_MAP_CATEGORIES.map(c => (
-                            <option key={c.id} value={c.id}>
-                              {c.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                            <CheckCircle2
+                              size={14}
+                              style={{
+                                color: toastKind === 'warn' ? '#DC2626' : '#059669',
+                                flexShrink: 0,
+                              }}
+                            />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {toast}
+                              </div>
+                              {editPlaceLat && editPlaceLng && (
+                                <div style={{ fontSize: '10.5px', opacity: 0.8, fontFamily: 'monospace' }}>
+                                  {editPlaceLat}, {editPlaceLng}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '11px', fontWeight: 700, opacity: 0.75, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                            Đóng ×
+                          </span>
+                        </div>
+                      )}
 
-                      <div>
-                        <label style={compactLabelStyle(theme)}>Số điện thoại liên hệ</label>
-                        <input
-                          type="text"
-                          value={editPlacePhone}
-                          onChange={e => setEditPlacePhone(e.target.value)}
-                          placeholder="Chưa cập nhật SĐT"
-                          style={compactInputStyle(theme)}
-                        />
-                      </div>
+                      {/* NHẮC NHỞ GỌN KHI CHƯA CÓ TỌA ĐỘ */}
+                      {(editPlaceLat.trim() === '' || editPlaceLng.trim() === '') && (
+                        <div
+                          style={{
+                            padding: '7px 10px',
+                            borderRadius: '8px',
+                            background: '#FFFBEB',
+                            border: '1px solid #FDE68A',
+                            color: '#92400E',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          Chưa có tọa độ — bấm <strong>Tìm tọa độ</strong> hoặc chấm trực tiếp lên Bản đồ bên phải.
+                        </div>
+                      )}
 
-                      <div className="xh-col-span-2">
-                        <label style={compactLabelStyle(theme)}>Địa chỉ chi tiết (Số nhà, Đường, Khu vực)</label>
-                        <input
-                          type="text"
-                          value={editPlaceAddress}
-                          onChange={e => setEditPlaceAddress(e.target.value)}
-                          style={compactInputStyle(theme)}
-                        />
-                      </div>
-
-                      <div className="xh-col-span-2">
-                        <label style={compactLabelStyle(theme)}>
-                          Dán link Google Maps, Plus Code (VD: 7PQ6+VFP) hoặc tìm tọa độ
-                        </label>
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <div className="xh-compact-grid">
+                        <div className="xh-col-span-2">
+                          <label style={compactLabelStyle(theme)}>Tên hiển thị trên Bản đồ 2D/3D</label>
                           <input
                             type="text"
-                            value={editPlaceMapsUrl || editPlaceMapsQuery}
-                            onChange={e => {
-                              const val = e.target.value;
-                              if (val.startsWith('http')) setEditPlaceMapsUrl(val);
-                              else {
-                                setEditPlaceMapsUrl('');
-                                setEditPlaceMapsQuery(val);
-                              }
-                              const parsed = parseCoordinatesFromInputOrUrl(val);
-                              if (parsed) {
-                                setEditPlaceLat(String(parsed.lat));
-                                setEditPlaceLng(String(parsed.lng));
-                                setHasActivelyPinnedOnMap(true);
-                                setInlineActionFeedback(
-                                  `📍 Đã nhận diện tọa độ (${parsed.lat}, ${parsed.lng}) từ link Maps!`
-                                );
-                              }
-                            }}
-                            placeholder="Dán link Google Maps, Plus Code hoặc tọa độ..."
-                            style={{ ...compactInputStyle(theme), flex: 1 }}
+                            value={editPlaceName}
+                            onChange={e => setEditPlaceName(e.target.value)}
+                            style={compactInputStyle(theme)}
                           />
-                          <button
-                            type="button"
-                            disabled={isAdminGeocoding}
-                            onClick={async () => {
-                              const rawQ = (
-                                editPlaceMapsUrl ||
-                                editPlaceMapsQuery ||
-                                editPlaceAddress ||
-                                editPlaceName
-                              ).trim();
-                              const direct = parseCoordinatesFromInputOrUrl(rawQ);
-                              if (direct) {
-                                setEditPlaceLat(String(direct.lat));
-                                setEditPlaceLng(String(direct.lng));
-                                setHasActivelyPinnedOnMap(true);
-                                const msg = `📍 Đã trích xuất tọa độ: ${direct.lat}, ${direct.lng}`;
-                                setInlineActionFeedback(msg);
-                                showToast(msg);
-                                return;
-                              }
-                              setIsAdminGeocoding(true);
-                              try {
-                                const results = await geocodeAddressWithNominatim(
-                                  `${editPlaceAddress || editPlaceName}, Xuân Hòa, Phúc Yên`
-                                );
-                                if (results.length > 0) {
-                                  setEditPlaceLat(String(results[0].lat));
-                                  setEditPlaceLng(String(results[0].lng));
-                                  setHasActivelyPinnedOnMap(true);
-                                  const msg = `📍 Đã tìm thấy tọa độ: ${results[0].lat}, ${results[0].lng}`;
-                                  setInlineActionFeedback(msg);
-                                  showToast(msg);
-                                } else {
-                                  const road = findSuggestedRoadForAddress(
-                                    `${editPlaceAddress} ${editPlaceName}`,
-                                    VERIFIED_OSM_ROADS_SEED
-                                  );
-                                  if (road) {
-                                    setEditPlaceLat(String(Number(road.lat.toFixed(6))));
-                                    setEditPlaceLng(String(Number(road.lng.toFixed(6))));
-                                    setHasActivelyPinnedOnMap(true);
-                                    const msg = `📍 Định vị theo đường ${road.name}`;
-                                    setInlineActionFeedback(msg);
-                                    showToast(msg);
-                                  } else {
-                                    const msg = 'Chưa tìm thấy tự động — hãy bấm trực tiếp ở Cột 3 bên phải để ghim!';
-                                    setInlineActionFeedback(msg);
-                                    showToast(msg, 'warn');
-                                  }
-                                }
-                              } finally {
-                                setIsAdminGeocoding(false);
+                        </div>
+
+                        <div>
+                          <label style={compactLabelStyle(theme)}>Biểu tượng & Nhóm Bản đồ</label>
+                          <select
+                            value={editPlaceMapCategory}
+                            onChange={e => {
+                              triggerFeedback('tap');
+                              const nextCat = e.target.value as EditableMapCategory;
+                              setEditPlaceMapCategory(nextCat);
+                              if (nextCat === 'public' || nextCat === 'school') {
+                                setEditPlaceSectorTag('dia-danh');
+                              } else if (nextCat === 'billiards' || nextCat === 'game') {
+                                setEditPlaceSectorTag('bia-game');
+                              } else if (nextCat === 'phone') {
+                                setEditPlaceSectorTag('dien-thoai');
+                              } else if (nextCat === 'entertainment') {
+                                setEditPlaceSectorTag('an-choi');
+                              } else if (nextCat === 'service' || nextCat === 'grocery' || nextCat === 'supermarket') {
+                                setEditPlaceSectorTag('dich-vu');
+                              } else if (nextCat === 'pub') {
+                                setEditPlaceSectorTag('nhau-lau');
+                              } else if (nextCat === 'cafe') {
+                                setEditPlaceSectorTag('uong');
+                              } else if (nextCat === 'snack') {
+                                setEditPlaceSectorTag('an-vat');
+                              } else if (nextCat === 'food') {
+                                setEditPlaceSectorTag('an-chinh');
                               }
                             }}
                             style={{
-                              ...smallRowBtnStyle(theme),
-                              background: theme.accent,
-                              color: '#FFFFFF',
-                              borderColor: theme.accent,
-                              padding: '0 12px',
-                              height: '38px',
+                              ...lightSelectStyle(theme),
+                              height: '36px',
+                              padding: '0 9px',
+                              fontSize: '12.5px',
+                              fontWeight: 600,
+                              backgroundColor: theme.bgInput,
                               boxSizing: 'border-box',
                             }}
                           >
-                            <MapPin size={13} />
-                            <span>{isAdminGeocoding ? 'Đang tìm...' : 'Tìm tọa độ'}</span>
-                          </button>
+                            {EDITABLE_MAP_CATEGORIES.map(c => (
+                              <option key={c.id} value={c.id}>
+                                {c.label}
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                      </div>
 
-                      <div>
-                        <label style={compactLabelStyle(theme)}>Vĩ độ (Lat)</label>
-                        <input
-                          type="text"
-                          value={editPlaceLat}
-                          onChange={e => setEditPlaceLat(e.target.value)}
-                          placeholder="21.2897..."
-                          style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
-                        />
-                      </div>
+                        <div>
+                          <label style={compactLabelStyle(theme)}>Số điện thoại liên hệ</label>
+                          <input
+                            type="text"
+                            value={editPlacePhone}
+                            onChange={e => setEditPlacePhone(e.target.value)}
+                            placeholder="Chưa cập nhật SĐT"
+                            style={compactInputStyle(theme)}
+                          />
+                        </div>
 
-                      <div>
-                        <label style={compactLabelStyle(theme)}>Kinh độ (Lng)</label>
-                        <input
-                          type="text"
-                          value={editPlaceLng}
-                          onChange={e => setEditPlaceLng(e.target.value)}
-                          placeholder="105.7112..."
-                          style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
-                        />
+                        <div className="xh-col-span-2">
+                          <label style={compactLabelStyle(theme)}>Địa chỉ chi tiết (Số nhà, Đường, Khu vực)</label>
+                          <input
+                            type="text"
+                            value={editPlaceAddress}
+                            onChange={e => setEditPlaceAddress(e.target.value)}
+                            style={compactInputStyle(theme)}
+                          />
+                        </div>
+
+                        <div className="xh-col-span-2">
+                          <label style={compactLabelStyle(theme)}>
+                            Link Google Maps / Plus Code / Tọa độ
+                          </label>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={editPlaceMapsUrl || editPlaceMapsQuery}
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (val.startsWith('http')) setEditPlaceMapsUrl(val);
+                                else {
+                                  setEditPlaceMapsUrl('');
+                                  setEditPlaceMapsQuery(val);
+                                }
+                                const parsed = parseCoordinatesFromInputOrUrl(val);
+                                if (parsed) {
+                                  setEditPlaceLat(String(parsed.lat));
+                                  setEditPlaceLng(String(parsed.lng));
+                                  setHasActivelyPinnedOnMap(true);
+                                  setMapFlyTrigger(t => t + 1);
+                                  setInlineActionFeedback(
+                                    `📍 Đã nhận diện tọa độ (${parsed.lat}, ${parsed.lng}) từ link Maps!`
+                                  );
+                                } else if (/^https?:\/\//i.test(val.trim())) {
+                                  expandAndParseShortMapsUrl(val.trim()).then(expanded => {
+                                    if (expanded) {
+                                      setEditPlaceLat(String(expanded.lat));
+                                      setEditPlaceLng(String(expanded.lng));
+                                      setHasActivelyPinnedOnMap(true);
+                                      setMapFlyTrigger(t => t + 1);
+                                      setInlineActionFeedback(
+                                        `📍 Đã giải mã link rút gọn (${expanded.lat}, ${expanded.lng})!`
+                                      );
+                                    }
+                                  });
+                                }
+                              }}
+                              placeholder="Dán link Maps, Plus Code hoặc tọa độ..."
+                              style={{ ...compactInputStyle(theme), flex: 1 }}
+                            />
+                            <button
+                              type="button"
+                              disabled={isAdminGeocoding}
+                              onClick={async () => {
+                                triggerFeedback('tap');
+                                setIsAdminGeocoding(true);
+                                setInlineActionFeedback(
+                                  '⏳ Đang giải mã link Google Maps / địa chỉ & bay tới vị trí...'
+                                );
+                                try {
+                                  const resolved = await resolvePlaceCoordinates({
+                                    mapsUrl: editPlaceMapsUrl,
+                                    mapsQuery: editPlaceMapsQuery,
+                                    address: editPlaceAddress,
+                                    name: editPlaceName,
+                                    allowGeocode: true,
+                                  });
+                                  if (resolved.lat !== null && resolved.lng !== null) {
+                                    const latNum = Number(resolved.lat.toFixed(6));
+                                    const lngNum = Number(resolved.lng.toFixed(6));
+                                    setEditPlaceLat(String(latNum));
+                                    setEditPlaceLng(String(lngNum));
+                                    setHasActivelyPinnedOnMap(true);
+
+                                    if (selectedPlaceItem) {
+                                      const osmItem = osmLandmarkById.get(selectedPlaceItem.place.id);
+                                      const isCivicItem =
+                                        Boolean(osmItem) ||
+                                        editPlaceSectorTag === 'dia-danh' ||
+                                        editPlaceMapCategory === 'public' ||
+                                        editPlaceMapCategory === 'school';
+                                      const autoApprovePin = isCivicItem || isSuperAdmin;
+                                      savePlaceAdminOverride(
+                                        selectedPlaceItem.place.id,
+                                        {
+                                          name: editPlaceName.trim() || selectedPlaceItem.place.name,
+                                          address: editPlaceAddress.trim() || selectedPlaceItem.place.address,
+                                          phone: editPlacePhone.trim(),
+                                          sectorTag: editPlaceSectorTag,
+                                          mapCategory: editPlaceMapCategory,
+                                          mapsUrl: editPlaceMapsUrl.trim(),
+                                          mapsQuery:
+                                            editPlaceMapsQuery.trim() ||
+                                            `${editPlaceName.trim() || selectedPlaceItem.place.name} Xuân Hòa Phúc Yên`,
+                                          lat: latNum,
+                                          lng: lngNum,
+                                          coordinateVerified: autoApprovePin,
+                                          adminPinApproved: autoApprovePin,
+                                          locationStatus: autoApprovePin ? 'located' : 'unlocated',
+                                          pendingMapApproval: autoApprovePin
+                                            ? undefined
+                                            : {
+                                                submittedBy: effectiveAuthUser?.email || 'manager',
+                                                submittedByName: effectiveAuthUser?.displayName || 'Quản lý Maps',
+                                                submittedAt: Date.now(),
+                                                actionSummary: `Tìm tọa độ tự động (${latNum}, ${lngNum})`,
+                                                actionType: 'update',
+                                              },
+                                          coordinateSource: 'admin_verified',
+                                          lastVerifiedAt: new Date().toISOString().slice(0, 10),
+                                        },
+                                        'Định vị & ghim tọa độ tự động từ Tìm tọa độ'
+                                      );
+                                    }
+
+                                    setMapFlyTrigger(t => t + 1);
+                                    setRefreshTick(t => t + 1);
+                                    triggerFeedback('success');
+                                    const msg = `Đã cập nhật & ghim "${editPlaceName || selectedPlaceItem?.place.name}"`;
+                                    setInlineActionFeedback(msg);
+                                    showToast(msg);
+                                  } else {
+                                    const msg = 'Chưa tìm thấy tự động — hãy chấm trực tiếp trên Bản đồ bên phải';
+                                    setInlineActionFeedback(msg);
+                                    showToast(msg, 'warn');
+                                  }
+                                } finally {
+                                  setIsAdminGeocoding(false);
+                                }
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                height: '36px',
+                                padding: '0 10px',
+                                borderRadius: '8px',
+                                border: `1px solid ${theme.accentBorder}`,
+                                background: theme.accentSoft,
+                                color: theme.accent,
+                                fontSize: '11.5px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                width: 'auto',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <MapPin size={12} />
+                              <span>{isAdminGeocoding ? 'Đang tìm...' : 'Tìm tọa độ'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* LAT + LNG CÙNG MỘT HÀNG (50% / 50%) */}
+                        <div>
+                          <label style={compactLabelStyle(theme)}>Vĩ độ (Lat)</label>
+                          <input
+                            type="text"
+                            value={editPlaceLat}
+                            onChange={e => setEditPlaceLat(e.target.value)}
+                            placeholder="21.2897..."
+                            style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={compactLabelStyle(theme)}>Kinh độ (Lng)</label>
+                          <input
+                            type="text"
+                            value={editPlaceLng}
+                            onChange={e => setEditPlaceLng(e.target.value)}
+                            placeholder="105.7112..."
+                            style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              {/* CỘT 3 CỦA QUẢN LÝ MAPS: BẢN ĐỒ SỐ XUÂN HÒA HIỆN LUÔN TRỰC TIẾP TẠI ĐÂY */}
-              {selectedPlaceItem ? (
-                <div
-                  className={`xh-col-right-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
-                  style={{
-                    background: theme.bgCard,
-                    borderRadius: '14px',
-                    border: `1px solid ${theme.border}`,
-                    boxShadow: theme.shadow,
-                    padding: '10px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                    height: 'calc(100vh - 86px)',
-                    minHeight: '580px',
-                    overflow: 'hidden',
-                  }}
-                >
+                {/* ============================================================= */}
+                {/* CỘT 3: BẢN ĐỒ SỐ XUÂN HÒA (TRỌNG TÂM — RỘNG NHẤT & CAO NHẤT) */}
+                {/* ============================================================= */}
+                {selectedPlaceItem ? (
                   <div
+                    className={`xh-col-right-pane ${!mobileShowDetailPane ? 'xh-mobile-hidden' : ''}`}
                     style={{
+                      background: '#FFFFFF',
+                      borderRadius: '12px',
+                      border: '1px solid #E8E2D8',
+                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '8px',
-                      padding: '2px 4px 6px',
-                      borderBottom: `1px solid ${theme.border}`,
-                      flexShrink: 0,
+                      flexDirection: 'column',
+                      height: 'calc(100vh - 76px)',
+                      minHeight: '580px',
+                      overflow: 'hidden',
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '13.5px', fontWeight: 800 }}>
-                        3. Bản đồ số Xuân Hòa (Chấm chỗ nào xong chỗ đó)
+                    {/* HEADER CỘT 3 — THẲNG HÀNG CAO ĐỘ VỚI CỘT 1 VÀ CỘT 2 */}
+                    <div
+                      className="xh-maps-col-header"
+                      style={{
+                        minHeight: '46px',
+                        padding: '8px 14px',
+                        borderBottom: '1px solid #E8E2D8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        flexShrink: 0,
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <span style={{ fontSize: '14px', fontWeight: 800, color: theme.textPrimary, whiteSpace: 'nowrap' }}>
+                          3. Bản đồ số Xuân Hòa
+                        </span>
+                        <span
+                          className="xh-hide-mobile"
+                          style={{
+                            fontSize: '11px',
+                            color: theme.textMuted,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          • Bấm trực tiếp lên bản đồ để ghim tọa độ
+                        </span>
                       </div>
-                      <div style={{ fontSize: '11px', color: theme.textSecondary }}>
-                        Bấm trực tiếp vào vị trí trên Bản đồ số để ghim & lưu tọa độ tức thì
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                      <button
-                        type="button"
-                        onClick={() => handleSavePlaceAndMenu()}
-                        style={{
-                          ...smallRowBtnStyle(theme),
-                          background: '#047857',
-                          color: '#FFFFFF',
-                          borderColor: '#047857',
-                        }}
-                      >
-                        <Save size={12} /> Lưu Định Vị
-                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -4466,56 +5444,88 @@ export function AdminDashboardView({
                           }
                         }}
                         style={{
-                          ...smallRowBtnStyle(theme),
-                          background: theme.accentSoft,
-                          color: theme.accent,
-                          borderColor: theme.accentBorder,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          height: '28px',
+                          padding: '0 9px',
+                          borderRadius: '6px',
+                          border: '1px solid #E8E2D8',
+                          background: '#F8F6F1',
+                          color: theme.textSecondary,
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          flexShrink: 0,
                         }}
                         title="Phóng toàn màn hình Bản đồ Số"
                       >
-                        <ExternalLink size={12} /> Toàn màn hình
+                        <ExternalLink size={11} /> Toàn màn hình
                       </button>
                     </div>
-                  </div>
 
-                  {/* BẢN ĐỒ SỐ THẬT NHÚNG TRỰC TIẾP TRONG CỘT 3 */}
-                  <div
-                    style={{
-                      position: 'relative',
-                      flex: 1,
-                      width: '100%',
-                      minHeight: '480px',
-                      borderRadius: '11px',
-                      overflow: 'hidden',
-                      border: `1.5px solid ${theme.accentBorder}`,
-                    }}
-                  >
-                    <DigitalMapView
-                      authUser={effectiveAuthUser}
-                      onBackToHome={onBackToApp}
-                      embeddedInAdmin={true}
-                      adminSelectedPlaceId={selectedPlaceItem.place.id}
-                      adminPreviewLat={
-                        hasActivelyPinnedOnMap &&
-                        editPlaceLat.trim() !== '' &&
-                        !Number.isNaN(Number(editPlaceLat))
-                          ? Number(editPlaceLat)
-                          : null
-                      }
-                      adminPreviewLng={
-                        hasActivelyPinnedOnMap &&
-                        editPlaceLng.trim() !== '' &&
-                        !Number.isNaN(Number(editPlaceLng))
-                          ? Number(editPlaceLng)
-                          : null
-                      }
-                      adminFlyTrigger={mapFlyTrigger}
-                      onAdminPickCoordinates={handleAdminMapPickCoordinates}
-                      onAdminSelectPlace={handleAdminMapSelectPlace}
-                    />
+                    {/* BẢN ĐỒ SỐ THẬT NHÚNG TRỰC TIẾP — KHÔNG LỒNG KHUNG THỪA */}
+                    <div
+                      style={{
+                        position: 'relative',
+                        flex: 1,
+                        width: '100%',
+                        minHeight: '500px',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {isAdminGeocoding && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '12px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            zIndex: 60,
+                            background: 'rgba(15, 23, 42, 0.92)',
+                            color: '#FFFFFF',
+                            padding: '6px 14px',
+                            borderRadius: '999px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          <MapPin size={13} style={{ color: '#34D399' }} />
+                          <span>Đang định vị & di chuyển bản đồ...</span>
+                        </div>
+                      )}
+                      <DigitalMapView
+                        authUser={effectiveAuthUser}
+                        onBackToHome={onBackToApp}
+                        embeddedInAdmin={true}
+                        adminSelectedPlaceId={selectedPlaceItem.place.id}
+                        adminPreviewLat={
+                          hasActivelyPinnedOnMap &&
+                          editPlaceLat.trim() !== '' &&
+                          !Number.isNaN(Number(editPlaceLat))
+                            ? Number(editPlaceLat)
+                            : null
+                        }
+                        adminPreviewLng={
+                          hasActivelyPinnedOnMap &&
+                          editPlaceLng.trim() !== '' &&
+                          !Number.isNaN(Number(editPlaceLng))
+                            ? Number(editPlaceLng)
+                            : null
+                        }
+                        adminFlyTrigger={mapFlyTrigger}
+                        adminSyncVersion={refreshTick}
+                        onAdminPickCoordinates={handleAdminMapPickCoordinates}
+                        onAdminSelectPlace={handleAdminMapSelectPlace}
+                      />
+                    </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
               </div>
             </div>
           )}
@@ -5058,7 +6068,7 @@ export function AdminDashboardView({
       {/* Ô CÀI ĐẶT GÓC PHẢI — SIÊU GỌN: MÀU SẮC SỔ RA 3 MÀU NGANG HÀNG CỠ CHỮ   */}
       {/* ======================================================================= */}
       {isSettingsModalOpen && (
-        <div className="xh-modal-backdrop" onClick={() => setIsSettingsModalOpen(false)}>
+        <div className="xh-modal-backdrop">
           <div
             onClick={e => e.stopPropagation()}
             style={{
@@ -5279,7 +6289,7 @@ export function AdminDashboardView({
 
       {/* MODAL CẤP / SỬA TÀI KHOẢN QUẢN LÝ (NICK + MẬT KHẨU RIÊNG) */}
       {isAdminAccModalOpen && (
-        <div className="xh-modal-backdrop" onClick={() => setIsAdminAccModalOpen(false)}>
+        <div className="xh-modal-backdrop">
           <div
             onClick={e => e.stopPropagation()}
             style={{
@@ -5414,7 +6424,7 @@ export function AdminDashboardView({
 
       {/* MODAL THÊM QUÁN MỚI (QUẢN LÝ QUÁN) HOẶC THÊM ĐỊNH VỊ MỚI (QUẢN LÝ MAPS) */}
       {isNewPlaceModalOpen && (
-        <div className="xh-modal-backdrop" onClick={() => setIsNewPlaceModalOpen(false)}>
+        <div className="xh-modal-backdrop">
           <div
             onClick={e => e.stopPropagation()}
             style={{
@@ -5471,13 +6481,19 @@ export function AdminDashboardView({
                         sectorTag:
                           nextCat === 'public' || nextCat === 'school'
                             ? 'dia-danh'
+                            : nextCat === 'billiards' || nextCat === 'game'
+                            ? 'bia-game'
+                            : nextCat === 'phone'
+                            ? 'dien-thoai'
+                            : nextCat === 'entertainment'
+                            ? 'an-choi'
                             : nextCat === 'pub'
                             ? 'nhau-lau'
                             : nextCat === 'cafe'
                             ? 'uong'
                             : nextCat === 'snack'
                             ? 'an-vat'
-                            : nextCat === 'service'
+                            : nextCat === 'service' || nextCat === 'grocery' || nextCat === 'supermarket'
                             ? 'dich-vu'
                             : 'an-chinh',
                       });
@@ -5501,16 +6517,7 @@ export function AdminDashboardView({
                       setNewPlaceForm({
                         ...newPlaceForm,
                         sectorTag: sec,
-                        mapCategory:
-                          sec === 'nhau-lau'
-                            ? 'pub'
-                            : sec === 'uong'
-                            ? 'cafe'
-                            : sec === 'an-vat'
-                            ? 'snack'
-                            : sec === 'dich-vu'
-                            ? 'service'
-                            : 'food',
+                        mapCategory: mapSectorTagToMapCategory(sec, newPlaceForm.name),
                       });
                     }}
                     style={{ ...lightSelectStyle(theme), padding: '8px 11px', fontSize: '12.5px' }}
@@ -5563,12 +6570,24 @@ export function AdminDashboardView({
                     onChange={e => {
                       const val = e.target.value;
                       const parsed = parseCoordinatesFromInputOrUrl(val);
-                      setNewPlaceForm({
-                        ...newPlaceForm,
+                      setNewPlaceForm(prev => ({
+                        ...prev,
                         mapsUrl: val,
-                        lat: parsed ? String(parsed.lat) : newPlaceForm.lat,
-                        lng: parsed ? String(parsed.lng) : newPlaceForm.lng,
-                      });
+                        lat: parsed ? String(parsed.lat) : prev.lat,
+                        lng: parsed ? String(parsed.lng) : prev.lng,
+                      }));
+                      if (!parsed && /^https?:\/\//i.test(val.trim())) {
+                        expandAndParseShortMapsUrl(val.trim()).then(expanded => {
+                          if (expanded) {
+                            setNewPlaceForm(prev => ({
+                              ...prev,
+                              lat: String(expanded.lat),
+                              lng: String(expanded.lng),
+                            }));
+                            showToast(`📍 Đã giải mã link rút gọn: ${expanded.lat}, ${expanded.lng}`);
+                          }
+                        });
+                      }
                     }}
                     placeholder="Dán link Maps, Plus Code (7PQ6+VFP) hoặc 21.289, 105.711..."
                     style={{ ...compactInputStyle(theme), flex: 1 }}
@@ -5576,37 +6595,21 @@ export function AdminDashboardView({
                   <button
                     type="button"
                     onClick={async () => {
-                      const q = (newPlaceForm.mapsUrl || newPlaceForm.address || newPlaceForm.name).trim();
-                      const direct = parseCoordinatesFromInputOrUrl(q);
-                      if (direct) {
-                        setNewPlaceForm({
-                          ...newPlaceForm,
-                          lat: String(direct.lat),
-                          lng: String(direct.lng),
-                        });
-                        showToast(`📍 Đã lấy tọa độ: ${direct.lat}, ${direct.lng}`);
-                        return;
-                      }
-                      const res = await geocodeAddressWithNominatim(`${q}, Xuân Hòa, Phúc Yên`);
-                      if (res.length > 0) {
-                        setNewPlaceForm({
-                          ...newPlaceForm,
-                          lat: String(res[0].lat),
-                          lng: String(res[0].lng),
-                        });
-                        showToast(`📍 Đã tìm thấy tọa độ: ${res[0].lat}, ${res[0].lng}`);
+                      const resolved = await resolvePlaceCoordinates({
+                        mapsUrl: newPlaceForm.mapsUrl,
+                        address: newPlaceForm.address,
+                        name: newPlaceForm.name,
+                        allowGeocode: true,
+                      });
+                      if (resolved.lat !== null && resolved.lng !== null) {
+                        setNewPlaceForm(prev => ({
+                          ...prev,
+                          lat: String(resolved.lat),
+                          lng: String(resolved.lng),
+                        }));
+                        showToast(`📍 Đã tìm thấy tọa độ: ${resolved.lat}, ${resolved.lng}`);
                       } else {
-                        const road = findSuggestedRoadForAddress(q, VERIFIED_OSM_ROADS_SEED);
-                        if (road) {
-                          setNewPlaceForm({
-                            ...newPlaceForm,
-                            lat: String(Number(road.lat.toFixed(6))),
-                            lng: String(Number(road.lng.toFixed(6))),
-                          });
-                          showToast(`📍 Định vị theo đường ${road.name}`);
-                        } else {
-                          showToast('Không tìm thấy tự động — hãy nhập Plus Code hoặc Vĩ độ/Kinh độ', 'warn');
-                        }
+                        showToast('Không tìm thấy tự động — hãy nhập Plus Code hoặc chấm trên Bản đồ', 'warn');
                       }
                     }}
                     style={{
@@ -5673,7 +6676,7 @@ export function AdminDashboardView({
 
       {/* MODAL TẠO NICK PHỤ ĐÁNH GIÁ */}
       {isAddSeederModalOpen && (
-        <div className="xh-modal-backdrop" onClick={() => setIsAddSeederModalOpen(false)}>
+        <div className="xh-modal-backdrop">
           <div
             onClick={e => e.stopPropagation()}
             style={{
@@ -5773,8 +6776,8 @@ export function AdminDashboardView({
         .xh-admin-shell option,
         .xh-admin-shell textarea {
           color-scheme: light !important;
-          background-color: ${theme.bgInput};
-          color: ${theme.textPrimary};
+          background-color: ${theme.bgInput} !important;
+          color: ${theme.textPrimary} !important;
         }
         .xh-font-large {
           font-size: 105%;
@@ -5836,6 +6839,10 @@ export function AdminDashboardView({
           width: 100%;
           overflow-x: hidden;
         }
+        .xh-admin-main.xh-admin-main-maps {
+          max-width: none;
+          padding: 10px 12px 14px 12px;
+        }
         /* BỐ CỤC 3 CỘT CHO QUẢN LÝ QUÁN VÀ QUẢN LÝ MAPS — CÂN ĐỐI 100% KHUNG HÌNH */
         .xh-three-col-layout {
           display: grid;
@@ -5844,8 +6851,16 @@ export function AdminDashboardView({
           align-items: stretch;
         }
         .xh-three-col-layout.xh-maps-three-col {
-          grid-template-columns: 280px minmax(365px, 0.96fr) minmax(440px, 1.42fr);
-          align-items: stretch;
+          grid-template-columns: 280px 420px minmax(0, 1fr);
+          gap: 12px;
+          align-items: start;
+        }
+        .xh-three-col-layout.xh-maps-three-col > .xh-places-list-pane,
+        .xh-three-col-layout.xh-maps-three-col > .xh-col-middle-pane,
+        .xh-three-col-layout.xh-maps-three-col > .xh-col-right-pane {
+          position: static;
+          top: auto;
+          margin-top: 0;
         }
         .xh-places-master-detail {
           display: grid;
@@ -5856,28 +6871,30 @@ export function AdminDashboardView({
         .xh-places-list-pane {
           display: flex;
           flex-direction: column;
-          height: calc(100vh - 86px);
+          height: calc(100vh - 76px);
           position: sticky;
-          top: 68px;
+          top: 62px;
           align-self: start;
           box-sizing: border-box;
         }
         .xh-col-middle-pane {
           position: sticky;
-          top: 68px;
+          top: 62px;
           align-self: start;
+          max-height: calc(100vh - 76px);
+          overflow-y: auto;
           box-sizing: border-box;
         }
         .xh-col-right-pane {
           position: sticky;
-          top: 68px;
+          top: 62px;
           align-self: start;
           box-sizing: border-box;
         }
         .xh-compact-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 11px 12px;
+          gap: 10px 10px;
           align-items: end;
         }
         .xh-col-span-2 {
@@ -5907,27 +6924,36 @@ export function AdminDashboardView({
             opacity: 0;
             transform: translate(-50%, 14px) scale(0.92);
           }
-          14% {
-            opacity: 1;
-            transform: translate(-50%, 0) scale(1);
-          }
-          82% {
-            opacity: 1;
-            transform: translate(-50%, 0) scale(1);
-          }
           100% {
-            opacity: 0;
-            transform: translate(-50%, -8px) scale(0.96);
+            opacity: 1;
+            transform: translate(-50%, 0) scale(1);
           }
         }
 
-        @media (max-width: 1180px) {
-          .xh-three-col-layout {
-            grid-template-columns: 280px 1fr;
+        @keyframes xhInlineBannerPop {
+          0% {
+            opacity: 0;
+            transform: translateY(-6px) scale(0.98);
           }
-          .xh-col-right-pane {
-            grid-column: 2;
-            position: static;
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @media (max-width: 1320px) {
+          .xh-three-col-layout.xh-maps-three-col {
+            grid-template-columns: 245px 365px minmax(0, 1fr);
+            gap: 10px;
+          }
+        }
+
+        @media (max-width: 1120px) {
+          .xh-three-col-layout {
+            grid-template-columns: 260px 1fr;
+          }
+          .xh-three-col-layout.xh-maps-three-col {
+            grid-template-columns: 240px 350px minmax(0, 1fr);
           }
         }
 
@@ -6006,12 +7032,12 @@ export function AdminDashboardView({
 function compactLabelStyle(theme: ThemeTokens): React.CSSProperties {
   return {
     display: 'block',
-    fontSize: '12px',
-    fontWeight: 700,
+    fontSize: '11.5px',
+    fontWeight: 600,
     color: theme.textSecondary,
-    marginBottom: '5px',
-    lineHeight: '18px',
-    height: '18px',
+    marginBottom: '4px',
+    lineHeight: '16px',
+    height: '16px',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -6021,14 +7047,14 @@ function compactLabelStyle(theme: ThemeTokens): React.CSSProperties {
 function compactInputStyle(theme: ThemeTokens): React.CSSProperties {
   return {
     width: '100%',
-    height: '38px',
+    height: '36px',
     boxSizing: 'border-box',
-    padding: '0 11px',
+    padding: '0 10px',
     borderRadius: '8px',
     border: `1px solid ${theme.border}`,
     backgroundColor: theme.bgInput,
     color: theme.textPrimary,
-    fontSize: '13px',
+    fontSize: '12.5px',
     fontWeight: 600,
     outline: 'none',
     fontFamily: 'inherit',

@@ -52,6 +52,8 @@ export interface PlaceOverride {
   lat?: number;
   lng?: number;
   coordinateVerified?: boolean;
+  adminPinApproved?: boolean;
+  locationStatus?: 'located' | 'unlocated' | 'invalid' | 'pending_geocode';
   coordinateSource?: 'openstreetmap' | 'admin_verified' | 'merchant_verified' | 'nominatim_geocoded' | 'unverified';
   lastVerifiedAt?: string;
   mapCategory?: string;
@@ -456,8 +458,7 @@ function isSuperAdminIdentifier(id?: string | null): boolean {
     clean === 'admin@xuanhoacogi.com' ||
     clean === 'minhtt@xuanhoacogi.com' ||
     clean === 'truongtuanminh.91@gmail.com' ||
-    clean === 'marcel.vietnam@gmail.com' ||
-    clean === 'quanlymaps@xuanhoacogi.vn'
+    clean === 'marcel.vietnam@gmail.com'
   );
 }
 
@@ -524,10 +525,38 @@ export function getAdminState(): AdminState {
       }
 
       const isCivicOrSchool =
+        pid.startsWith('osm_') ||
         ov.mapCategory === 'public' ||
         ov.mapCategory === 'school' ||
         ov.mapCategory === 'medical' ||
         ov.sectorTag === 'dia-danh';
+
+      // Mọi hàng quán thương mại chưa được Admin đích thân ghim & duyệt chuẩn (adminPinApproved !== true)
+      // thì bắt buộc giữ ở trạng thái Chưa ghim (ẩn 100% trên Bản đồ dù có bật danh mục)
+      if (!isCivicOrSchool) {
+        if (ov.adminPinApproved === undefined) {
+          delete ov.lat;
+          delete ov.lng;
+          ov.coordinateVerified = false;
+          ov.adminPinApproved = false;
+          ov.coordinateSource = 'unverified';
+          delete ov.lastVerifiedAt;
+          ov.pendingMapApproval = null;
+          migrated = true;
+        } else if (ov.adminPinApproved !== true && !ov.pendingMapApproval) {
+          if (ov.lat !== undefined || ov.lng !== undefined || ov.coordinateVerified) {
+            delete ov.lat;
+            delete ov.lng;
+            ov.coordinateVerified = false;
+            ov.coordinateSource = 'unverified';
+            delete ov.lastVerifiedAt;
+            migrated = true;
+          }
+        }
+      } else if (ov.coordinateVerified !== false && ov.adminPinApproved === undefined && !ov.pendingMapApproval) {
+        ov.adminPinApproved = true;
+        migrated = true;
+      }
 
       if (isCivicOrSchool) {
         if (ov.sectorTag !== 'dia-danh') {
@@ -551,7 +580,7 @@ export function getAdminState(): AdminState {
         }
       }
 
-      // Admin làm gì là mệnh lệnh (không cần duyệt); chỉnh sửa thông tin/tọa độ cũng không cần duyệt (chỉ Thêm mới hoặc Yêu cầu Xóa của Quản lý mới chờ duyệt)
+      // Admin làm gì là mệnh lệnh (không cần duyệt)
       if (ov.pendingWebApproval) {
         const pw = ov.pendingWebApproval;
         if (
@@ -564,11 +593,10 @@ export function getAdminState(): AdminState {
       }
       if (ov.pendingMapApproval) {
         const pm = ov.pendingMapApproval;
-        if (
-          isSuperAdminIdentifier(pm.submittedBy) ||
-          (!pm.isNewPlace && !pm.isDeleteRequest)
-        ) {
+        if (isSuperAdminIdentifier(pm.submittedBy)) {
           ov.pendingMapApproval = null;
+          ov.adminPinApproved = true;
+          ov.coordinateVerified = true;
           migrated = true;
         }
       }
@@ -818,16 +846,26 @@ export function initAdminCloudSync(): void {
     const mergedMembers = mergeMembersMap(local.members || {}, decodedCloudMembers);
 
     const incomingPlaces = { ...(cloudData.places || local.places || {}) };
-    for (const gid of ['gamitra-xuan-hoa', 'an-vat-gamitra']) {
-      if (incomingPlaces[gid]) {
-        if (incomingPlaces[gid].phone && incomingPlaces[gid].phone!.endsWith('aaa')) {
-          incomingPlaces[gid].phone = incomingPlaces[gid].phone!.replace(/aaa+$/i, '').trim();
+    for (const [pid, ov] of Object.entries(incomingPlaces)) {
+      if (!ov) continue;
+      if (pid === 'gamitra-xuan-hoa' || pid === 'an-vat-gamitra') {
+        if (ov.phone && ov.phone.endsWith('aaa')) {
+          ov.phone = ov.phone.replace(/aaa+$/i, '').trim();
         }
-        delete incomingPlaces[gid].lat;
-        delete incomingPlaces[gid].lng;
-        incomingPlaces[gid].coordinateVerified = false;
-        incomingPlaces[gid].coordinateSource = 'unverified';
-        delete incomingPlaces[gid].lastVerifiedAt;
+      }
+      const isCivicOrSchool =
+        pid.startsWith('osm_') ||
+        ov.mapCategory === 'public' ||
+        ov.mapCategory === 'school' ||
+        ov.mapCategory === 'medical' ||
+        ov.sectorTag === 'dia-danh';
+      if (!isCivicOrSchool && ov.adminPinApproved !== true) {
+        delete ov.lat;
+        delete ov.lng;
+        ov.coordinateVerified = false;
+        ov.adminPinApproved = false;
+        ov.coordinateSource = 'unverified';
+        delete ov.lastVerifiedAt;
       }
     }
 
@@ -1411,6 +1449,8 @@ export interface AdminPlaceItem {
   place: Place;
   status: PlaceStatus;
   sectorTag: string;
+  mapCategory?: string;
+  locationStatus?: 'located' | 'unlocated' | 'invalid' | 'pending_geocode';
   fullMenu: CustomMenuEntry[];
   isVerified: boolean;
   isFeatured: boolean;
@@ -1421,7 +1461,60 @@ export interface AdminPlaceItem {
   updatedAt?: number;
 }
 
+export function computePlaceLocationStatus(
+  ov?: Partial<PlaceOverride> | null,
+  isCivicOrOsm = false
+): 'located' | 'unlocated' | 'invalid' | 'pending_geocode' {
+  if (!ov) return isCivicOrOsm ? 'located' : 'unlocated';
+  if (ov.coordinateVerified === false) {
+    if (ov.locationStatus === 'invalid') return 'invalid';
+    return 'unlocated';
+  }
+  const hasValidLatLng =
+    typeof ov.lat === 'number' &&
+    typeof ov.lng === 'number' &&
+    Number.isFinite(ov.lat) &&
+    Number.isFinite(ov.lng) &&
+    ov.lat >= 8 &&
+    ov.lat <= 24 &&
+    ov.lng >= 102 &&
+    ov.lng <= 110;
+  if (hasValidLatLng && (isCivicOrOsm || (ov.coordinateVerified === true && ov.adminPinApproved === true))) {
+    return 'located';
+  }
+  if (ov.locationStatus === 'invalid' || ov.locationStatus === 'pending_geocode') {
+    return ov.locationStatus;
+  }
+  const rawMapsUrl = (ov.mapsUrl || ov.customPlaceData?.mapsUrl || '').trim();
+  if (
+    rawMapsUrl &&
+    !hasValidLatLng &&
+    (rawMapsUrl.startsWith('http://') ||
+      rawMapsUrl.startsWith('https://') ||
+      rawMapsUrl.includes('goo.gl') ||
+      rawMapsUrl.includes('google.com/maps'))
+  ) {
+    return 'invalid';
+  }
+  return isCivicOrOsm ? 'located' : 'unlocated';
+}
+
 function inferDefaultSectorTag(place: Place): string {
+  const combined = `${place.name || ''} ${place.tagline || ''} ${(place.tags || []).join(' ')}`.toLowerCase();
+  if (
+    combined.includes('bi-a') ||
+    combined.includes('bi a') ||
+    combined.includes('bida') ||
+    combined.includes('billiards') ||
+    combined.includes('billiard') ||
+    combined.includes('pool club') ||
+    combined.includes('clb bi') ||
+    combined.includes('cyber') ||
+    combined.includes('ps5') ||
+    combined.includes('ps4')
+  ) {
+    return 'bia-game';
+  }
   const tagsLower = (place.tags || []).map(t => t.toLowerCase());
   if (tagsLower.some(t => t.includes('bi-a') || t.includes('billiards') || t.includes('game') || t.includes('cyber'))) {
     return 'bia-game';
@@ -1447,6 +1540,9 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
   for (const basePlace of xuanHoaPlaces) {
     const ov = state.places[basePlace.id];
     const status: PlaceStatus = ov?.status || 'active';
+    if (status === 'deleted' && !ov?.pendingWebApproval && !ov?.pendingMapApproval) {
+      continue;
+    }
 
     const fullMenu: CustomMenuEntry[] = ov?.customMenu
       ? ov.customMenu.map(m => ({ ...m, name: cleanDishDisplayTitle(m.name) }))
@@ -1503,10 +1599,19 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
 
     const boost: 1 | 2 | 3 = ov?.priorityBoost || (ov?.isFeatured ? 2 : 1);
 
+    const resolvedSectorTag = ov?.sectorTag || inferDefaultSectorTag(mergedPlace);
+    const isCivic =
+      resolvedSectorTag === 'dia-danh' ||
+      ov?.mapCategory === 'public' ||
+      ov?.mapCategory === 'school' ||
+      ov?.mapCategory === 'medical';
+
     result.push({
       place: mergedPlace,
       status,
-      sectorTag: ov?.sectorTag || inferDefaultSectorTag(mergedPlace),
+      sectorTag: resolvedSectorTag,
+      mapCategory: ov?.mapCategory,
+      locationStatus: computePlaceLocationStatus(ov, isCivic),
       fullMenu,
       isVerified: ov?.verified !== undefined ? ov.verified : true,
       isFeatured: boost > 1 || !!ov?.isFeatured,
@@ -1520,6 +1625,9 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
 
   // 2. Quán do Admin thêm mới trực tiếp trên bảng điều khiển
   for (const [id, ov] of Object.entries(state.places)) {
+    if (ov.status === 'deleted' && !ov.pendingWebApproval && !ov.pendingMapApproval) {
+      continue;
+    }
     if (ov.isCustom && ov.customPlaceData && !xuanHoaPlaces.some(p => p.id === id)) {
       const fullMenu: CustomMenuEntry[] = ov.customMenu
         ? ov.customMenu.map(m => ({ ...m, name: cleanDishDisplayTitle(m.name) }))
@@ -1575,11 +1683,19 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
       };
 
       const boost: 1 | 2 | 3 = ov.priorityBoost || (ov.isFeatured ? 2 : 1);
+      const customSectorTag = ov.sectorTag || inferDefaultSectorTag(mergedCustom);
+      const isCivicCustom =
+        customSectorTag === 'dia-danh' ||
+        ov.mapCategory === 'public' ||
+        ov.mapCategory === 'school' ||
+        ov.mapCategory === 'medical';
 
       result.push({
         place: mergedCustom,
         status: ov.status || 'active',
-        sectorTag: ov.sectorTag || inferDefaultSectorTag(mergedCustom),
+        sectorTag: customSectorTag,
+        mapCategory: ov.mapCategory,
+        locationStatus: computePlaceLocationStatus(ov, isCivicCustom),
         fullMenu,
         isVerified: ov.verified ?? true,
         isFeatured: boost > 1 || !!ov.isFeatured,
@@ -1905,12 +2021,31 @@ export function getActivePublicCategoryItems(categoryKey: MainCategoryKey): Food
 export function savePlaceAdminOverride(placeId: string, patch: Partial<PlaceOverride>, actionLabel?: string): void {
   const state = getAdminState();
   const current = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
-  state.places[placeId] = {
+  // Không cho phép patch chỉ sửa text/menu vô tình ghi đè lat/lng hiện có bằng undefined
+  const merged: PlaceOverride = {
     ...current,
     ...patch,
     id: placeId,
     updatedAt: Date.now(),
   };
+  if (
+    !('lat' in patch) &&
+    typeof current.lat === 'number' &&
+    typeof current.lng === 'number' &&
+    patch.coordinateVerified !== false
+  ) {
+    merged.lat = current.lat;
+    merged.lng = current.lng;
+    if (patch.coordinateVerified === undefined) merged.coordinateVerified = current.coordinateVerified;
+    if (patch.adminPinApproved === undefined) merged.adminPinApproved = current.adminPinApproved;
+  }
+  const isCivic =
+    merged.sectorTag === 'dia-danh' ||
+    merged.mapCategory === 'public' ||
+    merged.mapCategory === 'school' ||
+    merged.mapCategory === 'medical';
+  merged.locationStatus = patch.locationStatus ?? computePlaceLocationStatus(merged, isCivic);
+  state.places[placeId] = merged;
 
   if (actionLabel) {
     const pName = patch.name || current.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
@@ -2238,6 +2373,9 @@ export function updatePlaceCoordinates(
   }
 
   const state = getAdminState();
+  const roleInfo = getEffectiveAdminRoleInfo();
+  const isSubManagerOnly = roleInfo.isAuthenticated && !roleInfo.isSuperAdmin;
+  const isApproved = payload.coordinateVerified && !isSubManagerOnly;
   const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
   const nowIso = new Date().toISOString();
 
@@ -2246,7 +2384,9 @@ export function updatePlaceCoordinates(
     id: placeId,
     lat: Number(lat.toFixed(6)),
     lng: Number(lng.toFixed(6)),
-    coordinateVerified: payload.coordinateVerified,
+    coordinateVerified: isApproved,
+    adminPinApproved: isApproved,
+    locationStatus: isApproved ? 'located' : 'unlocated',
     coordinateSource: payload.coordinateSource,
     lastVerifiedAt: nowIso,
     ...(payload.mapCategory ? { mapCategory: payload.mapCategory } : {}),
@@ -2265,14 +2405,17 @@ export function updatePlaceCoordinates(
 
 export function clearPlaceCoordinates(placeId: string, placeName?: string): AdminState {
   const state = getAdminState();
-  const prev = state.places[placeId];
-  if (!prev) return state;
+  const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
 
   state.places[placeId] = {
     ...prev,
+    id: placeId,
     lat: undefined,
     lng: undefined,
+    mapsUrl: '',
     coordinateVerified: false,
+    adminPinApproved: false,
+    locationStatus: 'unlocated',
     coordinateSource: 'unverified',
     lastVerifiedAt: undefined,
     updatedAt: Date.now(),
@@ -2280,7 +2423,7 @@ export function clearPlaceCoordinates(placeId: string, placeName?: string): Admi
 
   state.auditLogs = addAdminAuditLog(
     state,
-    'Đặt lại trạng thái chờ xác minh tọa độ',
+    'Gỡ ghim tọa độ về trạng thái Chưa định vị',
     placeName || placeId,
     'place'
   );
@@ -2469,7 +2612,8 @@ export function getEffectiveAdminRoleInfo(
 export function requestOrExecuteDeletePlace(
   placeId: string,
   scope: 'web' | 'maps',
-  placeName?: string
+  placeName?: string,
+  forceImmediate?: boolean
 ): { executedImmediately: boolean } {
   const state = getAdminState();
   const roleInfo = getEffectiveAdminRoleInfo();
@@ -2477,11 +2621,14 @@ export function requestOrExecuteDeletePlace(
   const resolvedName =
     placeName || current.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
 
-  if (roleInfo.isSuperAdmin) {
+  if (roleInfo.isSuperAdmin || forceImmediate) {
     state.places[placeId] = {
       ...current,
       id: placeId,
       status: 'deleted',
+      coordinateVerified: false,
+      lat: undefined,
+      lng: undefined,
       pendingWebApproval: null,
       pendingMapApproval: null,
       updatedAt: Date.now(),
@@ -2543,10 +2690,27 @@ export function approvePendingPlaceItem(placeId: string, scope: 'web' | 'maps'):
 
   if (isDelete) {
     ov.status = 'deleted';
+    ov.coordinateVerified = false;
+    ov.adminPinApproved = false;
     ov.pendingWebApproval = null;
     ov.pendingMapApproval = null;
   } else {
     ov.status = 'active';
+    const subKey = `sub_${placeId}`;
+    const pendingSub = state.merchantSubmissions?.[subKey];
+    if (
+      pendingSub?.proposed &&
+      typeof pendingSub.proposed.lat === 'number' &&
+      typeof pendingSub.proposed.lng === 'number'
+    ) {
+      ov.lat = Number(pendingSub.proposed.lat.toFixed(6));
+      ov.lng = Number(pendingSub.proposed.lng.toFixed(6));
+    }
+    if (typeof ov.lat === 'number' && typeof ov.lng === 'number') {
+      ov.coordinateVerified = true;
+      ov.adminPinApproved = true;
+      ov.coordinateSource = ov.coordinateSource || 'admin_verified';
+    }
     if (scope === 'web') {
       ov.pendingWebApproval = null;
     } else {
@@ -2585,10 +2749,27 @@ export function approveAllPendingPlaceItems(scope: 'web' | 'maps'): number {
     const isDelete = Boolean(pendingObj.isDeleteRequest || pendingObj.actionType === 'delete');
     if (isDelete) {
       ov.status = 'deleted';
+      ov.coordinateVerified = false;
+      ov.adminPinApproved = false;
       ov.pendingWebApproval = null;
       ov.pendingMapApproval = null;
     } else {
       ov.status = 'active';
+      const subKey = `sub_${placeId}`;
+      const pendingSub = state.merchantSubmissions?.[subKey];
+      if (
+        pendingSub?.proposed &&
+        typeof pendingSub.proposed.lat === 'number' &&
+        typeof pendingSub.proposed.lng === 'number'
+      ) {
+        ov.lat = Number(pendingSub.proposed.lat.toFixed(6));
+        ov.lng = Number(pendingSub.proposed.lng.toFixed(6));
+      }
+      if (typeof ov.lat === 'number' && typeof ov.lng === 'number') {
+        ov.coordinateVerified = true;
+        ov.adminPinApproved = true;
+        ov.coordinateSource = ov.coordinateSource || 'admin_verified';
+      }
       if (scope === 'web') ov.pendingWebApproval = null;
       else ov.pendingMapApproval = null;
     }
@@ -3057,22 +3238,30 @@ export function submitMerchantPlaceUpdate(
     updatedAt: Date.now(),
   };
 
-  if (p.lat !== null && p.lng !== null) {
-    nextOv.lat = p.lat;
-    nextOv.lng = p.lng;
-    nextOv.coordinateVerified = true;
-    nextOv.coordinateSource = 'admin_verified';
-    nextOv.lastVerifiedAt = new Date().toISOString().slice(0, 10);
-  }
-
   const roleCheck = getEffectiveAdminRoleInfo(undefined, effectiveUser);
-  if (!roleCheck.isSuperAdmin) {
+  if (roleCheck.isSuperAdmin) {
     if (p.lat !== null && p.lng !== null) {
+      nextOv.lat = p.lat;
+      nextOv.lng = p.lng;
+      nextOv.coordinateVerified = true;
+      nextOv.adminPinApproved = true;
+      nextOv.coordinateSource = 'admin_verified';
+      nextOv.lastVerifiedAt = new Date().toISOString().slice(0, 10);
+    }
+    nextOv.pendingMapApproval = null;
+    nextOv.pendingWebApproval = null;
+  } else {
+    if (p.lat !== null && p.lng !== null) {
+      nextOv.lat = p.lat;
+      nextOv.lng = p.lng;
+      nextOv.coordinateVerified = false;
+      nextOv.adminPinApproved = false;
+      nextOv.coordinateSource = 'merchant_verified';
       nextOv.pendingMapApproval = {
         submittedBy: userEmail,
         submittedByName: submission.merchantName,
         submittedAt: Date.now(),
-        actionSummary: `Cập nhật tọa độ (${p.lat}, ${p.lng})`,
+        actionSummary: `Chờ Admin duyệt tọa độ (${p.lat}, ${p.lng})`,
         previousLat: submission.previous.lat,
         previousLng: submission.previous.lng,
       };
@@ -3257,7 +3446,9 @@ export function createNewPlaceFromMap(
     customMenu: newPlace.menu,
     lat,
     lng,
-    coordinateVerified: true,
+    coordinateVerified: creatorRole.isSuperAdmin,
+    adminPinApproved: creatorRole.isSuperAdmin,
+    locationStatus: creatorRole.isSuperAdmin ? 'located' : 'unlocated',
     coordinateSource: 'admin_verified',
     lastVerifiedAt: new Date().toISOString().slice(0, 10),
     merchantClaimCode: claimCode,
@@ -3353,10 +3544,13 @@ export function approveMerchantSubmission(submissionId: string, reviewNote?: str
           lat: Number(p.lat!.toFixed(6)),
           lng: Number(p.lng!.toFixed(6)),
           coordinateVerified: true,
+          adminPinApproved: true,
           coordinateSource: 'merchant_verified',
           lastVerifiedAt: new Date().toISOString(),
         }
       : {}),
+    pendingMapApproval: null,
+    pendingWebApproval: null,
     updatedAt: Date.now(),
   };
 
@@ -3506,10 +3700,13 @@ export function approveAllPendingMerchantSubmissions(): number {
             lat: Number(p.lat!.toFixed(6)),
             lng: Number(p.lng!.toFixed(6)),
             coordinateVerified: true,
+            adminPinApproved: true,
             coordinateSource: 'merchant_verified',
             lastVerifiedAt: new Date().toISOString(),
           }
         : {}),
+      pendingMapApproval: null,
+      pendingWebApproval: null,
       updatedAt: Date.now(),
     };
 

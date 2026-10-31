@@ -66,6 +66,7 @@ export const DEFAULT_LAYER_VISIBILITY: MapLayerVisibility = {
   gameAssets: false,
   userLocation: true,
   wardBoundary: true,
+  decorativeZones: false,
 };
 
 /**

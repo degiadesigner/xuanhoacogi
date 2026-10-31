@@ -31,6 +31,15 @@ export type CoordinateSource =
   | 'unverified';
 
 /**
+ * Trạng thái định vị chuẩn của địa điểm trên hệ thống Quản lý Maps & Bản đồ 2D/3D
+ */
+export type PlaceLocationStatus =
+  | 'located'
+  | 'unlocated'
+  | 'invalid'
+  | 'pending_geocode';
+
+/**
  * Nguồn dữ liệu gốc của địa điểm
  */
 export type PlaceDataSource =
@@ -50,6 +59,7 @@ export interface PlaceLocation {
   lng: number | null;
   coordinateSource: CoordinateSource;
   coordinateVerified: boolean;
+  locationStatus?: PlaceLocationStatus;
   dataSource: PlaceDataSource;
   lastVerifiedAt: string | null;
   phone?: string;
@@ -146,6 +156,8 @@ export interface MapLayerVisibility {
   gameAssets: boolean;
   userLocation: boolean;
   wardBoundary: boolean;
+  /** Lớp minh họa phân khu quy hoạch tùy chọn (mặc định tắt để giữ 100% dữ liệu địa lý thật) */
+  decorativeZones?: boolean;
 }
 
 /**

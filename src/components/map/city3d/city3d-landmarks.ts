@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   LIZARD_HILL_ANCHOR,
+  getElevationAtLngLat,
   getLizardHillLocalHeight,
   lngLatToLocal,
   type City3DOrigin,
@@ -1832,8 +1833,9 @@ export function createIconicLandmarksGroup(
   // Hướng mặt tiền (+Z) quay sang Đông Bắc (+136.8° = 2.39 rad) nhìn thẳng ra đường Nguyễn Văn Linh và Hiệu bộ A1–A3
   {
     const [x, y] = lngLatToLocal(origin, 105.72567, 21.28075);
+    const baseElev = getElevationAtLngLat(105.72567, 21.28075);
     const model = buildBlueBirdSquareModel(disposables);
-    model.position.set(x, 0, -y);
+    model.position.set(x, baseElev, -y);
     model.rotation.y = 2.39;
     root.add(model);
   }
@@ -1842,8 +1844,9 @@ export function createIconicLandmarksGroup(
   // Nằm bên Đông Bắc đường Nguyễn Văn Linh, hướng cổng & mặt tiền (+Z) quay sang Tây Nam (-43.5° = -0.76 rad) ra đường Nguyễn Văn Linh
   {
     const [x, y] = lngLatToLocal(origin, 105.72852, 21.27876);
+    const baseElev = getElevationAtLngLat(105.72852, 21.27876);
     const model = buildArchitectureUniversityModel(disposables);
-    model.position.set(x, 0, -y);
+    model.position.set(x, baseElev, -y);
     model.rotation.y = -0.76;
     root.add(model);
   }
@@ -1852,8 +1855,9 @@ export function createIconicLandmarksGroup(
   // Hướng khối trụ tròn & màn hình LED (+Z) quay thẳng ra tâm ngã giao Vòng tròn 1 (-0.18 rad)
   {
     const [x, y] = lngLatToLocal(origin, 105.729275, 21.278175);
+    const baseElev = getElevationAtLngLat(105.729275, 21.278175);
     const model = buildWhiteHouseModel(disposables);
-    model.position.set(x, 0, -y);
+    model.position.set(x, baseElev, -y);
     model.rotation.y = -0.18;
     root.add(model);
   }

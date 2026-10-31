@@ -6,7 +6,9 @@
       "properties": {
         "osmId": "node/1874124407",
         "name": "Đồng Xuân",
-        "place": "village"
+        "place": "village",
+        "elevationM": 0.34,
+        "lodTier": "near"
       },
       "geometry": {
         "type": "Point",
@@ -21,7 +23,9 @@
       "properties": {
         "osmId": "node/13967896553",
         "name": "Xuân Hòa",
-        "place": "suburb"
+        "place": "suburb",
+        "elevationM": 2.51,
+        "lodTier": "near"
       },
       "geometry": {
         "type": "Point",

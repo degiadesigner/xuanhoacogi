@@ -1,0 +1,806 @@
+{
+  "generatedAt": "2026-10-31T06:20:30.719Z",
+  "summary": {
+    "totalRoadSegmentsBefore": 3122,
+    "totalRoadSegmentsAfter": 7258,
+    "osmVectorBackboneSegments": 6351,
+    "cleanedLocalAlleysAdded": 907,
+    "rasterDuplicatesAndStubsRemoved": 1873,
+    "sharpUrbanCornersSplit": 126,
+    "fabricatedAlleyNamesRemoved": 666,
+    "shortMajorSecondaryStubsRemoved": 24,
+    "sharpHooksAndKinksFixed": 104,
+    "foldbackHairpinsFixed": 4,
+    "overridesApplied": 5
+  },
+  "rootCausesIdentifiedAndFixed": [
+    {
+      "issue": "Đường Nguyễn Văn Linh bị phình/gãy góc vàng tại 2 giao lộ gần ĐHSP Hà Nội 2 (mũi tên đỏ giữa)",
+      "cause": "SOURCE_GEOMETRY_ERROR: Script raster skeleton (87ccd03) tạo ra 2 đoạn stub ngắn gmaps/way_3320 (3.5m) và gmaps/way_3324 (24.0m) gán nhầm tier=major tại giao lộ.",
+      "fix": "Khôi phục đường tâm vector chuẩn OSM (way/157991278) thẳng tuyệt đối và loại bỏ toàn bộ 86 đoạn stub major/secondary ngắn do raster hóa."
+    },
+    {
+      "issue": "Ngõ 29 Nguyễn Văn Linh bị móc cong chữ V ở cuối ngõ và trùng tên trên 2 đoạn rời (mũi tên đỏ trên cùng bên trái)",
+      "cause": "SOURCE_GEOMETRY_ERROR: Đoạn gmaps/way_3114 bị thuật toán skeleton nối nhầm góc 120° sang ngõ ngang way/892145396; đồng thời gmaps/way_3112 cũng bị gán trùng tên.",
+      "fix": "Lưu mốc xác thực địa phương vào xuanhoa-road-overrides.json, cắt bỏ đoạn móc cong lỗi raster, giữ duy nhất 1 tuyến thẳng [105.718521, 21.285574] -> [105.717680, 21.285016] nối khớp 0.0m vào Đường Nguyễn Văn Linh."
+    },
+    {
+      "issue": "Hàng loạt ngõ hiện tên tự đoán \"Ngõ Nguyễn Văn Linh\", \"Ngõ Phạm Văn Đồng\", \"Ngõ Lê Quang Đạo\", \"Ngõ Võ Thị Sáu\"...",
+      "cause": "DATA_NAMING_ERROR: Hàm toAlleyPrefix() trong upgrade-roads-and-alleys.mjs tự động ghép tiền tố \"Ngõ \" + tên đường gần nhất cho 664 đoạn ngõ chưa có số ngõ xác thực.",
+      "fix": "Xóa toàn bộ 664 tên ngõ tự đoán (để name=\"\"), giữ nguyên geometry của ngõ, chỉ giữ tên cho các ngõ đã xác minh thực địa/OSM."
+    },
+    {
+      "issue": "Ribbon 3D tại các góc cua gắt có nguy cơ nhọn đầu (miter spike)",
+      "cause": "RENDERING_ERROR: GeoBuilder.ribbon trong city3d.worker.ts cho phép miter giãn tới 2.5x halfWidth (dot >= 0.4) mà không kẹp theo chiều dài đoạn liền kề.",
+      "fix": "Kẹp miter giới hạn trong GeoBuilder.ribbon (dot >= 0.75 + giới hạn theo chiều dài cạnh) và bo tròn disc tại các góc cua > 55°."
+    }
+  ],
+  "ngo29NguyenVanLinhRegressionTest": {
+    "passed": true,
+    "assertions": {
+      "existsInRoadsGeoJSON": true,
+      "uniqueSingleBranchCount": 1,
+      "roadId": "xh_road_ngo_29_nguyen_van_linh",
+      "parentRoad": "Đường Nguyễn Văn Linh",
+      "source": "local_verified",
+      "confidence": 1,
+      "snapDistanceToNguyenVanLinhMeters": 0,
+      "maxDeflectionAngleDeg": 2.19,
+      "coordinates": [
+        [
+          105.718521,
+          21.285574
+        ],
+        [
+          105.718374,
+          21.285469
+        ],
+        [
+          105.717985,
+          21.285206
+        ],
+        [
+          105.71768,
+          21.285016
+        ]
+      ]
+    }
+  },
+  "ALL_NAMED_ALLEYS": [
+    {
+      "roadId": "way/176265718",
+      "name": "Ngõ 1 Võ Thị Sáu",
+      "parentRoad": "Phố Võ Thị Sáu",
+      "tier": "minor",
+      "source": "osm_verified",
+      "confidence": 0.96,
+      "verificationStatus": "verified_named_alley",
+      "vertexCount": 8,
+      "startLngLat": [
+        105.724336,
+        21.284319
+      ],
+      "endLngLat": [
+        105.722965,
+        21.285802
+      ]
+    },
+    {
+      "roadId": "way/892145246",
+      "name": "Ngõ 7 Đường Lê Trọng Tấn",
+      "parentRoad": "Đường Lê Trọng Tấn",
+      "tier": "minor",
+      "source": "osm_verified",
+      "confidence": 0.92,
+      "verificationStatus": "verified_named_alley",
+      "vertexCount": 2,
+      "startLngLat": [
+        105.713866,
+        21.261886
+      ],
+      "endLngLat": [
+        105.714036,
+        21.262053
+      ]
+    },
+    {
+      "roadId": "way/896979250",
+      "name": "Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú",
+      "parentRoad": "Đường Lâm Trường Đi Đập Đỉnh Phú",
+      "tier": "minor",
+      "source": "osm_verified",
+      "confidence": 0.92,
+      "verificationStatus": "verified_named_alley",
+      "vertexCount": 5,
+      "startLngLat": [
+        105.783392,
+        21.293056
+      ],
+      "endLngLat": [
+        105.784665,
+        21.293157
+      ]
+    },
+    {
+      "roadId": "way/1029516683",
+      "name": "Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú",
+      "parentRoad": "Đường Lâm Trường Đi Đập Đỉnh Phú",
+      "tier": "alley",
+      "source": "osm_verified",
+      "confidence": 0.92,
+      "verificationStatus": "verified_named_alley",
+      "vertexCount": 2,
+      "startLngLat": [
+        105.782914,
+        21.293275
+      ],
+      "endLngLat": [
+        105.783392,
+        21.293056
+      ]
+    },
+    {
+      "roadId": "xh_road_ngo_29_nguyen_van_linh",
+      "name": "Ngõ 29 Nguyễn Văn Linh",
+      "parentRoad": "Đường Nguyễn Văn Linh",
+      "tier": "alley",
+      "source": "local_verified",
+      "confidence": 1,
+      "verificationStatus": "local_verified",
+      "vertexCount": 4,
+      "startLngLat": [
+        105.718521,
+        21.285574
+      ],
+      "endLngLat": [
+        105.71768,
+        21.285016
+      ]
+    }
+  ],
+  "beforeAudit": {
+    "datasetLabel": "before_fix_87ccd03",
+    "totalFeatures": 3122,
+    "counts": {
+      "sharpKinkOrHook": 104,
+      "shortMajorSecondaryStub": 24,
+      "duplicateNearZeroSeg": 0,
+      "selfIntersectionOrFoldback": 4,
+      "buildingPenetration": 56,
+      "waterCrossingWithoutBridge": 4,
+      "disconnectedSameNameAlley": 638,
+      "fabricatedAlleyNameCount": 666,
+      "unconnectedNamedAlley": 0
+    },
+    "sampleAnomalies": [
+      {
+        "roadId": "gmaps/way_31",
+        "type": "sharp_2step_corner_hook",
+        "name": "",
+        "angleDeg": 92.6,
+        "bevelLenM": 6.54,
+        "coord": [
+          105.745372,
+          21.409545
+        ]
+      },
+      {
+        "roadId": "gmaps/way_40",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.752767,
+          21.410688
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_50",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.75187,
+          21.406278
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_51",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.749547,
+          21.405423
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_54",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.746648,
+          21.40534
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_60",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.749969,
+          21.404271
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_68",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.751573,
+          21.402621
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_82",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.751456,
+          21.400146
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_97",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.750218,
+          21.398395
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_105",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.742833,
+          21.397624
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_106",
+        "type": "sharp_2step_corner_hook",
+        "name": "",
+        "angleDeg": 110.5,
+        "bevelLenM": 2.2,
+        "coord": [
+          105.759598,
+          21.397469
+        ]
+      },
+      {
+        "roadId": "gmaps/way_113",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.748391,
+          21.397034
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_120",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.748148,
+          21.396175
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_128",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.727251,
+          21.395612
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_137",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.742128,
+          21.394222
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_138",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.748052,
+          21.3939
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_140",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.747287,
+          21.393627
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_141",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.746621,
+          21.393539
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_143",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.747553,
+          21.393453
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_157",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.746476,
+          21.392532
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_168",
+        "type": "sharp_kink_single_vertex",
+        "name": "",
+        "angleDeg": 94.4,
+        "coord": [
+          105.735898,
+          21.391505
+        ]
+      },
+      {
+        "roadId": "gmaps/way_182",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.743632,
+          21.390592
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_190",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.743057,
+          21.390199
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_191",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.747421,
+          21.390106
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_199",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.740362,
+          21.389821
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_207",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.748869,
+          21.389457
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_214",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.739883,
+          21.389293
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_216",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.737759,
+          21.389272
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_221",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.737404,
+          21.389147
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_224",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.732734,
+          21.389041
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_225",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.735716,
+          21.388968
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_231",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.740387,
+          21.388611
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_236",
+        "type": "sharp_kink_single_vertex",
+        "name": "",
+        "angleDeg": 96.7,
+        "coord": [
+          105.756519,
+          21.387932
+        ]
+      },
+      {
+        "roadId": "gmaps/way_237",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.739794,
+          21.38824
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_240",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.736843,
+          21.388008
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_246",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.739164,
+          21.387847
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_247",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.727053,
+          21.387714
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_250",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.732999,
+          21.387581
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_253",
+        "type": "sharp_2step_corner_hook",
+        "name": "",
+        "angleDeg": 96.5,
+        "bevelLenM": 4.42,
+        "coord": [
+          105.734053,
+          21.387229
+        ]
+      },
+      {
+        "roadId": "gmaps/way_261",
+        "type": "sharp_2step_corner_hook",
+        "name": "",
+        "angleDeg": 99.5,
+        "bevelLenM": 7.33,
+        "coord": [
+          105.724933,
+          21.387649
+        ]
+      },
+      {
+        "roadId": "gmaps/way_265",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.733673,
+          21.386595
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_266",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.737342,
+          21.38664
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_268",
+        "type": "sharp_2step_corner_hook",
+        "name": "",
+        "angleDeg": 99.8,
+        "bevelLenM": 5.09,
+        "coord": [
+          105.727419,
+          21.385777
+        ]
+      },
+      {
+        "roadId": "gmaps/way_268",
+        "type": "sharp_2step_corner_hook",
+        "name": "",
+        "angleDeg": 94.7,
+        "bevelLenM": 6.45,
+        "coord": [
+          105.727465,
+          21.385761
+        ]
+      },
+      {
+        "roadId": "gmaps/way_274",
+        "type": "sharp_2step_corner_hook",
+        "name": "",
+        "angleDeg": 94.7,
+        "bevelLenM": 5.53,
+        "coord": [
+          105.748837,
+          21.38618
+        ]
+      },
+      {
+        "roadId": "gmaps/way_278",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.735641,
+          21.386285
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_279",
+        "type": "sharp_2step_corner_hook",
+        "name": "",
+        "angleDeg": 95.7,
+        "bevelLenM": 3.6,
+        "coord": [
+          105.720009,
+          21.38639
+        ]
+      },
+      {
+        "roadId": "gmaps/way_283",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.752265,
+          21.385941
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_312",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.728381,
+          21.384253
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_312",
+        "type": "sharp_2step_corner_hook",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "angleDeg": 93.2,
+        "bevelLenM": 8.82,
+        "coord": [
+          105.728248,
+          21.384325
+        ]
+      },
+      {
+        "roadId": "gmaps/way_314",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.712348,
+          21.384235
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_315",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.72917,
+          21.384189
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_316",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.724944,
+          21.384171
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_319",
+        "type": "sharp_2step_corner_hook",
+        "name": "",
+        "angleDeg": 99.3,
+        "bevelLenM": 8.16,
+        "coord": [
+          105.739481,
+          21.383133
+        ]
+      },
+      {
+        "roadId": "gmaps/way_326",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.728573,
+          21.383239
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_332",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.724837,
+          21.382914
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_333",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.724837,
+          21.382914
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_337",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.728076,
+          21.382278
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_343",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.72417,
+          21.381768
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      },
+      {
+        "roadId": "gmaps/way_347",
+        "type": "fabricated_alley_name",
+        "name": "Ngõ Đèo Nhe - Ngọc Thanh",
+        "coord": [
+          105.726485,
+          21.381094
+        ],
+        "detail": "Tên ngõ tự đoán \"Ngõ Đèo Nhe - Ngọc Thanh\" không có số ngõ/nguồn xác thực"
+      }
+    ],
+    "totalAnomalies": 1496
+  },
+  "afterAudit": {
+    "datasetLabel": "after_fix_master",
+    "totalFeatures": 7258,
+    "counts": {
+      "sharpKinkOrHook": 0,
+      "shortMajorSecondaryStub": 0,
+      "duplicateNearZeroSeg": 0,
+      "selfIntersectionOrFoldback": 0,
+      "buildingPenetration": 0,
+      "waterCrossingWithoutBridge": 0,
+      "disconnectedSameNameAlley": 0,
+      "fabricatedAlleyNameCount": 0,
+      "unconnectedNamedAlley": 0
+    },
+    "sampleAnomalies": [],
+    "totalAnomalies": 0
+  }
+}

@@ -1,0 +1,481 @@
+{
+  "version": 1,
+  "source": "AWS Open Data Terrain Tiles / Mapzen Terrarium Z13 (SRTM GL1 30m & Copernicus DEM GLO-30)",
+  "license": "Open Data / Public Domain (SRTM NASA/USGS & Copernicus DEM)",
+  "zoom": 13,
+  "tiles": {
+    "xMin": 6500,
+    "xMax": 6503,
+    "yMin": 3597,
+    "yMax": 3601
+  },
+  "fetchedAt": "2026-10-31",
+  "grid": {
+    "minLng": 105.68,
+    "maxLng": 105.792,
+    "minLat": 21.26,
+    "maxLat": 21.42,
+    "cols": 280,
+    "rows": 400,
+    "stepLngDeg": 0.0004014,
+    "stepLatDeg": 0.000401,
+    "stepMetersApprox": 44.2,
+    "unit": "decimeters_int16_le"
+  },
+  "origin": {
+    "lng": 105.7262,
+    "lat": 21.2818,
+    "kx": 103728.70707237063,
+    "ky": 110574,
+    "datumElevationAslM": 22
+  },
+  "stats": {
+    "minRelativeElevationM": -3.54,
+    "maxRelativeElevationM": 422.54,
+    "minAslElevationM": 18.46,
+    "maxAslElevationM": 444.54
+  },
+  "waterBodyElevations": [
+    {
+      "waterIndex": 12,
+      "name": "Mặt nước #12",
+      "areaSqm": 30914,
+      "relativeElevationM": -1.34,
+      "aslElevationM": 20.66
+    },
+    {
+      "waterIndex": 26,
+      "name": "Hồ Đồng Đò",
+      "areaSqm": 403128,
+      "relativeElevationM": 7.69,
+      "aslElevationM": 29.69
+    },
+    {
+      "waterIndex": 33,
+      "name": "Mặt nước #33",
+      "areaSqm": 12429,
+      "relativeElevationM": -2.71,
+      "aslElevationM": 19.29
+    },
+    {
+      "waterIndex": 35,
+      "name": "Mặt nước #35",
+      "areaSqm": 22159,
+      "relativeElevationM": -3.08,
+      "aslElevationM": 18.92
+    },
+    {
+      "waterIndex": 46,
+      "name": "Mặt nước #46",
+      "areaSqm": 15026,
+      "relativeElevationM": -3.5,
+      "aslElevationM": 18.5
+    },
+    {
+      "waterIndex": 69,
+      "name": "Mặt nước #69",
+      "areaSqm": 17671,
+      "relativeElevationM": -3.32,
+      "aslElevationM": 18.68
+    },
+    {
+      "waterIndex": 70,
+      "name": "Mặt nước #70",
+      "areaSqm": 20134,
+      "relativeElevationM": -3.44,
+      "aslElevationM": 18.56
+    },
+    {
+      "waterIndex": 75,
+      "name": "Mặt nước #75",
+      "areaSqm": 58051,
+      "relativeElevationM": -2.78,
+      "aslElevationM": 19.22
+    },
+    {
+      "waterIndex": 85,
+      "name": "Mặt nước #85",
+      "areaSqm": 15740,
+      "relativeElevationM": -3.04,
+      "aslElevationM": 18.96
+    },
+    {
+      "waterIndex": 86,
+      "name": "Mặt nước #86",
+      "areaSqm": 39322,
+      "relativeElevationM": -3.4,
+      "aslElevationM": 18.6
+    },
+    {
+      "waterIndex": 87,
+      "name": "Mặt nước #87",
+      "areaSqm": 45157,
+      "relativeElevationM": -3.42,
+      "aslElevationM": 18.58
+    },
+    {
+      "waterIndex": 88,
+      "name": "Mặt nước #88",
+      "areaSqm": 14532,
+      "relativeElevationM": -3.26,
+      "aslElevationM": 18.74
+    },
+    {
+      "waterIndex": 91,
+      "name": "Mặt nước #91",
+      "areaSqm": 22023,
+      "relativeElevationM": -3.16,
+      "aslElevationM": 18.84
+    },
+    {
+      "waterIndex": 95,
+      "name": "Mặt nước #95",
+      "areaSqm": 18608,
+      "relativeElevationM": -3.45,
+      "aslElevationM": 18.55
+    },
+    {
+      "waterIndex": 96,
+      "name": "Mặt nước #96",
+      "areaSqm": 18285,
+      "relativeElevationM": -3.5,
+      "aslElevationM": 18.5
+    },
+    {
+      "waterIndex": 98,
+      "name": "Mặt nước #98",
+      "areaSqm": 56170,
+      "relativeElevationM": -3.53,
+      "aslElevationM": 18.47
+    },
+    {
+      "waterIndex": 101,
+      "name": "Mặt nước #101",
+      "areaSqm": 45288,
+      "relativeElevationM": -2.94,
+      "aslElevationM": 19.06
+    },
+    {
+      "waterIndex": 104,
+      "name": "Mặt nước #104",
+      "areaSqm": 75104,
+      "relativeElevationM": -2.69,
+      "aslElevationM": 19.31
+    },
+    {
+      "waterIndex": 106,
+      "name": "Mặt nước #106",
+      "areaSqm": 48363,
+      "relativeElevationM": -2.49,
+      "aslElevationM": 19.51
+    },
+    {
+      "waterIndex": 108,
+      "name": "Mặt nước #108",
+      "areaSqm": 14351,
+      "relativeElevationM": -3.07,
+      "aslElevationM": 18.93
+    },
+    {
+      "waterIndex": 112,
+      "name": "Mặt nước #112",
+      "areaSqm": 17046,
+      "relativeElevationM": -3.23,
+      "aslElevationM": 18.77
+    },
+    {
+      "waterIndex": 113,
+      "name": "Mặt nước #113",
+      "areaSqm": 19407,
+      "relativeElevationM": -3.07,
+      "aslElevationM": 18.93
+    },
+    {
+      "waterIndex": 117,
+      "name": "Mặt nước #117",
+      "areaSqm": 13399,
+      "relativeElevationM": -3.45,
+      "aslElevationM": 18.55
+    },
+    {
+      "waterIndex": 118,
+      "name": "Mặt nước #118",
+      "areaSqm": 123934,
+      "relativeElevationM": -3.46,
+      "aslElevationM": 18.54
+    },
+    {
+      "waterIndex": 119,
+      "name": "Mặt nước #119",
+      "areaSqm": 12188,
+      "relativeElevationM": -2.95,
+      "aslElevationM": 19.05
+    },
+    {
+      "waterIndex": 121,
+      "name": "Mặt nước #121",
+      "areaSqm": 24697,
+      "relativeElevationM": -3.37,
+      "aslElevationM": 18.63
+    },
+    {
+      "waterIndex": 122,
+      "name": "Mặt nước #122",
+      "areaSqm": 12936,
+      "relativeElevationM": -3.46,
+      "aslElevationM": 18.54
+    },
+    {
+      "waterIndex": 123,
+      "name": "Mặt nước #123",
+      "areaSqm": 102888,
+      "relativeElevationM": -3.25,
+      "aslElevationM": 18.75
+    },
+    {
+      "waterIndex": 124,
+      "name": "Mặt nước #124",
+      "areaSqm": 23407,
+      "relativeElevationM": -2.79,
+      "aslElevationM": 19.21
+    },
+    {
+      "waterIndex": 127,
+      "name": "Mặt nước #127",
+      "areaSqm": 57861,
+      "relativeElevationM": 0.56,
+      "aslElevationM": 22.56
+    },
+    {
+      "waterIndex": 128,
+      "name": "Hồ Lập Đinh",
+      "areaSqm": 432189,
+      "relativeElevationM": 6.43,
+      "aslElevationM": 28.43
+    },
+    {
+      "waterIndex": 129,
+      "name": "Mặt nước #129",
+      "areaSqm": 15590,
+      "relativeElevationM": 25.28,
+      "aslElevationM": 47.28
+    },
+    {
+      "waterIndex": 130,
+      "name": "Hồ Ban Tiện",
+      "areaSqm": 136935,
+      "relativeElevationM": 7.75,
+      "aslElevationM": 29.75
+    },
+    {
+      "waterIndex": 132,
+      "name": "Mặt nước #132",
+      "areaSqm": 12524,
+      "relativeElevationM": 0.31,
+      "aslElevationM": 22.31
+    },
+    {
+      "waterIndex": 133,
+      "name": "Mặt nước #133",
+      "areaSqm": 19156,
+      "relativeElevationM": -0.47,
+      "aslElevationM": 21.53
+    },
+    {
+      "waterIndex": 134,
+      "name": "Mặt nước #134",
+      "areaSqm": 16069,
+      "relativeElevationM": -1.39,
+      "aslElevationM": 20.61
+    },
+    {
+      "waterIndex": 135,
+      "name": "Mặt nước #135",
+      "areaSqm": 20881,
+      "relativeElevationM": -0.09,
+      "aslElevationM": 21.91
+    },
+    {
+      "waterIndex": 138,
+      "name": "Mặt nước #138",
+      "areaSqm": 17413,
+      "relativeElevationM": 1,
+      "aslElevationM": 23
+    },
+    {
+      "waterIndex": 142,
+      "name": "Mặt nước #142",
+      "areaSqm": 12872,
+      "relativeElevationM": 1.03,
+      "aslElevationM": 23.03
+    },
+    {
+      "waterIndex": 144,
+      "name": "Mặt nước #144",
+      "areaSqm": 30626,
+      "relativeElevationM": 1.73,
+      "aslElevationM": 23.73
+    },
+    {
+      "waterIndex": 145,
+      "name": "Mặt nước #145",
+      "areaSqm": 143906,
+      "relativeElevationM": 0.9,
+      "aslElevationM": 22.9
+    },
+    {
+      "waterIndex": 146,
+      "name": "Mặt nước #146",
+      "areaSqm": 14099,
+      "relativeElevationM": -0.49,
+      "aslElevationM": 21.51
+    },
+    {
+      "waterIndex": 149,
+      "name": "Mặt nước #149",
+      "areaSqm": 21486,
+      "relativeElevationM": -0.39,
+      "aslElevationM": 21.61
+    },
+    {
+      "waterIndex": 150,
+      "name": "Mặt nước #150",
+      "areaSqm": 50614,
+      "relativeElevationM": -0.39,
+      "aslElevationM": 21.61
+    },
+    {
+      "waterIndex": 151,
+      "name": "Mặt nước #151",
+      "areaSqm": 34606,
+      "relativeElevationM": 0.11,
+      "aslElevationM": 22.11
+    },
+    {
+      "waterIndex": 154,
+      "name": "Mặt nước #154",
+      "areaSqm": 215127,
+      "relativeElevationM": 0.97,
+      "aslElevationM": 22.97
+    },
+    {
+      "waterIndex": 156,
+      "name": "Mặt nước #156",
+      "areaSqm": 16106,
+      "relativeElevationM": -0.4,
+      "aslElevationM": 21.6
+    },
+    {
+      "waterIndex": 157,
+      "name": "Mặt nước #157",
+      "areaSqm": 15720,
+      "relativeElevationM": 6.2,
+      "aslElevationM": 28.2
+    },
+    {
+      "waterIndex": 158,
+      "name": "Mặt nước #158",
+      "areaSqm": 12808,
+      "relativeElevationM": 2.25,
+      "aslElevationM": 24.25
+    },
+    {
+      "waterIndex": 160,
+      "name": "Mặt nước #160",
+      "areaSqm": 33446,
+      "relativeElevationM": 5.66,
+      "aslElevationM": 27.66
+    },
+    {
+      "waterIndex": 162,
+      "name": "Mặt nước #162",
+      "areaSqm": 14663,
+      "relativeElevationM": 28.9,
+      "aslElevationM": 50.9
+    },
+    {
+      "waterIndex": 163,
+      "name": "Mặt nước #163",
+      "areaSqm": 13909,
+      "relativeElevationM": 24.87,
+      "aslElevationM": 46.87
+    },
+    {
+      "waterIndex": 165,
+      "name": "Mặt nước #165",
+      "areaSqm": 19789,
+      "relativeElevationM": 1.92,
+      "aslElevationM": 23.92
+    },
+    {
+      "waterIndex": 185,
+      "name": "Hồ Gia Khau",
+      "areaSqm": 125388,
+      "relativeElevationM": 33.8,
+      "aslElevationM": 55.8
+    },
+    {
+      "waterIndex": 187,
+      "name": "Mặt nước #187",
+      "areaSqm": 14490,
+      "relativeElevationM": 25.63,
+      "aslElevationM": 47.63
+    },
+    {
+      "waterIndex": 188,
+      "name": "Mặt nước #188",
+      "areaSqm": 28707,
+      "relativeElevationM": 29.12,
+      "aslElevationM": 51.12
+    },
+    {
+      "waterIndex": 194,
+      "name": "Mặt nước #194",
+      "areaSqm": 395414,
+      "relativeElevationM": -3.46,
+      "aslElevationM": 18.54
+    },
+    {
+      "waterIndex": 211,
+      "name": "Mặt nước #211",
+      "areaSqm": 12655,
+      "relativeElevationM": 0.43,
+      "aslElevationM": 22.43
+    },
+    {
+      "waterIndex": 213,
+      "name": "Mặt nước #213",
+      "areaSqm": 35854,
+      "relativeElevationM": 0.4,
+      "aslElevationM": 22.4
+    },
+    {
+      "waterIndex": 218,
+      "name": "Mặt nước #218",
+      "areaSqm": 18698,
+      "relativeElevationM": 0.27,
+      "aslElevationM": 22.27
+    },
+    {
+      "waterIndex": 219,
+      "name": "Mặt nước #219",
+      "areaSqm": 18363,
+      "relativeElevationM": -0.03,
+      "aslElevationM": 21.97
+    },
+    {
+      "waterIndex": 234,
+      "name": "Mặt nước #234",
+      "areaSqm": 39639,
+      "relativeElevationM": 0.14,
+      "aslElevationM": 22.14
+    },
+    {
+      "waterIndex": 235,
+      "name": "Mặt nước #235",
+      "areaSqm": 12609,
+      "relativeElevationM": 3.29,
+      "aslElevationM": 25.29
+    }
+  ]
+}

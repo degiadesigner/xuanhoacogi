@@ -80,6 +80,7 @@ import {
   clearUserHomeForUser,
   haversineDistanceMeters,
   parseCoordinatesFromInputOrUrl,
+  migrateExistingPlacesCoordinates,
   saveLandmarkOrPlaceFromMap,
   blockLandmarkOrPlaceFromMap,
   hideLandmarkOrPlaceFromMap,
@@ -95,6 +96,17 @@ import { MapControls } from '@/components/map/MapControls';
 import { City3DView } from '@/components/map/city3d/City3DView';
 import { GameAssetLayer } from '@/components/map/GameAssetLayer';
 import { MerchantPortalModal } from '@/components/map/MerchantPortalModal';
+import {
+  CONTEXTUAL_ZONE_LABELS,
+  HEIGHT_SOURCE_LABELS,
+  findMasterBuildingAtLngLat,
+  getLoadedMasterDataset,
+  loadXuanHoaMasterDataset,
+  queryMasterBuildingsInViewport,
+  type MasterBuildingRecord,
+  type XuanHoaMasterDataset,
+} from '@/lib/map/xuanhoa-master-data';
+import { getElevationAtLngLat, loadXuanHoaDem } from '@/lib/map/xuanhoa-elevation';
 
 interface DigitalMapViewProps {
   onBackToHome: () => void;
@@ -106,6 +118,7 @@ interface DigitalMapViewProps {
   adminPreviewLng?: number | null;
   adminPreviewName?: string;
   adminFlyTrigger?: number;
+  adminSyncVersion?: number;
   onAdminPickCoordinates?: (lat: number, lng: number) => void;
   onAdminSelectPlace?: (placeId: string) => void;
 }
@@ -121,7 +134,11 @@ interface ScreenClusterItem {
 }
 
 interface RoadLabelAnchor {
+  roadId: string;
   name: string;
+  parentRoad?: string;
+  source?: string;
+  confidence?: number;
   tier: string;
   isAlley: boolean;
   halfW: number;
@@ -147,6 +164,7 @@ interface LoadedGeoLayers {
   regularBuildings: any[];
   placeLabels: any[];
   roadLabelAnchors?: RoadLabelAnchor[];
+  masterDataset?: XuanHoaMasterDataset;
 }
 
 interface CachedGeoBundle {
@@ -182,6 +200,8 @@ export function prefetchDigitalMapGeoLayers(): Promise<CachedGeoBundle> {
     fetch(`${base}/geo/xuanhoa-catalog-osm-matched.json`)
       .then((r) => (r.ok ? r.json() : {}))
       .catch(() => ({})),
+    loadXuanHoaMasterDataset(base).catch(() => undefined),
+    loadXuanHoaDem(base).catch(() => undefined),
   ])
     .then(
       ([
@@ -194,6 +214,7 @@ export function prefetchDigitalMapGeoLayers(): Promise<CachedGeoBundle> {
         placeLabels,
         verifiedPoisData,
         matchedCatalog,
+        masterDataset,
       ]) => {
         const boundaryFeatures: any[] = boundary?.features || [];
         const wardRing: number[][] = boundaryFeatures[0]?.geometry?.coordinates?.[0] || [];
@@ -388,11 +409,13 @@ export function prefetchDigitalMapGeoLayers(): Promise<CachedGeoBundle> {
           const coords = f.geometry?.coordinates;
           const totalLen: number = f._roadGeomLen || 0;
           const segLens: number[] = f._segLens || [];
-          if (!rName || !coords || coords.length < 2 || totalLen < 0.00048) continue;
+          const p = f.properties || {};
+          const roadId = String(p.id || p.osmId || '');
+          const tier = p.tier || 'minor';
+          const isAlley = tier === 'alley' || /^(Ngõ|Ngách|Hẻm)\s+/i.test(rName);
+          if (!rName || !coords || coords.length < 2 || totalLen < (isAlley ? 0.00018 : 0.00048)) continue;
 
-          const tier = f.properties?.tier || 'minor';
-          const isAlley = tier === 'alley' || rName.startsWith('Ngõ ');
-          const halfW = rName.length * 3.05 + 8;
+          const halfW = rName.length * (isAlley ? 2.55 : 3.05) + (isAlley ? 5 : 8);
           const roadSpanDeg = Math.max(
             totalLen,
             totalRoadSpanByName.get(rName) || totalLen
@@ -403,7 +426,11 @@ export function prefetchDigitalMapGeoLayers(): Promise<CachedGeoBundle> {
             const pt = sampleStraightAnchor(coords, segLens, totalLen, totalLen * 0.5);
             if (pt) {
               list.push({
+                roadId,
                 name: rName,
+                parentRoad: p.parentRoad || undefined,
+                source: p.source || undefined,
+                confidence: typeof p.confidence === 'number' ? p.confidence : undefined,
                 tier,
                 isAlley,
                 halfW,
@@ -423,7 +450,11 @@ export function prefetchDigitalMapGeoLayers(): Promise<CachedGeoBundle> {
               const pt = sampleStraightAnchor(coords, segLens, totalLen, d);
               if (pt) {
                 list.push({
+                  roadId,
                   name: rName,
+                  parentRoad: p.parentRoad || undefined,
+                  source: p.source || undefined,
+                  confidence: typeof p.confidence === 'number' ? p.confidence : undefined,
                   tier,
                   isAlley,
                   halfW,
@@ -479,6 +510,7 @@ export function prefetchDigitalMapGeoLayers(): Promise<CachedGeoBundle> {
           regularBuildings,
           placeLabels: placeLabels?.features || [],
           roadLabelAnchors,
+          masterDataset,
         };
 
         const parsedRoads: RoadSearchResult[] =
@@ -531,6 +563,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
   adminPreviewLng = null,
   adminPreviewName = '',
   adminFlyTrigger = 0,
+  adminSyncVersion = 0,
   onAdminPickCoordinates,
   onAdminSelectPlace,
 }) => {
@@ -606,8 +639,32 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
   const [osmRoadMatchedCatalog, setOsmRoadMatchedCatalog] = useState<
     Record<string, { lat: number; lng: number; roadName: string; osmId: string }>
   >(() => cachedProcessedGeoBundle?.osmRoadMatchedCatalog || {});
-  // Mặc định chỉ hiển thị Hành chính & Công cộng + Trường học (ẩn toàn bộ hàng quán cho tới khi bấm bật từng danh mục)
-  const [selectedCategories, setSelectedCategories] = useState<MapCategoryKey[]>(['public', 'school']);
+  // Mặc định hiển thị TẤT CẢ các địa điểm đã được Admin định vị & duyệt ghim chuẩn (các quán chưa định vị đã được chặn 100% ở tầng dữ liệu)
+  const [selectedCategories, setSelectedCategories] = useState<MapCategoryKey[]>([
+    'public',
+    'school',
+    'food',
+    'pub',
+    'cafe',
+    'snack',
+    'billiards',
+    'game',
+    'entertainment',
+    'service',
+    'grocery',
+    'supermarket',
+    'phone',
+  ]);
+  useEffect(() => {
+    try {
+      const report = migrateExistingPlacesCoordinates();
+      if (report.autoResolvedFromUrl > 0 || report.categoryFixedCount > 0) {
+        setSyncTick((t) => t + 1);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
   const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState<boolean>(false);
   const [isCategoryDropdown2DOpen, setIsCategoryDropdown2DOpen] = useState<boolean>(false);
   const [isSavedDropdown2DOpen, setIsSavedDropdown2DOpen] = useState<boolean>(false);
@@ -679,8 +736,11 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
   is3DModeRef.current = is3DMode;
   const [activePresetId, setActivePresetId] = useState<string>('dhsp2');
 
-  // Địa điểm / Cụm / Tài sản Game đang chọn
+  // Địa điểm / Công trình Master Building / Cụm / Tài sản Game đang chọn
   const [selectedPlace, setSelectedPlace] = useState<PlaceLocation | null>(null);
+  const [selectedBuilding, setSelectedBuilding] = useState<MasterBuildingRecord | null>(null);
+  const selectedBuildingRef = useRef<MasterBuildingRecord | null>(null);
+  selectedBuildingRef.current = selectedBuilding;
   const [hoveredPlaceId, setHoveredPlaceId] = useState<string | null>(null);
   selectedPlaceIdRef.current =
     selectedPlace?.id || (embeddedInAdmin ? adminSelectedPlaceId || null : null);
@@ -1092,20 +1152,22 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
 
     // 2. Lớp Công viên, Khuôn viên Trường học, Khu Đô Thị & Sinh thái (OSM Landuse)
     if (vis.waterAndParks) {
-      for (const uz of urbanZones) {
-        if (!isRingInView(uz.ring)) continue;
-        traceCoords(uz.ring, true);
-        const isFocusedUz =
-          Math.hypot(uz.center[0] - focus.lng, uz.center[1] - focus.lat) <= focus.radiusDeg;
-        ctx.fillStyle = isFocusedUz
-          ? 'rgba(255, 236, 188, 0.45)'
-          : 'rgba(246, 237, 216, 0.25)';
-        ctx.fill();
-        ctx.strokeStyle = isFocusedUz
-          ? 'rgba(217, 155, 38, 0.65)'
-          : 'rgba(217, 155, 38, 0.28)';
-        ctx.lineWidth = isFocusedUz ? 1.5 : 1.0;
-        ctx.stroke();
+      if (vis.decorativeZones) {
+        for (const uz of urbanZones) {
+          if (!isRingInView(uz.ring)) continue;
+          traceCoords(uz.ring, true);
+          const isFocusedUz =
+            Math.hypot(uz.center[0] - focus.lng, uz.center[1] - focus.lat) <= focus.radiusDeg;
+          ctx.fillStyle = isFocusedUz
+            ? 'rgba(255, 236, 188, 0.45)'
+            : 'rgba(246, 237, 216, 0.25)';
+          ctx.fill();
+          ctx.strokeStyle = isFocusedUz
+            ? 'rgba(217, 155, 38, 0.65)'
+            : 'rgba(217, 155, 38, 0.28)';
+          ctx.lineWidth = isFocusedUz ? 1.5 : 1.0;
+          ctx.stroke();
+        }
       }
 
       for (const f of geo.landuse) {
@@ -1226,7 +1288,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         },
       ];
 
-      if (isRingInView(nuiThanLanTiers[0].ring)) {
+      if (vis.decorativeZones && isRingInView(nuiThanLanTiers[0].ring)) {
         for (const tier of nuiThanLanTiers) {
           ctx.beginPath();
           for (let i = 0; i < tier.ring.length; i++) {
@@ -1317,9 +1379,9 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         pathHighlighted = buildRoadPath(hlList);
       }
 
-      // Tâm Vòng tròn 2 trên trục Đường Nguyễn Văn Linh (Giao Võ Thị Sáu - ĐHSP2)
-      const vt2Lng = 105.725000;
-      const vt2Lat = 21.281565;
+      // Tâm Vòng tròn 2 trên trục Đường Nguyễn Văn Linh (Giao Võ Thị Sáu - ĐHSP2: khớp đúng đỉnh way/157991278 & way/176265733)
+      const vt2Lng = 105.724783;
+      const vt2Lat = 21.281668;
       const isVt2InView =
         vt2Lng >= minLng && vt2Lng <= maxLng && vt2Lat >= minLat && vt2Lat <= maxLat;
       const vt2Pt = isVt2InView ? projPt(vt2Lng, vt2Lat) : null;
@@ -1619,279 +1681,301 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         }
       }
 
-      // 5. Lớp Công trình Thực tế OpenStreetMap (Siêu tối ưu Path2D gộp 1 lệnh vẽ khi ở 2D hoặc đang kéo bản đồ -> 0 giật lag!)
+      // 5. Lớp Công trình Thực tế (21.436 Master Buildings đồng nhất 100% ID & Footprint với 3D + 3 tầng Zoom LOD + Spatial Chunk Culling)
       const baseExtrude = mode3D
         ? Math.max(0, Math.min(28, Math.pow(1.55, zoom - 12.8) * 2.9))
         : 0;
 
-      if (vis.buildings && zoom >= 13.5) {
+      if (vis.buildings && zoom >= 12.8) {
         const useFastBatched2D = !mode3D || baseExtrude < 1.5 || isMoving;
+        const masterDs = geo.masterDataset || getLoadedMasterDataset();
+        const activeSelectedBld = selectedBuildingRef.current;
 
-        if (useFastBatched2D) {
-          const buildFootprintPath = (bldList: any[]): Path2D | null => {
-            if (!bldList || bldList.length === 0) return null;
-            let hasAny = false;
-            const path = new Path2D();
+        if (masterDs && masterDs.buildings.length > 0) {
+          const effectiveLodZoom = isMoving && zoom < 15.2 ? zoom - 0.35 : zoom;
+          const visibleMasterBlds = queryMasterBuildingsInViewport(
+            masterDs,
+            { west: minLng, south: minLat, east: maxLng, north: maxLat },
+            effectiveLodZoom
+          );
+
+          if (useFastBatched2D) {
+            const regularPath = new Path2D();
+            const landmarkPath = new Path2D();
+            let hasRegular = false;
+            let hasLandmark = false;
+
             if (isFlat2D) {
-              for (let idx = 0; idx < bldList.length; idx++) {
-                const f = bldList[idx];
-                if (
-                  f._maxLng < minLng ||
-                  f._minLng > maxLng ||
-                  f._maxLat < minLat ||
-                  f._minLat > maxLat
-                ) {
-                  continue;
-                }
-                const ring = f.geometry?.coordinates?.[0];
+              for (let idx = 0; idx < visibleMasterBlds.length; idx++) {
+                const b = visibleMasterBlds[idx];
+                const ring = b.ringLngLat;
                 if (!ring || ring.length < 3) continue;
-                hasAny = true;
-                path.moveTo(
+                const isMajor = b.lodTier === 'far' || Boolean(b.name);
+                const targetPath = isMajor ? landmarkPath : regularPath;
+                if (isMajor) hasLandmark = true;
+                else hasRegular = true;
+
+                targetPath.moveTo(
                   refX + (ring[0][0] - refLng) * scaleX,
                   refY + (ring[0][1] - refLat) * scaleY
                 );
                 for (let i = 1; i < ring.length; i++) {
-                  path.lineTo(
+                  targetPath.lineTo(
                     refX + (ring[i][0] - refLng) * scaleX,
                     refY + (ring[i][1] - refLat) * scaleY
                   );
                 }
-                path.closePath();
+                targetPath.closePath();
               }
             } else {
-              for (let idx = 0; idx < bldList.length; idx++) {
-                const f = bldList[idx];
-                if (!isFeatureInView(f)) continue;
-                const ring = f.geometry?.coordinates?.[0];
+              for (let idx = 0; idx < visibleMasterBlds.length; idx++) {
+                const b = visibleMasterBlds[idx];
+                const ring = b.ringLngLat;
                 if (!ring || ring.length < 3) continue;
-                hasAny = true;
+                const isMajor = b.lodTier === 'far' || Boolean(b.name);
+                const targetPath = isMajor ? landmarkPath : regularPath;
+                if (isMajor) hasLandmark = true;
+                else hasRegular = true;
+
                 const p0 = map.project([ring[0][0], ring[0][1]]);
-                path.moveTo(p0.x, p0.y);
+                targetPath.moveTo(p0.x, p0.y);
                 for (let i = 1; i < ring.length; i++) {
                   const pi = map.project([ring[i][0], ring[i][1]]);
-                  path.lineTo(pi.x, pi.y);
+                  targetPath.lineTo(pi.x, pi.y);
                 }
-                path.closePath();
-              }
-            }
-            return hasAny ? path : null;
-          };
-
-          // Chỉ vẽ các nhà dân nhỏ khi zoom >= 14.8 (và khi đang kéo thì cần zoom >= 15.3)
-          const showRegularBlds = zoom >= (isMoving ? 15.3 : 14.8);
-          if (showRegularBlds) {
-            const regPath = buildFootprintPath(geo.regularBuildings);
-            if (regPath) {
-              ctx.fillStyle = 'rgba(232, 225, 211, 0.72)';
-              ctx.fill(regPath);
-              if (!isMoving && zoom >= 15.2) {
-                ctx.strokeStyle = 'rgba(190, 180, 162, 0.52)';
-                ctx.lineWidth = 0.7;
-                ctx.stroke(regPath);
-              }
-            }
-          }
-
-          const landmarkPath = buildFootprintPath(geo.landmarkBuildings);
-          if (landmarkPath) {
-            ctx.fillStyle = 'rgba(245, 222, 179, 0.85)';
-            ctx.fill(landmarkPath);
-            ctx.strokeStyle = 'rgba(184, 137, 70, 0.65)';
-            ctx.lineWidth = 0.9;
-            ctx.stroke(landmarkPath);
-          }
-        } else {
-          // Chế độ 3D khi đã dừng kéo (!isMoving): Dựng khối 3D mượt mà
-          const sourceBlds = zoom < 14.8 ? geo.landmarkBuildings : geo.buildings;
-          const projectedBuildings: Array<{
-            pts: Array<{ x: number; y: number }>;
-            maxY: number;
-            cx: number;
-            cy: number;
-            extrudePx: number;
-            levels: number;
-            isLandmark: boolean;
-            isHighlightedZone: boolean;
-            name: string;
-          }> = [];
-
-          for (let idx = 0; idx < sourceBlds.length; idx++) {
-            const f = sourceBlds[idx];
-            if (!isFeatureInView(f)) continue;
-            const ring = f.geometry?.coordinates?.[0];
-            if (!ring || ring.length < 3) continue;
-
-            const bName = f._cleanName || '';
-            const isLandmark = Boolean(bName);
-            const bLng = f._midLng || ring[0][0];
-            const bLat = f._midLat || ring[0][1];
-            const distToFocus = Math.hypot(bLng - focus.lng, bLat - focus.lat);
-            const isHighlightedZone = distToFocus <= focus.radiusDeg;
-
-            const levels =
-              Number(f.properties?.['building:levels']) || (isLandmark ? 4.0 : 2.6);
-
-            const extrudePx = baseExtrude * (0.68 + Math.min(levels, 6) * 0.22);
-
-            const pts: Array<{ x: number; y: number }> = [];
-            let maxY = -Infinity;
-            let sumX = 0;
-            let sumY = 0;
-            for (let i = 0; i < ring.length; i++) {
-              const p = projPt(ring[i][0], ring[i][1]);
-              pts.push({ x: p.x, y: p.y });
-              if (p.y > maxY) maxY = p.y;
-              sumX += p.x;
-              sumY += p.y;
-            }
-
-            if (pts.length >= 3) {
-              const first = pts[0];
-              const last = pts[pts.length - 1];
-              if (Math.hypot(first.x - last.x, first.y - last.y) > 0.5) {
-                pts.push({ x: first.x, y: first.y });
+                targetPath.closePath();
               }
             }
 
-            projectedBuildings.push({
-              pts,
-              maxY,
-              cx: sumX / pts.length,
-              cy: sumY / pts.length,
-              extrudePx,
-              levels: Math.max(2, Math.round(levels)),
-              isLandmark,
-              isHighlightedZone,
-              name: bName,
-            });
-          }
-
-          projectedBuildings.sort((a, b) => a.maxY - b.maxY);
-
-          ctx.lineJoin = 'round';
-          ctx.lineCap = 'round';
-
-          for (let bIdx = 0; bIdx < projectedBuildings.length; bIdx++) {
-            const b = projectedBuildings[bIdx];
-            const { pts, extrudePx, levels, isLandmark, isHighlightedZone, cx, cy } = b;
-            if (pts.length < 3) continue;
-
-            if (zoom >= 14.2) {
-              const shadowDx = Math.max(2.2, extrudePx * 0.32);
-              const shadowDy = Math.max(1.8, extrudePx * 0.20);
-              ctx.fillStyle = 'rgba(78, 66, 98, 0.18)';
-              ctx.beginPath();
-              for (let i = 0; i < pts.length; i++) {
-                if (i === 0) ctx.moveTo(pts[i].x + shadowDx, pts[i].y + shadowDy);
-                else ctx.lineTo(pts[i].x + shadowDx, pts[i].y + shadowDy);
+            if (hasRegular) {
+              ctx.fillStyle = 'rgba(232, 225, 211, 0.76)';
+              ctx.fill(regularPath);
+              if (!isMoving && zoom >= 15.1) {
+                ctx.strokeStyle = 'rgba(190, 180, 162, 0.54)';
+                ctx.lineWidth = 0.68;
+                ctx.stroke(regularPath);
               }
-              ctx.closePath();
-              ctx.fill();
             }
 
-            ctx.fillStyle = isLandmark ? '#D9B072' : '#C8BFA9';
-            ctx.beginPath();
-            for (let i = 0; i < pts.length; i++) {
-              if (i === 0) ctx.moveTo(pts[i].x, pts[i].y);
-              else ctx.lineTo(pts[i].x, pts[i].y);
+            if (hasLandmark) {
+              ctx.fillStyle = 'rgba(245, 222, 179, 0.86)';
+              ctx.fill(landmarkPath);
+              ctx.strokeStyle = 'rgba(184, 137, 70, 0.68)';
+              ctx.lineWidth = 0.9;
+              ctx.stroke(landmarkPath);
             }
-            ctx.closePath();
-            ctx.fill();
-
-            const wallSegments: Array<{
-              p1: { x: number; y: number };
-              p2: { x: number; y: number };
-              midY: number;
-              len: number;
+          } else {
+            // Chế độ 3D nghiêng trên Canvas khi dừng kéo (!isMoving)
+            const projectedBuildings: Array<{
+              pts: Array<{ x: number; y: number }>;
+              maxY: number;
+              cx: number;
+              cy: number;
+              extrudePx: number;
+              levels: number;
+              isLandmark: boolean;
+              isHighlightedZone: boolean;
+              isSelected: boolean;
+              name: string;
             }> = [];
 
-            for (let i = 0; i < pts.length - 1; i++) {
-              const p1 = pts[i];
-              const p2 = pts[i + 1];
-              const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-              if (len < 0.8) continue;
-              wallSegments.push({
-                p1,
-                p2,
-                midY: (p1.y + p2.y) * 0.5,
-                len,
+            for (let idx = 0; idx < visibleMasterBlds.length; idx++) {
+              const b = visibleMasterBlds[idx];
+              const ring = b.ringLngLat;
+              if (!ring || ring.length < 3) continue;
+
+              const [bLng, bLat] = b.centroidLngLat;
+              const distToFocus = Math.hypot(bLng - focus.lng, bLat - focus.lat);
+              const isHighlightedZone = distToFocus <= focus.radiusDeg;
+              const isSelected = Boolean(activeSelectedBld && activeSelectedBld.id === b.id);
+              const isMajor = b.lodTier === 'far' || Boolean(b.name);
+
+              // Chiều cao đồng nhất với Master Building (b.levels, b.height)
+              const levels = Math.max(1, b.levels || Math.round((b.height || 7) / 3.3));
+              const extrudePx = baseExtrude * (0.64 + Math.min(levels, 8) * 0.22);
+
+              const pts: Array<{ x: number; y: number }> = [];
+              let maxY = -Infinity;
+              let sumX = 0;
+              let sumY = 0;
+              for (let i = 0; i < ring.length; i++) {
+                const p = projPt(ring[i][0], ring[i][1]);
+                pts.push({ x: p.x, y: p.y });
+                if (p.y > maxY) maxY = p.y;
+                sumX += p.x;
+                sumY += p.y;
+              }
+
+              if (pts.length >= 3) {
+                const first = pts[0];
+                const last = pts[pts.length - 1];
+                if (Math.hypot(first.x - last.x, first.y - last.y) > 0.5) {
+                  pts.push({ x: first.x, y: first.y });
+                }
+              }
+
+              projectedBuildings.push({
+                pts,
+                maxY,
+                cx: sumX / pts.length,
+                cy: sumY / pts.length,
+                extrudePx,
+                levels: Math.max(2, Math.round(levels)),
+                isLandmark: isMajor,
+                isHighlightedZone,
+                isSelected,
+                name: b.name || '',
               });
             }
 
-            wallSegments.sort((wA, wB) => wA.midY - wB.midY);
+            projectedBuildings.sort((a, b) => a.maxY - b.maxY);
 
-            for (let wIdx = 0; wIdx < wallSegments.length; wIdx++) {
-              const { p1, p2, midY, len } = wallSegments[wIdx];
-              const dx = p2.x - p1.x;
-              const lightFactor = dx / (len || 1);
-              let wallFill: string;
-              if (isLandmark) {
-                wallFill =
-                  lightFactor > 0.25
-                    ? '#F6D7A4'
-                    : lightFactor > -0.25
-                    ? '#E8C287'
-                    : '#CFA363';
-              } else if (isHighlightedZone) {
-                wallFill =
-                  lightFactor > 0.25
-                    ? '#EFE5D4'
-                    : lightFactor > -0.25
-                    ? '#E2D6C3'
-                    : '#CCC0AC';
-              } else {
-                wallFill =
-                  lightFactor > 0.25
-                    ? '#E8E0D2'
-                    : lightFactor > -0.25
-                    ? '#DBD1C0'
-                    : '#C5B9A4';
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+
+            for (let bIdx = 0; bIdx < projectedBuildings.length; bIdx++) {
+              const b = projectedBuildings[bIdx];
+              const { pts, extrudePx, levels, isLandmark, isHighlightedZone, isSelected, cx, cy } = b;
+              if (pts.length < 3) continue;
+
+              if (zoom >= 14.2) {
+                const shadowDx = Math.max(2.2, extrudePx * 0.32);
+                const shadowDy = Math.max(1.8, extrudePx * 0.20);
+                ctx.fillStyle = 'rgba(78, 66, 98, 0.18)';
+                ctx.beginPath();
+                for (let i = 0; i < pts.length; i++) {
+                  if (i === 0) ctx.moveTo(pts[i].x + shadowDx, pts[i].y + shadowDy);
+                  else ctx.lineTo(pts[i].x + shadowDx, pts[i].y + shadowDy);
+                }
+                ctx.closePath();
+                ctx.fill();
               }
 
-              const wallStroke = isLandmark ? '#B88946' : '#ADA089';
-
-              ctx.fillStyle = wallFill;
-              ctx.strokeStyle = wallStroke;
-              ctx.lineWidth = zoom >= 15.0 ? 0.85 : 0.55;
-
+              ctx.fillStyle = isSelected ? '#FDE68A' : isLandmark ? '#D9B072' : '#C8BFA9';
               ctx.beginPath();
-              ctx.moveTo(p1.x, p1.y);
-              ctx.lineTo(p2.x, p2.y);
-              ctx.lineTo(p2.x, p2.y - extrudePx);
-              ctx.lineTo(p1.x, p1.y - extrudePx);
+              for (let i = 0; i < pts.length; i++) {
+                if (i === 0) ctx.moveTo(pts[i].x, pts[i].y);
+                else ctx.lineTo(pts[i].x, pts[i].y);
+              }
+              ctx.closePath();
+              ctx.fill();
+
+              const wallSegments: Array<{
+                p1: { x: number; y: number };
+                p2: { x: number; y: number };
+                midY: number;
+                len: number;
+              }> = [];
+
+              for (let i = 0; i < pts.length - 1; i++) {
+                const p1 = pts[i];
+                const p2 = pts[i + 1];
+                const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                if (len < 0.8) continue;
+                wallSegments.push({
+                  p1,
+                  p2,
+                  midY: (p1.y + p2.y) * 0.5,
+                  len,
+                });
+              }
+
+              wallSegments.sort((wA, wB) => wA.midY - wB.midY);
+
+              for (let wIdx = 0; wIdx < wallSegments.length; wIdx++) {
+                const { p1, p2, midY, len } = wallSegments[wIdx];
+                const dx = p2.x - p1.x;
+                const lightFactor = dx / (len || 1);
+                let wallFill: string;
+                if (isSelected) {
+                  wallFill = lightFactor > 0 ? '#FEF08A' : '#FCD34D';
+                } else if (isLandmark) {
+                  wallFill =
+                    lightFactor > 0.25
+                      ? '#F6D7A4'
+                      : lightFactor > -0.25
+                      ? '#E8C287'
+                      : '#CFA363';
+                } else if (isHighlightedZone) {
+                  wallFill =
+                    lightFactor > 0.25
+                      ? '#EFE5D4'
+                      : lightFactor > -0.25
+                      ? '#E2D6C3'
+                      : '#CCC0AC';
+                } else {
+                  wallFill =
+                    lightFactor > 0.25
+                      ? '#E8E0D2'
+                      : lightFactor > -0.25
+                      ? '#DBD1C0'
+                      : '#C5B9A4';
+                }
+
+                const wallStroke = isSelected ? '#D97706' : isLandmark ? '#B88946' : '#ADA089';
+
+                ctx.fillStyle = wallFill;
+                ctx.strokeStyle = wallStroke;
+                ctx.lineWidth = zoom >= 15.0 ? 0.85 : 0.55;
+
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.lineTo(p2.x, p2.y - extrudePx);
+                ctx.lineTo(p1.x, p1.y - extrudePx);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                if (zoom >= 15.4 && extrudePx >= 7.5 && len >= 9 && midY >= cy - 2) {
+                  ctx.strokeStyle = isLandmark
+                    ? 'rgba(138, 92, 34, 0.34)'
+                    : 'rgba(105, 94, 78, 0.28)';
+                  ctx.lineWidth = 0.65;
+                  for (let lv = 1; lv < levels; lv++) {
+                    const hOffset = extrudePx * (lv / levels);
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x, p1.y - hOffset);
+                    ctx.lineTo(p2.x, p2.y - hOffset);
+                    ctx.stroke();
+                  }
+                }
+              }
+
+              // Mái nhà 3D
+              ctx.fillStyle = isSelected ? '#FEF9C3' : isLandmark ? '#FFEAC2' : '#F4F0E6';
+              ctx.strokeStyle = isSelected ? '#B45309' : isLandmark ? '#9E6E28' : '#9E927B';
+              ctx.lineWidth = isSelected ? 1.8 : zoom >= 15.0 ? 1.1 : 0.75;
+              ctx.beginPath();
+              for (let i = 0; i < pts.length; i++) {
+                const rx = pts[i].x;
+                const ry = pts[i].y - extrudePx;
+                if (i === 0) ctx.moveTo(rx, ry);
+                else ctx.lineTo(rx, ry);
+              }
               ctx.closePath();
               ctx.fill();
               ctx.stroke();
-
-              if (zoom >= 15.4 && extrudePx >= 7.5 && len >= 9 && midY >= cy - 2) {
-                ctx.strokeStyle = isLandmark
-                  ? 'rgba(138, 92, 34, 0.34)'
-                  : 'rgba(105, 94, 78, 0.28)';
-                ctx.lineWidth = 0.65;
-                for (let lv = 1; lv < levels; lv++) {
-                  const hOffset = extrudePx * (lv / levels);
-                  ctx.beginPath();
-                  ctx.moveTo(p1.x, p1.y - hOffset);
-                  ctx.lineTo(p2.x, p2.y - hOffset);
-                  ctx.stroke();
-                }
-              }
             }
+          }
 
-            // Mái nhà 3D
-            ctx.fillStyle = isLandmark ? '#FFEAC2' : '#F4F0E6';
-            ctx.strokeStyle = isLandmark ? '#9E6E28' : '#9E927B';
-            ctx.lineWidth = zoom >= 15.0 ? 1.1 : 0.75;
+          // Vẽ viền nổi bật cho Master Building đang được chọn (đồng bộ 2D <-> 3D)
+          if (activeSelectedBld && activeSelectedBld.ringLngLat.length >= 3) {
+            const ring = activeSelectedBld.ringLngLat;
+            ctx.save();
             ctx.beginPath();
-            for (let i = 0; i < pts.length; i++) {
-              const rx = pts[i].x;
-              const ry = pts[i].y - extrudePx;
-              if (i === 0) ctx.moveTo(rx, ry);
-              else ctx.lineTo(rx, ry);
+            for (let i = 0; i < ring.length; i++) {
+              const p = projPt(ring[i][0], ring[i][1]);
+              if (i === 0) ctx.moveTo(p.x, p.y);
+              else ctx.lineTo(p.x, p.y);
             }
             ctx.closePath();
+            ctx.fillStyle = 'rgba(250, 204, 21, 0.38)';
             ctx.fill();
+            ctx.strokeStyle = '#D97706';
+            ctx.lineWidth = 2.4;
             ctx.stroke();
+            ctx.restore();
           }
         }
       }
@@ -2148,8 +2232,53 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         ctx.restore();
       };
 
-      // 6c. Nhãn 6 Khu Đô Thị trên nền Canvas (Chỉ vẽ khi người dùng TẮT lớp Ghim Icon)
-      if (!vis.realPois && zoom >= 14.2) {
+      // 6c. Nhãn địa danh phân tầng Multi-LOD (Far / Mid / Near) từ xuanhoa-places-labels.geojson
+      if (!isMoving && geo.placeLabels && geo.placeLabels.length > 0 && zoom >= 12.2) {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (let i = 0; i < geo.placeLabels.length; i++) {
+          const pf = geo.placeLabels[i];
+          const coords = pf.geometry?.coordinates;
+          if (!coords || coords.length < 2) continue;
+          const [pLng, pLat] = coords;
+          if (pLng < minLng || pLng > maxLng || pLat < minLat || pLat > maxLat) continue;
+          const props = pf.properties || {};
+          const lodTier = props.lodTier || 'mid';
+          if (lodTier === 'mid' && zoom < 13.8) continue;
+          if (lodTier === 'near' && zoom < 15.2) continue;
+
+          const name = String(props.name || '').trim();
+          if (!name) continue;
+          const pt = projPt(pLng, pLat);
+          if (pt.x < -80 || pt.x > width + 80 || pt.y < -40 || pt.y > height + 40) continue;
+
+          const isFar = lodTier === 'far';
+          const halfW = name.length * (isFar ? 3.5 : 3.1) + 12;
+          if (!canPlaceLabel(pt.x, pt.y, halfW, 14, isFar ? 95 : 70)) continue;
+
+          if (isFar) {
+            ctx.font = `800 ${zoom >= 14.5 ? 10.6 : 9.8}px ${CANVAS_FONT_STACK}`;
+            drawCanvasPillBadge(
+              pt.x,
+              pt.y,
+              name,
+              'rgba(255, 253, 249, 0.94)',
+              '#39B980',
+              '#14532D'
+            );
+          } else {
+            ctx.font = `700 ${zoom >= 15.4 ? 10.0 : 9.2}px ${CANVAS_FONT_STACK}`;
+            ctx.strokeStyle = 'rgba(255, 253, 249, 0.95)';
+            ctx.lineWidth = 3.2;
+            ctx.strokeText(name, pt.x, pt.y);
+            ctx.fillStyle = '#334155';
+            ctx.fillText(name, pt.x, pt.y);
+          }
+        }
+      }
+
+      // 6d. Nhãn 6 Khu Đô Thị Minh Họa trên nền Canvas (Chỉ vẽ khi bật lớp Khu minh họa decorativeZones)
+      if (vis.decorativeZones && !vis.realPois && zoom >= 14.2) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.font = `700 ${zoom >= 15.4 ? 10.2 : 9.5}px ${CANVAS_FONT_STACK}`;
@@ -2232,7 +2361,8 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
 
             // Kiểm tra chiều dài con đường trên màn hình phải đủ dài hơn chữ thì mới hiện tên
             const roadScreenLenPx = anchor.roadSpanDeg * pxPerDeg;
-            if (roadScreenLenPx < anchor.halfW * 2.15) continue;
+            const minScreenRatio = isAlley ? 1.15 : 2.15;
+            if (roadScreenLenPx < anchor.halfW * minScreenRatio) continue;
           }
 
           const ptCenter = projPt(anchor.lng, anchor.lat);
@@ -2449,7 +2579,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
       verifiedMapMarkers: base.verifiedMapMarkers,
       unverifiedCatalogPlaces: base.unverifiedCatalogPlaces,
     };
-  }, [syncTick]);
+  }, [syncTick, adminSyncVersion]);
 
   const dataQualityReport = useMemo(() => {
     const baseReport = buildDataQualityReport();
@@ -2463,7 +2593,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         catalogPendingVerificationCount: unverifiedCatalogPlaces.length,
       },
     };
-  }, [verifiedMapMarkers.length, unverifiedCatalogPlaces.length, syncTick]);
+  }, [verifiedMapMarkers.length, unverifiedCatalogPlaces.length, syncTick, adminSyncVersion]);
 
   // Danh sách các địa điểm đã được lưu (★) của tài khoản hiện tại
   const savedPlaceObjects = useMemo(
@@ -2490,6 +2620,8 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     embeddedInAdmin,
     adminSelectedPlaceId,
   ]);
+
+  filteredVerifiedMarkersRef.current = filteredVerifiedMarkers;
 
   // Đồng bộ danh sách marker đã lọc vào ref để vòng lặp 60fps khóa tọa độ chính xác tuyệt đối
   useEffect(() => {
@@ -2738,14 +2870,30 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         return;
       }
 
+      // Kiểm tra nếu người dùng chạm vào một công trình trong Master Dataset (21.436 công trình đồng bộ 2D <-> 3D)
+      const masterDsForPick = geoLayersRef.current?.masterDataset || getLoadedMasterDataset();
+      const hitMasterBld = findMasterBuildingAtLngLat(masterDsForPick, pickedLng, pickedLat, 10);
+      if (hitMasterBld) {
+        triggerFeedback('tap');
+        setSelectedBuilding(hitMasterBld);
+        selectedBuildingRef.current = hitMasterBld;
+      } else if (selectedBuildingRef.current) {
+        setSelectedBuilding(null);
+        selectedBuildingRef.current = null;
+      }
+
       // Chuyển Tiêu điểm 3D (Spotlight 3D Focus) sang đúng khu vực người dùng vừa ấn vào
       focusTargetRef.current = {
         lat: pickedLat,
         lng: pickedLng,
         radiusDeg: 0.0044,
-        label: 'Khu vực đang chọn trên bản đồ',
+        label: hitMasterBld?.name || 'Khu vực đang chọn trên bản đồ',
       };
-      setFocusZoneLabel('📍 Khu phố vừa chạm chọn (Nổi 3D)');
+      setFocusZoneLabel(
+        hitMasterBld
+          ? `🏢 Công trình #${hitMasterBld.id} (${CONTEXTUAL_ZONE_LABELS[hitMasterBld.zone] || hitMasterBld.zone})`
+          : '📍 Khu phố vừa chạm chọn (Nổi 3D)'
+      );
       scheduleCanvasRender();
     };
 
@@ -3227,6 +3375,84 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     };
   }, []);
 
+  const newPlaceDraftRef = useRef<{
+    hasDraft: boolean;
+    name: string;
+    category: Exclude<MapCategoryKey, 'all' | 'game_asset'>;
+    address: string;
+    tagline: string;
+    phone: string;
+    hours: string;
+    mapsUrl: string;
+    lat: string;
+    lng: string;
+  }>({
+    hasDraft: false,
+    name: '',
+    category: 'public',
+    address: 'Phường Xuân Hòa',
+    tagline: '',
+    phone: '',
+    hours: '07:30 - 17:30',
+    mapsUrl: '',
+    lat: '',
+    lng: '',
+  });
+
+  useEffect(() => {
+    if (!isAdminCreatingNew) return;
+    newPlaceDraftRef.current = {
+      hasDraft: true,
+      name: adminEditName,
+      category: adminEditCategory,
+      address: adminEditAddress,
+      tagline: adminEditTagline,
+      phone: adminEditPhone,
+      hours: adminEditHours,
+      mapsUrl: adminMapsUrlInput,
+      lat: adminLatInput,
+      lng: adminLngInput,
+    };
+  }, [
+    isAdminCreatingNew,
+    adminEditName,
+    adminEditCategory,
+    adminEditAddress,
+    adminEditTagline,
+    adminEditPhone,
+    adminEditHours,
+    adminMapsUrlInput,
+    adminLatInput,
+    adminLngInput,
+  ]);
+
+  const resetNewPlaceDraft = useCallback(() => {
+    const center = mapInstanceRef.current?.getCenter();
+    const lat = center ? Number(center.lat.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lat;
+    const lng = center ? Number(center.lng.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lng;
+    newPlaceDraftRef.current = {
+      hasDraft: false,
+      name: '',
+      category: 'public',
+      address: 'Phường Xuân Hòa',
+      tagline: '',
+      phone: '',
+      hours: '07:30 - 17:30',
+      mapsUrl: '',
+      lat: String(lat),
+      lng: String(lng),
+    };
+    setAdminEditName('');
+    setAdminEditCategory('public');
+    setAdminEditAddress('Phường Xuân Hòa');
+    setAdminEditTagline('');
+    setAdminEditPhone('');
+    setAdminEditHours('07:30 - 17:30');
+    setAdminMapsUrlInput('');
+    setAdminLatInput(String(lat));
+    setAdminLngInput(String(lng));
+  }, []);
+
   const populateAdminFormFromPlace = useCallback((target: PlaceLocation | null) => {
     setAdminTargetPlace(target);
     if (!target) {
@@ -3291,17 +3517,30 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     const center = mapInstanceRef.current?.getCenter();
     const lat = center ? Number(center.lat.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lat;
     const lng = center ? Number(center.lng.toFixed(6)) : XUANHOA_DEFAULT_CENTER.lng;
+    const draft = newPlaceDraftRef.current;
     setIsAdminCreatingNew(true);
     setAdminTargetPlace(null);
-    setAdminEditName('');
-    setAdminEditCategory('public');
-    setAdminEditAddress('Phường Xuân Hòa');
-    setAdminEditTagline('');
-    setAdminEditPhone('');
-    setAdminEditHours('07:30 - 17:30');
-    setAdminMapsUrlInput('');
-    setAdminLatInput(String(lat));
-    setAdminLngInput(String(lng));
+    if (draft.hasDraft) {
+      setAdminEditName(draft.name);
+      setAdminEditCategory(draft.category);
+      setAdminEditAddress(draft.address);
+      setAdminEditTagline(draft.tagline);
+      setAdminEditPhone(draft.phone);
+      setAdminEditHours(draft.hours);
+      setAdminMapsUrlInput(draft.mapsUrl);
+      setAdminLatInput(draft.lat || String(lat));
+      setAdminLngInput(draft.lng || String(lng));
+    } else {
+      setAdminEditName('');
+      setAdminEditCategory('public');
+      setAdminEditAddress('Phường Xuân Hòa');
+      setAdminEditTagline('');
+      setAdminEditPhone('');
+      setAdminEditHours('07:30 - 17:30');
+      setAdminMapsUrlInput('');
+      setAdminLatInput(String(lat));
+      setAdminLngInput(String(lng));
+    }
     setAdminCoordSource('admin_verified');
     setNominatimSuggestions([]);
     setAdminFeedback('💡 Nhập tên địa điểm / hàng quán mới, hoặc bấm "Chấm trực tiếp trên Bản đồ" để lấy tọa độ.');
@@ -3386,6 +3625,9 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
       setSyncTick((t) => t + 1);
       if (embeddedInAdmin && onAdminSelectPlace) {
         onAdminSelectPlace(saved.id);
+      }
+      if (isAdminCreatingNew) {
+        newPlaceDraftRef.current.hasDraft = false;
       }
       setIsAdminCreatingNew(false);
       setIsAdminCoordModalOpen(false);
@@ -3882,13 +4124,38 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      setShowCommercialShops(true);
+                      setSelectedCategories([
+                        'public',
+                        'school',
+                        'food',
+                        'pub',
+                        'cafe',
+                        'snack',
+                        'billiards',
+                        'game',
+                        'entertainment',
+                        'service',
+                        'grocery',
+                        'supermarket',
+                        'phone',
+                      ]);
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] text-[10.5px] font-extrabold whitespace-nowrap cursor-pointer transition"
+                    title="Bật toàn bộ các địa điểm & quán đã được Admin định vị ghim chuẩn"
+                  >
+                    Tất cả đã ghim
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
                       setShowCommercialShops(false);
                       setSelectedCategories(['public', 'school']);
                     }}
-                    className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] text-[10.5px] font-extrabold whitespace-nowrap cursor-pointer transition"
-                    title="Khôi phục mặc định: chỉ bật Hành chính + Trường học"
+                    className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10.5px] font-bold whitespace-nowrap cursor-pointer transition"
+                    title="Chỉ hiện Hành chính & Trường học"
                   >
-                    Mặc định
+                    Chỉ Hành chính
                   </button>
                   <button
                     type="button"
@@ -3945,15 +4212,19 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                     isDefault: false,
                   },
                   {
+                    key: 'billiards',
+                    cats: ['billiards', 'game', 'entertainment'] as MapCategoryKey[],
+                    label: 'Bi-a, Game & Giải trí',
+                    activeBg: 'bg-[#2563EB] text-white shadow-xs',
+                    isDefault: false,
+                  },
+                  {
                     key: 'service',
                     cats: [
                       'service',
                       'grocery',
                       'supermarket',
                       'phone',
-                      'billiards',
-                      'game',
-                      'entertainment',
                     ] as MapCategoryKey[],
                     label: 'Dịch vụ & Tiện ích',
                     activeBg: 'bg-[#475569] text-white shadow-xs',
@@ -4756,6 +5027,84 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
             />
           </div>
         )}
+
+        {selectedBuilding && !selectedPlace && !isPickingOnMap && !embeddedInAdmin && (
+          <div className="pointer-events-auto w-full bg-[#FFFDF9]/96 backdrop-blur-md rounded-2xl border border-[#D4C7A9] shadow-[0_14px_34px_rgba(30,22,51,0.16)] p-3.5 text-xs text-[#2B213F]">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#FEF3C7] text-[#92400E] border border-[#FCD34D] text-[10px] font-extrabold mb-1">
+                  <span>🏢 Master Building #{selectedBuilding.id}</span>
+                  <span>•</span>
+                  <span>{selectedBuilding.source}</span>
+                </div>
+                <div className="font-extrabold text-[13px] text-[#1E1633] truncate">
+                  {selectedBuilding.name || `Công trình ${selectedBuilding.buildingType || 'dân dụng'}`}
+                </div>
+                <div className="text-[11px] text-[#5C4D7D] mt-0.5">
+                  Vùng ngữ cảnh:{' '}
+                  <strong className="text-[#1E1633]">
+                    {CONTEXTUAL_ZONE_LABELS[selectedBuilding.zone] || selectedBuilding.zone}
+                  </strong>{' '}
+                  <span className="text-[10px] text-[#7D6E9B]">(derivedZone)</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBuilding(null);
+                  selectedBuildingRef.current = null;
+                  scheduleCanvasRender();
+                }}
+                className="w-6 h-6 rounded-full bg-[#F3EFE6] hover:bg-[#E5DEC9] text-[#403064] font-bold flex items-center justify-center shrink-0 cursor-pointer"
+                aria-label="Đóng thẻ công trình"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5 mt-2.5 pt-2 border-t border-[#ECE4D4] text-[10.5px]">
+              <div className="bg-[#F8F5EE] rounded-lg px-2 py-1.5">
+                <div className="text-[#7D6E9B]">Chiều cao / Tầng</div>
+                <div className="font-extrabold text-[#1E1633]">
+                  {selectedBuilding.height.toFixed(1)}m • {selectedBuilding.levels} tầng
+                </div>
+              </div>
+              <div className="bg-[#F8F5EE] rounded-lg px-2 py-1.5">
+                <div className="text-[#7D6E9B]">Nguồn chiều cao</div>
+                <div className="font-extrabold text-[#1E1633]">
+                  {selectedBuilding.heightSource} ({Math.round(selectedBuilding.confidence * 100)}%)
+                </div>
+              </div>
+              <div className="bg-[#F8F5EE] rounded-lg px-2 py-1.5">
+                <div className="text-[#7D6E9B]">Độ cao nền DEM</div>
+                <div className="font-extrabold text-[#059669]">
+                  +{getElevationAtLngLat(selectedBuilding.centroidLngLat[0], selectedBuilding.centroidLngLat[1]).toFixed(1)}m
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-2.5 flex items-center justify-between gap-2">
+              <span className="text-[10px] text-[#6B5B8E] truncate">
+                Diện tích đáy: {Math.round(selectedBuilding.areaSqm)} m² • Tọa độ: {selectedBuilding.centroidLngLat[1].toFixed(5)}, {selectedBuilding.centroidLngLat[0].toFixed(5)}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (mapInstanceRef.current) {
+                    mapInstanceRef.current.jumpTo({
+                      center: [selectedBuilding.centroidLngLat[0], selectedBuilding.centroidLngLat[1]],
+                      zoom: Math.max(currentZoom, 17.2),
+                    });
+                  }
+                  setIsCity3DOpen(true);
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-[#059669] hover:bg-[#047857] text-white font-extrabold text-[11px] shrink-0 cursor-pointer shadow-xs"
+              >
+                Xem đồng bộ 3D →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 5. THÔNG BÁO GỌN GÀNG KHI ĐANG VÀO BẢN ĐỒ SỐ PHƯỜNG XUÂN HÒA */}
@@ -5067,7 +5416,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
       {isAdminCoordModalOpen && (isAdminUser || isMapManagerUser) && (
         <div
           className="fixed inset-0 z-50 bg-[#2D2246]/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
-          onClick={() => setIsAdminCoordModalOpen(false)}
         >
           <div
             className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_24px_60px_rgba(45,34,70,0.28)] p-5 sm:p-6 text-[#2D2246]"
@@ -5446,7 +5794,18 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <div />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerFeedback('tap');
+                      resetNewPlaceDraft();
+                      setAdminFeedback('🔄 Đã làm mới các ô nhập thông tin.');
+                    }}
+                    className="h-9 px-3 rounded-xl bg-[#F3EFE6] hover:bg-[#E5DEC9] active:scale-95 transition-all text-[#403064] border border-[#D8CFC0] font-bold cursor-pointer text-[11.5px] whitespace-nowrap flex items-center justify-center"
+                    title="Xóa nháp để nhập lại từ đầu"
+                  >
+                    Làm mới ô nhập
+                  </button>
                 )}
 
                 <div className="flex items-center gap-2 ml-auto">
@@ -5514,7 +5873,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
       {(homeModalMode === 'view' || homeModalMode === 'edit') && (
         <div
           className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
-          onClick={() => setHomeModalMode('closed')}
         >
           <div
             className="w-full max-w-md rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-2xl overflow-hidden text-[#1E293B]"
@@ -5772,7 +6130,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         </div>
       )}
 
-      {/* 10. SA BÀN 3D TOÀN PHƯỜNG XUÂN HÒA (37.787 CÔNG TRÌNH, MÁI NGÓI, INSTANCED TREES, BÓNG NẮNG) */}
+      {/* 10. SA BÀN 3D TOÀN PHƯỜNG XUÂN HÒA (21.436 MASTER BUILDINGS ĐỒNG NHẤT 2D/3D, DEM THẬT, INSTANCED TREES, BÓNG NẮNG) */}
       {isCity3DOpen && (
         <City3DView
           initialCenter={
@@ -5783,6 +6141,13 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                 }
               : XUANHOA_DEFAULT_CENTER
           }
+          initialZoom={currentZoom}
+          initialSelectedPlace={selectedPlace}
+          selectedBuilding={selectedBuilding}
+          onSelectBuilding={(bld) => {
+            setSelectedBuilding(bld);
+            selectedBuildingRef.current = bld;
+          }}
           places={verifiedMapMarkers}
           isAdminUser={isAdminUser}
           isMapManagerUser={isMapManagerUser}
@@ -5791,11 +6156,14 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
             window.location.hash = '#/quanly';
             window.dispatchEvent(new HashChangeEvent('hashchange'));
           }}
-          onClose={(centerFrom3D) => {
+          onClose={(centerFrom3D, zoomFrom3D) => {
             setIsCity3DOpen(false);
             if (centerFrom3D && mapInstanceRef.current) {
               mapInstanceRef.current.jumpTo({
                 center: [centerFrom3D.lng, centerFrom3D.lat],
+                ...(typeof zoomFrom3D === 'number' && !Number.isNaN(zoomFrom3D)
+                  ? { zoom: zoomFrom3D }
+                  : {}),
               });
               scheduleCanvasRender();
             }

@@ -59,9 +59,14 @@ import { renderCategoryIcon } from '@/components/map/MapCategoryPanel';
 import {
   CITY3D_COLORS,
   TREE_PALETTE,
+  distance3DToZoom2D,
+  getElevationAtLngLat,
+  getElevationAtLocal,
   getLizardHillElevationAtLngLat,
   lngLatToLocal,
+  loadXuanHoaDem,
   localToLngLat,
+  zoom2DToDistance3D,
   type BuildingChunk,
   type BuildingLabel,
   type City3DOrigin,
@@ -70,6 +75,14 @@ import {
   type TreeChunk,
   type WorkerOutMessage,
 } from './city3d-shared';
+import {
+  CONTEXTUAL_ZONE_LABELS,
+  HEIGHT_SOURCE_LABELS,
+  findMasterBuildingAtLngLat,
+  getLoadedMasterDataset,
+  loadXuanHoaMasterDataset,
+  type MasterBuildingRecord,
+} from '@/lib/map/xuanhoa-master-data';
 import { reverseAreaName } from './city3d-live';
 import { createIconicLandmarksGroup } from './city3d-landmarks';
 import {
@@ -99,8 +112,14 @@ export interface ActiveRouteState3D {
 
 export interface City3DViewProps {
   initialCenter: { lat: number; lng: number };
+  initialZoom?: number;
   places: PlaceLocation[];
-  onClose: (currentCenter?: { lat: number; lng: number }) => void;
+  onClose: (currentCenter?: { lat: number; lng: number }, currentZoom?: number) => void;
+  /** Địa điểm đang được chọn đồng bộ từ 2D */
+  initialSelectedPlace?: PlaceLocation | null;
+  /** Công trình Master Building đang được chọn đồng bộ giữa 2D và 3D */
+  selectedBuilding?: MasterBuildingRecord | null;
+  onSelectBuilding?: (building: MasterBuildingRecord | null) => void;
   /** Mở trang chi tiết quán (PlaceModal) */
   onOpenPlace?: (place: PlaceLocation) => void;
   /** Quay về bản đồ 2D và chọn quán */
@@ -204,8 +223,12 @@ function geometryFrom(m: MeshBuffers, computeNormals = false) {
 
 export const City3DView: React.FC<City3DViewProps> = ({
   initialCenter,
+  initialZoom,
   places,
   onClose,
+  initialSelectedPlace = null,
+  selectedBuilding: propSelectedBuilding = null,
+  onSelectBuilding,
   onOpenPlace,
   onShowPlaceIn2D,
   isAdminUser: propIsAdmin,
@@ -239,6 +262,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
   const userMarker3DElRef = useRef<HTMLDivElement | null>(null);
   const homeMarker3DElRef = useRef<HTMLDivElement | null>(null);
   const routeGroupRef = useRef<THREE.Group | null>(null);
+  const selectedBuildingGroupRef = useRef<THREE.Group | null>(null);
   const userCoords3DRef = useRef<{ lat: number; lng: number } | null>(userCoords);
   userCoords3DRef.current = userCoords;
   const userHome3DRef = useRef<UserHomeLocation | null>(userHome);
@@ -246,6 +270,33 @@ export const City3DView: React.FC<City3DViewProps> = ({
   const activeRoute3DRef = useRef<ActiveRouteState3D | null>(activeRoute);
   activeRoute3DRef.current = activeRoute;
   const [is3DLayerMenuOpen, setIs3DLayerMenuOpen] = useState(false);
+  const [demReadyTick, setDemReadyTick] = useState(0);
+  const [localSelectedBuilding, setLocalSelectedBuilding] = useState<MasterBuildingRecord | null>(
+    propSelectedBuilding
+  );
+  useEffect(() => {
+    setLocalSelectedBuilding(propSelectedBuilding);
+  }, [propSelectedBuilding]);
+  const handleSelectBuilding3D = useCallback(
+    (b: MasterBuildingRecord | null) => {
+      setLocalSelectedBuilding(b);
+      onSelectBuilding?.(b);
+    },
+    [onSelectBuilding]
+  );
+
+  // Nạp DEM thực & Master Dataset ở luồng chính để đồng bộ độ cao ghim, camera, dẫn đường và click chọn công trình
+  useEffect(() => {
+    let active = true;
+    Promise.all([loadXuanHoaDem(), loadXuanHoaMasterDataset()]).then(() => {
+      if (!active) return;
+      setDemReadyTick((t) => t + 1);
+      engineRef.current?.requestRender();
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Trạng thái Hộp thoại "Chỗ bạn sinh sống (Nhà của bạn)" ngay trên Sa bàn 3D
   const [home3DModalMode, setHome3DModalMode] = useState<'closed' | 'view' | 'edit' | 'picking'>(
@@ -273,10 +324,21 @@ export const City3DView: React.FC<City3DViewProps> = ({
   // Tùy chỉnh hiện ghim định vị (tắt đi thì không hiện gì cả ngoài địa điểm đang chọn)
   const [showLocationPins, setShowLocationPins] = useState<boolean>(true);
   const [showCivic, setShowCivic] = useState<boolean>(true);
-  // Mặc định auto bật Hành chính + Trường học; cho phép bật/tắt độc lập từng danh mục
+  // Mặc định auto bật tất cả các danh mục cho các địa điểm đã được Admin ghim chuẩn; cho phép bật/tắt độc lập từng danh mục
   const [selectedCategories3D, setSelectedCategories3D] = useState<MapCategoryKey[]>([
     'public',
     'school',
+    'food',
+    'pub',
+    'cafe',
+    'snack',
+    'billiards',
+    'game',
+    'entertainment',
+    'service',
+    'grocery',
+    'supermarket',
+    'phone',
   ]);
   const [activeShopGroup, setActiveShopGroup] = useState<
     'none' | 'food' | 'pub' | 'cafe' | 'snack' | 'service'
@@ -288,7 +350,10 @@ export const City3DView: React.FC<City3DViewProps> = ({
     busy: false,
     message: null,
   });
-  const [selected, setSelected] = useState<PlaceLocation | null>(null);
+  const [selected, setSelected] = useState<PlaceLocation | null>(initialSelectedPlace);
+  useEffect(() => {
+    if (initialSelectedPlace) setSelected(initialSelectedPlace);
+  }, [initialSelectedPlace]);
 
   // Quyền Admin & Quản lý Maps chỉnh sửa trực tiếp trên Sa Bàn 3D
   const [hasAdminAccess, setHasAdminAccess] = useState<boolean>(() =>
@@ -405,19 +470,20 @@ export const City3DView: React.FC<City3DViewProps> = ({
     for (const p of placesWithCoords) {
       if (p.lat === null || p.lng === null) continue;
       const [x, y] = lngLatToLocal(originState, p.lng, p.lat);
-      const hillY = getLizardHillElevationAtLngLat(p.lng, p.lat);
+      const terrainY = getElevationAtLngLat(p.lng, p.lat);
+      const lizardHillY = getLizardHillElevationAtLngLat(p.lng, p.lat);
       const monumentBoost =
         p.id === 'osm_historic_bot_than_lan'
           ? 12.5
           : p.id === 'osm_landmark_nui_than_lan'
             ? 10.0
-            : hillY > 0.5
+            : lizardHillY > 0.5
               ? 6.0
               : 0;
       list.push({
         place: p,
         lx: x,
-        ly: 6 + hillY + monumentBoost,
+        ly: 6 + terrainY + monumentBoost,
         lz: -y,
         halfW: Math.min(82, p.name.length * 3.1 + 16),
       });
@@ -427,7 +493,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
       list.sort((a, b) => (a.place.id === selected.id ? -1 : b.place.id === selected.id ? 1 : 0));
     }
     return list;
-  }, [placesWithCoords, originState, selected]);
+  }, [placesWithCoords, originState, selected, demReadyTick]);
 
   const precomputedBuildingLabels = useMemo<PrecomputedBuildingLabel[]>(
     () =>
@@ -674,11 +740,14 @@ export const City3DView: React.FC<City3DViewProps> = ({
         maxZ = -box[1] + 200;
       const cx = Math.min(maxX, Math.max(minX, t.x));
       const cz = Math.min(maxZ, Math.max(minZ, t.z));
-      if (cx !== t.x || cz !== t.z || t.y !== 0) {
+      const targetY = anim ? t.y : getElevationAtLocal(cx, -cz);
+      if (cx !== t.x || cz !== t.z || (!anim && Math.abs(t.y - targetY) > 0.08)) {
         const dx = cx - t.x,
+          dy = targetY - t.y,
           dz = cz - t.z;
-        t.set(cx, 0, cz);
+        t.set(cx, targetY, cz);
         camera.position.x += dx;
+        camera.position.y += dy;
         camera.position.z += dz;
       }
     };
@@ -740,8 +809,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
       if (draftEl) {
         if (draftCoord && o) {
           const [dx, dy] = lngLatToLocal(o, draftCoord.lng, draftCoord.lat);
-          const draftHillY = getLizardHillElevationAtLngLat(draftCoord.lng, draftCoord.lat);
-          tmpV.set(dx, 6 + draftHillY, -dy).project(camera);
+          const draftTerrainY = getElevationAtLngLat(draftCoord.lng, draftCoord.lat);
+          tmpV.set(dx, 6 + draftTerrainY, -dy).project(camera);
           if (tmpV.z <= 1 && Math.abs(tmpV.x) <= 1.15 && Math.abs(tmpV.y) <= 1.15) {
             const sx = (tmpV.x * 0.5 + 0.5) * w;
             const sy = (-tmpV.y * 0.5 + 0.5) * h;
@@ -764,8 +833,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
       if (userEl) {
         if (curUser && o) {
           const [ux, uy] = lngLatToLocal(o, curUser.lng, curUser.lat);
-          const userHillY = getLizardHillElevationAtLngLat(curUser.lng, curUser.lat);
-          tmpV.set(ux, 2.5 + userHillY, -uy).project(camera);
+          const userTerrainY = getElevationAtLngLat(curUser.lng, curUser.lat);
+          tmpV.set(ux, 2.5 + userTerrainY, -uy).project(camera);
           if (tmpV.z <= 1 && Math.abs(tmpV.x) <= 1.15 && Math.abs(tmpV.y) <= 1.15) {
             const sx = (tmpV.x * 0.5 + 0.5) * w;
             const sy = (-tmpV.y * 0.5 + 0.5) * h;
@@ -785,8 +854,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
       if (homeEl) {
         if (curHome && o) {
           const [hx, hy] = lngLatToLocal(o, curHome.lng, curHome.lat);
-          const homeHillY = getLizardHillElevationAtLngLat(curHome.lng, curHome.lat);
-          tmpV.set(hx, 6 + homeHillY, -hy).project(camera);
+          const homeTerrainY = getElevationAtLngLat(curHome.lng, curHome.lat);
+          tmpV.set(hx, 6 + homeTerrainY, -hy).project(camera);
           if (tmpV.z <= 1 && Math.abs(tmpV.x) <= 1.15 && Math.abs(tmpV.y) <= 1.15) {
             const sx = (tmpV.x * 0.5 + 0.5) * w;
             const sy = (-tmpV.y * 0.5 + 0.5) * h;
@@ -872,13 +941,14 @@ export const City3DView: React.FC<City3DViewProps> = ({
           continue;
         }
         const rl = item.road;
-        tmpV.set(rl.x, 0.35, rl.z);
+        const ry = rl.y ?? 0.35;
+        tmpV.set(rl.x, ry, rl.z);
         if (tmpV.distanceTo(camera.position) > item.maxDist) {
           setElVis(el, false);
           continue;
         }
-        tmpV.set(rl.x - rl.dx * 16, 0.35, rl.z - rl.dz * 16).project(camera);
-        tmpV2.set(rl.x + rl.dx * 16, 0.35, rl.z + rl.dz * 16).project(camera);
+        tmpV.set(rl.x - rl.dx * 16, ry, rl.z - rl.dz * 16).project(camera);
+        tmpV2.set(rl.x + rl.dx * 16, ry, rl.z + rl.dz * 16).project(camera);
         if (tmpV.z > 1 || tmpV2.z > 1 || Math.abs(tmpV.x) > 1.05 || Math.abs(tmpV.y) > 1.05) {
           setElVis(el, false);
           continue;
@@ -1000,7 +1070,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
       anim = null;
     });
 
-    // Hỗ trợ Admin click trực tiếp lên mặt đất 3D để lấy tọa độ cắm ghim / dời ghim
+    // Hỗ trợ Admin click trực tiếp lên mặt đất 3D để lấy tọa độ cắm ghim / dời ghim hoặc click chọn công trình Master Building
     const raycaster = new THREE.Raycaster();
     const pointerNdc = new THREE.Vector2();
     const hitPoint = new THREE.Vector3();
@@ -1013,7 +1083,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
     };
 
     const onPointerUp = (ev: PointerEvent) => {
-      if ((!isPicking3DRef.current && !isPickingHome3DRef.current) || ev.button !== 0) return;
+      if (ev.button !== 0) return;
       if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > 6) return;
       const o = engineRef.current?.origin;
       if (!o) return;
@@ -1021,7 +1091,16 @@ export const City3DView: React.FC<City3DViewProps> = ({
       pointerNdc.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
       pointerNdc.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointerNdc, camera);
+      // Cắt mặt phẳng ngang theo độ cao DEM của tâm nhìn và lặp 3 bước hội tụ theo DEM thực
+      let planeY = controls.target.y;
+      GROUND_PLANE.constant = -planeY;
       if (raycaster.ray.intersectPlane(GROUND_PLANE, hitPoint)) {
+        for (let iter = 0; iter < 3; iter++) {
+          planeY = getElevationAtLocal(hitPoint.x, -hitPoint.z);
+          GROUND_PLANE.constant = -planeY;
+          raycaster.ray.intersectPlane(GROUND_PLANE, hitPoint);
+        }
+        GROUND_PLANE.constant = 0;
         const [lng, lat] = localToLngLat(o, hitPoint.x, -hitPoint.z);
         const fixedLat = Number(lat.toFixed(6));
         const fixedLng = Number(lng.toFixed(6));
@@ -1035,13 +1114,23 @@ export const City3DView: React.FC<City3DViewProps> = ({
           requestRender();
           return;
         }
-        setEditLat(String(fixedLat));
-        setEditLng(String(fixedLng));
-        setIsPicking3DGround(false);
-        setEditNotice({
-          text: `📍 Đã chấm vị trí trên mặt đất 3D (${fixedLat}, ${fixedLng}). Hãy bấm "Lưu cập nhật"!`,
-        });
-        requestRender();
+        if (isPicking3DRef.current) {
+          setEditLat(String(fixedLat));
+          setEditLng(String(fixedLng));
+          setIsPicking3DGround(false);
+          setEditNotice({
+            text: `📍 Đã chấm vị trí trên mặt đất 3D (${fixedLat}, ${fixedLng}). Hãy bấm "Lưu cập nhật"!`,
+          });
+          requestRender();
+          return;
+        }
+        // Khi người dùng click trực tiếp vào một công trình trên Sa bàn 3D -> tra cứu Master Building đồng bộ với 2D
+        const hitBuilding = findMasterBuildingAtLngLat(getLoadedMasterDataset(), lng, lat, 10);
+        if (hitBuilding) {
+          handleSelectBuilding3D(hitBuilding);
+        } else {
+          handleSelectBuilding3D(null);
+        }
       }
     };
 
@@ -1069,7 +1158,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
       if (!m.indices.length) return;
       const { m: mat } = flatLayerMat(order);
       disposables.push(mat);
-      const mesh = new THREE.Mesh(geometryFrom(m), mat);
+      const mesh = new THREE.Mesh(geometryFrom(m, order === -6), mat);
       mesh.renderOrder = order;
       mesh.receiveShadow = receiveShadow;
       mesh.matrixAutoUpdate = false;
@@ -1101,8 +1190,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
         old.children.forEach((ch) => (ch as THREE.InstancedMesh).dispose());
         scene.remove(old);
       }
-      const nB = c.broadleaf.length / 5,
-        nC = c.conifer.length / 5;
+      const nB = c.broadleaf.length / 6,
+        nC = c.conifer.length / 6;
       if (!nB && !nC) return;
       const group = new THREE.Group();
       group.matrixAutoUpdate = false;
@@ -1112,17 +1201,18 @@ export const City3DView: React.FC<City3DViewProps> = ({
       let ti = 0;
       const fill = (arr: Float32Array, mesh: THREE.InstancedMesh | null) => {
         if (!mesh) return;
-        for (let i = 0; i < arr.length / 5; i++) {
-          const x = arr[i * 5],
-            z = arr[i * 5 + 1],
-            s = arr[i * 5 + 2],
-            rot = arr[i * 5 + 3];
-          dummy.position.set(x, 0, z);
+        for (let i = 0; i < arr.length / 6; i++) {
+          const x = arr[i * 6],
+            y = arr[i * 6 + 1],
+            z = arr[i * 6 + 2],
+            s = arr[i * 6 + 3],
+            rot = arr[i * 6 + 4];
+          dummy.position.set(x, y, z);
           dummy.rotation.set(0, rot, 0);
           dummy.scale.set(s, s * (0.9 + (rot % 0.3)), s);
           dummy.updateMatrix();
           mesh.setMatrixAt(i, dummy.matrix);
-          mesh.setColorAt(i, treeColors[arr[i * 5 + 4] | 0]);
+          mesh.setColorAt(i, treeColors[arr[i * 6 + 5] | 0]);
           trunks.setMatrixAt(ti++, dummy.matrix);
         }
         mesh.instanceMatrix.needsUpdate = true;
@@ -1143,13 +1233,14 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
     const placeInitialCamera = (o: City3DOrigin) => {
       const [x, y] = lngLatToLocal(o, initialCenter.lng, initialCenter.lat);
-      controls.target.set(x, 0, -y);
-      const d = 620;
+      const ty = getElevationAtLocal(x, y);
+      controls.target.set(x, ty, -y);
+      const d = initialZoom ? zoom2DToDistance3D(initialZoom) : 620;
       const polar = 0.92;
       const az = -0.35;
       camera.position.set(
         x + d * Math.sin(polar) * Math.sin(az),
-        d * Math.cos(polar),
+        ty + d * Math.cos(polar),
         -y + d * Math.sin(polar) * Math.cos(az)
       );
       controls.update();
@@ -1363,11 +1454,56 @@ export const City3DView: React.FC<City3DViewProps> = ({
     const eng = engineRef.current;
     if (!eng?.origin) return;
     const [x, y] = lngLatToLocal(eng.origin, lng, lat);
-    const hillY = getLizardHillElevationAtLngLat(lng, lat);
+    const terrainY = getElevationAtLngLat(lng, lat);
     const off = eng.camera.position.clone().sub(eng.controls.target);
     off.setLength(Math.min(off.length(), targetDist));
-    eng.animateTo(new THREE.Vector3(x, hillY, -y), off, 700);
+    eng.animateTo(new THREE.Vector3(x, terrainY, -y), off, 700);
   }, []);
+
+  // Vẽ khung highlight 3D cho công trình Master Building đang được chọn (đồng bộ 2D <-> 3D)
+  useEffect(() => {
+    const eng = engineRef.current;
+    if (!eng || !originState) return;
+    if (selectedBuildingGroupRef.current) {
+      eng.scene.remove(selectedBuildingGroupRef.current);
+      selectedBuildingGroupRef.current.traverse((obj) => {
+        if ((obj as THREE.Mesh).geometry) (obj as THREE.Mesh).geometry.dispose();
+        if ((obj as THREE.Mesh).material) {
+          const mat = (obj as THREE.Mesh).material;
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+          else mat.dispose();
+        }
+      });
+      selectedBuildingGroupRef.current = null;
+    }
+    if (!localSelectedBuilding || localSelectedBuilding.ringLocal.length < 3) {
+      eng.requestRender();
+      return;
+    }
+    const group = new THREE.Group();
+    const ring = localSelectedBuilding.ringLocal;
+    const baseY = getElevationAtLngLat(
+      localSelectedBuilding.centroidLngLat[0],
+      localSelectedBuilding.centroidLngLat[1]
+    );
+    const topY = baseY + localSelectedBuilding.height + 0.35;
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i < ring.length; i++) {
+      pts.push(new THREE.Vector3(ring[i][0], topY, -ring[i][1]));
+    }
+    if (pts.length >= 3) {
+      pts.push(pts[0].clone());
+      const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.01);
+      const tubeGeo = new THREE.TubeGeometry(curve, Math.max(16, pts.length * 4), 0.55, 6, false);
+      const tubeMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+      const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
+      tubeMesh.renderOrder = 30;
+      group.add(tubeMesh);
+    }
+    eng.scene.add(group);
+    selectedBuildingGroupRef.current = group;
+    eng.requestRender();
+  }, [localSelectedBuilding, originState, demReadyTick]);
 
   // Vẽ tuyến đường dẫn đường 3D bám sát mặt đường khi activeRoute hoạt động (đồng bộ 100% giữa 2D và 3D)
   useEffect(() => {
@@ -1404,8 +1540,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
     for (let i = 0; i < coordsToDraw.length; i++) {
       const [lng, lat] = coordsToDraw[i];
       const [lx, ly] = lngLatToLocal(originState, lng, lat);
-      const hillY = getLizardHillElevationAtLngLat(lng, lat);
-      pts3D.push(new THREE.Vector3(lx, hillY + 0.65, -ly));
+      const terrainY = getElevationAtLngLat(lng, lat);
+      pts3D.push(new THREE.Vector3(lx, terrainY + 0.65, -ly));
     }
 
     if (pts3D.length >= 2) {
@@ -1438,7 +1574,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
     eng.scene.add(group);
     routeGroupRef.current = group;
     eng.requestRender();
-  }, [activeRoute, originState]);
+  }, [activeRoute, originState, demReadyTick]);
 
   const flyToPlace = useCallback(
     (p: PlaceLocation) => {
@@ -1446,32 +1582,31 @@ export const City3DView: React.FC<City3DViewProps> = ({
       const eng = engineRef.current;
       if (eng?.origin) {
         const [x, y] = lngLatToLocal(eng.origin, p.lng, p.lat);
+        const baseY = getElevationAtLngLat(p.lng, p.lat);
         // Tự động xoay góc nhìn chuẩn trực diện từ mặt đường chính cho các công trình biểu tượng & danh thắng 3D
         if (p.id === 'osm_landmark_quang_truong_chim_xanh') {
           // Nhìn từ Đường Nguyễn Văn Linh (Đông Bắc) vào thẳng Quảng trường Con Chim Xanh (Tây Nam)
-          eng.animateTo(new THREE.Vector3(x, 0, -y), new THREE.Vector3(44, 46, -46), 720);
+          eng.animateTo(new THREE.Vector3(x, baseY, -y), new THREE.Vector3(44, 46, -46), 720);
           return;
         }
         if (p.id === 'osm_way_1079368029') {
           // Nhìn từ Đường Nguyễn Văn Linh (Tây Nam) vào thẳng cổng Số 34 & Tòa nhà 7 tầng ĐH Kiến trúc
-          eng.animateTo(new THREE.Vector3(x, 0, -y), new THREE.Vector3(-48, 42, 50), 720);
+          eng.animateTo(new THREE.Vector3(x, baseY, -y), new THREE.Vector3(-48, 42, 50), 720);
           return;
         }
         if (p.id === 'osm_landmark_nha_trang_xuan_hoa') {
           // Nhìn từ ngã giao Vòng tròn 1 vào thẳng mặt tiền Màn hình LED & Mái vòm vàng Nhà Trắng
-          eng.animateTo(new THREE.Vector3(x, 0, -y), new THREE.Vector3(-14, 42, 68), 720);
+          eng.animateTo(new THREE.Vector3(x, baseY, -y), new THREE.Vector3(-14, 42, 68), 720);
           return;
         }
         if (p.id === 'osm_historic_bot_than_lan') {
           // Nhìn trực diện vào Khu Di tích Lịch sử Bốt Pháp, Bốt tròn cổ, Nhà bia & Kỳ đài trên đỉnh Bắc Đồi Thằn Lằn
-          const hillY = getLizardHillElevationAtLngLat(p.lng, p.lat);
-          eng.animateTo(new THREE.Vector3(x, hillY + 4, -y), new THREE.Vector3(56, 48, 68), 780);
+          eng.animateTo(new THREE.Vector3(x, baseY + 4, -y), new THREE.Vector3(56, 48, 68), 780);
           return;
         }
         if (p.id === 'osm_landmark_nui_than_lan') {
           // Nhìn bao quát Đài Vọng Cảnh Đỉnh Nam, đường leo đồi và toàn bộ sống lưng Đồi Thằn Lằn
-          const hillY = getLizardHillElevationAtLngLat(p.lng, p.lat);
-          eng.animateTo(new THREE.Vector3(x, hillY + 3, -y), new THREE.Vector3(82, 68, 95), 780);
+          eng.animateTo(new THREE.Vector3(x, baseY + 3, -y), new THREE.Vector3(82, 68, 95), 780);
           return;
         }
       }
@@ -2013,12 +2148,36 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedCategories3D(['public', 'school']);
+                      setSelectedCategories3D([
+                        'public',
+                        'school',
+                        'food',
+                        'pub',
+                        'cafe',
+                        'snack',
+                        'billiards',
+                        'game',
+                        'entertainment',
+                        'service',
+                        'grocery',
+                        'supermarket',
+                        'phone',
+                      ]);
                       setActiveShopGroup('none');
                     }}
                     className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] hover:bg-[#D1FAE5] text-[#047857] text-[10.5px] font-extrabold whitespace-nowrap cursor-pointer transition"
                   >
-                    Mặc định
+                    Tất cả đã ghim
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategories3D(['public', 'school']);
+                      setActiveShopGroup('none');
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10.5px] font-bold whitespace-nowrap cursor-pointer transition"
+                  >
+                    Chỉ Hành chính
                   </button>
                   <button
                     type="button"
@@ -2069,15 +2228,18 @@ export const City3DView: React.FC<City3DViewProps> = ({
                     activeBg: 'bg-[#9333EA] text-white shadow-xs',
                   },
                   {
+                    key: 'billiards',
+                    cats: ['billiards', 'game', 'entertainment'] as MapCategoryKey[],
+                    label: 'Bi-a, Game & Giải trí',
+                    activeBg: 'bg-[#2563EB] text-white shadow-xs',
+                  },
+                  {
                     key: 'service',
                     cats: [
                       'service',
                       'grocery',
                       'supermarket',
                       'phone',
-                      'billiards',
-                      'game',
-                      'entertainment',
                     ] as MapCategoryKey[],
                     label: 'Dịch vụ & Tiện ích',
                     activeBg: 'bg-[#475569] text-white shadow-xs',
@@ -2636,13 +2798,15 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   eng.controls.target.x,
                   -eng.controls.target.z
                 );
-                onClose({ lat, lng });
+                const dist = eng.camera.position.distanceTo(eng.controls.target);
+                const syncedZoom = distance3DToZoom2D(dist);
+                onClose({ lat, lng }, syncedZoom);
               } else {
                 onClose();
               }
             }}
             aria-label="Chuyển sang Bản đồ 2D"
-            title="Chuyển sang Bản đồ 2D"
+            title="Chuyển sang Bản đồ 2D (đồng bộ tâm nhìn, zoom & công trình đang chọn)"
             className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-black text-[11px] transition-all border-b border-[#E5DEC9] cursor-pointer bg-[#059669] hover:bg-[#047857] text-white"
           >
             2D
@@ -2742,7 +2906,6 @@ export const City3DView: React.FC<City3DViewProps> = ({
       {(home3DModalMode === 'view' || home3DModalMode === 'edit') && (
         <div
           className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
-          onClick={() => setHome3DModalMode('closed')}
         >
           <div
             className="w-full max-w-md rounded-2xl bg-[#FFFDF9] border-2 border-[#403064] shadow-2xl overflow-hidden text-[#1E293B]"
@@ -3118,6 +3281,68 @@ export const City3DView: React.FC<City3DViewProps> = ({
         </div>
       )}
 
+      {/* Thẻ thông tin Công trình Master Building (Đồng bộ 100% ID, Footprint, Zone, DEM giữa 2D và 3D) */}
+      {!selected && localSelectedBuilding && !isEditingPlace && !isCreatingNew && (
+        <div className="absolute left-2.5 right-12 sm:right-auto bottom-12 sm:bottom-14 z-20 sm:w-[335px] rounded-2xl border border-[#403064]/80 bg-[#FFFDF9]/98 p-2.5 sm:p-3 text-[#2D2246] shadow-2xl backdrop-blur-md">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="inline-flex items-center rounded-md bg-[#FEF3C7] px-2 py-0.5 text-[10px] font-extrabold text-[#B45309]">
+                  Master ID: {localSelectedBuilding.id}
+                </span>
+                <span className="inline-flex items-center rounded-md bg-[#E6F7EF] px-2 py-0.5 text-[10px] font-bold text-[#047857]">
+                  {CONTEXTUAL_ZONE_LABELS[localSelectedBuilding.zone] || localSelectedBuilding.zone}
+                </span>
+              </div>
+              <div className="mt-1 text-[13px] sm:text-[13.5px] font-extrabold leading-snug text-[#1E1633]">
+                {localSelectedBuilding.name ||
+                  `Công trình ${localSelectedBuilding.buildingType.toUpperCase()} (${Math.round(localSelectedBuilding.areaSqm)} m²)`}
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-1.5 rounded-xl bg-[#F8F5EE] border border-[#E5DEC9] p-2 text-[10.5px]">
+                <div>
+                  <span className="text-[#64748B] font-semibold">Chiều cao / Tầng:</span>
+                  <div className="font-extrabold text-[#1E1633]">
+                    {localSelectedBuilding.height.toFixed(1)} m · {localSelectedBuilding.levels} tầng
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[#64748B] font-semibold">Độ cao nền DEM:</span>
+                  <div className="font-extrabold text-[#047857]">
+                    {getElevationAtLngLat(
+                      localSelectedBuilding.centroidLngLat[0],
+                      localSelectedBuilding.centroidLngLat[1]
+                    ).toFixed(1)}{' '}
+                    m (ASL:{' '}
+                    {(
+                      22 +
+                      getElevationAtLngLat(
+                        localSelectedBuilding.centroidLngLat[0],
+                        localSelectedBuilding.centroidLngLat[1]
+                      )
+                    ).toFixed(1)}{' '}
+                    m)
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-[#64748B] font-semibold">Nguồn chiều cao: </span>
+                  <span className="font-bold text-[#403064]">
+                    {HEIGHT_SOURCE_LABELS[localSelectedBuilding.heightSource]} (tin cậy{' '}
+                    {Math.round(localSelectedBuilding.confidence * 100)}%)
+                  </span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSelectBuilding3D(null)}
+              className="rounded-lg bg-[#F1ECE1] px-2 py-0.5 text-xs font-bold text-[#403064] hover:bg-[#E5DEC9] cursor-pointer shrink-0"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* THANH ĐIỀU KHIỂN ADMIN / QUẢN LÝ MAPS ĐẶT GỌN Ở DƯỚI ĐÁY BẢN ĐỒ (Dễ bấm bằng ngón cái trên Mobile, không icon thừa) */}
       {hasAdminAccess ? (
         <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-20 max-w-[96vw] pointer-events-auto">
@@ -3459,7 +3684,6 @@ export const City3DView: React.FC<City3DViewProps> = ({
       {isLoginModalOpen && (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center bg-black/45 p-4 backdrop-blur-xs"
-          onClick={() => setIsLoginModalOpen(false)}
         >
           <form
             onSubmit={handleAdminQuickLogin}

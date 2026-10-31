@@ -5,6 +5,19 @@
 
 export const CITY3D_DATA_URL = 'geo/xuanhoa-city3d.bin';
 export const CITY3D_META_URL = 'geo/xuanhoa-city3d-meta.json';
+export const DEM_DATA_URL = 'geo/xuanhoa-dem.bin';
+export const DEM_META_URL = 'geo/xuanhoa-dem-meta.json';
+
+export {
+  getAslElevationAtLngLat,
+  getElevationAtLngLat,
+  getElevationAtLocal,
+  getFlatWaterElevationForRingLocal,
+  initXuanHoaDemFromBuffer,
+  loadXuanHoaDem,
+  type XuanHoaDemData,
+  type XuanHoaDemMeta,
+} from '@/lib/map/xuanhoa-elevation';
 
 /** Kích thước 1 ô (chunk) hình học — càng lớn càng ít draw call, càng nhỏ cắt bỏ ngoài khung hình càng hiệu quả */
 export const CHUNK_SIZE = 700;
@@ -206,7 +219,7 @@ export interface BuildingChunk extends MeshBuffers {
 
 export interface TreeChunk {
   key: string;
-  /** mỗi cây 5 số: x, z, scale, rotY, colorIdx */
+  /** mỗi cây 6 số: x, y, z, scale, rotY, colorIdx */
   broadleaf: Float32Array;
   conifer: Float32Array;
 }
@@ -219,12 +232,31 @@ export interface BuildingLabel {
 }
 
 export interface RoadLabel3D {
+  roadId?: string;
   name: string;
+  parentRoad?: string;
+  source?: string;
+  confidence?: number;
   x: number;
   z: number;
+  y?: number;
   dx: number;
   dz: number;
   tier: 'major' | 'secondary' | 'minor' | 'alley';
+}
+
+/**
+ * Chuyển đổi đồng bộ mức Zoom 2D (MapLibre) <-> Khoảng cách Camera 3D (mét) (Section L)
+ */
+export function zoom2DToDistance3D(zoom: number): number {
+  const clamped = Math.max(11.5, Math.min(19.5, zoom));
+  return Math.round(Math.max(65, Math.min(7500, 620 * Math.pow(2, 15.35 - clamped))));
+}
+
+export function distance3DToZoom2D(distance: number): number {
+  const clamped = Math.max(65, Math.min(7500, distance));
+  const zoom = 15.35 - Math.log2(clamped / 620);
+  return Number(Math.max(12.0, Math.min(19.0, zoom)).toFixed(2));
 }
 
 export interface LiveBuildingInput {

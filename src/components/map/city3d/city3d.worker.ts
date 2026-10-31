@@ -9,11 +9,16 @@ import {
   CITY3D_COLORS,
   CITY3D_DATA_URL,
   CITY3D_META_URL,
+  DEM_DATA_URL,
+  DEM_META_URL,
   LANDUSE_COLORS,
   ROOF_PALETTE,
   TREE_PALETTE,
   WALL_PALETTE,
+  getElevationAtLocal,
+  getFlatWaterElevationForRingLocal,
   hexToRgb,
+  initXuanHoaDemFromBuffer,
   isInsideLizardHillClearZone,
   localToLngLat,
   type BuildingChunk,
@@ -25,6 +30,7 @@ import {
   type TreeChunk,
   type WorkerInMessage,
   type WorkerOutMessage,
+  type XuanHoaDemMeta,
 } from './city3d-shared';
 
 type RGB = [number, number, number];
@@ -188,6 +194,29 @@ function minAreaRect(r: number[]) {
 
 /* ------------------------------------------------------------------ bộ đệm hình học */
 
+function workerTerrainY(x: number, y: number): number {
+  const [lng, lat] = localToLngLat(origin, x, y);
+  if (isInsideLizardHillClearZone(lng, lat)) return 0;
+  return getElevationAtLocal(x, y);
+}
+
+function subdividePts(pts: number[], maxSegLen = 36): number[] {
+  const n = pts.length / 2;
+  if (n < 2) return pts;
+  const out: number[] = [pts[0], pts[1]];
+  for (let i = 0; i < n - 1; i++) {
+    const x1 = pts[i * 2], y1 = pts[i * 2 + 1];
+    const x2 = pts[(i + 1) * 2], y2 = pts[(i + 1) * 2 + 1];
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    const steps = Math.max(1, Math.ceil(len / maxSegLen));
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      out.push(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
+    }
+  }
+  return out;
+}
+
 class GeoBuilder {
   pos: number[] = [];
   col: number[] = [];
@@ -222,35 +251,73 @@ class GeoBuilder {
       else this.tri(base + a, base + d, base + b);
     }
   }
-  /** Dải băng theo đường (đường phố, sông suối) */
-  ribbon(pts: number[], hw: number, y: number, c: RGB, caps = false) {
+  /** Đa giác bám theo độ cao địa hình DEM */
+  terrainPolygon(ring: number[], yOff: number, c: RGB) {
+    const n = ring.length / 2;
+    if (n < 3) return;
+    const base = this.count;
+    for (let i = 0; i < n; i++) {
+      const x = ring[i * 2], y = ring[i * 2 + 1];
+      this.v(x, workerTerrainY(x, y) + yOff, -y, c);
+    }
+    const tris = earcut(ring);
+    for (let t = 0; t < tris.length; t += 3) {
+      const a = tris[t], b = tris[t + 1], d = tris[t + 2];
+      const area =
+        (ring[b * 2] - ring[a * 2]) * (ring[d * 2 + 1] - ring[a * 2 + 1]) -
+        (ring[d * 2] - ring[a * 2]) * (ring[b * 2 + 1] - ring[a * 2 + 1]);
+      if (area >= 0) this.tri(base + a, base + b, base + d);
+      else this.tri(base + a, base + d, base + b);
+    }
+  }
+  /** Dải băng theo đường (đường phố, sông suối) bám theo địa hình DEM — chống miter spike tại góc cua gắt */
+  ribbon(ptsRaw: number[], hw: number, yOff: number, c: RGB, caps = false, flatY: number | null = null) {
+    const rawN = ptsRaw.length / 2;
+    if (rawN < 2) return;
+    const dedup: number[] = [ptsRaw[0], ptsRaw[1]];
+    for (let i = 1; i < rawN; i++) {
+      const px = dedup[dedup.length - 2], pz = dedup[dedup.length - 1];
+      const cx = ptsRaw[i * 2], cz = ptsRaw[i * 2 + 1];
+      if (Math.hypot(cx - px, cz - pz) >= 0.2 || i === rawN - 1) {
+        dedup.push(cx, cz);
+      }
+    }
+    const pts = flatY === null ? subdividePts(dedup, 38) : dedup;
     const n = pts.length / 2;
     if (n < 2) return;
     const base = this.count;
+    const sharpJoinIndices: number[] = [];
     for (let i = 0; i < n; i++) {
       const x = pts[i * 2], z = pts[i * 2 + 1];
+      const y = flatY !== null ? flatY : workerTerrainY(x, z) + yOff;
       let dx0 = 0, dy0 = 0, dx1 = 0, dy1 = 0;
+      let l0 = 0, l1 = 0;
       if (i > 0) {
         dx0 = x - pts[i * 2 - 2];
         dy0 = z - pts[i * 2 - 1];
-        const l = Math.hypot(dx0, dy0) || 1;
-        dx0 /= l;
-        dy0 /= l;
+        l0 = Math.hypot(dx0, dy0) || 1;
+        dx0 /= l0;
+        dy0 /= l0;
       }
       if (i < n - 1) {
         dx1 = pts[i * 2 + 2] - x;
         dy1 = pts[i * 2 + 3] - z;
-        const l = Math.hypot(dx1, dy1) || 1;
-        dx1 /= l;
-        dy1 /= l;
+        l1 = Math.hypot(dx1, dy1) || 1;
+        dx1 /= l1;
+        dy1 /= l1;
       }
       if (i === 0) {
         dx0 = dx1;
         dy0 = dy1;
+        l0 = l1;
       }
       if (i === n - 1) {
         dx1 = dx0;
         dy1 = dy0;
+        l1 = l0;
+      }
+      if (caps && i > 0 && i < n - 1 && dx0 * dx1 + dy0 * dy1 < 0.68) {
+        sharpJoinIndices.push(i);
       }
       let mx = -(dy0 + dy1), my = dx0 + dx1;
       const ml = Math.hypot(mx, my);
@@ -261,8 +328,11 @@ class GeoBuilder {
         mx /= ml;
         my /= ml;
       }
-      const dot = Math.max(0.4, mx * -dy1 + my * dx1);
-      const len = hw / dot;
+      // Kẹp miter giới hạn (tối đa ~1.38x hw) để không bao giờ phóng gai nhọn hay tự cắt tại khúc cua
+      const dot = Math.max(0.72, mx * -dy1 + my * dx1);
+      const minAdjLen = Math.min(l0, l1);
+      const maxMiter = minAdjLen > 0 ? Math.max(hw, Math.min(hw * 1.38, minAdjLen * 0.48)) : hw * 1.38;
+      const len = Math.min(hw / dot, maxMiter);
       this.v(x - mx * len, y, -(z - my * len), c); // phải
       this.v(x + mx * len, y, -(z + my * len), c); // trái
     }
@@ -271,8 +341,15 @@ class GeoBuilder {
       this.quad(r0, r1, l1, l0);
     }
     if (caps) {
-      this.disc(pts[0], pts[1], hw, y, c);
-      this.disc(pts[(n - 1) * 2], pts[(n - 1) * 2 + 1], hw, y, c);
+      const y0 = flatY !== null ? flatY : workerTerrainY(pts[0], pts[1]) + yOff;
+      const yN = flatY !== null ? flatY : workerTerrainY(pts[(n - 1) * 2], pts[(n - 1) * 2 + 1]) + yOff;
+      this.disc(pts[0], pts[1], hw, y0, c);
+      this.disc(pts[(n - 1) * 2], pts[(n - 1) * 2 + 1], hw, yN, c);
+      for (const ji of sharpJoinIndices) {
+        const jx = pts[ji * 2], jz = pts[ji * 2 + 1];
+        const jy = flatY !== null ? flatY : workerTerrainY(jx, jz) + yOff;
+        this.disc(jx, jz, hw, jy, c, 6);
+      }
     }
   }
   disc(x: number, yN: number, r: number, y: number, c: RGB, seg = 8) {
@@ -299,6 +376,23 @@ class GeoBuilder {
       this.quad(b, b + 1, b + 2, b + 3);
     }
   }
+  /** Vách đất bao quanh ranh giới phường khớp theo cao độ DEM */
+  terrainSkirt(ring: number[], yBottom: number, cBottom: RGB, cTop: RGB) {
+    const n = ring.length / 2;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const x0 = ring[i * 2], y0 = ring[i * 2 + 1];
+      const x1 = ring[j * 2], y1 = ring[j * 2 + 1];
+      const top0 = workerTerrainY(x0, y0);
+      const top1 = workerTerrainY(x1, y1);
+      const b = this.count;
+      this.v(x0, yBottom, -y0, cBottom);
+      this.v(x1, yBottom, -y1, cBottom);
+      this.v(x1, top1, -y1, cTop);
+      this.v(x0, top0, -y0, cTop);
+      this.quad(b, b + 1, b + 2, b + 3);
+    }
+  }
   take(): MeshBuffers {
     return {
       positions: new Float32Array(this.pos),
@@ -308,79 +402,99 @@ class GeoBuilder {
   }
 }
 
-/* ------------------------------------------------------------------ dựng 1 ngôi nhà */
+/* ------------------------------------------------------------------ dựng 1 ngôi nhà (trên nền DEM + giữ footprint thật) */
 
 function addBuilding(g: GeoBuilder, b: Bld) {
   const r = b.ring;
   const n = r.length / 2;
-  const h = b.h;
+  let minGroundY = Infinity;
+  let maxGroundY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const gy = workerTerrainY(r[i * 2], r[i * 2 + 1]);
+    if (gy < minGroundY) minGroundY = gy;
+    if (gy > maxGroundY) maxGroundY = gy;
+  }
+  if (!Number.isFinite(minGroundY)) {
+    minGroundY = 0;
+    maxGroundY = 0;
+  }
+  // Đế nhà bám theo mặt đất cao nhất dưới chân công trình, chân móng (foundation skirt) cắm sâu xuống dưới minGroundY
+  // để công trình trên sườn đồi không bao giờ bị bay lơ lửng hoặc chìm mái
+  const baseY = maxGroundY;
+  const foundationY = Math.min(minGroundY - 1.2, baseY - 0.25);
+  const topY = baseY + b.h;
   const wallTop = b.wall;
   const wallBottom = tint(b.wall, 0.8);
-  g.prismWalls(r, 0, h, wallBottom, wallTop);
+  g.prismWalls(r, foundationY, topY, wallBottom, wallTop);
 
-  if (b.roofKind !== 0 && n === 4) {
-    const p = (i: number) => [r[i * 2], r[i * 2 + 1]];
-    const [p0, p1, p2, p3] = [p(0), p(1), p(2), p(3)];
-    const w = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
-    const d = Math.hypot(p3[0] - p0[0], p3[1] - p0[1]);
-    if (w > 0.5 && d > 0.5) {
-      const ux = (p1[0] - p0[0]) / w, uy = (p1[1] - p0[1]) / w;
-      const vx = (p3[0] - p0[0]) / d, vy = (p3[1] - p0[1]) / d;
-      const cx = (p0[0] + p1[0] + p2[0] + p3[0]) / 4;
-      const cy = (p0[1] + p1[1] + p2[1] + p3[1]) / 4;
-      const rise = Math.max(0.8, Math.min(4.2, d * 0.34));
-      const ov = Math.min(0.45, d * 0.08);
-      const eaveY = h - (ov * rise) / (d / 2);
-      const roofC = b.roof;
-      const roofDark = tint(b.roof, 0.92);
-      const corner = (q: number[], su: number, sv: number): [number, number] => [
-        q[0] + ux * su * ov + vx * sv * ov,
-        q[1] + uy * su * ov + vy * sv * ov,
-      ];
-      const q0 = corner(p0, -1, -1), q1 = corner(p1, 1, -1), q2 = corner(p2, 1, 1), q3 = corner(p3, -1, 1);
-      const half = b.roofKind === 1 ? w / 2 + ov : Math.max(0, w / 2 - d / 2);
-      const r0: [number, number] = [cx - ux * half, cy - uy * half];
-      const r1: [number, number] = [cx + ux * half, cy + uy * half];
-      const ry = h + rise;
-      const iq0 = g.v(q0[0], eaveY, -q0[1], roofC);
-      const iq1 = g.v(q1[0], eaveY, -q1[1], roofC);
-      const iq2 = g.v(q2[0], eaveY, -q2[1], roofDark);
-      const iq3 = g.v(q3[0], eaveY, -q3[1], roofDark);
-      const ir0 = g.v(r0[0], ry, -r0[1], roofC);
-      const ir1 = g.v(r1[0], ry, -r1[1], roofC);
-      const ir0b = g.v(r0[0], ry, -r0[1], roofDark);
-      const ir1b = g.v(r1[0], ry, -r1[1], roofDark);
-      g.quad(iq0, iq1, ir1, ir0);
-      g.quad(iq2, iq3, ir0b, ir1b);
-      if (b.roofKind === 1) {
-        // đầu hồi (tam giác tường)
-        const a1 = g.v(cx + (ux * w) / 2, ry, -(cy + (uy * w) / 2), wallTop);
-        const a0 = g.v(cx - (ux * w) / 2, ry, -(cy - (uy * w) / 2), wallTop);
-        const t1 = g.v(p1[0], h, -p1[1], wallTop);
-        const t2 = g.v(p2[0], h, -p2[1], wallTop);
-        const t3 = g.v(p3[0], h, -p3[1], wallTop);
-        const t0 = g.v(p0[0], h, -p0[1], wallTop);
-        g.tri(t1, t2, a1);
-        g.tri(t3, t0, a0);
-      } else {
-        const e1 = g.v(q1[0], eaveY, -q1[1], roofC);
-        const e2 = g.v(q2[0], eaveY, -q2[1], roofC);
-        const e3 = g.v(q3[0], eaveY, -q3[1], roofC);
-        const e0 = g.v(q0[0], eaveY, -q0[1], roofC);
-        const h1 = g.v(r1[0], ry, -r1[1], roofC);
-        const h0 = g.v(r0[0], ry, -r0[1], roofC);
-        g.tri(e1, e2, h1);
-        g.tri(e3, e0, h0);
+  if (b.roofKind !== 0) {
+    const roofRing = n === 4 ? r : minAreaRect(r)?.ring || null;
+    if (roofRing && roofRing.length === 8) {
+      if (n !== 4) {
+        // Đóng nắp trần đa giác thật trước khi đặt mái dốc để không hở góc tường đa giác
+        g.flatPolygon(r, topY, wallTop);
       }
-      return;
+      const p = (i: number) => [roofRing[i * 2], roofRing[i * 2 + 1]];
+      const [p0, p1, p2, p3] = [p(0), p(1), p(2), p(3)];
+      const w = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+      const d = Math.hypot(p3[0] - p0[0], p3[1] - p0[1]);
+      if (w > 0.5 && d > 0.5 && d <= 45) {
+        const ux = (p1[0] - p0[0]) / w, uy = (p1[1] - p0[1]) / w;
+        const vx = (p3[0] - p0[0]) / d, vy = (p3[1] - p0[1]) / d;
+        const cx = (p0[0] + p1[0] + p2[0] + p3[0]) / 4;
+        const cy = (p0[1] + p1[1] + p2[1] + p3[1]) / 4;
+        const rise = Math.max(0.8, Math.min(4.2, d * 0.34));
+        const ov = Math.min(0.45, d * 0.08);
+        const eaveY = topY - (ov * rise) / (d / 2);
+        const roofC = b.roof;
+        const roofDark = tint(b.roof, 0.92);
+        const corner = (q: number[], su: number, sv: number): [number, number] => [
+          q[0] + ux * su * ov + vx * sv * ov,
+          q[1] + uy * su * ov + vy * sv * ov,
+        ];
+        const q0 = corner(p0, -1, -1), q1 = corner(p1, 1, -1), q2 = corner(p2, 1, 1), q3 = corner(p3, -1, 1);
+        const half = b.roofKind === 1 ? w / 2 + ov : Math.max(0, w / 2 - d / 2);
+        const r0: [number, number] = [cx - ux * half, cy - uy * half];
+        const r1: [number, number] = [cx + ux * half, cy + uy * half];
+        const ry = topY + rise;
+        const iq0 = g.v(q0[0], eaveY, -q0[1], roofC);
+        const iq1 = g.v(q1[0], eaveY, -q1[1], roofC);
+        const iq2 = g.v(q2[0], eaveY, -q2[1], roofDark);
+        const iq3 = g.v(q3[0], eaveY, -q3[1], roofDark);
+        const ir0 = g.v(r0[0], ry, -r0[1], roofC);
+        const ir1 = g.v(r1[0], ry, -r1[1], roofC);
+        const ir0b = g.v(r0[0], ry, -r0[1], roofDark);
+        const ir1b = g.v(r1[0], ry, -r1[1], roofDark);
+        g.quad(iq0, iq1, ir1, ir0);
+        g.quad(iq2, iq3, ir0b, ir1b);
+        if (b.roofKind === 1) {
+          const a1 = g.v(cx + (ux * w) / 2, ry, -(cy + (uy * w) / 2), wallTop);
+          const a0 = g.v(cx - (ux * w) / 2, ry, -(cy - (uy * w) / 2), wallTop);
+          const t1 = g.v(p1[0], topY, -p1[1], wallTop);
+          const t2 = g.v(p2[0], topY, -p2[1], wallTop);
+          const t3 = g.v(p3[0], topY, -p3[1], wallTop);
+          const t0 = g.v(p0[0], topY, -p0[1], wallTop);
+          g.tri(t1, t2, a1);
+          g.tri(t3, t0, a0);
+        } else {
+          const e1 = g.v(q1[0], eaveY, -q1[1], roofC);
+          const e2 = g.v(q2[0], eaveY, -q2[1], roofC);
+          const e3 = g.v(q3[0], eaveY, -q3[1], roofC);
+          const e0 = g.v(q0[0], eaveY, -q0[1], roofC);
+          const h1 = g.v(r1[0], ry, -r1[1], roofC);
+          const h0 = g.v(r0[0], ry, -r0[1], roofC);
+          g.tri(e1, e2, h1);
+          g.tri(e3, e0, h0);
+        }
+        return;
+      }
     }
   }
 
-  // Mái bằng (sân thượng)
-  g.flatPolygon(r, h, b.roof);
+  // Mái bằng (sân thượng) theo đúng đa giác footprint thật
+  g.flatPolygon(r, topY, b.roof);
 
   if (b.topBox && b.area > 25) {
-    // Tum cầu thang / bồn nước trên sân thượng
     const s = Math.min(3.4, Math.sqrt(b.area) * 0.42);
     if (pointInRing(b.cx, b.cy, r)) {
       const ex = r[2] - r[0], ey = r[3] - r[1];
@@ -399,8 +513,8 @@ function addBuilding(g: GeoBuilder, b: Bld) {
           [box[i + 1], box[j + 1]] = [box[j + 1], box[i + 1]];
         }
       }
-      g.prismWalls(box, h, h + 2.6, tint(b.wall, 0.9), b.wall);
-      g.flatPolygon(box, h + 2.6, b.roof);
+      g.prismWalls(box, topY, topY + 2.6, tint(b.wall, 0.9), b.wall);
+      g.flatPolygon(box, topY + 2.6, b.roof);
     }
   }
 }
@@ -416,11 +530,12 @@ function buildBuildingChunk(key: string): BuildingChunk | null {
     const b = buildings[id];
     if (b.removed) continue;
     addBuilding(g, b);
+    const ty = workerTerrainY(b.cx, b.cy);
     minX = Math.min(minX, b.cx);
     maxX = Math.max(maxX, b.cx);
     minZ = Math.min(minZ, -b.cy);
     maxZ = Math.max(maxZ, -b.cy);
-    maxH = Math.max(maxH, b.h + 5);
+    maxH = Math.max(maxH, ty + b.h + 5);
   }
   const m = g.take();
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
@@ -434,8 +549,9 @@ function buildTreeChunk(key: string): TreeChunk {
   const conifer: number[] = [];
   for (const t of list) {
     const r = hash2(t.x, t.y);
+    const ty = workerTerrainY(t.x, t.y);
     const arr = t.kind === 1 ? conifer : broad;
-    arr.push(t.x, -t.y, t.s, r * Math.PI * 2, Math.floor(r * 997) % TREE_PALETTE.length);
+    arr.push(t.x, ty, -t.y, t.s, r * Math.PI * 2, Math.floor(r * 997) % TREE_PALETTE.length);
   }
   return { key, broadleaf: new Float32Array(broad), conifer: new Float32Array(conifer) };
 }
@@ -521,14 +637,18 @@ async function fetchJson(url: string) {
 
 async function init(baseUrl: string) {
   const u = (p: string) => `${baseUrl}/${p}`;
-  post({ type: 'progress', label: 'Đang tải dữ liệu nhà & cây xanh…', pct: 5 });
+  post({ type: 'progress', label: 'Đang tải dữ liệu Master & địa hình DEM…', pct: 5 });
 
-  const [binBuf, meta, boundary, landuse, water, waterways, roads] = await Promise.all([
+  const [binBuf, meta, demBuf, demMeta, boundary, landuse, water, waterways, roads] = await Promise.all([
     fetch(u(CITY3D_DATA_URL)).then((r) => {
       if (!r.ok) throw new Error('Không tải được dữ liệu 3D');
       return r.arrayBuffer();
     }),
     fetchJson(u(CITY3D_META_URL)),
+    fetch(u(DEM_DATA_URL))
+      .then((r) => (r.ok ? r.arrayBuffer() : null))
+      .catch(() => null),
+    fetchJson(u(DEM_META_URL)).catch(() => null),
     fetchJson(u('geo/xuanhoa-boundary.geojson')),
     fetchJson(u('geo/xuanhoa-landuse.geojson')),
     fetchJson(u('geo/xuanhoa-water.geojson')),
@@ -536,9 +656,13 @@ async function init(baseUrl: string) {
     fetchJson(u('geo/xuanhoa-roads.geojson')),
   ]);
 
+  if (demBuf && demMeta) {
+    initXuanHoaDemFromBuffer(demBuf, demMeta as XuanHoaDemMeta);
+  }
+
   origin = meta.origin as City3DOrigin;
 
-  // --- Ranh giới phường: mặt đất + vách đất kiểu sa bàn
+  // --- Ranh giới phường: mặt đất DEM + vách đất kiểu sa bàn
   const wardRing = ringToLocalCCW(boundary.features[0].geometry.coordinates[0]);
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (let i = 0; i < wardRing.length; i += 2) {
@@ -548,17 +672,58 @@ async function init(baseUrl: string) {
     maxY = Math.max(maxY, wardRing[i + 1]);
   }
   post({ type: 'origin', origin, wardBox: [minX, minY, maxX, maxY] });
-  post({ type: 'progress', label: 'Đang dựng mặt đất, sông hồ & đường phố…', pct: 20 });
+  post({ type: 'progress', label: 'Đang dựng địa hình DEM, sông hồ & đường phố…', pct: 20 });
 
   const ground = new GeoBuilder();
-  ground.flatPolygon(wardRing, 0, hexToRgb(CITY3D_COLORS.ground));
-  const skirt = new GeoBuilder();
-  skirt.prismWalls(wardRing, -38, 0, hexToRgb(CITY3D_COLORS.skirtBottom), hexToRgb(CITY3D_COLORS.skirtTop));
+  const baseGroundRgb = hexToRgb(CITY3D_COLORS.ground);
+  const hillMidRgb = hexToRgb('#879F6A');
+  const hillHighRgb = hexToRgb('#5E7A48');
+  const terrainColorAtY = (ty: number): RGB => {
+    if (ty <= 3.5) return baseGroundRgb;
+    if (ty <= 45) {
+      const t = (ty - 3.5) / 41.5;
+      return [
+        Math.round(baseGroundRgb[0] * (1 - t) + hillMidRgb[0] * t),
+        Math.round(baseGroundRgb[1] * (1 - t) + hillMidRgb[1] * t),
+        Math.round(baseGroundRgb[2] * (1 - t) + hillMidRgb[2] * t),
+      ];
+    }
+    const t = Math.min(1, (ty - 45) / 140);
+    return [
+      Math.round(hillMidRgb[0] * (1 - t) + hillHighRgb[0] * t),
+      Math.round(hillMidRgb[1] * (1 - t) + hillHighRgb[1] * t),
+      Math.round(hillMidRgb[2] * (1 - t) + hillHighRgb[2] * t),
+    ];
+  };
 
-  // --- Phủ đất (công viên, rừng, sân bóng, trường học…)
+  // Lớp rìa ranh giới phường sắc nét + lưới địa hình DEM 80m phủ toàn bộ bên trong ranh giới
+  ground.terrainPolygon(wardRing, -0.25, baseGroundRgb);
+  const TERRAIN_STEP = 80;
+  for (let gx = minX; gx < maxX; gx += TERRAIN_STEP) {
+    const x1 = Math.min(maxX, gx + TERRAIN_STEP);
+    const cx = (gx + x1) * 0.5;
+    for (let gy = minY; gy < maxY; gy += TERRAIN_STEP) {
+      const y1 = Math.min(maxY, gy + TERRAIN_STEP);
+      const cy = (gy + y1) * 0.5;
+      if (!pointInRing(cx, cy, wardRing)) continue;
+      const h00 = workerTerrainY(gx, gy);
+      const h10 = workerTerrainY(x1, gy);
+      const h11 = workerTerrainY(x1, y1);
+      const h01 = workerTerrainY(gx, y1);
+      const v00 = ground.v(gx, h00, -gy, terrainColorAtY(h00));
+      const v10 = ground.v(x1, h10, -gy, terrainColorAtY(h10));
+      const v11 = ground.v(x1, h11, -y1, terrainColorAtY(h11));
+      const v01 = ground.v(gx, h01, -y1, terrainColorAtY(h01));
+      ground.quad(v00, v10, v11, v01);
+    }
+  }
+
+  const skirt = new GeoBuilder();
+  skirt.terrainSkirt(wardRing, -42, hexToRgb(CITY3D_COLORS.skirtBottom), hexToRgb(CITY3D_COLORS.skirtTop));
+
+  // --- Phủ đất (công viên, rừng, sân bóng, trường học…) bám theo DEM
   const land = new GeoBuilder();
   const landFeatures = (landuse.features || []).slice().sort((a: any, b: any) => {
-    // vùng lớn vẽ trước, vùng nhỏ (sân bóng) vẽ sau để nổi lên trên
     const ra = a.geometry?.coordinates?.[0]?.length || 0;
     const rb = b.geometry?.coordinates?.[0]?.length || 0;
     return rb - ra;
@@ -569,10 +734,10 @@ async function init(baseUrl: string) {
     let color = LANDUSE_COLORS[type];
     if (color === undefined) color = f.properties?.kind === 'green' ? LANDUSE_COLORS.park : f.properties?.kind === 'campus' ? LANDUSE_COLORS.school : '';
     if (!color) continue;
-    land.flatPolygon(ringToLocalCCW(f.geometry.coordinates[0]), 0, hexToRgb(color));
+    land.terrainPolygon(ringToLocalCCW(f.geometry.coordinates[0]), 0.04, hexToRgb(color));
   }
 
-  // --- Mặt nước & sông suối
+  // --- Mặt nước & sông suối (Hồ nước có mặt phẳng thuỷ văn chuẩn, không bị nghiêng trên sườn đồi)
   const wat = new GeoBuilder();
   const waterC = hexToRgb(CITY3D_COLORS.water);
   const waterEdge = hexToRgb(CITY3D_COLORS.waterEdge);
@@ -582,18 +747,23 @@ async function init(baseUrl: string) {
     if (ww === 'dam') continue;
     const pts = lineToLocal(f.geometry.coordinates);
     const hw = ww === 'river' ? 11 : 2.2;
-    wat.ribbon(pts, hw + 1.2, 0, waterEdge, true);
-    wat.ribbon(pts, hw, 0, waterC, true);
+    wat.ribbon(pts, hw + 1.2, 0.08, waterEdge, true);
+    wat.ribbon(pts, hw, 0.1, waterC, true);
   }
   for (const f of water.features || []) {
     if (f.geometry?.type !== 'Polygon') continue;
     const ring = ringToLocalCCW(f.geometry.coordinates[0]);
+    const ringPairs: [number, number][] = [];
+    for (let i = 0; i < ring.length; i += 2) {
+      ringPairs.push([ring[i], ring[i + 1]]);
+    }
+    const flatWaterY = getFlatWaterElevationForRingLocal(ringPairs) + 0.12;
     const closed = ring.concat([ring[0], ring[1]]);
-    wat.ribbon(closed, 1.4, 0, waterEdge);
-    wat.flatPolygon(ring, 0, waterC);
+    wat.ribbon(closed, 1.4, 0, waterEdge, false, flatWaterY - 0.02);
+    wat.flatPolygon(ring, flatWaterY, waterC);
   }
 
-  // --- Đường phố: viền vỉa hè trước, lòng đường sau (đường lớn vẽ đè lên đường nhỏ)
+  // --- Đường phố: viền vỉa hè trước, lòng đường sau (bám theo cao độ địa hình DEM)
   const roadG = new GeoBuilder();
   const marks = new GeoBuilder();
   const lines = (roads.features || [])
@@ -602,9 +772,9 @@ async function init(baseUrl: string) {
     .sort((a: any, b: any) => a.st.order - b.st.order);
   const casingC = hexToRgb(CITY3D_COLORS.roadCasing);
   for (const l of lines) {
-    if (l.st.casing > 0) roadG.ribbon(l.pts, l.st.hw + l.st.casing, 0, casingC, true);
+    if (l.st.casing > 0) roadG.ribbon(l.pts, l.st.hw + l.st.casing, 0.14, casingC, true);
   }
-  for (const l of lines) roadG.ribbon(l.pts, l.st.hw, 0, l.st.color, l.st.order >= 2);
+  for (const l of lines) roadG.ribbon(l.pts, l.st.hw, 0.16, l.st.color, l.st.order >= 2);
   // vạch kẻ đứt giữa đường lớn
   const markC = hexToRgb(CITY3D_COLORS.roadMarking);
   for (const l of lines) {
@@ -618,7 +788,7 @@ async function init(baseUrl: string) {
       const ux = (x2 - x1) / len, uy = (y2 - y1) / len;
       for (let d = (6 - (acc % 6)) % 6; d < len; d += 6) {
         const e = Math.min(len, d + 2.6);
-        marks.ribbon([x1 + ux * d, y1 + uy * d, x1 + ux * e, y1 + uy * e], 0.14, 0, markC);
+        marks.ribbon([x1 + ux * d, y1 + uy * d, x1 + ux * e, y1 + uy * e], 0.14, 0.2, markC);
       }
       acc += len;
     }
@@ -749,16 +919,22 @@ async function init(baseUrl: string) {
 
   const labels: BuildingLabel[] = [];
   for (const b of buildings) {
-    if (b.name && !b.removed) labels.push({ x: b.cx, z: -b.cy, y: b.h + (b.roofKind ? 3 : 1.5), name: b.name });
+    if (b.name && !b.removed) {
+      const by = workerTerrainY(b.cx, b.cy);
+      labels.push({ x: b.cx, z: -b.cy, y: by + b.h + (b.roofKind ? 3 : 1.5), name: b.name });
+    }
   }
 
-  // --- Điểm neo Tên Đường 3D chuẩn Maps (trích xuất từ các đoạn thẳng của xuanhoa-roads.geojson)
+  // --- Điểm neo Tên Đường 3D chuẩn Maps (trích xuất trực tiếp từ geometry & roadId của xuanhoa-roads.geojson)
   const rawRoadByName = new Map<string, RoadLabel3D[]>();
   const tierOrder: Record<string, number> = { major: 1, secondary: 2, minor: 3, alley: 4 };
   for (const f of roads.features || []) {
     if (f.geometry?.type !== 'LineString') continue;
-    const name = String(f.properties?.name || '').trim();
+    const p = f.properties || {};
+    const name = String(p.name || '').trim();
     if (!name || /^(Đường mòn|Dốc |Hai Con|Thiên Phú Lâm Loop|Dong Do)/i.test(name)) continue;
+    const roadId = String(p.id || p.osmId || '');
+    const isNamedAlley = /^(Ngõ|Ngách|Hẻm)\s+/i.test(name);
     const pts = lineToLocal(f.geometry.coordinates);
     if (pts.length < 4) continue;
     let totalLen = 0;
@@ -768,8 +944,8 @@ async function init(baseUrl: string) {
       segLens.push(l);
       totalLen += l;
     }
-    if (totalLen < 32) continue;
-    const rawTier = f.properties?.tier;
+    if (totalLen < (isNamedAlley ? 18 : 32)) continue;
+    const rawTier = p.tier;
     const tier: RoadLabel3D['tier'] =
       rawTier === 'major' || rawTier === 'secondary' || rawTier === 'minor' ? rawTier : 'alley';
     const step = tier === 'major' ? 320 : tier === 'secondary' ? 240 : tier === 'minor' ? 185 : 160;
@@ -793,9 +969,14 @@ async function init(baseUrl: string) {
           if (!pointInRing(px, py, wardRing)) break;
           const l = Math.hypot(x2 - x1, y2 - y1) || 1;
           list.push({
+            roadId,
             name,
+            parentRoad: p.parentRoad || undefined,
+            source: p.source || undefined,
+            confidence: typeof p.confidence === 'number' ? p.confidence : undefined,
             x: px,
             z: -py,
+            y: workerTerrainY(px, py) + 0.35,
             dx: (x2 - x1) / l,
             dz: -(y2 - y1) / l,
             tier,
@@ -889,7 +1070,7 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
 
   for (const lb of list) {
     if (!lb.ring || lb.ring.length < 4) continue;
-    let ring = ringToLocalCCW(lb.ring);
+    const ring = ringToLocalCCW(lb.ring);
     if (ring.length < 6) continue;
     const area = Math.abs(signedArea(ring));
     if (area < 6) continue;
@@ -919,8 +1100,7 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
       if (rk !== null) {
         if (rk > 0 && b.ring.length !== 8) {
           const rect = minAreaRect(b.ring);
-          if (rect && b.area / rect.area > 0.8) b.ring = rect.ring;
-          else rk = 0;
+          if (!rect || b.area / rect.area <= 0.8) rk = 0;
         }
         b.roofKind = rk;
         changed = true;
@@ -933,7 +1113,7 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
       continue;
     }
 
-    // Nhà mới trên OSM chưa có trong dữ liệu dựng sẵn
+    // Nhà mới trên OSM chưa có trong dữ liệu dựng sẵn (giữ nguyên footprint thật `ring`)
     const [cx, cy] = centroidOf(ring);
     const key = chunkKeyOf(cx, cy);
     const [kx, ky] = key.split(',').map(Number);
@@ -953,8 +1133,7 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
     if (rk !== null) style.roofKind = rk;
     if (style.roofKind > 0) {
       const rect = minAreaRect(ring);
-      if (rect && area / rect.area > 0.8) ring = rect.ring;
-      else style.roofKind = 0;
+      if (!rect || area / rect.area <= 0.8) style.roofKind = 0;
     }
     registerBuilding({
       ring,

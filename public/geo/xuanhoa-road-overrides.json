@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-31T12:18:00.000Z",
+  "description": "Lớp dữ liệu hiệu chỉnh Đường & Ngõ đã xác minh thực địa (Local Verified Road & Alley Overrides) cho Bản đồ số Phường Xuân Hòa — tách biệt khỏi dữ liệu OSM gốc để bảo toàn provenance.",
+  "policy": {
+    "forbidGuessedAlleyNames": true,
+    "forbidNearestDistanceAlleyNaming": true,
+    "unverifiedAlleyNameFallback": "",
+    "requireParentRoadConnectionForNamedAlleys": true
+  },
+  "overrides": [
+    {
+      "id": "override_ngo_29_nguyen_van_linh",
+      "roadId": "xh_road_ngo_29_nguyen_van_linh",
+      "geometryId": "xh_road_ngo_29_nguyen_van_linh",
+      "type": "road_name_override",
+      "action": "upsert_verified_alley",
+      "name": "Ngõ 29 Nguyễn Văn Linh",
+      "tier": "alley",
+      "highway": "residential",
+      "parentRoad": "Đường Nguyễn Văn Linh",
+      "parentRoadId": "way/157991278",
+      "source": "local_verified",
+      "confidence": 1.0,
+      "verifiedAt": "2026-10-31",
+      "note": "Vị trí được cư dân địa phương tại Ngõ 29 Nguyễn Văn Linh xác nhận: tuyến ngõ phía trên (gần đối diện Phố Cù Chính Lan), nối trực tiếp vào Đường Nguyễn Văn Linh tại [105.718521, 21.285574] đi thẳng hướng Tây Nam qua [105.717985, 21.285206] tới [105.717680, 21.285016]. Đã loại bỏ đoạn móc cong lỗi raster ở cuối ngõ và cấm gán trùng tên cho các nhánh lân cận.",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [105.718521, 21.285574],
+          [105.718374, 21.285469],
+          [105.717985, 21.285206],
+          [105.717680, 21.285016]
+        ]
+      }
+    },
+    {
+      "id": "override_ngo_1_vo_thi_sau",
+      "roadId": "way/176265718",
+      "geometryId": "way/176265718",
+      "type": "road_name_override",
+      "action": "verify_existing_alley",
+      "name": "Ngõ 1 Võ Thị Sáu",
+      "tier": "minor",
+      "highway": "residential",
+      "parentRoad": "Phố Võ Thị Sáu",
+      "parentRoadId": "way/176265733",
+      "source": "osm_verified",
+      "confidence": 0.96,
+      "verifiedAt": "2026-10-31",
+      "note": "Ngõ 1 Võ Thị Sáu có sẵn trong OpenStreetMap (way/176265718), nối trực tiếp vào Phố Võ Thị Sáu tại [105.724336, 21.284319]."
+    },
+    {
+      "id": "override_ngo_7_le_trong_tan",
+      "roadId": "way/892145246",
+      "geometryId": "way/892145246",
+      "type": "road_name_override",
+      "action": "verify_existing_alley",
+      "name": "Ngõ 7 Đường Lê Trọng Tấn",
+      "tier": "minor",
+      "highway": "residential",
+      "parentRoad": "Đường Lê Trọng Tấn",
+      "source": "osm_verified",
+      "confidence": 0.92,
+      "verifiedAt": "2026-10-31",
+      "note": "Ngõ 7 Đường Lê Trọng Tấn có sẵn trong OpenStreetMap (way/892145246)."
+    },
+    {
+      "id": "override_ngach_20_ngo_7_dap_dinh_phu_1",
+      "roadId": "way/896979250",
+      "geometryId": "way/896979250",
+      "type": "road_name_override",
+      "action": "verify_existing_alley",
+      "name": "Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú",
+      "tier": "minor",
+      "highway": "residential",
+      "parentRoad": "Đường Lâm Trường Đi Đập Đỉnh Phú",
+      "parentRoadId": "way/896979251",
+      "source": "osm_verified",
+      "confidence": 0.92,
+      "verifiedAt": "2026-10-31",
+      "note": "Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú có sẵn trong OpenStreetMap (way/896979250)."
+    },
+    {
+      "id": "override_ngach_20_ngo_7_dap_dinh_phu_2",
+      "roadId": "way/1029516683",
+      "geometryId": "way/1029516683",
+      "type": "road_name_override",
+      "action": "verify_existing_alley",
+      "name": "Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú",
+      "tier": "alley",
+      "highway": "track",
+      "parentRoad": "Đường Lâm Trường Đi Đập Đỉnh Phú",
+      "parentRoadId": "way/896979251",
+      "source": "osm_verified",
+      "confidence": 0.92,
+      "verifiedAt": "2026-10-31",
+      "note": "Đoạn nối tiếp của Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú trong OpenStreetMap (way/1029516683)."
+    },
+    {
+      "id": "override_hide_fabricated_alley_names",
+      "type": "hide_name",
+      "action": "strip_unverified_alley_names",
+      "pattern": "^Ngõ\\s+(?!29\\s+Nguyễn\\s+Văn\\s+Linh$|1\\s+Võ\\s+Thị\\s+Sáu$|7\\s+Đường\\s+Lê\\s+Trọng\\s+Tấn$)",
+      "source": "local_verified",
+      "confidence": 1.0,
+      "verifiedAt": "2026-10-31",
+      "note": "Xóa toàn bộ 664 tên ngõ tự sinh dạng 'Ngõ <Tên Đường>' không có số ngõ xác thực (Ngõ Nguyễn Văn Linh, Ngõ Phạm Văn Đồng, Ngõ Lê Quang Đạo, Ngõ Võ Thị Sáu, Ngõ Kim Đồng, Ngõ Nhà Chung, Ngõ Cù Chính Lan...). Giữ nguyên geometry đường/ngõ nhưng để name = ''."
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+{
+  "generatedAt": "2026-10-31T06:28:21.702Z",
+  "allPassed": true,
+  "summary": {
+    "masterBuildingsTotal": 21008,
+    "osmBuildingsCount": 2112,
+    "openBuildingsExternalCount": 18896,
+    "googleOpenBuildingsCount": 17877,
+    "microsoftBuildingsCount": 1019,
+    "roadsCount": 7258,
+    "waterPolygonsCount": 236,
+    "waterwaysCount": 81,
+    "landuseCount": 112,
+    "placeLabelsCount": 2,
+    "verifiedPoisCount": 47,
+    "treesCount": 39037,
+    "heightSourceCounts": {
+      "osm_height": 0,
+      "osm_levels": 0,
+      "inferred_high": 49,
+      "inferred_medium": 16457,
+      "inferred_low": 4502
+    },
+    "contextualZoneCounts": {
+      "trung-tam-xuan-hoa": 1784,
+      "dong-xuan": 757,
+      "cao-minh": 4467,
+      "ngoc-thanh": 4099,
+      "dai-lai-sinh-thai": 5895,
+      "campus-truong-hoc": 722,
+      "hanh-chinh": 312,
+      "khu-dan-cu": 2480,
+      "cong-nghiep": 10,
+      "nong-nghiep-rung": 482
+    },
+    "demSummary": {
+      "source": "AWS Open Data Terrain Tiles / Mapzen Terrarium Z13 (SRTM GL1 30m & Copernicus DEM GLO-30)",
+      "grid": "280x400",
+      "datumAslMeters": 22,
+      "minRelativeMeters": -3.54,
+      "maxRelativeMeters": 422.54,
+      "minAslMeters": 18.46,
+      "maxAslMeters": 444.54
+    }
+  },
+  "checks": [
+    {
+      "id": 1,
+      "name": "2D và 3D cùng số lượng building (21.008 Master Buildings)",
+      "passed": true,
+      "detail": "master=21008, 2D_runtime=21008, 3D_binary=21008"
+    },
+    {
+      "id": 2,
+      "name": "2D và 3D cùng tập building ID ổn định (osm_way_* / ob_xh_*)",
+      "passed": true,
+      "detail": "matchedIds=21008/21008"
+    },
+    {
+      "id": 3,
+      "name": "Mọi building nằm trong ranh giới Phường Xuân Hòa (Relation #19542980)",
+      "passed": true,
+      "detail": "outsideBoundaryCount=0"
+    },
+    {
+      "id": 4,
+      "name": "Không có tọa độ NaN trong toàn bộ footprint",
+      "passed": true,
+      "detail": "nanCoordCount=0"
+    },
+    {
+      "id": 5,
+      "name": "Không có công trình nào có height <= 0 hoặc levels <= 0",
+      "passed": true,
+      "detail": "invalidHeightCount=0"
+    },
+    {
+      "id": 6,
+      "name": "Không có polygon tự cắt lỗi (self-intersecting footprint)",
+      "passed": true,
+      "detail": "selfIntersectingCount=0"
+    },
+    {
+      "id": 7,
+      "name": "DEM bao phủ toàn bộ ranh giới Phường Xuân Hòa",
+      "passed": true,
+      "detail": "DEM=[105.68, 21.26, 105.792, 21.42] covers Boundary=[105.68319, 21.26617, 105.78656, 21.41623]"
+    },
+    {
+      "id": 8,
+      "name": "Không có getElevationAtLngLat trả về NaN",
+      "passed": true,
+      "detail": "elevationNanCount=0 (tested 23508 sample points)"
+    },
+    {
+      "id": 9,
+      "name": "Mọi POI verified có tọa độ hợp lệ",
+      "passed": true,
+      "detail": "validPois=47, invalidPoiCount=0"
+    },
+    {
+      "id": 10,
+      "name": "Mọi road chuẩn hóa có geometry và thuộc tính (id, tier, width) hợp lệ",
+      "passed": true,
+      "detail": "roads=7258, invalidRoadCount=0"
+    },
+    {
+      "id": 11,
+      "name": "Không còn footprint bị thay bằng rectangle giả (fakeRectangleReplacementCount === 0)",
+      "passed": true,
+      "detail": "fakeRectangleReplacementCount=0"
+    },
+    {
+      "id": 12,
+      "name": "Mạng lưới Đường & Ngõ chuẩn hóa: 0 lỗi hình học, 0 tên ngõ tự đoán, Ngõ 29 Nguyễn Văn Linh PASS",
+      "passed": true,
+      "detail": "postRoadAnomalies=0, ngo29RegressionPassed=true, namedAlleys=5"
+    }
+  ]
+}

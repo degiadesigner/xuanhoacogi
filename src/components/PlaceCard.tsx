@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Place,
   getPlaceShortDistance,
   getPlacePerPersonText,
   getPlaceHonorBadge,
   getPlaceStyleGroup,
+  getPlaceSignboardLines,
 } from '@/lib/places-xuanhoa';
 import {
   Star,
@@ -199,10 +200,7 @@ const PlaceCardInner: React.FC<PlaceCardProps> = ({
   slot,
   sectorTag,
   matchedDishHighlight,
-  eagerImage = false,
 }) => {
-  const [imgError, setImgError] = useState(false);
-
   if (isReel) {
     const honorBadge = getPlaceHonorBadge(place);
     const shortDist = getPlaceShortDistance(place);
@@ -276,24 +274,17 @@ const PlaceCardInner: React.FC<PlaceCardProps> = ({
   }
 
   // ============================================================================
-  // COMPACT 2-COLUMN DISCOVERY CARD (MỤC 8 -> 17, 26 -> 28, 35, 41 -> 45)
+  // COMPACT 2-COLUMN DISCOVERY CARD VỚI BIỂN QUÁN ĐỒNG BỘ 100%
   // Click cả card -> Mở PlaceModal Detail View đầy đủ thông tin + Dual Map
   // ============================================================================
-  const rawImg = place.imageUrl || '';
-  const hasRealPhoto =
-    Boolean(rawImg) &&
-    !rawImg.includes('brand-icon-mark') &&
-    !imgError;
-  const imgUrl =
-    rawImg.startsWith('http') || rawImg.startsWith('/') || rawImg.startsWith('data:')
-      ? rawImg
-      : `/${rawImg}`;
-
+  const signboard = getPlaceSignboardLines(place);
   const { primary: categoryName, extraCount } = getPrimaryShortCategory(place, sectorTag);
   const locationText = getCompactLocationText(place);
   const priceText = getCompactPriceLabel(place);
-  const displayRating = Number(place.rating || 4.9).toFixed(1);
-  const isFeatured = (place.rarity ?? 0) >= 3;
+  const rawRating = Number(place.rating || 4.9);
+  const displayRating = Number.isInteger(rawRating)
+    ? String(rawRating)
+    : rawRating.toFixed(2).replace(/0$/, '');
 
   return (
     <article
@@ -309,41 +300,25 @@ const PlaceCardInner: React.FC<PlaceCardProps> = ({
       aria-label={`Xem chi tiết ${place.name}`}
       className="xh-compact-place-card group"
     >
-      {/* 1. ẢNH QUÁN (Aspect ratio 1.35:1 thống nhất, chiếm ~56% chiều cao card - Mục 10 & 12) */}
+      {/* 1. BIỂN HIỆU QUÁN ĐỒNG BỘ 100% (Minimalist Luxury Signboard Banner) */}
       <div className="xh-compact-card-media">
-        {hasRealPhoto ? (
-          <img
-            src={imgUrl}
-            alt={place.name}
-            loading={eagerImage ? 'eager' : 'lazy'}
-            decoding="async"
-            onError={() => setImgError(true)}
-            className="xh-compact-card-img"
-          />
-        ) : (
-          <div className="xh-compact-card-placeholder">
-            <div className="xh-compact-placeholder-icon">
-              {place.id?.startsWith('osm_') ? (
-                <Store size={22} className="text-[#E5B85C]/80" />
-              ) : (
-                renderPlaceCategoryIcon(place, 22)
+        <div className="place-signboard-banner">
+          <div className="signboard-plaque">
+            <div className="signboard-inner-border">
+              <h4 className="signboard-brand-primary">{signboard.line1}</h4>
+              {signboard.line2 && (
+                <span className="signboard-brand-secondary">{signboard.line2}</span>
               )}
             </div>
-            <span className="xh-compact-placeholder-cat">{categoryName}</span>
           </div>
-        )}
+        </div>
 
-        {/* Badge Nổi bật rất nhỏ (nếu là quán đặc sắc - Mục 42) */}
-        {isFeatured && (
-          <span className="xh-compact-featured-badge">Nổi bật</span>
-        )}
-
-        {/* Rating nhỏ gọn ở góc phải trên ảnh: ★ 5.0 (Mục 12) */}
+        {/* Rating nhỏ gọn ở góc phải dưới biển hiệu: ★ 5 (64) */}
         <div className="xh-compact-rating-badge">
-          <Star size={10} fill="#E5B85C" color="#E5B85C" className="shrink-0" />
+          <Star size={10} fill="#F59E0B" color="#F59E0B" className="shrink-0" />
           <span>{displayRating}</span>
           {place.reviewCount > 0 && (
-            <span className="xh-compact-rating-count">· {place.reviewCount}</span>
+            <span className="xh-compact-rating-count">({place.reviewCount})</span>
           )}
         </div>
       </div>

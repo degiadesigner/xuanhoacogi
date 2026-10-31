@@ -421,34 +421,162 @@ const SIGNBOARD_CUSTOM_LINES: Record<string, PlaceSignboardLines> = {
   'bep-nha-bong': { line1: 'BẾP NHÀ BỐNG', line2: 'CƠM TẤM SƯỜN NƯỚNG' },
   'cocokana-tra-trai-cay': { line1: 'COCOKANA', line2: 'TRÀ TRÁI CÂY TƯƠI' },
   'quan-co-loan': { line1: 'QUÁN CÔ LOAN', line2: 'MỲ CAY & ĂN VẶT' },
-  'banh-trang-nha-boom': { line1: 'BÁNH TRÁNG', line2: 'NHÀ BOOM' }
+  'banh-trang-nha-boom': { line1: 'BÁNH TRÁNG NHÀ BOOM', line2: 'TRỨNG CHẢY • 204 NGUYỄN VĂN LINH' },
+  'bep-nha-cun': { line1: 'BẾP NHÀ CÚN', line2: 'MÌ TRỘN & ĂN VẶT ĐÊM' },
+  'lau-nuong-phong-viet': { line1: 'QUÁN LẨU NƯỚNG PHONG VIỆT', line2: '(LẨU & NƯỚNG CHẢO GANG)' },
+  'billiards-91-club': { line1: 'BILLIARDS 91 CLUB', line2: 'CLB BI-A • NGUYỄN VĂN LINH' },
+  'karaoke-xuan-hoa-vip': { line1: 'KARAOKE HOÀNG GIA', line2: 'PHÒNG HÁT VIP • KĐT XUÂN HÒA' },
+  'dien-thoai-xuan-hoa-mobile': { line1: 'XUÂN HÒA MOBILE', line2: 'ĐIỆN THOẠI & SỬA CHỮA LẤY NGAY' },
+  'salon-toc-beauty-xuan-hoa': { line1: 'THE MUSE STUDIO', line2: 'HAIR & NAIL • XUÂN HÒA' },
+  'tap-hoa-sieu-thi-xuan-hoa': { line1: 'XUÂN HÒA MART', line2: 'SIÊU THỊ MINI & TẠP HÓA' }
 };
+
+function stripLeadingEmojisAndSymbols(text: string): string {
+  return text
+    .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F\s•·\-–—|]+/gu, '')
+    .trim();
+}
+
+function extractShortAreaForSignboard(address?: string): string {
+  const addr = (address || '').trim();
+  if (!addr) return 'XUÂN HÒA';
+  if (/kđt\s*xuân\s*ho[àa]/i.test(addr)) return 'KĐT XUÂN HÒA';
+  if (/cổng\s*abc/i.test(addr)) return 'CỔNG ABC XUÂN HÒA';
+  if (/con\s*chim\s*xanh/i.test(addr)) return 'CON CHIM XANH';
+  if (/bá\s*thiện/i.test(addr)) return 'KCN BÁ THIỆN';
+  if (/đại\s*lải/i.test(addr)) return 'HỒ ĐẠI LẢI';
+  const firstSegment = addr
+    .split(',')[0]
+    .replace(/\(.*?\)/g, '')
+    .replace(/^(trục\s+đường|đường|phố|khu\s+vực)\s+/i, '')
+    .trim();
+  if (firstSegment.length >= 3 && firstSegment.length <= 26) {
+    return firstSegment.toUpperCase();
+  }
+  return 'XUÂN HÒA';
+}
+
+function buildAutoSignboardSecondaryLine(place: Place, line1Upper: string): string {
+  const shortArea = extractShortAreaForSignboard(place.address);
+
+  // 1. Thử lấy từ món tủ (signatureDish) hoặc phân mục (subcategory)
+  const subcat = stripLeadingEmojisAndSymbols(place.subcategory || '').toUpperCase();
+
+  // 2. Thử tách cụm đầu tiên từ tagline (bỏ số điện thoại, bỏ giá tiền lẻ quá dài)
+  if (place.tagline) {
+    const segments = place.tagline
+      .split(/[•·|]/)
+      .map((s) =>
+        stripLeadingEmojisAndSymbols(s)
+          .replace(/\b0\d{2,3}[\s.\-]?\d{3}[\s.\-]?\d{3,4}\b/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+      )
+      .filter((s) => s.length >= 4 && !/^(sđt|hotline|liên hệ|mở cửa)/i.test(s));
+
+    for (const seg of segments) {
+      const cleanSeg = seg.replace(/\([^)]*\)/g, '').trim();
+      const segUpper = cleanSeg.toUpperCase();
+      if (
+        segUpper.length >= 4 &&
+        segUpper.length <= 32 &&
+        segUpper !== line1Upper &&
+        !line1Upper.includes(segUpper)
+      ) {
+        return segUpper;
+      }
+    }
+  }
+
+  // 3. Thử lấy từ signatureDish.name nếu ngắn gọn
+  if (place.signatureDish?.name) {
+    const sigClean = stripLeadingEmojisAndSymbols(place.signatureDish.name)
+      .replace(/\([^)]*\)/g, '')
+      .trim()
+      .toUpperCase();
+    if (sigClean.length >= 4 && sigClean.length <= 30 && sigClean !== line1Upper) {
+      return sigClean;
+    }
+  }
+
+  // 4. Kết hợp subcategory + khu vực ngắn
+  if (subcat && !line1Upper.includes(subcat)) {
+    return shortArea && !subcat.includes(shortArea) ? `${subcat} • ${shortArea}` : subcat;
+  }
+
+  const catLabel =
+    place.category === 'cafe'
+      ? 'CAFE & ĐỒ UỐNG'
+      : place.category === 'pub'
+      ? 'QUÁN NHẬU & LẨU NƯỚNG'
+      : 'ẨM THỰC & ĐỊA ĐIỂM';
+
+  return shortArea ? `${catLabel} • ${shortArea}` : catLabel;
+}
 
 export function getPlaceSignboardLines(place: Place): PlaceSignboardLines {
   if (SIGNBOARD_CUSTOM_LINES[place.id]) {
     return SIGNBOARD_CUSTOM_LINES[place.id];
   }
-  const lowerName = place.name.toLowerCase();
+
+  const rawName = stripLeadingEmojisAndSymbols(place.name || 'ĐỊA ĐIỂM XUÂN HÒA');
+  const lowerName = rawName.toLowerCase();
+
   if (lowerName.includes('cháo lòng chị hồng')) {
     return { line1: 'CHÁO LÒNG CHỊ HỒNG', line2: 'BÚN LÒNG • ĐẦU NGÕ KIM NGỌC' };
   }
   if (lowerName.includes('bắp 1991')) {
     return { line1: 'QUÁN BẮP 1991', line2: 'MỲ CAY • KEM DỪA MÃ LAI' };
   }
-  const raw = place.name.trim();
-  if (raw.includes(' - ')) {
-    const parts = raw.split(' - ');
-    return { line1: parts[0].trim().toUpperCase(), line2: parts[1].trim().toUpperCase() };
+
+  // 1. Tách tự động nếu tên quán có dấu phân cách: ' - ', ' – ', ' — ', ' • ', ' | '
+  const sepMatch = rawName.match(/\s+(?:[-–—•|])\s+/);
+  if (sepMatch && sepMatch.index !== undefined) {
+    const left = rawName.slice(0, sepMatch.index).trim().toUpperCase();
+    const right = rawName
+      .slice(sepMatch.index + sepMatch[0].length)
+      .trim()
+      .toUpperCase();
+    if (left && right) {
+      return { line1: left, line2: right };
+    }
   }
-  const words = raw.split(' ');
-  if (words.length > 3) {
-    const mid = Math.ceil(words.length / 2);
-    return {
-      line1: words.slice(0, mid).join(' ').toUpperCase(),
-      line2: words.slice(mid).join(' ').toUpperCase()
-    };
+
+  // 2. Tách tự động nếu tên quán có ngoặc đơn mô tả: VD "Quán ABC (Lẩu & Nướng)"
+  const parenMatch = rawName.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (parenMatch) {
+    const mainTitle = parenMatch[1].trim().toUpperCase();
+    const subTitle = parenMatch[2].trim().toUpperCase();
+    if (mainTitle && subTitle) {
+      return { line1: mainTitle, line2: subTitle };
+    }
   }
-  return { line1: raw.toUpperCase() };
+
+  // 3. Nếu tên quán dài (>= 5 từ): tách thông minh thành 2 dòng cân đối
+  const words = rawName.split(/\s+/).filter(Boolean);
+  if (words.length >= 5) {
+    // Ưu tiên tách trước các từ nối địa điểm / chuyên môn
+    const splitKeywords = ['tại', 'kđt', 'đường', 'phố', 'xuân', 'nguyễn', 'trường', 'kim', 'võ', 'lê'];
+    let splitIdx = -1;
+    for (let i = 2; i < words.length - 1; i++) {
+      const wLower = words[i].toLowerCase();
+      if (splitKeywords.includes(wLower)) {
+        splitIdx = i;
+        break;
+      }
+    }
+    if (splitIdx === -1) {
+      splitIdx = Math.ceil(words.length / 2);
+    }
+    const line1 = words.slice(0, splitIdx).join(' ').toUpperCase();
+    const line2 = words.slice(splitIdx).join(' ').toUpperCase();
+    return { line1, line2 };
+  }
+
+  // 4. Nếu tên quán ngắn (1 - 4 từ): dòng 1 là tên thương hiệu, dòng 2 tự động trích xuất từ thông tin quán
+  const line1 = rawName.toUpperCase();
+  const line2 = buildAutoSignboardSecondaryLine(place, line1);
+  return { line1, line2 };
 }
 
 // Tiện ích quán (Điều hòa / Vỉa hè / Bếp ship / Nhậu xôm)

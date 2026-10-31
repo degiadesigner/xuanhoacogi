@@ -14486,82 +14486,116 @@ html, body {
 .xh-compact-card-media {
   position: relative;
   width: 100%;
-  aspect-ratio: 1.38 / 1;
-  background: #171C28;
+  aspect-ratio: 1.56 / 1;
+  background: #FAF8F5;
   overflow: hidden;
   flex-shrink: 0;
 }
 
-.xh-compact-card-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.xh-compact-card-media .place-signboard-banner {
+  padding: 6px 7px;
 }
 
-.xh-compact-card-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  background: radial-gradient(circle at 50% 35%, rgba(229, 184, 92, 0.12), #151A24 75%);
+.xh-compact-card-media .signboard-plaque {
+  border-radius: 8px;
+  padding: 4px;
+  border: 1.5px solid rgba(180, 140, 75, 0.48);
+  background: linear-gradient(180deg, #FFFFFF 0%, #FBF9F5 100%);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.06), inset 0 0 8px rgba(255, 255, 255, 0.85);
 }
 
-.xh-compact-placeholder-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(229, 184, 92, 0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.xh-compact-place-card:hover .xh-compact-card-media .signboard-plaque {
+  border-color: #D4AF37;
+  box-shadow: 0 6px 18px rgba(212, 175, 55, 0.25);
 }
 
-.xh-compact-placeholder-cat {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: #94A3B8;
-}
-
-.xh-compact-featured-badge {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  padding: 2px 6px;
+.xh-compact-card-media .signboard-inner-border {
+  padding: 6px 8px 18px;
+  border: 1px solid rgba(180, 140, 75, 0.24);
   border-radius: 5px;
-  background: rgba(11, 14, 20, 0.82);
-  border: 1px solid rgba(229, 184, 92, 0.45);
-  color: #E5B85C;
-  font-size: 9.5px;
-  font-weight: 700;
-  line-height: 1.2;
+}
+
+.xh-compact-card-media .signboard-brand-primary {
+  font-size: 13.5px;
+  font-weight: 900;
+  color: #18181B;
+  letter-spacing: 0.9px;
+  line-height: 1.22;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.xh-compact-card-media .signboard-brand-secondary {
+  font-size: 11px;
+  font-weight: 850;
+  color: #B47D14;
+  letter-spacing: 0.7px;
+  line-height: 1.22;
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 639px) {
+  .xh-compact-card-media {
+    aspect-ratio: 1.48 / 1;
+  }
+
+  .xh-compact-card-media .place-signboard-banner {
+    padding: 5px 5px;
+  }
+
+  .xh-compact-card-media .signboard-plaque {
+    padding: 3px;
+    border-radius: 7px;
+  }
+
+  .xh-compact-card-media .signboard-inner-border {
+    padding: 5px 5px 16px;
+  }
+
+  .xh-compact-card-media .signboard-brand-primary {
+    font-size: 11.5px;
+    letter-spacing: 0.45px;
+    line-height: 1.18;
+  }
+
+  .xh-compact-card-media .signboard-brand-secondary {
+    font-size: 9.5px;
+    letter-spacing: 0.35px;
+    line-height: 1.18;
+    margin-top: 3px;
+  }
 }
 
 .xh-compact-rating-badge {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  bottom: 5px;
+  right: 7px;
+  z-index: 4;
   padding: 2px 6px;
   border-radius: 6px;
-  background: rgba(11, 14, 20, 0.84);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #F8FAFC;
+  background: rgba(24, 24, 27, 0.9);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  color: #FDE68A;
   font-size: 10.5px;
-  font-weight: 700;
+  font-weight: 800;
   display: inline-flex;
   align-items: center;
   gap: 3px;
   line-height: 1.2;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .xh-compact-rating-count {
   font-size: 9.5px;
-  font-weight: 500;
-  color: #94A3B8;
+  font-weight: 600;
+  color: #CBD5E1;
 }
 
 .xh-compact-card-body {

@@ -9,6 +9,11 @@
  * `xuanhoa-city3d.bin` (21.4k nhà). Cả 2D và 3D đều dùng chung bộ 21.436 công trình Master này.
  */
 
+import {
+  resolveBuildingArchetypeStyle,
+  type BuildingArchetypeId,
+  type RoofTypeName,
+} from '@/components/map/city3d/city3d-archetypes';
 import { getElevationAtLngLat, loadXuanHoaDem } from './xuanhoa-elevation';
 
 export type MasterHeightSource =
@@ -44,7 +49,8 @@ export interface MasterBuildingRecord {
   heightSource: MasterHeightSource;
   zone: MasterContextualZone;
   derivedZone: true;
-  roofShape: 'flat' | 'gable' | 'hip';
+  archetype?: BuildingArchetypeId;
+  roofShape: 'flat' | 'gable' | 'hip' | RoofTypeName;
   wallColorIdx: number;
   roofColorIdx: number;
   topBox: boolean;
@@ -104,29 +110,29 @@ export const HEIGHT_SOURCE_LABELS: Record<MasterHeightSource, string> = {
   inferred_low: 'Suy luận hình học tất định từ diện tích & mật độ (inferred_low)',
 };
 
-// Bảng màu 2D đồng bộ với bảng màu 3D (`city3d-materials.ts`)
+// Bảng màu 2D đồng bộ 100% với bảng màu 3D Giai đoạn 2 (`city3d-shared.ts` / `city3d-archetypes.ts`)
 export const MASTER_WALL_HEX_2D = [
-  '#f2e5cf', // cream
-  '#f0dc9c', // yellow
-  '#f3f1ec', // white
-  '#d7dce0', // gray
-  '#efd4d4', // pink
-  '#f1d8c2', // peach
-  '#d3e2ef', // blue
-  '#d3e8dc', // mint
-  '#e7dcc8', // beige
-  '#e3b89c', // terracotta
+  '#F5EFE2', // 0 kem ấm (warm cream)
+  '#F2DFB6', // 1 vàng bơ pastel (butter pastel)
+  '#FAF7F0', // 2 trắng ngà (off-white)
+  '#DFDDD6', // 3 xám ấm sáng (warm light grey)
+  '#EBCAC0', // 4 hồng đất nhạt (soft blush terracotta)
+  '#F2D2B6', // 5 cam đào phấn (soft peach)
+  '#CBE0EC', // 6 xanh sương mai (misty sky pastel)
+  '#D2E4CA', // 7 xanh bạc hà dịu (sage mint)
+  '#E8DEC8', // 8 be cát ấm (sand beige)
+  '#DFB59B', // 9 đất nung dịu (warm clay pastel)
 ];
 
 export const MASTER_ROOF_HEX_2D = [
-  '#c96a56', // red
-  '#cb7b55', // terracotta
-  '#5d84a6', // blue
-  '#5e8f72', // green
-  '#8c949b', // gray
-  '#6f7882', // slate
-  '#b8b4aa', // concrete
-  '#588c8d', // teal
+  '#C8644E', // 0 đỏ ngói ấm (terracotta red)
+  '#B36B50', // 1 nâu đỏ ấm (warm brown-red)
+  '#5E82A8', // 2 xanh xám dịu (muted blue-grey)
+  '#638F6C', // 3 xanh lá dịu (soft sage roof)
+  '#8A9098', // 4 xám đá (soft slate grey)
+  '#5D636C', // 5 xám than dịu (deep slate)
+  '#DDD7CA', // 6 bê tông trung tính cho mái bằng (neutral warm concrete)
+  '#548B8D', // 7 xanh ngọc trầm (muted teal)
 ];
 
 let cachedMasterDataset: XuanHoaMasterDataset | null = null;
@@ -277,7 +283,8 @@ export async function loadXuanHoaMasterDataset(baseUrl = '/'): Promise<XuanHoaMa
       const name = nameByIdx.get(idx);
       const id = isOsm && wayId ? `osm_way_${wayId}` : `ob_xh_${idx}`;
       const source = sourceCodes[buildingSources[idx] ?? (isOsm ? 0 : 1)] || (isOsm ? 'osm' : 'google');
-      const zone = zoneCodes[buildingZones[idx] ?? 7] || 'khu-dan-cu';
+      const zoneIdx = buildingZones[idx] ?? 7;
+      const zone = zoneCodes[zoneIdx] || 'khu-dan-cu';
       const heightSource = heightSourceCodes[buildingHeightSources[idx] ?? 3] || 'inferred_medium';
       const levels = buildingLevels[idx] || Math.max(1, Math.round(height / 3.4));
       const baseElevationM =
@@ -287,19 +294,27 @@ export async function loadXuanHoaMasterDataset(baseUrl = '/'): Promise<XuanHoaMa
       const confidence =
         buildingConfidences[idx] !== undefined ? Number((buildingConfidences[idx] * 0.01).toFixed(2)) : isOsm ? 1 : 0.8;
       const areaSqm = Number(signedAreaLocal(ringLocal).toFixed(1));
+      const spanX = Math.max(1, maxX - minX);
+      const spanY = Math.max(1, maxY - minY);
+      const aspectRatio = Math.max(spanX, spanY) / Math.min(spanX, spanY);
+      const stableSeed = (wayId ? wayId : idx * 2654435761) ^ Math.imul(Math.round(cx * 10), 73856093);
 
-      const buildingType =
-        zone === 'hanh-chinh' && name
-          ? 'civic'
-          : zone === 'campus-truong-hoc' && (name || areaSqm > 260)
-            ? 'education'
-            : zone === 'cong-nghiep' || areaSqm > 1200
-              ? 'industrial'
-              : zone === 'dai-lai-sinh-thai' && areaSqm >= 95
-                ? 'villa'
-                : levels >= 5
-                  ? 'highrise'
-                  : 'residential';
+      const resolvedStyle = resolveBuildingArchetypeStyle({
+        zoneIdx,
+        zoneCode: zone,
+        levels,
+        height,
+        areaSqm,
+        aspectRatio,
+        isOsm,
+        hasName: Boolean(name),
+        name,
+        rawWallIdx: wallColorIdx,
+        rawRoofKey: roofByte,
+        stableSeed,
+      });
+
+      const buildingType = resolvedStyle.semantic2DCategory;
 
       const lodTier: BuildingLodTier =
         name || areaSqm >= 420 || levels >= 5
@@ -320,10 +335,11 @@ export async function loadXuanHoaMasterDataset(baseUrl = '/'): Promise<XuanHoaMa
         heightSource,
         zone,
         derivedZone: true,
-        roofShape: roofKindNum === 1 ? 'gable' : roofKindNum === 2 ? 'hip' : 'flat',
-        wallColorIdx,
-        roofColorIdx,
-        topBox,
+        archetype: resolvedStyle.archetype,
+        roofShape: resolvedStyle.roofTypeName,
+        wallColorIdx: resolvedStyle.wallIdx,
+        roofColorIdx: resolvedStyle.roofIdx,
+        topBox: resolvedStyle.hasTopBox || topBox,
         confidence,
         baseElevationM,
         areaSqm,

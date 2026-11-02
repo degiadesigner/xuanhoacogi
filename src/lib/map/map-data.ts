@@ -14,6 +14,8 @@ import {
   isValidCoordinatePair,
   normalizeSearchVn,
   logMapDebug,
+  clearPlaceCoordinates,
+  isAdminAuthenticated,
   type AdminPlaceItem,
 } from '@/lib/admin-store';
 import type {
@@ -25,6 +27,7 @@ import type {
   PlaceLocationStatus,
   RoadSearchResult,
 } from './map-types';
+import { resolvePlaceTaxonomy } from './map-category-registry';
 
 const OLC_ALPHABET = '23456789CFGHJMPQRVWX';
 const XUANHOA_REF_LAT = 21.285;
@@ -1151,7 +1154,6 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     coordinateVerified: true,
     dataSource: 'openstreetmap',
     lastVerifiedAt: '2026-10-18',
-    phone: '0969338866',
     openHours: '24/7',
     insideWard: true,
     metadata: {
@@ -1431,10 +1433,38 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
       ? Boolean(ov.coordinateVerified)
       : basePoi.coordinateVerified;
 
+    const finalName = ov?.name?.trim() ? ov.name.trim() : basePoi.name;
+    const finalSubType = ov?.tagline ? ov.tagline : basePoi.metadata?.subType;
+    const taxonomy = resolvePlaceTaxonomy({
+      id: basePoi.id,
+      name: finalName,
+      subType: finalSubType,
+      tags: basePoi.metadata?.tags,
+      sectorTag: ov?.sectorTag,
+      mapCategory: ov?.mapCategory,
+      category: finalCategory,
+      explicitParentId: ov?.parentCategoryId,
+      explicitSubcategoryId: ov?.subcategoryId,
+      explicitShowByDefault: ov?.showByDefault,
+      dataSource: 'openstreetmap',
+    });
+
+    const rawPhone = ov?.phone !== undefined ? ov.phone.trim() : (basePoi.phone || '').trim();
+    const cleanPhone =
+      rawPhone === '0211 3863 115' ||
+      rawPhone === '02113863115' ||
+      rawPhone === '0211 3863 203' ||
+      rawPhone === '02113863203'
+        ? ''
+        : rawPhone;
+
     result.push({
       ...basePoi,
-      name: ov?.name?.trim() ? ov.name.trim() : basePoi.name,
-      category: finalCategory,
+      name: finalName,
+      category: taxonomy.legacyCategory || finalCategory,
+      parentCategoryId: taxonomy.parentCategoryId,
+      subcategoryId: taxonomy.subcategoryId,
+      showByDefault: taxonomy.showByDefault,
       address: ov?.address?.trim() ? ov.address.trim() : basePoi.address,
       lat: finalLat,
       lng: finalLng,
@@ -1447,15 +1477,13 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
       version: ov?.version || 1,
       updatedAt: ov?.updatedAt,
       lastVerifiedAt: ov?.lastVerifiedAt || basePoi.lastVerifiedAt,
-      phone:
-        ov?.phone !== undefined && ov.phone !== ''
-          ? ov.phone
-          : basePoi.phone || (finalCategory === 'school' ? '0211 3863 203' : '0211 3863 115'),
+      phone: cleanPhone,
       openHours:
         ov?.openHours !== undefined && ov.openHours !== ''
           ? ov.openHours
           : basePoi.openHours || '07:30 - 17:30',
       imageUrl: ov?.imageUrl || basePoi.imageUrl,
+      media: ov?.media || basePoi.media,
       metadata: {
         ...basePoi.metadata,
         ...(ov?.tagline ? { subType: ov.tagline } : {}),
@@ -1583,14 +1611,16 @@ const CATALOG_STREET_MATCHED_COORDS: Record<string, { lat: number; lng: number }
  * - Ưu tiên số 1 (100%): Tọa độ do Admin ghim / sửa hoặc bóc tách từ Link Google Maps (`override.lat`/`override.lng` hoặc `mapsUrl`).
  * - Ưu tiên số 2: Tọa độ mặt phố đã đối chiếu thực địa trong `CATALOG_STREET_MATCHED_COORDS` để khi khách bấm chọn từng loại hình (Quán ăn, Nhậu & Lẩu, Cafe, Ăn vặt...) sẽ hiển thị đầy đủ các quán.
  */
-export function getCatalogPlaceLocations(): PlaceLocation[] {
+export function getCatalogPlaceLocations(includeHidden = false): PlaceLocation[] {
   const osmIds = new Set(VERIFIED_OSM_POIS.map((p) => p.id));
   const managedItems = getAllManagedPlaces().filter(
     (item) =>
-      item.status === 'active' &&
-      item.visibilityStatus !== 'hidden' &&
+      item.status !== 'deleted' &&
       item.visibilityStatus !== 'deleted' &&
-      item.visibilityStatus !== 'blocked' &&
+      (includeHidden ||
+        (item.status === 'active' &&
+          item.visibilityStatus !== 'hidden' &&
+          item.visibilityStatus !== 'blocked')) &&
       !osmIds.has(item.place.id)
   );
   const adminState = getAdminState();
@@ -1635,11 +1665,27 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
     const visibilityStatus = computePlaceVisibilityStatus(override, item.status);
     const pendingSub = adminState.merchantSubmissions?.[`sub_${place.id}`];
     const dishNames = (place.menu || []).map((m) => m.name);
+    const taxonomy = resolvePlaceTaxonomy({
+      id: place.id,
+      name: place.name,
+      subType: override?.tagline || place.tagline,
+      tags: [...(place.tags || []), ...dishNames],
+      sectorTag: override?.sectorTag || item.sectorTag,
+      mapCategory: override?.mapCategory,
+      category: resolvedCategory,
+      explicitParentId: override?.parentCategoryId,
+      explicitSubcategoryId: override?.subcategoryId,
+      explicitShowByDefault: override?.showByDefault,
+      dataSource: override?.isCustom ? 'admin_custom' : 'places_xuanhoa',
+    });
 
     return {
       id: place.id,
       name: place.name,
-      category: resolvedCategory,
+      category: taxonomy.legacyCategory || resolvedCategory,
+      parentCategoryId: taxonomy.parentCategoryId,
+      subcategoryId: taxonomy.subcategoryId,
+      showByDefault: taxonomy.showByDefault,
       address: place.address || 'Phường Xuân Hòa, Tỉnh Phú Thọ',
       lat: finalLat,
       lng: finalLng,
@@ -1657,6 +1703,7 @@ export function getCatalogPlaceLocations(): PlaceLocation[] {
       phone: place.phone,
       openHours: place.openHours,
       imageUrl: place.imageUrl,
+      media: override?.media,
       insideWard: true,
       originalPlace: place,
       metadata: {
@@ -2189,21 +2236,36 @@ export function getAllMapPlaceLocations(): {
   allLocations: PlaceLocation[];
   verifiedMapMarkers: PlaceLocation[];
   unverifiedCatalogPlaces: PlaceLocation[];
+  blockedAdminPlaces: PlaceLocation[];
 } {
   const managedOsmLandmarks = getManagedOsmLandmarks(false);
-  const catalogLocations = getCatalogPlaceLocations();
+  const catalogLocations = getCatalogPlaceLocations(false);
   const allLocations = [...managedOsmLandmarks, ...catalogLocations];
   const verifiedMapMarkers = allLocations.filter(
-    (loc) => loc.coordinateVerified && loc.lat !== null && loc.lng !== null
+    (loc) =>
+      (!loc.visibilityStatus || loc.visibilityStatus === 'visible') &&
+      loc.coordinateVerified &&
+      loc.lat !== null &&
+      loc.lng !== null
   );
-  const unverifiedCatalogPlaces = catalogLocations.filter(
-    (loc) => !loc.coordinateVerified || loc.lat === null || loc.lng === null
+  const unverifiedCatalogPlaces = allLocations.filter(
+    (loc) =>
+      (!loc.visibilityStatus || loc.visibilityStatus === 'visible') &&
+      (!loc.coordinateVerified || loc.lat === null || loc.lng === null)
+  );
+
+  // Danh sách các địa điểm đang bị Block (status === 'locked' / visibilityStatus === 'blocked') chỉ dành cho Admin
+  const allOsmWithHidden = getManagedOsmLandmarks(true);
+  const allCatalogWithHidden = getCatalogPlaceLocations(true);
+  const blockedAdminPlaces = [...allOsmWithHidden, ...allCatalogWithHidden].filter(
+    (loc) => loc.visibilityStatus === 'blocked'
   );
 
   return {
     allLocations,
     verifiedMapMarkers,
     unverifiedCatalogPlaces,
+    blockedAdminPlaces,
   };
 }
 
@@ -2413,6 +2475,9 @@ export function saveLandmarkOrPlaceFromMap(payload: {
   id?: string;
   name: string;
   category: Exclude<MapCategoryKey, 'all' | 'game_asset'>;
+  parentCategoryId?: string;
+  subcategoryId?: string;
+  showByDefault?: boolean;
   address: string;
   phone?: string;
   openHours?: string;
@@ -2431,19 +2496,27 @@ export function saveLandmarkOrPlaceFromMap(payload: {
     throw new Error('Tọa độ định vị chưa hợp lệ (cần nằm trong khu vực Xuân Hòa / miền Bắc).');
   }
 
+  const taxonomy = resolvePlaceTaxonomy({
+    id: payload.id,
+    name: cleanName,
+    subType: payload.tagline,
+    category: payload.category,
+    explicitParentId: payload.parentCategoryId,
+    explicitSubcategoryId: payload.subcategoryId,
+    explicitShowByDefault: payload.showByDefault,
+  });
+
+  const effectiveLegacyCategory = taxonomy.legacyCategory || payload.category;
   const isCivicCat =
-    payload.category === 'public' ||
-    payload.category === 'school' ||
-    String(payload.category) === 'medical';
+    effectiveLegacyCategory === 'public' ||
+    effectiveLegacyCategory === 'school' ||
+    String(effectiveLegacyCategory) === 'medical' ||
+    taxonomy.showByDefault;
 
   if (payload.id) {
     const adminState = getAdminState();
-    const roleInfo = getEffectiveAdminRoleInfo();
     const existingOv = adminState.places?.[payload.id];
     const isOsmSeed = VERIFIED_OSM_POIS.some((p) => p.id === payload.id);
-    const isCivicOrLandmark = isCivicCat || isOsmSeed || existingOv?.sectorTag === 'dia-danh';
-    const isSubManagerOnly = roleInfo.isAuthenticated && !roleInfo.isSuperAdmin;
-    const isApprovedDirectly = !isSubManagerOnly || isCivicOrLandmark;
 
     savePlaceAdminOverride(
       payload.id,
@@ -2455,7 +2528,10 @@ export function saveLandmarkOrPlaceFromMap(payload: {
         openHours: (payload.openHours || '').trim(),
         ...(payload.tagline !== undefined ? { tagline: payload.tagline.trim() } : {}),
         ...(payload.mapsUrl !== undefined ? { mapsUrl: payload.mapsUrl.trim() } : {}),
-        mapCategory: payload.category,
+        mapCategory: effectiveLegacyCategory,
+        parentCategoryId: taxonomy.parentCategoryId,
+        subcategoryId: taxonomy.subcategoryId,
+        showByDefault: taxonomy.showByDefault,
         ...(isCivicCat || (isOsmSeed && !existingOv?.sectorTag)
           ? {
               sectorTag: 'dia-danh',
@@ -2466,33 +2542,26 @@ export function saveLandmarkOrPlaceFromMap(payload: {
           : {}),
         lat,
         lng,
-        coordinateVerified: isApprovedDirectly,
-        adminPinApproved: isApprovedDirectly,
+        coordinateVerified: true,
+        adminPinApproved: true,
+        locationStatus: 'located',
         coordinateSource: 'admin_verified',
         lastVerifiedAt: new Date().toISOString().slice(0, 10),
-        pendingMapApproval: isApprovedDirectly
-          ? null
-          : {
-              submittedBy: roleInfo.identifier || 'quanlymaps',
-              submittedByName: roleInfo.displayName || 'Quản lý Maps',
-              submittedAt: Date.now(),
-              actionType: 'update',
-              actionSummary: `Chờ Admin duyệt ghim tọa độ (${lat}, ${lng})`,
-              previousLat: existingOv?.lat ?? null,
-              previousLng: existingOv?.lng ?? null,
-            },
+        pendingMapApproval: null,
+        pendingWebApproval: null,
       },
-      isApprovedDirectly
-        ? `Cập nhật địa điểm & định vị "${cleanName}" (${lat}, ${lng})`
-        : `Gửi yêu cầu duyệt tọa độ "${cleanName}" (${lat}, ${lng})`
+      `Cập nhật địa điểm & định vị "${cleanName}" (${lat}, ${lng})`
     );
     return { id: payload.id, lat, lng };
   }
 
-  // Tạo địa danh / quán mới
+  // Tạo địa danh / quán mới trong 1 giao dịch nguyên tử (atomic write), đồng nhất 1 place.id trên toàn hệ thống
   const created = createNewPlaceFromMap(undefined, {
     name: cleanName,
-    mapCategory: payload.category,
+    mapCategory: effectiveLegacyCategory,
+    parentCategoryId: taxonomy.parentCategoryId,
+    subcategoryId: taxonomy.subcategoryId,
+    showByDefault: taxonomy.showByDefault,
     address: payload.address.trim() || 'Phường Xuân Hòa',
     phone: (payload.phone || '').trim(),
     openHours: (payload.openHours || '').trim() || (isCivicCat ? '07:30 - 17:30' : '07:00 - 22:00'),
@@ -2504,27 +2573,210 @@ export function saveLandmarkOrPlaceFromMap(payload: {
   return { id: created.place.id, lat, lng };
 }
 
+function assertStrictAdminRole(actionDesc: string): void {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
+    throw new Error(`Chỉ Admin mới có quyền ${actionDesc}. Quản lý chỉ được thêm mới và sửa thông tin.`);
+  }
+}
+
 export function blockLandmarkOrPlaceFromMap(placeId: string, placeName?: string): void {
+  assertStrictAdminRole('Block (tạm khóa) địa điểm');
   savePlaceAdminOverride(
     placeId,
-    { status: 'locked' },
+    { status: 'locked', visibilityStatus: 'blocked' },
     `Block (Tạm khóa) địa điểm "${placeName || placeId}" trên Bản đồ`
   );
+}
+
+export function unblockLandmarkOrPlaceFromMap(placeId: string, placeName?: string): void {
+  assertStrictAdminRole('Mở khóa (Unblock) địa điểm');
+  savePlaceAdminOverride(
+    placeId,
+    { status: 'active', visibilityStatus: 'visible' },
+    `Mở khóa (Unblock) địa điểm "${placeName || placeId}" trên Bản đồ`
+  );
+}
+
+export function unpinLandmarkOrPlaceFromMap(placeId: string, placeName?: string): void {
+  assertStrictAdminRole('Gỡ vị trí địa điểm khỏi bản đồ');
+  clearPlaceCoordinates(placeId, placeName);
 }
 
 export function hideLandmarkOrPlaceFromMap(
   placeId: string,
   placeName?: string
 ): { executedImmediately: boolean } {
-  return requestOrExecuteDeletePlace(placeId, 'maps', placeName);
+  assertStrictAdminRole('xóa địa điểm khỏi bản đồ');
+  return requestOrExecuteDeletePlace(placeId, 'maps', placeName, true);
 }
 
 export function restoreLandmarkOrPlaceDefault(placeId: string): void {
+  assertStrictAdminRole('khôi phục dữ liệu gốc của địa điểm');
   resetPlaceToDefault(placeId);
 }
 
+export interface PhoneAuditIssue {
+  placeId: string;
+  placeName: string;
+  category: string;
+  subcategoryId?: string;
+  phone: string;
+  reason: 'duplicate_civic_phone' | 'duplicate_phone' | 'placeholder_or_fake' | 'invalid_format';
+  details: string;
+}
+
+export interface CivicPhoneAuditReport {
+  auditedAt: string;
+  totalPlaces: number;
+  civicPlacesCount: number;
+  civicWithVerifiedPhoneCount: number;
+  civicWithoutPhoneCount: number;
+  suspiciousEntries: PhoneAuditIssue[];
+  duplicateGroups: Array<{ normalizedPhone: string; placeIds: string[]; placeNames: string[] }>;
+  isClean: boolean;
+}
+
 /**
- * Tìm tuyến đường OSM khớp với địa chỉ của quán để hỗ trợ Admin đối chiếu (không tự động đánh dấu đã xác minh)
+ * Audit toàn bộ SĐT của các địa điểm (đặc biệt là Cơ quan hành chính, Công an, UBND, Trạm y tế, Trường học, Bưu điện)
+ * theo đúng Mục 14–17:
+ * - Không bịa SĐT
+ * - Không dùng SĐT trùng lặp giữa các cơ quan khác nhau
+ * - Không chứa số placeholder (123456, 000000, 02113863115, 02113863203...)
+ */
+export function auditCivicAndPlacePhoneNumbers(): CivicPhoneAuditReport {
+  const { allLocations, blockedAdminPlaces } = getAllMapPlaceLocations();
+  const combined = [...allLocations, ...blockedAdminPlaces];
+  const seenIds = new Set<string>();
+  const uniquePlaces: PlaceLocation[] = [];
+  for (const p of combined) {
+    if (!seenIds.has(p.id)) {
+      seenIds.add(p.id);
+      uniquePlaces.push(p);
+    }
+  }
+
+  const fakePatterns = new Set([
+    '02113863115',
+    '02113863203',
+    '0000000000',
+    '0123456789',
+    '1234567890',
+    '0999999999',
+    '0888888888',
+  ]);
+
+  const isCivicPlace = (p: PlaceLocation) =>
+    p.category === 'public' ||
+    p.category === 'school' ||
+    p.parentCategoryId === 'public' ||
+    p.parentCategoryId === 'education' ||
+    p.parentCategoryId === 'health' ||
+    p.dataSource === 'openstreetmap';
+
+  let civicPlacesCount = 0;
+  let civicWithVerifiedPhoneCount = 0;
+  let civicWithoutPhoneCount = 0;
+  const suspiciousEntries: PhoneAuditIssue[] = [];
+  const phoneMap = new Map<string, PlaceLocation[]>();
+
+  for (const p of uniquePlaces) {
+    const civic = isCivicPlace(p);
+    const rawPhone = (p.phone || '').trim();
+    if (civic) {
+      civicPlacesCount++;
+      if (rawPhone) civicWithVerifiedPhoneCount++;
+      else civicWithoutPhoneCount++;
+    }
+    if (!rawPhone) continue;
+
+    const parts = rawPhone
+      .split(/[-/;,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    for (const part of parts) {
+      const digits = part.replace(/[^0-9]/g, '');
+      if (fakePatterns.has(digits) || /^(0+|1+|123456\d*)$/.test(digits)) {
+        suspiciousEntries.push({
+          placeId: p.id,
+          placeName: p.name,
+          category: p.category,
+          subcategoryId: p.subcategoryId,
+          phone: rawPhone,
+          reason: 'placeholder_or_fake',
+          details: `Số điện thoại "${part}" nằm trong danh sách placeholder / chưa xác thực.`,
+        });
+        continue;
+      }
+
+      const isEmergency = digits === '113' || digits === '114' || digits === '115';
+      if (!isEmergency && (digits.length < 8 || digits.length > 11)) {
+        suspiciousEntries.push({
+          placeId: p.id,
+          placeName: p.name,
+          category: p.category,
+          subcategoryId: p.subcategoryId,
+          phone: rawPhone,
+          reason: 'invalid_format',
+          details: `Số điện thoại "${part}" có độ dài không hợp lệ (${digits.length} chữ số).`,
+        });
+        continue;
+      }
+
+      const list = phoneMap.get(digits) || [];
+      list.push(p);
+      phoneMap.set(digits, list);
+    }
+  }
+
+  const duplicateGroups: Array<{ normalizedPhone: string; placeIds: string[]; placeNames: string[] }> = [];
+  for (const [digits, group] of phoneMap.entries()) {
+    if (group.length > 1) {
+      const hasCivic = group.some((g) => isCivicPlace(g));
+      duplicateGroups.push({
+        normalizedPhone: digits,
+        placeIds: group.map((g) => g.id),
+        placeNames: group.map((g) => g.name),
+      });
+      if (hasCivic) {
+        for (const g of group) {
+          suspiciousEntries.push({
+            placeId: g.id,
+            placeName: g.name,
+            category: g.category,
+            subcategoryId: g.subcategoryId,
+            phone: g.phone || digits,
+            reason: 'duplicate_civic_phone',
+            details: `Trùng số điện thoại "${digits}" giữa nhiều địa danh/đơn vị: ${group.map((x) => x.name).join(', ')}`,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    auditedAt: new Date().toISOString(),
+    totalPlaces: uniquePlaces.length,
+    civicPlacesCount,
+    civicWithVerifiedPhoneCount,
+    civicWithoutPhoneCount,
+    suspiciousEntries,
+    duplicateGroups,
+    isClean: suspiciousEntries.length === 0,
+  };
+}
+
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__XUANHOA_PHONE_AUDIT__ =
+    auditCivicAndPlacePhoneNumbers;
+}
+
+/**
+ * Tìm tuyến đường OSM khớp với địa chỉ của quán để hỗ trợ Admin đối chiếu (không tự động đánh dấu đã xác minh).
+ * NGUYÊN TẮC BẮT BUỘC (Phần 6 & 17):
+ * - Nếu địa chỉ chứa "Ngõ / Ngách / Hẻm <số>", TUYỆT ĐỐI KHÔNG tự động khớp lùi về tuyến đường chính gần nhất (parentRoad).
+ * - Không bao giờ tự động lưu liên kết từ gợi ý đường gần nhất.
  */
 export function findSuggestedRoadForAddress(
   address: string,
@@ -2533,9 +2785,31 @@ export function findSuggestedRoadForAddress(
   const normAddr = normalizeVietnamese(address);
   if (!normAddr) return null;
 
+  const isAlleyQuery = /\b(ngo|ngach|hem)\s+[0-9a-z]/i.test(normAddr);
+
   for (const road of roads) {
-    const cleanRoadName = normalizeVietnamese(road.name)
-      .replace(/^(duong|pho|ngo|ngach|cau|hem|ql|tl)\s+/i, '')
+    if (
+      road.verificationStatus === 'rejected' ||
+      road.verificationStatus === 'needs_review' ||
+      road.verificationStatus === 'unverified' ||
+      road.nameSource === 'inferred'
+    ) {
+      continue;
+    }
+
+    const normRoadFull = normalizeVietnamese(road.name);
+    if (!normRoadFull) continue;
+
+    if (isAlleyQuery) {
+      // Với địa chỉ Ngõ/Ngách, chỉ khớp khi chính road.name cũng là đúng Ngõ/Ngách đó
+      if (normAddr.includes(normRoadFull) || normRoadFull.includes(normAddr)) {
+        return road;
+      }
+      continue;
+    }
+
+    const cleanRoadName = normRoadFull
+      .replace(/^(duong|pho|cau|ql|tl)\s+/i, '')
       .trim();
     if (cleanRoadName.length >= 4 && normAddr.includes(cleanRoadName)) {
       return road;

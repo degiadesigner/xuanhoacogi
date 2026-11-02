@@ -64,12 +64,56 @@ export type PlaceDataSource =
   | 'admin_custom';
 
 /**
+ * Media gắn vào Địa danh / Quán ăn (Phần 32–35: Nền tảng Ảnh & Panorama 360°)
+ * - `anchorMode === 'place'`: tự động đi theo `place.lat` / `place.lng` khi Admin di chuyển địa danh.
+ * - `anchorMode === 'absolute'`: giữ tọa độ chụp cố định ngoài hiện trường (`lat`, `lng`).
+ */
+export interface PlaceMediaItem {
+  id: string;
+  type: 'photo' | 'panorama360';
+  url: string;
+  title?: string;
+  anchorMode: 'place' | 'absolute';
+  lat?: number;
+  lng?: number;
+  heading?: number;
+  pitch?: number;
+  capturedAt?: string;
+}
+
+/**
+ * Giải quyết tọa độ thực tế của một Media Item thuộc Place (Phần 33):
+ * Nếu `anchorMode === 'place'` -> dùng `place.lat` và `place.lng` để khi Admin di chuyển địa danh, media/360° tự động đi theo.
+ * Nếu `anchorMode === 'absolute'` -> giữ nguyên `mediaItem.lat` và `mediaItem.lng`.
+ */
+export function resolvePlaceMediaCoordinates(
+  place: Pick<PlaceLocation, 'lat' | 'lng'>,
+  mediaItem: PlaceMediaItem
+): { lat: number | null; lng: number | null } {
+  if (mediaItem.anchorMode === 'absolute') {
+    return {
+      lat: typeof mediaItem.lat === 'number' && Number.isFinite(mediaItem.lat) ? mediaItem.lat : place.lat,
+      lng: typeof mediaItem.lng === 'number' && Number.isFinite(mediaItem.lng) ? mediaItem.lng : place.lng,
+    };
+  }
+  return {
+    lat: place.lat,
+    lng: place.lng,
+  };
+}
+
+/**
  * Model địa điểm chuẩn hóa theo Phần 7 (PlaceLocation)
  */
 export interface PlaceLocation {
   id: string;
   name: string;
   category: Exclude<MapCategoryKey, 'all' | 'game_asset'>;
+  /** Taxonomy 2 cấp thống nhất (Parent -> Subcategory, Phần 11–22) */
+  parentCategoryId?: string;
+  subcategoryId?: string;
+  /** Cho phép Admin bật/tắt hiển thị mặc định khi mở bản đồ (Phần 51) */
+  showByDefault?: boolean;
   address: string;
   lat: number | null;
   lng: number | null;
@@ -85,6 +129,7 @@ export interface PlaceLocation {
   phone?: string;
   openHours?: string;
   imageUrl?: string;
+  media?: PlaceMediaItem[];
   insideWard?: boolean;
   originalPlace?: Place;
   metadata: {
@@ -108,6 +153,10 @@ export interface PlaceLocation {
     liveStatus?: 'open_normal' | 'busy_hot' | 'closed_today';
     liveStatusNote?: string;
     hasPendingSubmission?: boolean;
+    sectorTag?: string;
+    parentCategoryId?: string;
+    subcategoryId?: string;
+    showByDefault?: boolean;
   };
 }
 
@@ -116,9 +165,20 @@ export interface PlaceLocation {
  */
 export interface RoadSearchResult {
   id: string;
+  roadId?: string;
   name: string;
   highway: string;
   tier: 'major' | 'secondary' | 'minor' | 'alley';
+  roadType?: 'road' | 'street' | 'alley' | 'lane' | 'path' | 'service_road';
+  parentRoad?: string | null;
+  parentRoadId?: string | null;
+  nameSource?: string;
+  geometrySource?: string;
+  verificationStatus?: 'verified' | 'candidate' | 'needs_review' | 'rejected' | 'unverified';
+  locked?: boolean;
+  candidateRoadId?: string | null;
+  reviewNotice?: string;
+  geometry?: [number, number][];
   lat: number;
   lng: number;
   osmId: string;

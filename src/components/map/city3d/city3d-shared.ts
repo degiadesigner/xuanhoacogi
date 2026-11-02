@@ -23,69 +23,77 @@ export {
 export const CHUNK_SIZE = 700;
 
 export const WALL_PALETTE = [
-  '#E6DCC4', // 0 kem
-  '#E2C47E', // 1 vàng
-  '#EEEBE4', // 2 trắng
-  '#C9C7C1', // 3 xám nhạt
-  '#DDB8AC', // 4 hồng
-  '#E5C29F', // 5 cam đào
-  '#B9CCD8', // 6 xanh da trời
-  '#C4D6BC', // 7 xanh bạc hà
-  '#D5C6A8', // 8 be
-  '#CD9E80', // 9 đất nung
+  '#F5EFE2', // 0 kem ấm (warm cream)
+  '#F2DFB6', // 1 vàng bơ pastel (butter pastel)
+  '#FAF7F0', // 2 trắng ngà (off-white)
+  '#DFDDD6', // 3 xám ấm sáng (warm light grey)
+  '#EBCAC0', // 4 hồng đất nhạt (soft blush terracotta)
+  '#F2D2B6', // 5 cam đào phấn (soft peach)
+  '#CBE0EC', // 6 xanh sương mai (misty sky pastel)
+  '#D2E4CA', // 7 xanh bạc hà dịu (sage mint)
+  '#E8DEC8', // 8 be cát ấm (sand beige)
+  '#DFB59B', // 9 đất nung dịu (warm clay pastel)
 ];
 
 export const ROOF_PALETTE = [
-  '#A84632', // 0 ngói đỏ
-  '#9C5B3E', // 1 ngói nâu cam
-  '#46699A', // 2 tôn xanh dương
-  '#4D7856', // 3 tôn xanh lá
-  '#7F838A', // 4 xám
-  '#4F535A', // 5 xám đen
-  '#BDB9AF', // 6 sân thượng bê tông
-  '#3D7775', // 7 xanh ngọc
+  '#C8644E', // 0 đỏ ngói ấm (terracotta red)
+  '#B36B50', // 1 nâu đỏ ấm (warm brown-red)
+  '#5E82A8', // 2 xanh xám dịu (muted blue-grey)
+  '#638F6C', // 3 xanh lá dịu (soft sage roof)
+  '#8A9098', // 4 xám đá (soft slate grey)
+  '#5D636C', // 5 xám than dịu (deep slate)
+  '#DDD7CA', // 6 bê tông trung tính cho mái bằng (neutral warm concrete)
+  '#548B8D', // 7 xanh ngọc trầm (muted teal)
 ];
 
-export const TREE_PALETTE = ['#4C7C35', '#58843B', '#3F6C30', '#628D42', '#6B9447', '#4D7742', '#5C8234'];
+export const TREE_PALETTE = [
+  '#629A4E',
+  '#70A658',
+  '#548B43',
+  '#7BB061',
+  '#86B86B',
+  '#5E9150',
+  '#6B9E52',
+];
 
 export const LANDUSE_COLORS: Record<string, string> = {
-  forest: '#6F8F55',
-  wood: '#6F8F55',
-  park: '#8DAA6A',
-  garden: '#8DAA6A',
-  grass: '#97B176',
-  recreation_ground: '#8DAA6A',
-  golf_course: '#88B46A',
-  pitch: '#6FA55A',
-  orchard: '#9DB273',
-  farmland: '#B3B887',
-  meadow: '#A2B97E',
-  cemetery: '#A9B496',
-  school: '#D2C8B2',
-  university: '#D2C8B2',
-  college: '#D2C8B2',
-  kindergarten: '#D2C8B2',
-  industrial: '#BFBAB0',
-  quarry: '#B9AC92',
-  residential: '',
+  forest: '#A6C99C',
+  wood: '#A6C99C',
+  park: '#CFE3C4',
+  garden: '#CFE3C4',
+  grass: '#D4E6C8',
+  recreation_ground: '#CFE3C4',
+  golf_course: '#C2DFB5',
+  pitch: '#B9DBA9',
+  orchard: '#D8E5B5',
+  farmland: '#E5E8B6',
+  meadow: '#DCE6B8',
+  cemetery: '#CEDBC4',
+  school: '#EFE8D8',
+  university: '#EFE8D8',
+  college: '#EFE8D8',
+  kindergarten: '#EFE8D8',
+  industrial: '#DFDDD6',
+  quarry: '#D8CFC0',
+  residential: '#F3EFE6',
 };
 
 export const CITY3D_COLORS = {
-  sky: '#E4E9E8',
-  ground: '#B5B39A',
-  skirtTop: '#7C6A55',
-  skirtBottom: '#463A2E',
-  water: '#3F7F8C',
-  waterEdge: '#2F6676',
-  roadMajor: '#34373E',
-  roadSecondary: '#3E424B',
-  roadMinor: '#646A75',
-  roadService: '#4A4E58',
-  roadTrack: '#6B707A',
-  roadPath: '#767B85',
-  roadCasing: '#C8C3B6',
-  roadMarking: '#ECE8DC',
-  trunk: '#5E4630',
+  sky: '#EAF3F8',
+  ground: '#F3EFE6',
+  skirtTop: '#C8BFA8',
+  skirtBottom: '#8F8470',
+  water: '#7CC8E6',
+  waterEdge: '#4FA3C7',
+  roadMajor: '#585F6B',
+  roadSecondary: '#68707D',
+  roadMinor: '#878E99',
+  roadService: '#979EA8',
+  roadTrack: '#B5B0A4',
+  roadPath: '#C4BEB0',
+  roadCasing: '#E2DDD0',
+  roadMarking: '#FCF9F2',
+  trunk: '#755941',
 };
 
 export interface City3DOrigin {
@@ -222,6 +230,11 @@ export interface TreeChunk {
   /** mỗi cây 6 số: x, y, z, scale, rotY, colorIdx */
   broadleaf: Float32Array;
   conifer: Float32Array;
+  broadleafLarge?: Float32Array;
+  campusTree?: Float32Array;
+  forestTree?: Float32Array;
+  resortOrnamental?: Float32Array;
+  shrubLow?: Float32Array;
 }
 
 export interface BuildingLabel {
@@ -234,9 +247,14 @@ export interface BuildingLabel {
 export interface RoadLabel3D {
   roadId?: string;
   name: string;
+  shortName?: string;
+  roadType?: string;
   parentRoad?: string;
   source?: string;
+  nameSource?: string;
+  verificationStatus?: string;
   confidence?: number;
+  segmentLengthM?: number;
   x: number;
   z: number;
   y?: number;

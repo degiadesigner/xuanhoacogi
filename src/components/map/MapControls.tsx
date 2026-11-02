@@ -1,21 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Plus,
-  Minus,
   LocateFixed,
   Compass,
   Home,
   Layers,
-  Castle,
-  ShieldCheck,
   Loader2,
-  ChevronDown,
-  Box,
-  MapPin,
-  Check,
 } from 'lucide-react';
 import type { MapAreaPreset, MapLayerVisibility } from '@/lib/map/map-types';
-import { MAP_AREA_PRESETS } from '@/lib/map/map-config';
 
 interface MapControlsProps {
   onZoomIn: () => void;
@@ -43,9 +34,6 @@ export const MapControls: React.FC<MapControlsProps> = ({
   isLocatingUser,
   layerVisibility,
   onToggleLayer,
-  onSelectPreset,
-  activePresetId,
-  onOpenDataQualityModal,
   is3DMode = true,
   onToggle3DMode,
   onOpenCity3D,
@@ -53,58 +41,35 @@ export const MapControls: React.FC<MapControlsProps> = ({
   hasSavedHome = false,
 }) => {
   const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
-  const [isPresetRollOpen, setIsPresetRollOpen] = useState(false);
   const dropdownContainerRef = useRef<HTMLDivElement | null>(null);
-  const rollListRef = useRef<HTMLDivElement | null>(null);
 
-  const activeIdx = Math.max(
-    0,
-    MAP_AREA_PRESETS.findIndex((p) => p.id === activePresetId)
-  );
-  const activePreset = MAP_AREA_PRESETS[activeIdx] || MAP_AREA_PRESETS[0];
-
-  // Đóng menu roll kéo xuống khi click ra ngoài
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
         dropdownContainerRef.current &&
         !dropdownContainerRef.current.contains(e.target as Node)
       ) {
-        setIsPresetRollOpen(false);
+        setIsLayerMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Tự động cuộn tới khu vực đang chọn khi mở thanh roll dọc
-  useEffect(() => {
-    if (isPresetRollOpen && rollListRef.current) {
-      const activeEl = rollListRef.current.children[activeIdx] as HTMLElement | undefined;
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    }
-  }, [isPresetRollOpen, activeIdx]);
-
   return (
     <div
       ref={dropdownContainerRef}
       className="fixed right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-30 flex flex-col items-end gap-2 pointer-events-auto"
-      style={{
-        fontFamily:
-          "'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-      }}
     >
-      {/* Popover Tùy chỉnh Bản đồ 2D — Chuẩn, Đủ, Không Thừa */}
+      {/* Popover Tùy chỉnh Lớp Bản đồ */}
       {isLayerMenuOpen && (
-        <div className="mb-1 w-60 rounded-2xl bg-[#FFFDF9] border border-[#403064]/80 shadow-[0_12px_30px_rgba(64,48,100,0.22)] p-3 text-xs text-[#2D2246] space-y-2.5">
-          <div className="font-extrabold text-[#403064] pb-1.5 border-b border-[#E5DEC9] flex items-center justify-between leading-snug">
-            <span>Tùy chỉnh bản đồ</span>
+        <div className="mb-1 w-60 rounded-[14px] bg-white border border-[#E2E8F0] shadow-[0_12px_32px_rgba(15,23,42,0.12)] p-3 text-xs text-[#0F172A] space-y-2.5">
+          <div className="font-semibold text-[#0F172A] pb-1.5 border-b border-[#F1F5F9] flex items-center justify-between leading-snug">
+            <span>Lớp bản đồ</span>
             <button
               type="button"
               onClick={() => setIsLayerMenuOpen(false)}
-              className="text-[11px] font-bold text-[#65587F] hover:text-[#2D2246] cursor-pointer"
+              className="text-[11px] font-medium text-[#64748B] hover:text-[#0F172A] cursor-pointer"
             >
               Đóng
             </button>
@@ -113,43 +78,43 @@ export const MapControls: React.FC<MapControlsProps> = ({
           <div className="space-y-1.5">
             {(
               [
-                { key: 'realPois', label: 'Hiện ghim định vị' },
-                { key: 'buildings', label: 'Hiện khối nhà & công trình (21,4k)' },
+                { key: 'realPois', label: 'Hiện địa danh & POI' },
+                { key: 'buildings', label: 'Hiện khối nhà & công trình' },
                 { key: 'baseGeography', label: 'Hiện đường phố & ngõ nhỏ' },
                 { key: 'waterAndParks', label: 'Hiện mặt hồ & công viên' },
                 { key: 'wardBoundary', label: 'Hiện ranh giới Phường' },
-                { key: 'decorativeZones', label: 'Lớp minh họa quy hoạch (Tùy chọn)' },
+                { key: 'decorativeZones', label: 'Lớp quy hoạch phân khu' },
               ] as Array<{ key: keyof MapLayerVisibility; label: string }>
             ).map((item) => (
               <label
                 key={item.key}
                 className="flex items-center justify-between gap-2 cursor-pointer select-none py-0.5"
               >
-                <span className="font-semibold text-[11.5px] leading-snug">
+                <span className="font-medium text-[11.5px] text-[#334155] leading-snug">
                   {item.label}
                 </span>
                 <input
                   type="checkbox"
                   checked={Boolean(layerVisibility[item.key])}
                   onChange={() => onToggleLayer(item.key)}
-                  className="w-4 h-4 accent-[#39B980] rounded cursor-pointer"
+                  className="w-3.5 h-3.5 accent-[#059669] rounded cursor-pointer"
                 />
               </label>
             ))}
           </div>
 
-          <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-[#E5DEC9]">
+          <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-[#F1F5F9]">
             <button
               type="button"
               onClick={onZoomIn}
-              className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[11px] text-[#2D2246] cursor-pointer"
+              className="py-1.5 rounded-[8px] bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] font-medium text-[11px] text-[#0F172A] cursor-pointer"
             >
               Phóng +
             </button>
             <button
               type="button"
               onClick={onZoomOut}
-              className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[11px] text-[#2D2246] cursor-pointer"
+              className="py-1.5 rounded-[8px] bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] font-medium text-[11px] text-[#0F172A] cursor-pointer"
             >
               Thu −
             </button>
@@ -159,7 +124,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
                 onResetCenter();
                 setIsLayerMenuOpen(false);
               }}
-              className="py-1.5 rounded-xl bg-[#F8F5EE] hover:bg-[#E6F7EF] border border-[#403064]/30 font-extrabold text-[11px] text-[#2D2246] cursor-pointer"
+              className="py-1.5 rounded-[8px] bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] font-medium text-[11px] text-[#0F172A] cursor-pointer"
             >
               Trung tâm
             </button>
@@ -167,15 +132,15 @@ export const MapControls: React.FC<MapControlsProps> = ({
         </div>
       )}
 
-      {/* Cột điều khiển gọn gàng bên phải (3D/2D ở đầu, GPS, Tùy chỉnh bản đồ, Ngôi nhà = Chỗ bạn sống) */}
-      <div className="flex flex-col rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-sm border border-[#403064]/85 shadow-[0_6px_20px_rgba(64,48,100,0.16)] overflow-hidden">
+      {/* Floating Right Control Pill */}
+      <div className="flex flex-col rounded-[14px] bg-white/95 backdrop-blur-md border border-[#E2E8F0] shadow-[0_4px_16px_rgba(15,23,42,0.08)] overflow-hidden">
         {onOpenCity3D ? (
           <button
             type="button"
             onClick={onOpenCity3D}
-            aria-label="Mở Sa bàn 3D Phường Xuân Hòa"
+            aria-label="Mở Bản đồ 3D Phường Xuân Hòa"
             title="Chuyển sang Bản đồ 3D"
-            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-black text-[11px] transition-all border-b border-[#E5DEC9] cursor-pointer bg-[#059669] hover:bg-[#047857] text-white"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-semibold text-[11px] transition-colors border-b border-[#F1F5F9] cursor-pointer bg-[#0F172A] hover:bg-[#1E293B] text-white"
           >
             3D
           </button>
@@ -185,11 +150,9 @@ export const MapControls: React.FC<MapControlsProps> = ({
             onClick={onToggle3DMode}
             aria-label="Chuyển đổi góc nhìn 3D / 2D"
             title="Chuyển đổi góc nhìn 3D / 2D"
-            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-extrabold text-[11px] transition-colors border-b border-[#E5DEC9] cursor-pointer"
-            style={{
-              backgroundColor: is3DMode ? '#39B980' : 'transparent',
-              color: is3DMode ? '#FFFFFF' : '#403064',
-            }}
+            className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-semibold text-[11px] transition-colors border-b border-[#F1F5F9] cursor-pointer ${
+              is3DMode ? 'bg-[#059669] text-white' : 'text-[#0F172A] hover:bg-[#F8FAFC]'
+            }`}
           >
             {is3DMode ? '3D' : '2D'}
           </button>
@@ -199,56 +162,52 @@ export const MapControls: React.FC<MapControlsProps> = ({
           type="button"
           onClick={onLocateUser}
           aria-label="Định vị vị trí hiện tại của tôi"
-          title="Định vị vị trí hiện tại của bạn (GPS)"
-          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-[#1D7A52] hover:bg-[#E6F7EF] transition-colors border-b border-[#E5DEC9] cursor-pointer"
+          title="Vị trí hiện tại (GPS)"
+          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-[#0F172A] hover:bg-[#F8FAFC] transition-colors border-b border-[#F1F5F9] cursor-pointer"
         >
           {isLocatingUser ? (
-            <Loader2 size={15} className="animate-spin text-[#39B980]" />
+            <Loader2 size={15} strokeWidth={1.7} className="animate-spin text-[#059669]" />
           ) : (
-            <LocateFixed size={15} className="text-[#39B980]" />
+            <LocateFixed size={15} strokeWidth={1.7} className="text-[#059669]" />
           )}
         </button>
 
         <button
           type="button"
           onClick={onResetCenter}
-          aria-label="Trở về trung tâm Xuân Hòa (Trường ĐHSP Hà Nội 2)"
-          title="Trở về trung tâm Xuân Hòa (Trường ĐH Sư Phạm Hà Nội 2)"
-          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-[#0284C7] hover:bg-[#E0F2FE] transition-colors border-b border-[#E5DEC9] cursor-pointer"
+          aria-label="Về trung tâm Xuân Hòa"
+          title="Về trung tâm Xuân Hòa"
+          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC] transition-colors border-b border-[#F1F5F9] cursor-pointer"
         >
-          <Compass size={15} />
+          <Compass size={15} strokeWidth={1.7} />
         </button>
 
         <button
           type="button"
           onClick={() => setIsLayerMenuOpen((v) => !v)}
           aria-label="Tùy chỉnh lớp bản đồ"
-          title="Tùy chỉnh hiển thị bản đồ"
-          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center transition-colors border-b border-[#E5DEC9] cursor-pointer"
-          style={{
-            backgroundColor: isLayerMenuOpen ? '#E6F7EF' : 'transparent',
-            color: '#403064',
-          }}
+          title="Lớp bản đồ"
+          className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center transition-colors border-b border-[#F1F5F9] cursor-pointer ${
+            isLayerMenuOpen
+              ? 'bg-[#ECFDF5] text-[#059669]'
+              : 'text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC]'
+          }`}
         >
-          <Layers size={15} />
+          <Layers size={15} strokeWidth={1.7} />
         </button>
 
         <button
           type="button"
           onClick={onClickHomeButton || onResetCenter}
-          aria-label="Chỗ bạn sinh sống (Nhà của bạn)"
-          title={
-            hasSavedHome
-              ? 'Nhà của bạn — Bấm để về đúng địa chỉ chỗ bạn sống'
-              : 'Định vị chỗ bạn sinh sống (Nhà của bạn)'
-          }
+          aria-label="Nhà của bạn"
+          title={hasSavedHome ? 'Nhà của bạn' : 'Đặt vị trí nhà của bạn'}
           className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center transition-colors cursor-pointer ${
             hasSavedHome
-              ? 'bg-[#FEF3C7] text-[#B45309] hover:bg-[#FDE68A]'
-              : 'text-[#403064] hover:bg-[#E6F7EF]'
+              ? 'bg-[#ECFDF5] text-[#059669]'
+              : 'text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC]'
           }`}
         >
-          <Home size={15} />
+          <Home size={15} strokeWidth={1.7} />
         </button>
       </div>
     </div>

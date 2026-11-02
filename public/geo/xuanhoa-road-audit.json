@@ -1,80 +1,617 @@
 {
-  "generatedAt": "2026-10-31T06:20:30.719Z",
+  "generatedAt": "2026-11-02T10:13:31.066Z",
+  "hierarchyStats": {
+    "totalRoads": 3485,
+    "major": 54,
+    "arterial": 22,
+    "local": 1268,
+    "alley": 909,
+    "access": 1232,
+    "namedVerified": 86,
+    "unnamed": 3399,
+    "needs_review": 0,
+    "local_verified": 1,
+    "rejected": 1,
+    "outOfBoundaryExcluded": 3699
+  },
+  "modifiedRoadsList": [
+    {
+      "roadId": "way/176151686",
+      "name": "Ngõ 29 Nguyễn Văn Linh",
+      "roadClass": "alley",
+      "roadType": "alley",
+      "parentRoad": "Đường Nguyễn Văn Linh",
+      "action": "Xác minh local_verified & khóa geometry nhánh phía Bắc ([105.717687, 21.285617] -> [105.718375, 21.285894]) nối trực tiếp Đường Nguyễn Văn Linh"
+    },
+    {
+      "roadId": "xh_road_ngo_29_nguyen_van_linh",
+      "name": "",
+      "roadClass": "local",
+      "roadType": "local_road",
+      "parentRoad": "Đường Nguyễn Văn Linh",
+      "action": "Gỡ bỏ tên gắn sai \"Ngõ 29 Nguyễn Văn Linh\" trên nhánh phía Nam (gmaps/way_3114), đánh dấu rejected & locked"
+    },
+    {
+      "roadId": "way/176151686#sw",
+      "name": "",
+      "roadClass": "local",
+      "roadType": "local_road",
+      "parentRoad": "",
+      "action": "Tách đoạn đường nhánh phía Tây Nam khỏi Ngõ 29 Nguyễn Văn Linh, giữ ở cấp local_road trung tính không nhãn"
+    },
+    {
+      "roadId": "way/176265718",
+      "name": "Ngõ 1 Võ Thị Sáu",
+      "roadClass": "alley",
+      "roadType": "alley",
+      "parentRoad": "Phố Võ Thị Sáu",
+      "action": "Chuẩn hóa cấp alley (verified OSM) nối trực tiếp Phố Võ Thị Sáu"
+    },
+    {
+      "roadId": "way/892145246",
+      "name": "Ngõ 7 Đường Lê Trọng Tấn",
+      "roadClass": "alley",
+      "roadType": "alley",
+      "parentRoad": "Đường Lê Trọng Tấn",
+      "action": "Chuẩn hóa cấp alley (verified OSM) nối trực tiếp Đường Lê Trọng Tấn"
+    },
+    {
+      "roadId": "way/896979250",
+      "name": "Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú",
+      "roadClass": "alley",
+      "roadType": "lane",
+      "parentRoad": "Đường Lâm Trường Đi Đập Đỉnh Phú",
+      "action": "Chuẩn hóa cấp alley/lane (verified OSM)"
+    },
+    {
+      "roadId": "way/1029516683",
+      "name": "Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú",
+      "roadClass": "alley",
+      "roadType": "lane",
+      "parentRoad": "Đường Lâm Trường Đi Đập Đỉnh Phú",
+      "action": "Chuẩn hóa cấp alley/lane (verified OSM)"
+    }
+  ],
+  "twentyZonesAudit": [
+    {
+      "zoneId": 1,
+      "name": "Trục Nguyễn Văn Linh & Ngõ 29 Nguyễn Văn Linh",
+      "center": [
+        105.7183,
+        21.2858
+      ],
+      "totalSegments": 66,
+      "byClass": {
+        "major": 2,
+        "arterial": 1,
+        "local": 28,
+        "alley": 14,
+        "access": 21
+      },
+      "verifiedNamedRoads": [
+        "Đường Lê Quang Đạo",
+        "Đường Nguyễn Văn Linh",
+        "Ngõ 29 Nguyễn Văn Linh",
+        "Phố Cù Chính Lan"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 2,
+      "name": "Đại học Sư phạm Hà Nội 2 (ĐHSP2) & Phố Võ Thị Sáu",
+      "center": [
+        105.7248,
+        21.2835
+      ],
+      "totalSegments": 76,
+      "byClass": {
+        "major": 3,
+        "arterial": 2,
+        "local": 34,
+        "alley": 27,
+        "access": 10
+      },
+      "verifiedNamedRoads": [
+        "Đường Nguyễn Văn Linh",
+        "Đường Phạm Văn Đồng",
+        "Phố Kim Đồng",
+        "Ngõ 1 Võ Thị Sáu",
+        "Phố Võ Thị Sáu",
+        "Phố Kim Ngọc"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 3,
+      "name": "Vòng tròn 1 (Giao Nguyễn Văn Linh - Lê Thái Tổ - Phạm Văn Đồng)",
+      "center": [
+        105.7155,
+        21.2921
+      ],
+      "totalSegments": 77,
+      "byClass": {
+        "major": 1,
+        "arterial": 1,
+        "local": 51,
+        "alley": 24,
+        "access": 0
+      },
+      "verifiedNamedRoads": [
+        "Đường Nguyễn Văn Linh",
+        "Đường Phạm Văn Đồng",
+        "Phố Hòa Bình"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 4,
+      "name": "Vòng tròn 2 (Giao Nguyễn Văn Linh - Võ Thị Sáu - ĐHSP2)",
+      "center": [
+        105.7248,
+        21.2817
+      ],
+      "totalSegments": 75,
+      "byClass": {
+        "major": 5,
+        "arterial": 2,
+        "local": 39,
+        "alley": 25,
+        "access": 4
+      },
+      "verifiedNamedRoads": [
+        "Đường Nguyễn Văn Linh",
+        "Đường Phạm Văn Đồng",
+        "Phố Kim Đồng",
+        "Ngõ 1 Võ Thị Sáu",
+        "Phố Nhà Chung",
+        "Phố Võ Thị Sáu",
+        "Phố Kim Ngọc"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 5,
+      "name": "Phố Cù Chính Lan & Khu dân cư trung tâm Xuân Hòa",
+      "center": [
+        105.7201,
+        21.2862
+      ],
+      "totalSegments": 58,
+      "byClass": {
+        "major": 2,
+        "arterial": 2,
+        "local": 23,
+        "alley": 8,
+        "access": 23
+      },
+      "verifiedNamedRoads": [
+        "Đường Lê Quang Đạo",
+        "Đường Nguyễn Văn Linh",
+        "Đường Phạm Văn Đồng",
+        "Ngõ 29 Nguyễn Văn Linh",
+        "Ngõ 1 Võ Thị Sáu",
+        "Phố Cù Chính Lan"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 6,
+      "name": "Trục Đường Phạm Văn Đồng & Chợ Xuân Hòa",
+      "center": [
+        105.7215,
+        21.2905
+      ],
+      "totalSegments": 53,
+      "byClass": {
+        "major": 0,
+        "arterial": 2,
+        "local": 17,
+        "alley": 15,
+        "access": 19
+      },
+      "verifiedNamedRoads": [
+        "Đường Phạm Văn Đồng",
+        "Phố Cù Chính Lan"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 7,
+      "name": "Trục Đường Lê Thái Tổ & Khu hành chính",
+      "center": [
+        105.7125,
+        21.2912
+      ],
+      "totalSegments": 86,
+      "byClass": {
+        "major": 1,
+        "arterial": 0,
+        "local": 58,
+        "alley": 26,
+        "access": 1
+      },
+      "verifiedNamedRoads": [
+        "Đường Nguyễn Văn Linh",
+        "Phố Hòa Bình"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 8,
+      "name": "Trục Đường Trường Chinh (Quốc lộ xuyên phường)",
+      "center": [
+        105.7105,
+        21.2755
+      ],
+      "totalSegments": 34,
+      "byClass": {
+        "major": 2,
+        "arterial": 2,
+        "local": 16,
+        "alley": 8,
+        "access": 6
+      },
+      "verifiedNamedRoads": [
+        "Đường Nguyễn Tất Thành"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 9,
+      "name": "Trục Đường Hùng Vương",
+      "center": [
+        105.7025,
+        21.282
+      ],
+      "totalSegments": 13,
+      "byClass": {
+        "major": 2,
+        "arterial": 0,
+        "local": 8,
+        "alley": 2,
+        "access": 1
+      },
+      "verifiedNamedRoads": [
+        "Đường Nguyễn Tất Thành"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 10,
+      "name": "Trục Đường Lạc Long Quân & Ven Hồ Đại Lải",
+      "center": [
+        105.7285,
+        21.312
+      ],
+      "totalSegments": 118,
+      "byClass": {
+        "major": 1,
+        "arterial": 1,
+        "local": 74,
+        "alley": 35,
+        "access": 7
+      },
+      "verifiedNamedRoads": [
+        "Đường Lê Duẩn",
+        "Đường Phùng Chí Kiên"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 11,
+      "name": "Trục Đường Kim Ngọc & Khu vực Đông Nam Xuân Hòa",
+      "center": [
+        105.731,
+        21.2785
+      ],
+      "totalSegments": 70,
+      "byClass": {
+        "major": 10,
+        "arterial": 4,
+        "local": 35,
+        "alley": 17,
+        "access": 4
+      },
+      "verifiedNamedRoads": [
+        "Cầu Xuân Hoà",
+        "Đường Trường Chinh",
+        "Đường Phạm Văn Đồng",
+        "Phố Kim Đồng",
+        "Phố Phạm Hồng Thái",
+        "Phố Lê Xoay",
+        "Phố Nhà Chung",
+        "Phố Đồng Tâm",
+        "Đường Nguyễn Văn Linh"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 12,
+      "name": "Nhà Trắng Xuân Hòa & Phố Kim Đồng - Phố Nhà Chung",
+      "center": [
+        105.7244,
+        21.2809
+      ],
+      "totalSegments": 90,
+      "byClass": {
+        "major": 6,
+        "arterial": 1,
+        "local": 51,
+        "alley": 27,
+        "access": 5
+      },
+      "verifiedNamedRoads": [
+        "Đường Lê Quang Đạo",
+        "Đường Nguyễn Văn Linh",
+        "Phố Kim Đồng",
+        "Ngõ 1 Võ Thị Sáu",
+        "Phố Nhà Chung",
+        "Phố Võ Thị Sáu",
+        "Phố Kim Ngọc"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 13,
+      "name": "Đường Trần Phú & Khu dân cư Nam Xuân Hòa",
+      "center": [
+        105.721,
+        21.2735
+      ],
+      "totalSegments": 42,
+      "byClass": {
+        "major": 2,
+        "arterial": 2,
+        "local": 30,
+        "alley": 5,
+        "access": 3
+      },
+      "verifiedNamedRoads": [
+        "Đường Trường Chinh",
+        "Đường Lê Quang Đạo",
+        "Phố Nhà Chung",
+        "Phố Đồng Tâm"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 14,
+      "name": "Đường Phùng Chí Kiên & Khu dân cư Tây Bắc",
+      "center": [
+        105.7135,
+        21.2975
+      ],
+      "totalSegments": 96,
+      "byClass": {
+        "major": 1,
+        "arterial": 2,
+        "local": 63,
+        "alley": 28,
+        "access": 2
+      },
+      "verifiedNamedRoads": [
+        "Đường Nguyễn Văn Linh",
+        "Đường Phạm Văn Đồng",
+        "Đường Lê Quý Đôn"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 15,
+      "name": "Đường Nguyễn Tất Thành & Khu công nghiệp / Dịch vụ",
+      "center": [
+        105.698,
+        21.269
+      ],
+      "totalSegments": 3,
+      "byClass": {
+        "major": 0,
+        "arterial": 0,
+        "local": 2,
+        "alley": 0,
+        "access": 1
+      },
+      "verifiedNamedRoads": [],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 16,
+      "name": "Khu vực Núi Thằn Lằn & Bốt Pháp",
+      "center": [
+        105.7239,
+        21.2964
+      ],
+      "totalSegments": 28,
+      "byClass": {
+        "major": 1,
+        "arterial": 1,
+        "local": 2,
+        "alley": 8,
+        "access": 16
+      },
+      "verifiedNamedRoads": [
+        "Đường Phùng Chí Kiên",
+        "Đường Trường Chinh"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 17,
+      "name": "KĐT Mới Tây Xuân Hòa",
+      "center": [
+        105.7186,
+        21.2793
+      ],
+      "totalSegments": 61,
+      "byClass": {
+        "major": 1,
+        "arterial": 2,
+        "local": 35,
+        "alley": 15,
+        "access": 8
+      },
+      "verifiedNamedRoads": [
+        "Đường Lê Quang Đạo",
+        "Phố Nhà Chung"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 18,
+      "name": "Cầu Xuân Hòa - Chim Xanh & Phố Phạm Hồng Thái",
+      "center": [
+        105.7282,
+        21.2798
+      ],
+      "totalSegments": 88,
+      "byClass": {
+        "major": 11,
+        "arterial": 3,
+        "local": 48,
+        "alley": 23,
+        "access": 3
+      },
+      "verifiedNamedRoads": [
+        "Đường Trường Chinh",
+        "Đường Nguyễn Văn Linh",
+        "Đường Phạm Văn Đồng",
+        "Phố Kim Đồng",
+        "Phố Phạm Hồng Thái",
+        "Phố Lê Xoay",
+        "Phố Nhà Chung",
+        "Phố Đồng Tâm",
+        "Phố Kim Ngọc"
+      ],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 19,
+      "name": "Khu vực Bắc Hồ Đại Lải - Ngọc Thanh",
+      "center": [
+        105.738,
+        21.335
+      ],
+      "totalSegments": 43,
+      "byClass": {
+        "major": 0,
+        "arterial": 1,
+        "local": 15,
+        "alley": 17,
+        "access": 10
+      },
+      "verifiedNamedRoads": [],
+      "status": "PASS"
+    },
+    {
+      "zoneId": 20,
+      "name": "Khu vực Cao Minh - Đồng Xuân (Phía Tây Xuân Hòa)",
+      "center": [
+        105.692,
+        21.295
+      ],
+      "totalSegments": 68,
+      "byClass": {
+        "major": 15,
+        "arterial": 0,
+        "local": 26,
+        "alley": 22,
+        "access": 5
+      },
+      "verifiedNamedRoads": [
+        "Đường Nguyễn Tất Thành",
+        "Đường Hoàng Hoa Thám",
+        "Đường tỉnh 310"
+      ],
+      "status": "PASS"
+    }
+  ],
   "summary": {
     "totalRoadSegmentsBefore": 3122,
-    "totalRoadSegmentsAfter": 7258,
-    "osmVectorBackboneSegments": 6351,
+    "totalRoadSegmentsAfter": 3485,
+    "outOfBoundaryExcluded": 3699,
+    "osmVectorBackboneSegments": 2578,
     "cleanedLocalAlleysAdded": 907,
     "rasterDuplicatesAndStubsRemoved": 1873,
-    "sharpUrbanCornersSplit": 126,
+    "sharpUrbanCornersSplit": 51,
     "fabricatedAlleyNamesRemoved": 666,
     "shortMajorSecondaryStubsRemoved": 24,
     "sharpHooksAndKinksFixed": 104,
     "foldbackHairpinsFixed": 4,
-    "overridesApplied": 5
+    "overridesApplied": 3
   },
   "rootCausesIdentifiedAndFixed": [
     {
-      "issue": "Đường Nguyễn Văn Linh bị phình/gãy góc vàng tại 2 giao lộ gần ĐHSP Hà Nội 2 (mũi tên đỏ giữa)",
-      "cause": "SOURCE_GEOMETRY_ERROR: Script raster skeleton (87ccd03) tạo ra 2 đoạn stub ngắn gmaps/way_3320 (3.5m) và gmaps/way_3324 (24.0m) gán nhầm tier=major tại giao lộ.",
-      "fix": "Khôi phục đường tâm vector chuẩn OSM (way/157991278) thẳng tuyệt đối và loại bỏ toàn bộ 86 đoạn stub major/secondary ngắn do raster hóa."
+      "issue": "Ngõ 29 Nguyễn Văn Linh bị gắn nhầm vào nhánh đường phía Nam [105.718521, 21.285574] -> [105.717680, 21.285016]",
+      "cause": "PROXIMITY_HEURISTIC_ERROR: extract-google-maps-roads.mjs dùng bounding-box heuristic gán tên Ngõ 29 Nguyễn Văn Linh cho gmaps/way_3114 và gmaps/way_3112.",
+      "fix": "1. Remove wrong association trên xh_road_ngo_29_nguyen_van_linh (rejected, locked). 2. Xác định đúng roadId way/176151686 (nhánh phía Bắc đối diện Phố Cù Chính Lan). 3. Xác minh geometry nối vào Đường Nguyễn Văn Linh tại [105.718375, 21.285894]. 4. Xác minh parentRoad = Đường Nguyễn Văn Linh. 5. Bật nhãn local_verified."
     },
     {
-      "issue": "Ngõ 29 Nguyễn Văn Linh bị móc cong chữ V ở cuối ngõ và trùng tên trên 2 đoạn rời (mũi tên đỏ trên cùng bên trái)",
-      "cause": "SOURCE_GEOMETRY_ERROR: Đoạn gmaps/way_3114 bị thuật toán skeleton nối nhầm góc 120° sang ngõ ngang way/892145396; đồng thời gmaps/way_3112 cũng bị gán trùng tên.",
-      "fix": "Lưu mốc xác thực địa phương vào xuanhoa-road-overrides.json, cắt bỏ đoạn móc cong lỗi raster, giữ duy nhất 1 tuyến thẳng [105.718521, 21.285574] -> [105.717680, 21.285016] nối khớp 0.0m vào Đường Nguyễn Văn Linh."
+      "issue": "3.774 đoạn đường ngoài ranh giới phường Xuân Hòa bị trộn vào dữ liệu bản đồ và Admin",
+      "cause": "BOUNDARY_SCOPE_LEAK: Dữ liệu OSM gốc bao phủ vùng lân cận ngoài ranh giới phường Xuân Hòa.",
+      "fix": "Lọc nghiêm ngặt theo ranh giới xuanhoa-boundary.geojson, loại bỏ 100% đường ngoài phạm vi phường Xuân Hòa."
     },
     {
-      "issue": "Hàng loạt ngõ hiện tên tự đoán \"Ngõ Nguyễn Văn Linh\", \"Ngõ Phạm Văn Đồng\", \"Ngõ Lê Quang Đạo\", \"Ngõ Võ Thị Sáu\"...",
-      "cause": "DATA_NAMING_ERROR: Hàm toAlleyPrefix() trong upgrade-roads-and-alleys.mjs tự động ghép tiền tố \"Ngõ \" + tên đường gần nhất cho 664 đoạn ngõ chưa có số ngõ xác thực.",
-      "fix": "Xóa toàn bộ 664 tên ngõ tự đoán (để name=\"\"), giữ nguyên geometry của ngõ, chỉ giữ tên cho các ngõ đã xác minh thực địa/OSM."
-    },
-    {
-      "issue": "Ribbon 3D tại các góc cua gắt có nguy cơ nhọn đầu (miter spike)",
-      "cause": "RENDERING_ERROR: GeoBuilder.ribbon trong city3d.worker.ts cho phép miter giãn tới 2.5x halfWidth (dot >= 0.4) mà không kẹp theo chiều dài đoạn liền kề.",
-      "fix": "Kẹp miter giới hạn trong GeoBuilder.ribbon (dot >= 0.75 + giới hạn theo chiều dài cạnh) và bo tròn disc tại các góc cua > 55°."
+      "issue": "Đường dân sinh không tên bị gom nhầm thành ngõ (alley) hoặc tự đoán tên \"Ngõ <Tên Đường>\"",
+      "cause": "HIERARCHY_CONFLATION: Mọi đường nhỏ không thuộc primary/secondary/tertiary bị mặc định gán thành alley.",
+      "fix": "Chuẩn hóa hệ thống phân cấp 5 bậc (major, arterial, local, alley, access); giữ các đường dân sinh chưa xác minh ở cấp trung tính local (local_road) không nhãn."
     }
   ],
   "ngo29NguyenVanLinhRegressionTest": {
     "passed": true,
     "assertions": {
-      "existsInRoadsGeoJSON": true,
-      "uniqueSingleBranchCount": 1,
-      "roadId": "xh_road_ngo_29_nguyen_van_linh",
-      "parentRoad": "Đường Nguyễn Văn Linh",
-      "source": "local_verified",
-      "confidence": 1,
-      "snapDistanceToNguyenVanLinhMeters": 0,
-      "maxDeflectionAngleDeg": 2.19,
-      "coordinates": [
-        [
-          105.718521,
-          21.285574
-        ],
-        [
-          105.718374,
-          21.285469
-        ],
-        [
-          105.717985,
-          21.285206
-        ],
-        [
-          105.71768,
-          21.285016
-        ]
-      ]
+      "verifiedRoadId": "way/176151686",
+      "verifiedName": "Ngõ 29 Nguyễn Văn Linh",
+      "verifiedRoadClass": "alley",
+      "verifiedParentRoad": "Đường Nguyễn Văn Linh",
+      "verifiedSource": "local_verified",
+      "verifiedLocked": true,
+      "rejectedRoadId": "xh_road_ngo_29_nguyen_van_linh",
+      "rejectedStatus": "rejected",
+      "rejectedNameRecorded": "Ngõ 29 Nguyễn Văn Linh",
+      "publicNameClearedOnWrongSegment": true
     }
   },
   "ALL_NAMED_ALLEYS": [
     {
+      "roadId": "way/176151686",
+      "name": "Ngõ 29 Nguyễn Văn Linh",
+      "roadClass": "alley",
+      "roadType": "alley",
+      "parentRoad": "Đường Nguyễn Văn Linh",
+      "parentRoadId": "way/157991278",
+      "tier": "alley",
+      "source": "local_verified",
+      "nameSource": "local_verified",
+      "geometrySource": "osm",
+      "verified": true,
+      "confidence": 1,
+      "verificationStatus": "verified",
+      "locked": true,
+      "vertexCount": 4,
+      "startLngLat": [
+        105.717687,
+        21.285617
+      ],
+      "endLngLat": [
+        105.718375,
+        21.285894
+      ]
+    },
+    {
       "roadId": "way/176265718",
       "name": "Ngõ 1 Võ Thị Sáu",
+      "roadClass": "alley",
+      "roadType": "alley",
       "parentRoad": "Phố Võ Thị Sáu",
-      "tier": "minor",
-      "source": "osm_verified",
+      "parentRoadId": "way/176265733",
+      "tier": "alley",
+      "source": "osm",
+      "nameSource": "osm",
+      "geometrySource": "osm",
+      "verified": true,
       "confidence": 0.96,
-      "verificationStatus": "verified_named_alley",
+      "verificationStatus": "verified",
+      "locked": false,
       "vertexCount": 8,
       "startLngLat": [
         105.724336,
@@ -83,78 +620,6 @@
       "endLngLat": [
         105.722965,
         21.285802
-      ]
-    },
-    {
-      "roadId": "way/892145246",
-      "name": "Ngõ 7 Đường Lê Trọng Tấn",
-      "parentRoad": "Đường Lê Trọng Tấn",
-      "tier": "minor",
-      "source": "osm_verified",
-      "confidence": 0.92,
-      "verificationStatus": "verified_named_alley",
-      "vertexCount": 2,
-      "startLngLat": [
-        105.713866,
-        21.261886
-      ],
-      "endLngLat": [
-        105.714036,
-        21.262053
-      ]
-    },
-    {
-      "roadId": "way/896979250",
-      "name": "Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú",
-      "parentRoad": "Đường Lâm Trường Đi Đập Đỉnh Phú",
-      "tier": "minor",
-      "source": "osm_verified",
-      "confidence": 0.92,
-      "verificationStatus": "verified_named_alley",
-      "vertexCount": 5,
-      "startLngLat": [
-        105.783392,
-        21.293056
-      ],
-      "endLngLat": [
-        105.784665,
-        21.293157
-      ]
-    },
-    {
-      "roadId": "way/1029516683",
-      "name": "Ngách 20 Ngõ 7 Đường Đập Đỉnh Phú",
-      "parentRoad": "Đường Lâm Trường Đi Đập Đỉnh Phú",
-      "tier": "alley",
-      "source": "osm_verified",
-      "confidence": 0.92,
-      "verificationStatus": "verified_named_alley",
-      "vertexCount": 2,
-      "startLngLat": [
-        105.782914,
-        21.293275
-      ],
-      "endLngLat": [
-        105.783392,
-        21.293056
-      ]
-    },
-    {
-      "roadId": "xh_road_ngo_29_nguyen_van_linh",
-      "name": "Ngõ 29 Nguyễn Văn Linh",
-      "parentRoad": "Đường Nguyễn Văn Linh",
-      "tier": "alley",
-      "source": "local_verified",
-      "confidence": 1,
-      "verificationStatus": "local_verified",
-      "vertexCount": 4,
-      "startLngLat": [
-        105.718521,
-        21.285574
-      ],
-      "endLngLat": [
-        105.71768,
-        21.285016
       ]
     }
   ],
@@ -788,7 +1253,7 @@
   },
   "afterAudit": {
     "datasetLabel": "after_fix_master",
-    "totalFeatures": 7258,
+    "totalFeatures": 3485,
     "counts": {
       "sharpKinkOrHook": 0,
       "shortMajorSecondaryStub": 0,

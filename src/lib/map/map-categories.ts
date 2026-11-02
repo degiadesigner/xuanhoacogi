@@ -1,190 +1,197 @@
 import type { MapCategoryKey } from './map-types';
 
-export interface MapCategoryDefinition {
+export interface MapCategoryConfig {
   id: MapCategoryKey;
   label: string;
   shortLabel: string;
-  description: string;
-  /** Màu nền marker (xanh mint / xanh ngọc / pastel đồng bộ với viền tím đậm #403064) */
+  iconName: string;
+  accentHex: string;
+  softBgHex: string;
   markerBg: string;
-  /** Màu nền pill / badge nhẹ */
-  badgeBg: string;
-  /** Màu chữ trên badge */
-  badgeText: string;
-  /** Tên icon Lucide tương ứng */
-  iconName:
-    | 'Compass'
-    | 'UtensilsCrossed'
-    | 'Coffee'
-    | 'Sparkles'
-    | 'Flame'
-    | 'CircleDot'
-    | 'Gamepad2'
-    | 'Music'
-    | 'Smartphone'
-    | 'ShoppingBag'
-    | 'Store'
-    | 'Wrench'
-    | 'GraduationCap'
-    | 'Landmark'
-    | 'Castle';
+  markerBorder: string;
+  description: string;
 }
 
-export const MAP_CATEGORIES: MapCategoryDefinition[] = [
+export type MapCategoryDefinition = MapCategoryConfig;
+
+/**
+ * BẢNG DANH MỤC TƯƠNG THÍCH NGƯỢC — SỬ DỤNG HỆ MÀU MONOCHROME / BRAND EMERALD ACCENT (PHẦN 4, 26–28)
+ * Không dùng mỗi category một màu cầu vồng.
+ * - Core Landmarks (public, school): Nền Emerald thương hiệu (#059669), icon trắng.
+ * - Business Markers: Nền trắng (#FFFFFF), viền mảnh Emerald (#059669), icon đậm (#059669 / #0F172A).
+ */
+export const MAP_CATEGORIES: MapCategoryConfig[] = [
   {
     id: 'all',
     label: 'Tất cả địa điểm',
     shortLabel: 'Tất cả',
-    description: 'Toàn bộ địa điểm đã xác minh trên bản đồ Xuân Hòa',
-    markerBg: '#39B980',
-    badgeBg: '#E6F7EF',
-    badgeText: '#1D7A52',
-    iconName: 'Compass',
-  },
-  {
-    id: 'food',
-    label: 'Quán ăn',
-    shortLabel: 'Quán ăn',
-    description: 'Cơm sinh viên, bún, phở, bún chả, bánh mì nóng',
-    markerBg: '#39B980',
-    badgeBg: '#E6F7EF',
-    badgeText: '#1D7A52',
-    iconName: 'UtensilsCrossed',
-  },
-  {
-    id: 'cafe',
-    label: 'Cà phê và trà',
-    shortLabel: 'Cà phê & Trà',
-    description: 'Quán cafe chill, trà chanh, trà sữa quanh trường & hồ',
-    markerBg: '#2EB89A',
-    badgeBg: '#E4F7F3',
-    badgeText: '#196E5B',
-    iconName: 'Coffee',
-  },
-  {
-    id: 'snack',
-    label: 'Ăn vặt',
-    shortLabel: 'Ăn vặt',
-    description: 'Bánh tráng, nem nướng, chè, gà rán, xiên que',
-    markerBg: '#46C389',
-    badgeBg: '#E9F8F0',
-    badgeText: '#20754E',
-    iconName: 'Sparkles',
-  },
-  {
-    id: 'pub',
-    label: 'Nhà hàng và quán nhậu',
-    shortLabel: 'Nhà hàng & Nhậu',
-    description: 'Lẩu nướng, ốc đêm, bia hơi, đặc sản trâu/gà/hải sản',
-    markerBg: '#34A88E',
-    badgeBg: '#E3F5F0',
-    badgeText: '#1B6655',
-    iconName: 'Flame',
-  },
-  {
-    id: 'billiards',
-    label: 'Bi-a',
-    shortLabel: 'Bi-a',
-    description: 'Câu lạc bộ Billiards & Pool tại Xuân Hòa',
-    markerBg: '#2EA89C',
-    badgeBg: '#E3F6F4',
-    badgeText: '#1A6860',
-    iconName: 'CircleDot',
-  },
-  {
-    id: 'game',
-    label: 'Game/Cyber',
-    shortLabel: 'Game/Cyber',
-    description: 'Phòng máy Cyber Game, eSports, PlayStation',
-    markerBg: '#38B2AC',
-    badgeBg: '#E6FFFA',
-    badgeText: '#234E52',
-    iconName: 'Gamepad2',
-  },
-  {
-    id: 'entertainment',
-    label: 'Karaoke và giải trí',
-    shortLabel: 'Giải trí & Resort',
-    description: 'Khu nghỉ dưỡng Đại Lải, sân golf, khu vui chơi, karaoke',
-    markerBg: '#39B980',
-    badgeBg: '#E6F7EF',
-    badgeText: '#1D7A52',
-    iconName: 'Music',
-  },
-  {
-    id: 'phone',
-    label: 'Điện thoại và công nghệ',
-    shortLabel: 'Điện thoại & CN',
-    description: 'Cửa hàng điện thoại, phụ kiện, sửa chữa máy tính',
-    markerBg: '#319795',
-    badgeBg: '#E6FFFA',
-    badgeText: '#234E52',
-    iconName: 'Smartphone',
-  },
-  {
-    id: 'grocery',
-    label: 'Tạp hóa và cửa hàng tiện lợi',
-    shortLabel: 'Tạp hóa',
-    description: 'Tạp hóa dân sinh, cửa hàng tiện lợi',
-    markerBg: '#48BB78',
-    badgeBg: '#F0FFF4',
-    badgeText: '#22543D',
-    iconName: 'ShoppingBag',
-  },
-  {
-    id: 'supermarket',
-    label: 'Siêu thị và mua sắm',
-    shortLabel: 'Siêu thị & Mua sắm',
-    description: 'Siêu thị, chợ truyền thống, thời trang & mua sắm',
-    markerBg: '#38A169',
-    badgeBg: '#F0FFF4',
-    badgeText: '#22543D',
-    iconName: 'Store',
-  },
-  {
-    id: 'service',
-    label: 'Dịch vụ',
-    shortLabel: 'Dịch vụ',
-    description: 'Ngân hàng, lưu trú, nhà nghỉ, trạm xăng, dịch vụ dân sinh',
-    markerBg: '#2C9A82',
-    badgeBg: '#E6F6F2',
-    badgeText: '#1B5E4F',
-    iconName: 'Wrench',
-  },
-  {
-    id: 'school',
-    label: 'Trường học',
-    shortLabel: 'Trường học',
-    description: 'ĐH Sư phạm Hà Nội 2, ĐH Kiến trúc, CĐ Cơ điện, CĐ Việt-Xô, THPT, THCS, Tiểu học',
-    markerBg: '#39B980',
-    badgeBg: '#E6F7EF',
-    badgeText: '#1D7A52',
-    iconName: 'GraduationCap',
+    iconName: 'compass',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#059669',
+    markerBorder: '#059669',
+    description: 'Toàn bộ địa điểm đã xác minh trong Phường Xuân Hòa',
   },
   {
     id: 'public',
-    label: 'Địa điểm công cộng',
-    shortLabel: 'Công cộng',
-    description: 'Y tế, nhà thể chất, cơ quan hành chính, di tích, hồ nước',
-    markerBg: '#2F9E8F',
-    badgeBg: '#E5F6F3',
-    badgeText: '#1A5E55',
-    iconName: 'Landmark',
+    label: 'Hành chính & Công cộng',
+    shortLabel: 'Cơ quan',
+    iconName: 'landmark',
+    accentHex: '#059669',
+    softBgHex: '#ECFDF5',
+    markerBg: '#059669',
+    markerBorder: '#FFFFFF',
+    description: 'UBND Phường Xuân Hòa, Công an, Bưu điện, Trạm Y tế, Chợ Xuân Hòa',
+  },
+  {
+    id: 'school',
+    label: 'Giáo dục & Trường học',
+    shortLabel: 'Trường học',
+    iconName: 'school',
+    accentHex: '#059669',
+    softBgHex: '#ECFDF5',
+    markerBg: '#059669',
+    markerBorder: '#FFFFFF',
+    description: 'ĐHSP Hà Nội 2, ĐH Kiến trúc, CĐ Cơ điện, THPT Xuân Hòa, Tiểu học & THCS',
+  },
+  {
+    id: 'food',
+    label: 'Ăn uống',
+    shortLabel: 'Ăn uống',
+    iconName: 'utensils',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Nhà hàng, Quán ăn, Bún, Phở, Cơm, Bánh mì, Lẩu, Nướng',
+  },
+  {
+    id: 'pub',
+    label: 'Nhậu & Bia',
+    shortLabel: 'Quán nhậu',
+    iconName: 'beer',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Quán nhậu, Bia hơi, Beer club, Lẩu nướng đêm',
+  },
+  {
+    id: 'cafe',
+    label: 'Cafe & Đồ uống',
+    shortLabel: 'Cafe',
+    iconName: 'coffee',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Quán Cafe, Trà sữa, Trà chanh, Nước ép & Sinh tố',
+  },
+  {
+    id: 'snack',
+    label: 'Ăn vặt & Đồ ăn nhanh',
+    shortLabel: 'Ăn vặt',
+    iconName: 'soup',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Quán ăn vặt, Nem chua rán, Bánh mì, Chè, Gà rán',
+  },
+  {
+    id: 'billiards',
+    label: 'Bi-a (Billiards)',
+    shortLabel: 'Bi-a',
+    iconName: 'billiards',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Câu lạc bộ Bi-a, Billiards Club tại Xuân Hòa',
+  },
+  {
+    id: 'game',
+    label: 'Quán net & Gaming',
+    shortLabel: 'Gaming',
+    iconName: 'gamepad',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Cyber Game, Quán Net, PS5 & Khu trò chơi điện tử',
+  },
+  {
+    id: 'entertainment',
+    label: 'Vui chơi & Giải trí',
+    shortLabel: 'Vui chơi',
+    iconName: 'party',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Karaoke, Sân bóng, Thể thao, Khu vui chơi tại Xuân Hòa',
+  },
+  {
+    id: 'phone',
+    label: 'Điện thoại & Điện máy',
+    shortLabel: 'Điện thoại',
+    iconName: 'smartphone',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Cửa hàng điện thoại, sửa chữa, phụ kiện & điện máy',
+  },
+  {
+    id: 'grocery',
+    label: 'Tạp hóa & Mua sắm',
+    shortLabel: 'Tạp hóa',
+    iconName: 'shopping-bag',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Cửa hàng tạp hóa, bách hóa tổng hợp & tiện ích',
+  },
+  {
+    id: 'supermarket',
+    label: 'Siêu thị & Tiện lợi',
+    shortLabel: 'Siêu thị',
+    iconName: 'store',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Siêu thị, WinMart+, Trung tâm mua sắm & Cửa hàng tiện lợi',
+  },
+  {
+    id: 'service',
+    label: 'Xe, Sức khỏe & Dịch vụ',
+    shortLabel: 'Dịch vụ',
+    iconName: 'sparkles',
+    accentHex: '#059669',
+    softBgHex: '#F8FAFC',
+    markerBg: '#FFFFFF',
+    markerBorder: '#059669',
+    description: 'Cây xăng, Sửa xe, Hiệu thuốc, Ngân hàng, Khách sạn, Tóc & Spa',
   },
   {
     id: 'game_asset',
-    label: 'Tài sản game (Demo)',
-    shortLabel: 'Tài sản Game',
-    description: 'Lớp lô đất & cửa hàng ảo XUHO CITY (Dữ liệu Demo tách biệt)',
-    markerBg: '#7C5DFA',
-    badgeBg: '#F1EEFF',
-    badgeText: '#403064',
-    iconName: 'Castle',
+    label: 'Tài sản Game (Demo)',
+    shortLabel: 'Game Demo',
+    iconName: 'gamepad',
+    accentHex: '#0F172A',
+    softBgHex: '#F1F5F9',
+    markerBg: '#0F172A',
+    markerBorder: '#FFFFFF',
+    description: 'Lớp mô phỏng bất động sản số',
   },
 ];
 
-export const MAP_CATEGORY_BY_ID: Record<MapCategoryKey, MapCategoryDefinition> =
-  MAP_CATEGORIES.reduce((acc, item) => {
+export const MAP_CATEGORY_BY_ID: Record<MapCategoryKey, MapCategoryConfig> = MAP_CATEGORIES.reduce(
+  (acc, item) => {
     acc[item.id] = item;
     return acc;
-  }, {} as Record<MapCategoryKey, MapCategoryDefinition>);
+  },
+  {} as Record<MapCategoryKey, MapCategoryConfig>
+);

@@ -899,17 +899,8 @@ function matchVerifiedStreetName(coords, medDist) {
     };
   }
 
-  // 2. Chính xác tuyệt đối cho Ngõ 29 Đường Nguyễn Văn Linh (phía Tây đường Nguyễn Văn Linh)
-  if (
-    medDist < 5.0 &&
-    mLng >= 105.71735 &&
-    mLng <= 105.71860 &&
-    mLat >= 21.28495 &&
-    mLat <= 21.28562
-  ) {
-    return { name: 'Ngõ 29 Nguyễn Văn Linh', forcedTier: 'alley' };
-  }
-
+  // TUYỆT ĐỐI KHÔNG ĐOÁN TÊN NGÕ THEO BOUNDING BOX / CON ĐƯỜNG GẦN NHẤT (Mục 5, 6, 17).
+  // Mọi ngõ chưa có nguồn xác minh trực tiếp theo roadId đều phải để trống (name: '').
   return { name: '', forcedTier: null };
 }
 

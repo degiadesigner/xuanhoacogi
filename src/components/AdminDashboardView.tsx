@@ -98,6 +98,8 @@ import {
 } from '@/lib/auth';
 import { GoogleGIcon } from '@/components/GoogleGIcon';
 import { DigitalMapView, prefetchDigitalMapGeoLayers } from '@/components/DigitalMapView';
+import { AdminMembersManagementView } from '@/components/admin/AdminMembersManagementView';
+import { queryMembersPage } from '@/lib/member-query-engine';
 import { Place } from '@/lib/places-xuanhoa';
 import { MerchantPortalModal } from '@/components/map/MerchantPortalModal';
 import { triggerFeedback, FeedbackSoundType } from '@/lib/ui-feedback';
@@ -119,6 +121,16 @@ import {
 } from '@/lib/map/map-data';
 import { MAP_CATEGORIES } from '@/lib/map/map-categories';
 import type { MapCategoryKey } from '@/lib/map/map-types';
+import {
+  MAP_PARENT_CATEGORIES,
+  MAP_CATEGORY_REGISTRY,
+  getDefaultSectorTagForSubcategory,
+  getSubcategoriesByParent,
+  resolvePlaceTaxonomy,
+  searchSubcategoriesByQuery,
+  type MapParentCategoryId,
+  type MapSubcategoryId,
+} from '@/lib/map/map-category-registry';
 
 type EditableMapCategory = Exclude<MapCategoryKey, 'all' | 'game_asset'>;
 const EDITABLE_MAP_CATEGORIES = MAP_CATEGORIES.filter(
@@ -220,10 +232,26 @@ function matchesMapCategoryFilter(
 ): boolean {
   if (mapCatFilter === 'all') return true;
   if (mapCat === mapCatFilter) return true;
+  const ov = getAdminState().places?.[item.place.id];
+  const tax = resolvePlaceTaxonomy({
+    id: item.place.id,
+    name: item.place.name,
+    address: item.place.address,
+    tagline: item.place.tagline,
+    tags: item.place.tags,
+    sectorTag: ov?.sectorTag || item.sectorTag,
+    mapCategory: ov?.mapCategory || mapCat,
+    parentCategoryId: ov?.parentCategoryId,
+    subcategoryId: ov?.subcategoryId,
+  });
+  if (tax.parentCategoryId === mapCatFilter || tax.subcategoryId === mapCatFilter) {
+    return true;
+  }
   if (mapCatFilter === 'billiards') {
     const nameLower = item.place.name.toLowerCase();
     const normHay = item.normalizedHaystack || normalizeVietnamese(`${item.place.name} ${(item.place.tags || []).join(' ')}`);
     return (
+      tax.subcategoryId === 'billiards' ||
       item.sectorTag === 'bia-game' ||
       normHay.includes('bi a') ||
       nameLower.includes('bi-a') ||
@@ -515,6 +543,10 @@ export function AdminDashboardView({
   const [editPlaceMapsQuery, setEditPlaceMapsQuery] = useState('');
   const [editPlaceSectorTag, setEditPlaceSectorTag] = useState('an-chinh');
   const [editPlaceMapCategory, setEditPlaceMapCategory] = useState<EditableMapCategory>('food');
+  const [editPlaceParentCat, setEditPlaceParentCat] = useState<MapParentCategoryId>('food');
+  const [editPlaceSubcategory, setEditPlaceSubcategory] = useState<MapSubcategoryId>('rice');
+  const [editPlaceCatQuickSearch, setEditPlaceCatQuickSearch] = useState('');
+  const [editPlaceShowByDefault, setEditPlaceShowByDefault] = useState(false);
   const [editPlaceLat, setEditPlaceLat] = useState('');
   const [editPlaceLng, setEditPlaceLng] = useState('');
   const [hasActivelyPinnedOnMap, setHasActivelyPinnedOnMap] = useState(false);
@@ -889,6 +921,26 @@ export function AdminDashboardView({
         ov?.mapCategory || item.mapCategory
       )) as EditableMapCategory;
     setEditPlaceMapCategory(resolvedMapCat);
+    const resolvedTax = resolvePlaceTaxonomy({
+      id: item.place.id,
+      name: item.place.name,
+      address: item.place.address,
+      tagline: item.place.tagline,
+      tags: item.place.tags,
+      sectorTag: ov?.sectorTag || item.sectorTag,
+      mapCategory: resolvedMapCat,
+      parentCategoryId: ov?.parentCategoryId,
+      subcategoryId: ov?.subcategoryId,
+    });
+    setEditPlaceParentCat(resolvedTax.parentCategoryId);
+    setEditPlaceSubcategory(resolvedTax.subcategoryId);
+    setEditPlaceCatQuickSearch('');
+    setEditPlaceShowByDefault(
+      ov?.showByDefault ??
+        (resolvedTax.parentCategoryId === 'landmark' ||
+          resolvedTax.parentCategoryId === 'public' ||
+          resolvedTax.parentCategoryId === 'education')
+    );
     setAdminGeoSuggestions([]);
 
     setEditPlaceMenu(
@@ -1105,6 +1157,9 @@ export function AdminDashboardView({
     editPlaceAddress,
     editPlacePhone,
     editPlaceMapCategory,
+    editPlaceParentCat,
+    editPlaceSubcategory,
+    editPlaceShowByDefault,
     editPlaceSectorTag,
     isSuperAdmin,
     allMapPlaces,
@@ -1117,6 +1172,9 @@ export function AdminDashboardView({
     editPlaceAddress,
     editPlacePhone,
     editPlaceMapCategory,
+    editPlaceParentCat,
+    editPlaceSubcategory,
+    editPlaceShowByDefault,
     editPlaceSectorTag,
     isSuperAdmin,
     allMapPlaces,
@@ -1139,6 +1197,9 @@ export function AdminDashboardView({
         address: ctx.editPlaceAddress.trim() || ctx.selectedPlaceItem.place.address,
         phone: ctx.editPlacePhone.trim() || ctx.selectedPlaceItem.place.phone,
         mapCategory: ctx.editPlaceMapCategory,
+        parentCategoryId: ctx.editPlaceParentCat,
+        subcategoryId: ctx.editPlaceSubcategory,
+        showByDefault: ctx.editPlaceShowByDefault,
         sectorTag:
           ctx.editPlaceMapCategory === 'public' || ctx.editPlaceMapCategory === 'school'
             ? 'dia-danh'
@@ -1371,6 +1432,9 @@ export function AdminDashboardView({
         tagline: editPlaceTagline.trim(),
         sectorTag: resolvedSectorTag,
         mapCategory: resolvedMapCat,
+        parentCategoryId: editPlaceParentCat,
+        subcategoryId: editPlaceSubcategory,
+        showByDefault: editPlaceShowByDefault,
         category: mappedCategory,
         tags: parsedTags,
         address: editPlaceAddress.trim(),
@@ -1982,7 +2046,19 @@ export function AdminDashboardView({
     reader.readAsText(file);
   };
 
-  const realMembersCount = allMembers.filter(m => !m.isTestAccount).length;
+  const unifiedMemberCounts = useMemo(
+    () =>
+      queryMembersPage({
+        page: 1,
+        pageSize: 50,
+        roleFilter: 'all',
+        statusFilter: 'all',
+        search: '',
+        sortBy: 'newest',
+      }).counts,
+    [refreshTick]
+  );
+  const realMembersCount = unifiedMemberCounts.all;
   const seederMembersCount = allMembers.filter(m => m.isTestAccount).length;
   const boostedPlacesCount = commercialPlaces.filter(p => p.priorityBoost > 1).length;
 
@@ -4899,11 +4975,29 @@ export function AdminDashboardView({
                         }}
                       >
                         <option value="all">Nhóm bản đồ ({allMapPlaces.length})</option>
-                        {EDITABLE_MAP_CATEGORIES.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {c.label}
-                          </option>
-                        ))}
+                        <option value="uncategorized">Chưa phân loại</option>
+                        <optgroup label="Nhóm chính">
+                          {MAP_PARENT_CATEGORIES.filter(p => p.id !== 'uncategorized').map(p => (
+                            <option key={`parent-${p.id}`} value={p.id}>
+                              {p.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Loại chi tiết nổi bật">
+                          <option value="fuel_station">Cây xăng (Trạm xăng)</option>
+                          <option value="billiards">Bi-a (Billiards)</option>
+                          <option value="pub">Bia hơi / Quán nhậu</option>
+                          <option value="cafe">Cafe</option>
+                          <option value="phone_shop">Cửa hàng điện thoại</option>
+                          <option value="pharmacy">Hiệu thuốc</option>
+                        </optgroup>
+                        <optgroup label="Nhóm bản đồ cũ">
+                          {EDITABLE_MAP_CATEGORIES.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.label}
+                            </option>
+                          ))}
+                        </optgroup>
                       </select>
                       <select
                         value={mapCoordFilter}
@@ -5333,53 +5427,184 @@ export function AdminDashboardView({
                           />
                         </div>
 
-                        <div>
-                          <label style={compactLabelStyle(theme)}>Biểu tượng & Nhóm Bản đồ</label>
-                          <select
-                            value={editPlaceMapCategory}
-                            onChange={e => {
-                              triggerFeedback('tap');
-                              const nextCat = e.target.value as EditableMapCategory;
-                              setEditPlaceMapCategory(nextCat);
-                              if (nextCat === 'public' || nextCat === 'school') {
-                                setEditPlaceSectorTag('dia-danh');
-                              } else if (nextCat === 'billiards' || nextCat === 'game') {
-                                setEditPlaceSectorTag('bia-game');
-                              } else if (nextCat === 'phone') {
-                                setEditPlaceSectorTag('dien-thoai');
-                              } else if (nextCat === 'entertainment') {
-                                setEditPlaceSectorTag('an-choi');
-                              } else if (nextCat === 'service' || nextCat === 'grocery' || nextCat === 'supermarket') {
-                                setEditPlaceSectorTag('dich-vu');
-                              } else if (nextCat === 'pub') {
-                                setEditPlaceSectorTag('nhau-lau');
-                              } else if (nextCat === 'cafe') {
-                                setEditPlaceSectorTag('uong');
-                              } else if (nextCat === 'snack') {
-                                setEditPlaceSectorTag('an-vat');
-                              } else if (nextCat === 'food') {
-                                setEditPlaceSectorTag('an-chinh');
-                              }
-                            }}
-                            style={{
-                              ...lightSelectStyle(theme),
-                              height: '36px',
-                              padding: '0 9px',
-                              fontSize: '12.5px',
-                              fontWeight: 600,
-                              backgroundColor: theme.bgInput,
-                              boxSizing: 'border-box',
-                            }}
-                          >
-                            {EDITABLE_MAP_CATEGORIES.map(c => (
-                              <option key={c.id} value={c.id}>
-                                {c.label}
-                              </option>
-                            ))}
-                          </select>
+                        <div className="xh-col-span-2">
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <label style={{ ...compactLabelStyle(theme), marginBottom: 0 }}>
+                              Danh mục chuẩn (Nhóm → Loại chi tiết)
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                triggerFeedback('tap');
+                                setEditPlaceShowByDefault(v => !v);
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                border: editPlaceShowByDefault ? '1px solid #059669' : '1px solid #CBD5E1',
+                                background: editPlaceShowByDefault ? '#ECFDF5' : '#F8FAFC',
+                                color: editPlaceShowByDefault ? '#047857' : '#64748B',
+                                fontSize: '10.5px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                              title="Bật để địa điểm luôn hiển thị mặc định khi mở bản đồ"
+                            >
+                              <span>Hiện mặc định trên bản đồ:</span>
+                              <strong>{editPlaceShowByDefault ? 'ON' : 'OFF'}</strong>
+                            </button>
+                          </div>
+
+                          {/* Tìm nhanh loại hình (gõ "xăng", "bi-a", "bia"...) */}
+                          <div style={{ position: 'relative', marginBottom: '6px' }}>
+                            <input
+                              type="text"
+                              value={editPlaceCatQuickSearch}
+                              onChange={e => setEditPlaceCatQuickSearch(e.target.value)}
+                              placeholder="Tìm nhanh loại hình (VD: xăng, bi-a, bia hơi, cafe, hiệu thuốc...)"
+                              style={{
+                                ...compactInputStyle(theme),
+                                height: '32px',
+                                fontSize: '11.5px',
+                              }}
+                            />
+                            {editPlaceCatQuickSearch.trim() !== '' && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: 0,
+                                  right: 0,
+                                  top: '100%',
+                                  marginTop: '3px',
+                                  maxHeight: '165px',
+                                  overflowY: 'auto',
+                                  background: '#FFFFFF',
+                                  border: '1px solid #CBD5E1',
+                                  borderRadius: '8px',
+                                  boxShadow: '0 8px 20px rgba(15, 23, 42, 0.12)',
+                                  zIndex: 40,
+                                  padding: '4px',
+                                }}
+                              >
+                                {searchSubcategoriesByQuery(editPlaceCatQuickSearch).map(sub => {
+                                  const parentMeta = MAP_PARENT_CATEGORIES.find(p => p.id === sub.parentId);
+                                  return (
+                                    <button
+                                      key={sub.id}
+                                      type="button"
+                                      onClick={() => {
+                                        triggerFeedback('tap');
+                                        setEditPlaceParentCat(sub.parentId);
+                                        setEditPlaceSubcategory(sub.id);
+                                        setEditPlaceMapCategory(sub.legacyCategory as EditableMapCategory);
+                                        setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(sub));
+                                        setEditPlaceCatQuickSearch('');
+                                      }}
+                                      style={{
+                                        width: '100%',
+                                        textAlign: 'left',
+                                        padding: '5px 8px',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: editPlaceSubcategory === sub.id ? '#ECFDF5' : 'transparent',
+                                        color: '#0F172A',
+                                        fontSize: '11.5px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                      }}
+                                    >
+                                      <span>{sub.label}</span>
+                                      <span style={{ fontSize: '10px', color: '#059669', fontWeight: 700 }}>
+                                        {parentMeta?.label}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                            <div>
+                              <span style={{ display: 'block', fontSize: '10.5px', fontWeight: 600, color: theme.textMuted, marginBottom: '2px' }}>
+                                Nhóm (Parent Category)
+                              </span>
+                              <select
+                                value={editPlaceParentCat}
+                                onChange={e => {
+                                  triggerFeedback('tap');
+                                  const nextParent = e.target.value as MapParentCategoryId;
+                                  setEditPlaceParentCat(nextParent);
+                                  const subs = getSubcategoriesByParent(nextParent);
+                                  const firstSub = subs[0];
+                                  if (firstSub) {
+                                    setEditPlaceSubcategory(firstSub.id);
+                                    setEditPlaceMapCategory(firstSub.legacyCategory as EditableMapCategory);
+                                    setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(firstSub));
+                                  }
+                                }}
+                                style={{
+                                  ...lightSelectStyle(theme),
+                                  height: '35px',
+                                  padding: '0 8px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  backgroundColor: theme.bgInput,
+                                  boxSizing: 'border-box',
+                                }}
+                              >
+                                {MAP_PARENT_CATEGORIES.map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <span style={{ display: 'block', fontSize: '10.5px', fontWeight: 600, color: theme.textMuted, marginBottom: '2px' }}>
+                                Loại chi tiết (Subcategory)
+                              </span>
+                              <select
+                                value={editPlaceSubcategory}
+                                onChange={e => {
+                                  triggerFeedback('tap');
+                                  const nextSubId = e.target.value as MapSubcategoryId;
+                                  setEditPlaceSubcategory(nextSubId);
+                                  const subMeta = MAP_CATEGORY_REGISTRY[nextSubId];
+                                  if (subMeta) {
+                                    setEditPlaceParentCat(subMeta.parentId);
+                                    setEditPlaceMapCategory(subMeta.legacyCategory as EditableMapCategory);
+                                    setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(subMeta));
+                                  }
+                                }}
+                                style={{
+                                  ...lightSelectStyle(theme),
+                                  height: '35px',
+                                  padding: '0 8px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  backgroundColor: theme.bgInput,
+                                  boxSizing: 'border-box',
+                                }}
+                              >
+                                {getSubcategoriesByParent(editPlaceParentCat).map(sub => (
+                                  <option key={sub.id} value={sub.id}>
+                                    {sub.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
                         </div>
 
-                        <div>
+                        <div className="xh-col-span-2">
                           <label style={compactLabelStyle(theme)}>Số điện thoại liên hệ</label>
                           <input
                             type="text"
@@ -5836,411 +6061,45 @@ export function AdminDashboardView({
           )}
 
           {/* =================================================================== */}
-          {/* 3. QUẢN LÝ THÀNH VIÊN (CẤP QUYỀN QUẢN LÝ MAPS / QUẢN LÝ WEB THEO GMAIL) */}
+          {/* 3. QUẢN LÝ THÀNH VIÊN & PHÂN QUYỀN (REDESIGN SCALABLE 10.000+ USERS) */}
           {/* =================================================================== */}
           {activeSection === 'members' && isSuperAdmin && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* KHỐI 1: DANH SÁCH THÀNH VIÊN ĐĂNG KÝ QUA GMAIL — TÍCH CẤP QUYỀN TRỰC TIẾP */}
-              <div
-                style={{
-                  background: theme.bgCard,
-                  borderRadius: '14px',
-                  border: `1px solid ${theme.border}`,
-                  boxShadow: theme.shadow,
-                  padding: '16px 18px',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                    marginBottom: '12px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: '15px', fontWeight: 800 }}>
-                      Bảng Quản lý Thành viên Gmail ({realMembersCount} người)
-                      {seederMembersCount > 0 ? ` (+ ${seederMembersCount} nick phụ)` : ''}
-                    </div>
-                    <div style={{ fontSize: '12px', color: theme.textMuted }}>
-                      Khi người mới đăng ký bằng Gmail sẽ hiện lên bảng này. Admin biết ai có thể tích cấp quyền{' '}
-                      <strong style={{ color: theme.accent }}>Quản lý Web (Quán)</strong> hoặc{' '}
-                      <strong style={{ color: '#047857' }}>Quản lý Maps</strong> (cấp 1 hoặc cả 2 chức vụ).
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '7px 11px',
-                        borderRadius: '8px',
-                        background: theme.bgInput,
-                        border: `1px solid ${theme.border}`,
-                      }}
-                    >
-                      <Search size={14} style={{ color: theme.textMuted }} />
-                      <input
-                        type="text"
-                        value={memberSearch}
-                        onChange={e => setMemberSearch(e.target.value)}
-                        placeholder="Tìm Gmail, tên..."
-                        style={{
-                          border: 'none',
-                          background: 'transparent',
-                          outline: 'none',
-                          fontSize: '12.5px',
-                          color: theme.textPrimary,
-                        }}
-                      />
-                    </div>
-
-                    <select
-                      value={memberFilter}
-                      onChange={e => setMemberFilter(e.target.value as any)}
-                      style={{ ...lightSelectStyle(theme), width: 'auto' }}
-                    >
-                      <option value="all">Tất cả ({allMembers.length})</option>
-                      <option value="active">Đang hoạt động</option>
-                      <option value="muted">Đang Mute</option>
-                      <option value="banned">Đã Ban (Chặn)</option>
-                    </select>
-
-                    <button
-                      onClick={() => setIsAddSeederModalOpen(true)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        padding: '7px 11px',
-                        borderRadius: '8px',
-                        border: `1px solid ${theme.accentBorder}`,
-                        background: theme.accentSoft,
-                        color: theme.accent,
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Plus size={13} /> Thêm Gmail / Nick mới
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '720px' }}>
-                    <thead>
-                      <tr
-                        style={{
-                          background: theme.bgElevated,
-                          borderBottom: `1px solid ${theme.border}`,
-                          fontSize: '11px',
-                          fontWeight: 800,
-                          color: theme.textMuted,
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        <th style={{ padding: '10px 14px' }}>Thành viên & Gmail</th>
-                        <th style={{ padding: '10px 14px' }}>Cấp quyền Quản lý (Admin tích chọn 1 hoặc cả 2)</th>
-                        <th style={{ padding: '10px 14px' }}>Trạng thái</th>
-                        <th style={{ padding: '10px 14px', textAlign: 'right' }}>Thao tác</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredMembers.map(member => {
-                        const hasWeb = Boolean(member.canManageWeb);
-                        const hasMaps = Boolean(member.canManageMaps);
-                        return (
-                          <tr key={member.email} style={{ borderBottom: `1px solid ${theme.border}` }}>
-                            <td style={{ padding: '10px 14px' }}>
-                              <div style={{ fontWeight: 700, fontSize: '13px' }}>{member.nickname}</div>
-                              <div style={{ fontSize: '11.5px', color: theme.textMuted }}>{member.email}</div>
-                            </td>
-
-                            {/* CỘT TÍCH CẤP QUYỀN QUẢN LÝ WEB & QUẢN LÝ MAPS */}
-                            <td style={{ padding: '10px 14px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                <label
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '5px 10px',
-                                    borderRadius: '8px',
-                                    border: hasWeb ? `1.5px solid ${theme.accent}` : `1px solid ${theme.border}`,
-                                    background: hasWeb ? theme.accentSoft : theme.bgElevated,
-                                    color: hasWeb ? theme.accent : theme.textSecondary,
-                                    fontSize: '12px',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={hasWeb}
-                                    onChange={e => {
-                                      const nextVal = e.target.checked;
-                                      updateMemberManagerPermissions(member.email, { canManageWeb: nextVal });
-                                      setRefreshTick(t => t + 1);
-                                      showToast(
-                                        nextVal
-                                          ? `✅ Đã cấp quyền Quản lý Web (Quán) cho ${member.nickname} (${member.email})`
-                                          : `Đã gỡ quyền Quản lý Web của ${member.nickname}`
-                                      );
-                                    }}
-                                    style={{ accentColor: theme.accent, cursor: 'pointer' }}
-                                  />
-                                  <span>Quản lý Web (Quán)</span>
-                                </label>
-
-                                <label
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '5px 10px',
-                                    borderRadius: '8px',
-                                    border: hasMaps ? '1.5px solid #10B981' : `1px solid ${theme.border}`,
-                                    background: hasMaps ? 'rgba(16, 185, 129, 0.12)' : theme.bgElevated,
-                                    color: hasMaps ? '#047857' : theme.textSecondary,
-                                    fontSize: '12px',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={hasMaps}
-                                    onChange={e => {
-                                      const nextVal = e.target.checked;
-                                      updateMemberManagerPermissions(member.email, { canManageMaps: nextVal });
-                                      setRefreshTick(t => t + 1);
-                                      showToast(
-                                        nextVal
-                                          ? `📍 Đã cấp quyền Quản lý Maps cho ${member.nickname} (${member.email})`
-                                          : `Đã gỡ quyền Quản lý Maps của ${member.nickname}`
-                                      );
-                                    }}
-                                    style={{ accentColor: '#059669', cursor: 'pointer' }}
-                                  />
-                                  <span>Quản lý Maps</span>
-                                </label>
-                              </div>
-                            </td>
-
-                            <td style={{ padding: '10px 14px', fontSize: '12px', fontWeight: 700 }}>
-                              {hasWeb && hasMaps ? (
-                                <span style={{ color: '#047857' }}>Quản lý Web & Maps</span>
-                              ) : hasWeb ? (
-                                <span style={{ color: theme.accent }}>Quản lý Web</span>
-                              ) : hasMaps ? (
-                                <span style={{ color: '#047857' }}>Quản lý Maps</span>
-                              ) : member.status === 'active' ? (
-                                'Thành viên'
-                              ) : member.status === 'muted' ? (
-                                'Đang Mute'
-                              ) : (
-                                'Đã chặn (Ban)'
-                              )}
-                            </td>
-
-                            <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                              <div style={{ display: 'inline-flex', gap: '6px' }}>
-                                {member.status !== 'active' && (
-                                  <button
-                                    onClick={() => {
-                                      updateMemberStatusInAdmin(member.email, 'active');
-                                      setRefreshTick(t => t + 1);
-                                      showToast(`Đã mở khóa ${member.nickname}`);
-                                    }}
-                                    style={smallRowBtnStyle(theme)}
-                                  >
-                                    <UserCheck size={12} /> Mở
-                                  </button>
-                                )}
-                                {member.status !== 'muted' && member.status !== 'admin' && (
-                                  <button
-                                    onClick={() => {
-                                      updateMemberStatusInAdmin(member.email, 'muted');
-                                      setRefreshTick(t => t + 1);
-                                      showToast(`Đã Mute ${member.nickname}`);
-                                    }}
-                                    style={{ ...smallRowBtnStyle(theme), color: '#B45309' }}
-                                  >
-                                    <VolumeX size={12} /> Mute
-                                  </button>
-                                )}
-                                {member.status !== 'banned' && member.status !== 'admin' && (
-                                  <button
-                                    onClick={() => {
-                                      updateMemberStatusInAdmin(member.email, 'banned');
-                                      setRefreshTick(t => t + 1);
-                                      showToast(`Đã Ban ${member.nickname}`);
-                                    }}
-                                    style={{ ...smallRowBtnStyle(theme), color: '#B91C1C' }}
-                                  >
-                                    <Ban size={12} /> Ban
-                                  </button>
-                                )}
-                                {member.status !== 'admin' && (
-                                  <button
-                                    onClick={() => {
-                                      deleteMemberAndPurgeReviews(member.email);
-                                      setRefreshTick(t => t + 1);
-                                      showToast(`Đã xóa ${member.nickname}`);
-                                    }}
-                                    style={{ ...smallRowBtnStyle(theme), color: '#B91C1C' }}
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* KHỐI 2: TÀI KHOẢN QUẢN LÝ CẤP BẰNG NICK & MẬT KHẨU RIÊNG */}
-              <div
-                style={{
-                  background: theme.bgCard,
-                  borderRadius: '14px',
-                  border: `1px solid ${theme.border}`,
-                  boxShadow: theme.shadow,
-                  padding: '16px 18px',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '10px',
-                    marginBottom: '12px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <KeyRound size={16} style={{ color: theme.accent }} />
-                      <span>Tài khoản Ban Quản Lý theo Nick & Mật khẩu ({adminAccounts.length} nick)</span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: theme.textMuted }}>
-                      Ngoài việc cấp quyền theo Gmail ở bảng trên, bạn có thể tạo Nick & Mật khẩu riêng cho Quản lý
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setAdminAccForm({
-                        id: '',
-                        username: '',
-                        password: '',
-                        displayName: '',
-                        role: 'manager',
-                        canManageWeb: true,
-                        canManageMaps: false,
-                      });
-                      setIsAdminAccModalOpen(true);
-                    }}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      padding: '7px 12px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      background: theme.accent,
-                      color: '#FFF',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <UserPlus size={14} /> Cấp Nick Quản Lý Mới
-                  </button>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px' }}>
-                  {adminAccounts.map(acc => (
-                    <div
-                      key={acc.id}
-                      style={{
-                        padding: '11px 13px',
-                        borderRadius: '10px',
-                        background: theme.bgElevated,
-                        border: `1px solid ${theme.border}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '8px',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: 800 }}>
-                          {acc.displayName}
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
-                          Nick: <strong style={{ color: theme.accent }}>@{acc.username}</strong> • Pass:{' '}
-                          <code>{acc.password}</code>
-                        </div>
-                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#047857', marginTop: '3px' }}>
-                          {acc.role === 'superadmin'
-                            ? '★ Admin Tối Cao (Toàn quyền)'
-                            : acc.canManageWeb && acc.canManageMaps
-                            ? 'Quản lý Web & Maps'
-                            : acc.canManageMaps
-                            ? 'Quản lý Maps'
-                            : 'Quản lý Web (Quán)'}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '5px' }}>
-                        <button
-                          onClick={() => {
-                            setAdminAccForm({
-                              id: acc.id,
-                              username: acc.username,
-                              password: acc.password,
-                              displayName: acc.displayName,
-                              role: acc.role,
-                              canManageWeb: acc.canManageWeb ?? true,
-                              canManageMaps: acc.canManageMaps ?? false,
-                            });
-                            setIsAdminAccModalOpen(true);
-                          }}
-                          style={smallRowBtnStyle(theme)}
-                        >
-                          <Edit3 size={12} /> Sửa
-                        </button>
-                        {adminAccounts.length > 1 && (
-                          <button
-                            onClick={() => {
-                              deleteAdminAccount(acc.id);
-                              setRefreshTick(t => t + 1);
-                              showToast(`Đã xóa nick quản lý @${acc.username}`);
-                            }}
-                            style={{ ...smallRowBtnStyle(theme), color: '#B91C1C' }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <AdminMembersManagementView
+              theme={theme}
+              refreshTick={refreshTick}
+              adminAccounts={adminAccounts}
+              onRefresh={() => setRefreshTick(t => t + 1)}
+              onShowToast={(msg, kind) => showToast(msg, kind || 'success')}
+              onOpenNewAdminAccModal={() => {
+                setAdminAccForm({
+                  id: '',
+                  username: '',
+                  password: '',
+                  displayName: '',
+                  role: 'manager',
+                  canManageWeb: true,
+                  canManageMaps: false,
+                });
+                setIsAdminAccModalOpen(true);
+              }}
+              onEditAdminAccModal={acc => {
+                setAdminAccForm({
+                  id: acc.id,
+                  username: acc.username,
+                  password: acc.password,
+                  displayName: acc.displayName,
+                  role: acc.role,
+                  canManageWeb: acc.canManageWeb ?? true,
+                  canManageMaps: acc.canManageMaps ?? false,
+                });
+                setIsAdminAccModalOpen(true);
+              }}
+              onDeleteAdminAcc={acc => {
+                deleteAdminAccount(acc.id);
+                setRefreshTick(t => t + 1);
+                showToast(`Đã xóa nick quản lý @${acc.username}`);
+              }}
+            />
           )}
 
           {/* =================================================================== */}

@@ -5,6 +5,11 @@
  */
 import earcut from 'earcut';
 import {
+  resolveBuildingArchetypeStyle,
+  resolveTreeArchetype,
+  type BuildingArchetypeId,
+} from './city3d-archetypes';
+import {
   CHUNK_SIZE,
   CITY3D_COLORS,
   CITY3D_DATA_URL,
@@ -13,7 +18,6 @@ import {
   DEM_META_URL,
   LANDUSE_COLORS,
   ROOF_PALETTE,
-  TREE_PALETTE,
   WALL_PALETTE,
   getElevationAtLocal,
   getFlatWaterElevationForRingLocal,
@@ -40,7 +44,9 @@ interface Bld {
   h: number;
   wall: RGB;
   roof: RGB;
-  roofKind: number; // 0 bằng, 1 hai mái, 2 bốn mái
+  roofKind: number; // 0: flat, 1: gabled, 2: hipped, 3: pyramidal, 4: low_slope_parapet
+  archetype?: BuildingArchetypeId;
+  parapetH?: number;
   isOsm: boolean;
   topBox: boolean;
   cx: number;
@@ -424,9 +430,19 @@ function addBuilding(g: GeoBuilder, b: Bld) {
   const foundationY = Math.min(minGroundY - 1.2, baseY - 0.25);
   const topY = baseY + b.h;
   const wallTop = b.wall;
-  const wallBottom = tint(b.wall, 0.8);
+  const wallBottom = tint(b.wall, 0.85);
   g.prismWalls(r, foundationY, topY, wallBottom, wallTop);
 
+  const parapetH = b.parapetH ?? 0.48;
+  // Gờ tường chắn mái / cornice cho mái bằng (0) hoặc mái dốc nhẹ parapet (4)
+  if ((b.roofKind === 0 || b.roofKind === 4) && parapetH > 0.15) {
+    const corniceTop = topY + parapetH * 0.55;
+    const corniceCol = tint(wallTop, 1.04);
+    g.prismWalls(r, topY, corniceTop, wallTop, corniceCol);
+  }
+
+  // Hệ thống 5 loại mái Giai đoạn 2:
+  // 0: flat | 1: gabled | 2: hipped | 3: pyramidal | 4: low_slope_parapet
   if (b.roofKind !== 0) {
     const roofRing = n === 4 ? r : minAreaRect(r)?.ring || null;
     if (roofRing && roofRing.length === 8) {
@@ -438,14 +454,24 @@ function addBuilding(g: GeoBuilder, b: Bld) {
       const [p0, p1, p2, p3] = [p(0), p(1), p(2), p(3)];
       const w = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
       const d = Math.hypot(p3[0] - p0[0], p3[1] - p0[1]);
-      if (w > 0.5 && d > 0.5 && d <= 45) {
+      if (w > 0.5 && d > 0.5 && d <= 68) {
         const ux = (p1[0] - p0[0]) / w, uy = (p1[1] - p0[1]) / w;
         const vx = (p3[0] - p0[0]) / d, vy = (p3[1] - p0[1]) / d;
         const cx = (p0[0] + p1[0] + p2[0] + p3[0]) / 4;
         const cy = (p0[1] + p1[1] + p2[1] + p3[1]) / 4;
-        const rise = Math.max(0.8, Math.min(4.2, d * 0.34));
-        const ov = Math.min(0.45, d * 0.08);
-        const eaveY = topY - (ov * rise) / (d / 2);
+
+        const isLowSlope = b.roofKind === 4;
+        const isPyramidal = b.roofKind === 3;
+        const isGabled = b.roofKind === 1;
+
+        const rise = isLowSlope
+          ? Math.max(0.48, Math.min(1.55, d * 0.14))
+          : isPyramidal
+            ? Math.max(1.05, Math.min(3.8, Math.min(w, d) * 0.36))
+            : Math.max(0.85, Math.min(3.9, d * 0.31));
+
+        const ov = isLowSlope ? Math.min(0.12, d * 0.03) : Math.min(0.42, d * 0.075);
+        const eaveY = isLowSlope ? topY + 0.12 : topY - (ov * rise) / Math.max(1, d / 2);
         const roofC = b.roof;
         const roofDark = tint(b.roof, 0.92);
         const corner = (q: number[], su: number, sv: number): [number, number] => [
@@ -453,7 +479,18 @@ function addBuilding(g: GeoBuilder, b: Bld) {
           q[1] + uy * su * ov + vy * sv * ov,
         ];
         const q0 = corner(p0, -1, -1), q1 = corner(p1, 1, -1), q2 = corner(p2, 1, 1), q3 = corner(p3, -1, 1);
-        const half = b.roofKind === 1 ? w / 2 + ov : Math.max(0, w / 2 - d / 2);
+
+        // Chiều dài nửa sống nóc (half ridge):
+        // - Gabled (1) hoặc Low-slope parapet (4): kéo dài hết chiều ngang
+        // - Pyramidal (3): tụ về đúng 1 đỉnh chóp ở tâm (half = 0)
+        // - Hipped (2): sống nóc thu ngắn theo chiều sâu d
+        const half =
+          isGabled || isLowSlope
+            ? w / 2 + ov
+            : isPyramidal
+              ? 0
+              : Math.max(0.25, w / 2 - d * 0.46);
+
         const r0: [number, number] = [cx - ux * half, cy - uy * half];
         const r1: [number, number] = [cx + ux * half, cy + uy * half];
         const ry = topY + rise;
@@ -467,7 +504,7 @@ function addBuilding(g: GeoBuilder, b: Bld) {
         const ir1b = g.v(r1[0], ry, -r1[1], roofDark);
         g.quad(iq0, iq1, ir1, ir0);
         g.quad(iq2, iq3, ir0b, ir1b);
-        if (b.roofKind === 1) {
+        if (isGabled || isLowSlope) {
           const a1 = g.v(cx + (ux * w) / 2, ry, -(cy + (uy * w) / 2), wallTop);
           const a0 = g.v(cx - (ux * w) / 2, ry, -(cy - (uy * w) / 2), wallTop);
           const t1 = g.v(p1[0], topY, -p1[1], wallTop);
@@ -494,8 +531,8 @@ function addBuilding(g: GeoBuilder, b: Bld) {
   // Mái bằng (sân thượng) theo đúng đa giác footprint thật
   g.flatPolygon(r, topY, b.roof);
 
-  if (b.topBox && b.area > 25) {
-    const s = Math.min(3.4, Math.sqrt(b.area) * 0.42);
+  if (b.topBox && b.area > 35) {
+    const s = Math.min(3.2, Math.sqrt(b.area) * 0.38);
     if (pointInRing(b.cx, b.cy, r)) {
       const ex = r[2] - r[0], ey = r[3] - r[1];
       const el = Math.hypot(ex, ey) || 1;
@@ -513,8 +550,8 @@ function addBuilding(g: GeoBuilder, b: Bld) {
           [box[i + 1], box[j + 1]] = [box[j + 1], box[i + 1]];
         }
       }
-      g.prismWalls(box, topY, topY + 2.6, tint(b.wall, 0.9), b.wall);
-      g.flatPolygon(box, topY + 2.6, b.roof);
+      g.prismWalls(box, topY, topY + 2.4, tint(b.wall, 0.94), b.wall);
+      g.flatPolygon(box, topY + 2.4, b.roof);
     }
   }
 }
@@ -545,15 +582,50 @@ function buildBuildingChunk(key: string): BuildingChunk | null {
 
 function buildTreeChunk(key: string): TreeChunk {
   const list = chunkTrees.get(key) || [];
-  const broad: number[] = [];
+  const broadleaf: number[] = [];
   const conifer: number[] = [];
-  for (const t of list) {
-    const r = hash2(t.x, t.y);
+  const broadleafLarge: number[] = [];
+  const campusTree: number[] = [];
+  const forestTree: number[] = [];
+  const resortOrnamental: number[] = [];
+  const shrubLow: number[] = [];
+
+  for (let idx = 0; idx < list.length; idx++) {
+    const t = list[idx];
     const ty = workerTerrainY(t.x, t.y);
-    const arr = t.kind === 1 ? conifer : broad;
-    arr.push(t.x, ty, -t.y, t.s, r * Math.PI * 2, Math.floor(r * 997) % TREE_PALETTE.length);
+    const seed = Math.imul(Math.round(t.x * 10) | 0, 73856093) ^ Math.imul(Math.round(t.y * 10) | 0, 19349663) ^ idx;
+    const resolved = resolveTreeArchetype({
+      x: t.x,
+      z: -t.y,
+      groundY: ty,
+      seed,
+    });
+    // Nếu dữ liệu nhị phân chỉ định sẵn conifer (t.kind === 1), ưu tiên giữ conifer hoặc forest
+    const arch = t.kind === 1 && resolved.archetype === 0 ? 1 : resolved.archetype;
+    const finalScale = Math.max(0.45, Math.min(1.85, (t.s * 0.55 + resolved.scale * 0.45)));
+    const buckets = [
+      broadleaf,
+      conifer,
+      broadleafLarge,
+      campusTree,
+      forestTree,
+      resortOrnamental,
+      shrubLow,
+    ];
+    const target = buckets[arch] || broadleaf;
+    target.push(t.x, ty, -t.y, finalScale, resolved.rotY, resolved.colorIdx);
   }
-  return { key, broadleaf: new Float32Array(broad), conifer: new Float32Array(conifer) };
+
+  return {
+    key,
+    broadleaf: new Float32Array(broadleaf),
+    conifer: new Float32Array(conifer),
+    broadleafLarge: new Float32Array(broadleafLarge),
+    campusTree: new Float32Array(campusTree),
+    forestTree: new Float32Array(forestTree),
+    resortOrnamental: new Float32Array(resortOrnamental),
+    shrubLow: new Float32Array(shrubLow),
+  };
 }
 
 function postBuildingChunks(keys: string[], replace = false) {
@@ -572,7 +644,15 @@ function postTreeChunks(keys: string[]) {
   const chunks = keys.map(buildTreeChunk);
   post(
     { type: 'trees', chunks },
-    chunks.flatMap((c) => [c.broadleaf.buffer, c.conifer.buffer])
+    chunks.flatMap((c) => [
+      c.broadleaf.buffer,
+      c.conifer.buffer,
+      ...(c.broadleafLarge ? [c.broadleafLarge.buffer] : []),
+      ...(c.campusTree ? [c.campusTree.buffer] : []),
+      ...(c.forestTree ? [c.forestTree.buffer] : []),
+      ...(c.resortOrnamental ? [c.resortOrnamental.buffer] : []),
+      ...(c.shrubLow ? [c.shrubLow.buffer] : []),
+    ])
   );
 }
 
@@ -612,21 +692,25 @@ function ringToLocalCCW(coords: number[][]): number[] {
 
 const ROAD_STYLE: Record<string, { hw: number; color: RGB; casing: number; order: number }> = {
   major: { hw: 6.2, color: hexToRgb(CITY3D_COLORS.roadMajor), casing: 1.4, order: 5 },
-  secondary: { hw: 4.4, color: hexToRgb(CITY3D_COLORS.roadSecondary), casing: 1.1, order: 4 },
-  minor: { hw: 2.55, color: hexToRgb(CITY3D_COLORS.roadMinor), casing: 0.45, order: 3 },
-  service: { hw: 1.55, color: hexToRgb(CITY3D_COLORS.roadService), casing: 0.25, order: 2 },
-  track: { hw: 1.35, color: hexToRgb(CITY3D_COLORS.roadTrack), casing: 0.2, order: 1 },
-  path: { hw: 1.15, color: hexToRgb(CITY3D_COLORS.roadPath), casing: 0.18, order: 0 },
+  arterial: { hw: 4.65, color: hexToRgb(CITY3D_COLORS.roadSecondary), casing: 1.1, order: 4 },
+  local: { hw: 2.8, color: hexToRgb(CITY3D_COLORS.roadMinor), casing: 0.45, order: 3 },
+  alley: { hw: 1.55, color: hexToRgb(CITY3D_COLORS.roadService), casing: 0.28, order: 2 },
+  access: { hw: 0.95, color: hexToRgb(CITY3D_COLORS.roadPath), casing: 0.18, order: 1 },
 };
 
 function roadStyleOf(p: any) {
-  if (p?.tier === 'major') return ROAD_STYLE.major;
-  if (p?.tier === 'secondary') return ROAD_STYLE.secondary;
-  if (p?.tier === 'minor') return ROAD_STYLE.minor;
+  const rc = p?.roadClass || p?.tier || '';
+  if (rc === 'major') return ROAD_STYLE.major;
+  if (rc === 'arterial' || rc === 'secondary') return ROAD_STYLE.arterial;
+  if (rc === 'local' || rc === 'minor') return ROAD_STYLE.local;
+  if (rc === 'alley') return ROAD_STYLE.alley;
+  if (rc === 'access') return ROAD_STYLE.access;
   const hw = p?.highway || '';
-  if (hw === 'residential' || hw === 'unclassified' || hw === 'service' || hw === 'living_street') return ROAD_STYLE.service;
-  if (hw === 'track' || hw === 'construction') return ROAD_STYLE.track;
-  return ROAD_STYLE.path;
+  if (hw === 'primary' || hw === 'trunk' || hw === 'primary_link' || hw === 'trunk_link') return ROAD_STYLE.major;
+  if (hw === 'secondary' || hw === 'secondary_link') return ROAD_STYLE.arterial;
+  if (hw === 'tertiary' || hw === 'tertiary_link' || hw === 'residential' || hw === 'unclassified') return ROAD_STYLE.local;
+  if (hw === 'living_street' || hw === 'service') return ROAD_STYLE.alley;
+  return ROAD_STYLE.access;
 }
 
 async function fetchJson(url: string) {
@@ -676,8 +760,8 @@ async function init(baseUrl: string) {
 
   const ground = new GeoBuilder();
   const baseGroundRgb = hexToRgb(CITY3D_COLORS.ground);
-  const hillMidRgb = hexToRgb('#879F6A');
-  const hillHighRgb = hexToRgb('#5E7A48');
+  const hillMidRgb = hexToRgb('#CFE3C4');
+  const hillHighRgb = hexToRgb('#A6C99C');
   const terrainColorAtY = (ty: number): RGB => {
     if (ty <= 3.5) return baseGroundRgb;
     if (ty <= 45) {
@@ -763,7 +847,7 @@ async function init(baseUrl: string) {
     wat.flatPolygon(ring, flatWaterY, waterC);
   }
 
-  // --- Đường phố: viền vỉa hè trước, lòng đường sau (bám theo cao độ địa hình DEM)
+  // --- Đường phố: viền vỉa hè trung tâm trước, lòng đường sau (bám theo cao độ địa hình DEM)
   const roadG = new GeoBuilder();
   const marks = new GeoBuilder();
   const lines = (roads.features || [])
@@ -771,7 +855,12 @@ async function init(baseUrl: string) {
     .map((f: any) => ({ pts: lineToLocal(f.geometry.coordinates), st: roadStyleOf(f.properties) }))
     .sort((a: any, b: any) => a.st.order - b.st.order);
   const casingC = hexToRgb(CITY3D_COLORS.roadCasing);
+  const sidewalkC = hexToRgb('#EAE4D6');
   for (const l of lines) {
+    if (l.st.order >= 4 && l.pts.length >= 4 && Math.hypot(l.pts[0], l.pts[1]) < 1350) {
+      // Vỉa hè sáng nhẹ cho trục đường chính khu trung tâm
+      roadG.ribbon(l.pts, l.st.hw + l.st.casing + 0.85, 0.13, sidewalkC, true);
+    }
     if (l.st.casing > 0) roadG.ribbon(l.pts, l.st.hw + l.st.casing, 0.14, casingC, true);
   }
   for (const l of lines) roadG.ribbon(l.pts, l.st.hw, 0.16, l.st.color, l.st.order >= 2);
@@ -809,7 +898,7 @@ async function init(baseUrl: string) {
   }
   post(base, baseTransfer);
 
-  // --- Nhà
+  // --- Nhà (Áp dụng Hệ thống 10 Building Archetypes + 5 Roof Types Giai đoạn 2, khóa nguyên footprint & chiều cao)
   post({ type: 'progress', label: 'Đang dựng nhà cửa…', pct: 45 });
   const dv = new DataView(binBuf);
   let o = 0;
@@ -822,18 +911,57 @@ async function init(baseUrl: string) {
   o += 4;
   const osmIds = new Map<number, number>((meta.osm || []) as [number, number][]);
   const names = new Map<number, string>((meta.names || []) as [number, string][]);
-  // Dọn mặt bằng tại 3 tọa độ công trình biểu tượng 3D (Quảng trường Con Chim Xanh, ĐH Kiến Trúc, Nhà Trắng)
-  const iconicClearZones = [
-    { lng: 105.72564, lat: 21.28072, r: 16 },
-    { lng: 105.72852, lat: 21.27876, r: 23 },
-    { lng: 105.72930, lat: 21.27820, r: 24 },
+  const buildingZones: number[] = Array.isArray(meta.buildingZones) ? meta.buildingZones : [];
+  const zoneCodes: string[] = Array.isArray(meta.zoneCodes) ? meta.zoneCodes : [];
+  const buildingLevels: number[] = Array.isArray(meta.buildingLevels) ? meta.buildingLevels : [];
+
+  // Dọn mặt bằng công trình procedural tại đúng phạm vi các landmark 3D riêng (Hiệu bộ ĐHSP2 A1, Quảng trường Con Chim Xanh, ĐH Kiến Trúc, Nhà Trắng)
+  const iconicBuildingClearZones = [
+    { lng: 105.72611, lat: 21.28128, r: 28 }, // Khu Hiệu bộ A1–A3 ĐHSP Hà Nội 2
+    { lng: 105.72562, lat: 21.28071, r: 19 }, // Quảng trường Con Chim Xanh
+    { lng: 105.72852, lat: 21.27876, r: 23 }, // ĐH Kiến Trúc Hà Nội (CS Xuân Hòa)
+    { lng: 105.72932, lat: 21.27828, r: 28 }, // Nhà Trắng Xuân Hòa
   ].map((z) => ({
     x: (z.lng - origin.lng) * origin.kx,
     y: (z.lat - origin.lat) * origin.ky,
     r2: z.r * z.r,
   }));
-  const isInsideIconicZone = (px: number, py: number) => {
-    for (const z of iconicClearZones) {
+
+  // Dọn cây xanh procedural nằm đè trong footprint của cả 5 landmark mới + ĐH Kiến Trúc + Núi Thằn Lằn
+  const iconicTreeClearZones = [
+    { lng: 105.72611, lat: 21.28128, r: 34 }, // Khu Hiệu bộ A1–A3 ĐHSP Hà Nội 2
+    { lng: 105.72562, lat: 21.28071, r: 25 }, // Quảng trường Con Chim Xanh
+    { lng: 105.72852, lat: 21.27876, r: 23 }, // ĐH Kiến Trúc Hà Nội (CS Xuân Hòa)
+    { lng: 105.72932, lat: 21.27828, r: 29 }, // Nhà Trắng Xuân Hòa
+    { lng: 105.729416, lat: 21.277632, r: 14 }, // Vòng tròn 1
+    { lng: 105.725000, lat: 21.281565, r: 20 }, // Vòng tròn 2
+  ].map((z) => ({
+    x: (z.lng - origin.lng) * origin.kx,
+    y: (z.lat - origin.lat) * origin.ky,
+    r2: z.r * z.r,
+  }));
+
+  const suppressedLandmarkWayIds = new Set<number>([
+    662917177, // Nhà Trắng Xuân Hòa / BIDV
+    1289786112, // Khối phụ Nhà Trắng
+    1230036852, // Tòa A1 ĐHSP Hà Nội 2
+    1080000072, // Tòa A2 ĐHSP Hà Nội 2
+    1289786109, // Tòa A3 ĐHSP Hà Nội 2
+  ]);
+
+  const isInsideIconicBuildingZone = (px: number, py: number) => {
+    for (const z of iconicBuildingClearZones) {
+      const dx = px - z.x;
+      const dy = py - z.y;
+      if (dx * dx + dy * dy <= z.r2) return true;
+    }
+    const [lng, lat] = localToLngLat(origin, px, py);
+    if (isInsideLizardHillClearZone(lng, lat)) return true;
+    return false;
+  };
+
+  const isInsideIconicTreeZone = (px: number, py: number) => {
+    for (const z of iconicTreeClearZones) {
       const dx = px - z.x;
       const dy = py - z.y;
       if (dx * dx + dy * dy <= z.r2) return true;
@@ -853,31 +981,67 @@ async function init(baseUrl: string) {
     let y = dv.getInt32(o, true);
     o += 4;
     const ring = [x / 10, y / 10];
+    let bMinX = x / 10, bMaxX = x / 10, bMinY = y / 10, bMaxY = y / 10;
     for (let k = 1; k < n; k++) {
       x += dv.getInt16(o, true);
       o += 2;
       y += dv.getInt16(o, true);
       o += 2;
-      ring.push(x / 10, y / 10);
+      const rx = x / 10, ry = y / 10;
+      ring.push(rx, ry);
+      if (rx < bMinX) bMinX = rx;
+      if (rx > bMaxX) bMaxX = rx;
+      if (ry < bMinY) bMinY = ry;
+      if (ry > bMaxY) bMaxY = ry;
     }
     const [cx, cy] = centroidOf(ring);
     const wayId = osmIds.get(i);
-    if (wayId === 662917177 || wayId === 1289786112 || isInsideIconicZone(cx, cy)) continue;
-    const t = 0.94 + hash2(cx, cy) * 0.1;
+    if ((wayId !== undefined && suppressedLandmarkWayIds.has(wayId)) || isInsideIconicBuildingZone(cx, cy)) continue;
+
+    const lockedH = hh / 2;
+    const areaSqm = Math.abs(signedArea(ring));
+    const spanX = Math.max(1, bMaxX - bMinX);
+    const spanY = Math.max(1, bMaxY - bMinY);
+    const aspectRatio = Math.max(spanX, spanY) / Math.min(spanX, spanY);
+    const zoneIdx = buildingZones[i] ?? 7;
+    const zoneCode = zoneCodes[zoneIdx];
+    const levels = buildingLevels[i] || Math.max(1, Math.round(lockedH / 3.4));
+    const isOsm = !!(flags & 1);
+    const bName = names.get(i);
+    const stableSeed = (wayId ? wayId : i * 2654435761) ^ Math.imul(Math.round(cx * 10), 73856093);
+
+    const resolvedStyle = resolveBuildingArchetypeStyle({
+      zoneIdx,
+      zoneCode,
+      levels,
+      height: lockedH,
+      areaSqm,
+      aspectRatio,
+      isOsm,
+      hasName: Boolean(bName),
+      name: bName,
+      rawWallIdx: wallIdx,
+      rawRoofKey: rk,
+      stableSeed,
+    });
+
+    const t = 0.96 + hash2(cx, cy) * 0.07;
     registerBuilding({
       ring,
-      h: hh / 2,
-      wall: tint(WALL_RGB[wallIdx % WALL_RGB.length], t),
-      roof: tint(ROOF_RGB[(rk >> 2) % ROOF_RGB.length], 0.96 + hash2(cy, cx) * 0.08),
-      roofKind: rk & 3,
-      isOsm: !!(flags & 1),
-      topBox: !!(flags & 4),
+      h: lockedH,
+      wall: tint(WALL_RGB[resolvedStyle.wallIdx % WALL_RGB.length], t),
+      roof: tint(ROOF_RGB[resolvedStyle.roofIdx % ROOF_RGB.length], 0.97 + hash2(cy, cx) * 0.06),
+      roofKind: resolvedStyle.roofType,
+      archetype: resolvedStyle.archetype,
+      parapetH: resolvedStyle.parapetHeight,
+      isOsm,
+      topBox: resolvedStyle.hasTopBox,
       cx,
       cy,
-      area: Math.abs(signedArea(ring)),
+      area: areaSqm,
       key: '',
-      wayId: osmIds.get(i),
-      name: names.get(i),
+      wayId,
+      name: bName,
     });
   }
   const trees: TreeRec[] = [];
@@ -888,7 +1052,7 @@ async function init(baseUrl: string) {
     o += 4;
     const s = 0.4 + (dv.getUint8(o++) / 255) * 1.6;
     const kind = dv.getUint8(o++);
-    if (isInsideIconicZone(x, y)) continue;
+    if (isInsideIconicTreeZone(x, y)) continue;
     trees.push({ x, y, s, kind });
   }
   for (const t of trees) {

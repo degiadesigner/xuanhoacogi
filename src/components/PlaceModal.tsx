@@ -29,6 +29,7 @@ import {
 import { formatTypography, cleanDishDisplayTitle } from '@/lib/utils';
 import { getLocalReviews, saveLocalReview } from '@/lib/reviews-storage';
 import { UserAuthProfile } from '@/lib/auth';
+import { isAdminAuthenticated } from '@/lib/admin-store';
 import { GoogleGIcon } from './GoogleGIcon';
 import { MapActionButtons } from './MapActionButtons';
 import {
@@ -373,11 +374,9 @@ export function PlaceModal({
                 <Phone size={14} className="shrink-0" />
                 <span>☎ Gọi {activePlace.phone}</span>
               </button>
-            ) : (
-              !isCivicLandmark && (
-                <span className="text-[11.5px] text-slate-400 px-2 py-1">Chưa có SĐT</span>
-              )
-            )}
+            ) : isAdminAuthenticated(authUser) ? (
+              <span className="text-[11.5px] text-slate-400 px-2 py-1">Chưa có SĐT</span>
+            ) : null}
           </div>
 
           {/* 3 TỌA ĐỘ TRỌNG YẾU (Hoặc Thông tin Dịch vụ cho Quán Vui chơi / Dịch vụ - Mục 27) */}

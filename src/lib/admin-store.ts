@@ -43,6 +43,18 @@ export interface PlaceOverride {
   mapsUrl?: string;
   quip?: string;
   imageUrl?: string;
+  media?: Array<{
+    id: string;
+    type: 'photo' | 'panorama360';
+    url: string;
+    title?: string;
+    anchorMode: 'place' | 'absolute';
+    lat?: number;
+    lng?: number;
+    heading?: number;
+    pitch?: number;
+    capturedAt?: string;
+  }>;
   verified?: boolean;
   isFeatured?: boolean;
   priorityBoost?: 1 | 2 | 3; // 1: Bình thường, 2: Ưu tiên x2, 3: Ưu tiên cao x3 (Tăng tần suất xuất hiện cả Quán & Món)
@@ -67,6 +79,9 @@ export interface PlaceOverride {
     | 'unverified';
   lastVerifiedAt?: string;
   mapCategory?: string;
+  parentCategoryId?: string;
+  subcategoryId?: string;
+  showByDefault?: boolean;
   version?: number;
   merchantClaimCode?: string; // Mã code duy nhất do Admin cấp cho chủ quán
   claimedByEmail?: string; // Gmail của chủ quán đã kích hoạt mã
@@ -1202,8 +1217,14 @@ export function updateMemberStatusInAdmin(
 ): void {
   const state = getAdminState();
   const key = memberKey.trim().toLowerCase();
+  if (isSuperAdminIdentifier(key) && status !== 'admin' && status !== 'active') {
+    return;
+  }
   const target = state.members[key];
   if (!target) return;
+  if (target.status === 'admin' && isSuperAdminIdentifier(key) && status !== 'admin') {
+    return;
+  }
 
   target.status = status;
   if (banReason !== undefined) target.banReason = banReason;
@@ -1234,6 +1255,10 @@ export function updateMemberManagerPermissions(
 ): void {
   const state = getAdminState();
   const key = memberKey.trim().toLowerCase();
+  if (key === 'truongtuanminh.91@gmail.com' || key === 'minhtt@xuanhoacogi.com') {
+    // Founder luôn có toàn quyền mặc định
+    return;
+  }
   const target = state.members[key];
   if (!target) return;
 
@@ -1258,7 +1283,13 @@ export function updateMemberManagerPermissions(
 export function deleteMemberAndPurgeReviews(memberKey: string): { purgedReviews: number } {
   const state = getAdminState();
   const key = memberKey.trim().toLowerCase();
+  if (isSuperAdminIdentifier(key)) {
+    return { purgedReviews: 0 };
+  }
   const target = state.members[key];
+  if (target?.status === 'admin') {
+    return { purgedReviews: 0 };
+  }
   let purgedCount = 0;
 
   if (target && typeof window !== 'undefined') {
@@ -2342,6 +2373,10 @@ export function savePlaceAdminOverride(placeId: string, patch: Partial<PlaceOver
 }
 
 export function resetPlaceToDefault(placeId: string): void {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
+    throw new Error('Chỉ Admin mới có quyền khôi phục dữ liệu gốc của địa điểm.');
+  }
   const state = getAdminState();
   const base = xuanHoaPlaces.find(p => p.id === placeId);
   if (state.places[placeId]) {
@@ -2669,8 +2704,9 @@ export function updatePlaceCoordinates(
 
   const state = getAdminState();
   const roleInfo = getEffectiveAdminRoleInfo();
-  const isSubManagerOnly = roleInfo.isAuthenticated && !roleInfo.isSuperAdmin;
-  const isApproved = payload.coordinateVerified && !isSubManagerOnly;
+  const canApproveDirectly =
+    roleInfo.isSuperAdmin || roleInfo.canManageMaps || isMapManagerAuthenticated();
+  const isApproved = Boolean(payload.coordinateVerified && canApproveDirectly);
   const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now(), version: 0 };
   const nowIso = new Date().toISOString();
   const nextVersion = (prev.version || 0) + 1;
@@ -2713,6 +2749,10 @@ export function updatePlaceCoordinates(
 }
 
 export function clearPlaceCoordinates(placeId: string, placeName?: string): AdminState {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
+    throw new Error('Chỉ Admin mới có quyền gỡ vị trí địa điểm khỏi bản đồ.');
+  }
   const state = getAdminState();
   const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now(), version: 0 };
   const nextVersion = (prev.version || 0) + 1;
@@ -2720,6 +2760,7 @@ export function clearPlaceCoordinates(placeId: string, placeName?: string): Admi
   state.places[placeId] = {
     ...prev,
     id: placeId,
+    status: prev.status === 'locked' ? 'locked' : 'active',
     lat: undefined,
     lng: undefined,
     mapsUrl: '',
@@ -2761,6 +2802,7 @@ export function clearPlaceCoordinates(placeId: string, placeName?: string): Admi
 export function migrateExistingPlacesStatusSafely(): { migratedCount: number } {
   const state = getAdminState();
   let migratedCount = 0;
+  const legacyFakePhones = new Set(['0211 3863 115', '02113863115', '0211 3863 203', '02113863203']);
 
   for (const [pid, ov] of Object.entries(state.places || {})) {
     if (!ov) continue;
@@ -2770,6 +2812,14 @@ export function migrateExistingPlacesStatusSafely(): { migratedCount: number } {
       ov.mapCategory === 'public' ||
       ov.mapCategory === 'school' ||
       ov.mapCategory === 'medical';
+
+    if (ov.phone && legacyFakePhones.has(ov.phone.trim())) {
+      ov.phone = '';
+      if (ov.customPlaceData) {
+        ov.customPlaceData.phone = '';
+      }
+      migratedCount++;
+    }
 
     const nextLocStatus = computePlaceLocationStatus(ov, isCivic);
     const nextLinkStatus = computeMapsLinkStatus(ov, ov.mapsUrl);
@@ -2990,7 +3040,11 @@ export function requestOrExecuteDeletePlace(
   const resolvedName =
     placeName || current.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
 
-  if (roleInfo.isSuperAdmin || forceImmediate) {
+  if (scope === 'maps' && !roleInfo.isSuperAdmin && !isAdminAuthenticated() && !forceImmediate) {
+    throw new Error('Quản lý chỉ được phép thêm mới và chỉnh sửa địa điểm, không có quyền xóa địa điểm.');
+  }
+
+  if (roleInfo.isSuperAdmin || isAdminAuthenticated() || forceImmediate) {
     state.places[placeId] = {
       ...current,
       id: placeId,
@@ -3681,6 +3735,9 @@ export function createNewPlaceFromMap(
   payload: {
     name: string;
     mapCategory: string;
+    parentCategoryId?: string;
+    subcategoryId?: string;
+    showByDefault?: boolean;
     address: string;
     phone?: string;
     openHours?: string;
@@ -3795,14 +3852,12 @@ export function createNewPlaceFromMap(
 
   const state = getAdminState();
   const creatorRole = getEffectiveAdminRoleInfo(undefined, effectiveUser);
-  const creatorIdentifier =
-    creatorRole.identifier ||
-    (effectiveUser?.email || 'quanlymaps@xuanhoacogi.vn').trim().toLowerCase();
   const claimCode = getOrGenerateMerchantCode(newPlaceId, false, cleanName);
 
   state.places[newPlaceId] = {
     id: newPlaceId,
     status: 'active',
+    visibilityStatus: 'visible',
     name: newPlace.name,
     tagline: newPlace.tagline,
     address: newPlace.address,
@@ -3815,6 +3870,9 @@ export function createNewPlaceFromMap(
     category: newPlace.category,
     sectorTag: mapped.sectorTag,
     mapCategory: mapCat,
+    ...(payload.parentCategoryId ? { parentCategoryId: payload.parentCategoryId } : {}),
+    ...(payload.subcategoryId ? { subcategoryId: payload.subcategoryId } : {}),
+    ...(typeof payload.showByDefault === 'boolean' ? { showByDefault: payload.showByDefault } : {}),
     tags: newPlace.tags,
     serviceMode: newPlace.serviceMode,
     mapsQuery: newPlace.mapsQuery,
@@ -3826,39 +3884,37 @@ export function createNewPlaceFromMap(
     customMenu: newPlace.menu,
     lat,
     lng,
-    coordinateVerified: creatorRole.isSuperAdmin,
-    adminPinApproved: creatorRole.isSuperAdmin,
-    locationStatus: creatorRole.isSuperAdmin ? 'located' : 'unlocated',
+    coordinateVerified: true,
+    adminPinApproved: true,
+    locationStatus: 'located',
+    mapsLinkStatus: computeMapsLinkStatus({ lat, lng, mapsUrl: newPlace.mapsUrl, coordinateSource: 'admin_verified' }, newPlace.mapsUrl),
     coordinateSource: 'admin_verified',
     lastVerifiedAt: new Date().toISOString().slice(0, 10),
     merchantClaimCode: claimCode,
-    ...(!creatorRole.isSuperAdmin
-      ? {
-          pendingMapApproval: {
-            submittedBy: creatorIdentifier,
-            submittedByName: creatorRole.displayName || effectiveUser?.displayName || 'Quản lý Maps',
-            submittedAt: Date.now(),
-            actionSummary: `Yêu cầu thêm định vị mới (${mapCat})`,
-            actionType: 'create',
-            previousLat: null,
-            previousLng: null,
-            isNewPlace: true,
-          },
-        }
-      : {
-          pendingMapApproval: null,
-          pendingWebApproval: null,
-        }),
+    pendingMapApproval: null,
+    pendingWebApproval: null,
+    version: 1,
     updatedAt: Date.now(),
     isCustom: true,
     customPlaceData: newPlace,
   };
 
+  logMapDebug('PLACE SAVE', {
+    id: newPlaceId,
+    name: newPlace.name,
+    lat,
+    lng,
+    locationStatus: 'located',
+    visibilityStatus: 'visible',
+    coordinateSource: 'admin_verified',
+    version: 1,
+  });
+
   state.auditLogs = addAdminAuditLog(
     state,
     creatorRole.isSuperAdmin
       ? `🗺️ Admin ghim địa điểm mới trên Bản đồ (${mapCat})`
-      : `⏳ Quản lý Maps thêm địa điểm mới chờ duyệt (${mapCat})`,
+      : `🗺️ Quản lý Maps thêm địa điểm mới trên Bản đồ (${mapCat})`,
     `${cleanName} — Tọa độ: ${lat}, ${lng}`,
     'place'
   );

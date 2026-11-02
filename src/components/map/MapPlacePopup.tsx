@@ -1,19 +1,20 @@
 import React from 'react';
 import {
   X,
-  MapPin,
   Phone,
-  Clock,
   Navigation,
-  UtensilsCrossed,
-  CheckCircle2,
   ExternalLink,
-  Edit3,
-  Route,
-  Store,
+  Bookmark,
+  Star,
+  Globe,
+  FileText,
+  Settings2,
 } from 'lucide-react';
 import type { PlaceLocation } from '@/lib/map/map-types';
-import { MAP_CATEGORY_BY_ID } from '@/lib/map/map-categories';
+import {
+  getPlaceTaxonomyMeta,
+  renderRegistryIcon,
+} from '@/lib/map/map-category-registry';
 import {
   calculateDistanceAndEta,
   evaluatePlaceOpenStatus,
@@ -56,10 +57,10 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
 
   if (!place) return null;
 
-  const cat = MAP_CATEGORY_BY_ID[place.category];
-  const contactPhone = place.phone || '0211 3863 203';
+  const { subMeta } = getPlaceTaxonomyMeta(place);
+  const contactPhone = place.phone || '';
+  const ratingValue = place.originalPlace?.rating;
 
-  // Tính khoảng cách và thời gian di chuyển từ vị trí GPS của khách (hoặc từ tâm Xuân Hòa nếu chưa bật GPS)
   const originLat = userCoords ? userCoords.lat : XUANHOA_DEFAULT_CENTER.lat;
   const originLng = userCoords ? userCoords.lng : XUANHOA_DEFAULT_CENTER.lng;
   const etaInfo =
@@ -73,7 +74,6 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
         )
       : null;
 
-  // Đánh giá giờ mở cửa thực tế + Trạng thái hôm nay của chủ quán
   const openStatus = evaluatePlaceOpenStatus(
     place.openHours,
     place.metadata.liveStatus,
@@ -94,188 +94,139 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
     <div
       role="dialog"
       aria-label={`Thông tin địa điểm ${place.name}`}
-      className="w-full max-w-md rounded-3xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_14px_38px_rgba(64,48,100,0.24)] p-3.5 sm:p-4 text-[#2D2246] animate-in fade-in slide-in-from-bottom-3 duration-200"
+      className="w-full max-w-[420px] rounded-[18px] bg-white border border-[#E2E8F0] shadow-[0_12px_32px_rgba(15,23,42,0.12)] p-3.5 sm:p-4 text-[#0F172A] animate-in fade-in slide-in-from-bottom-2 duration-150"
     >
-      {/* Top Row: Category Badge + Verified Status + Close */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span
-            className="inline-flex items-center px-2.5 py-0.5 rounded-xl text-[10.5px] font-extrabold border border-[#403064] text-white"
-            style={{ backgroundColor: cat?.markerBg || '#39B980' }}
-          >
-            <span>{cat?.shortLabel || 'Địa điểm'}</span>
-          </span>
-
-          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#E6F7EF] text-[#1D7A52] border border-[#39B980]/40">
-            <span>
-              {place.coordinateSource === 'merchant_verified' ||
-              place.metadata.claimedByEmail
-                ? 'Chính chủ đã xác thực'
-                : place.coordinateSource === 'openstreetmap'
-                ? 'OSM Verified'
-                : 'Đã xác minh tọa độ'}
+      {/* Top Row: Name + Save + Close */}
+      <div className="flex items-start justify-between gap-2.5">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[15px] font-semibold text-[#0F172A] leading-snug truncate">
+            {place.name}
+          </h3>
+          <div className="mt-1 flex items-center flex-wrap gap-1.5 text-[12px] text-[#475569]">
+            <span className="inline-flex items-center gap-1 font-medium text-[#059669]">
+              {renderRegistryIcon(subMeta.iconName, 13, 'text-[#059669]')}
+              <span>{subMeta.label}</span>
             </span>
-          </span>
 
-          {/* Trạng thái Đang mở cửa / Đã đóng cửa giống Google Maps */}
-          <span
-            className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-extrabold border"
-            style={{
-              backgroundColor:
+            {typeof ratingValue === 'number' && ratingValue > 0 && (
+              <>
+                <span className="text-[#CBD5E1]">•</span>
+                <span className="inline-flex items-center gap-0.5 font-medium text-[#0F172A]">
+                  <Star size={12} strokeWidth={1.75} className="text-[#059669] fill-[#059669]" />
+                  <span>{ratingValue.toFixed(1)}</span>
+                </span>
+              </>
+            )}
+
+            <span className="text-[#CBD5E1]">•</span>
+            <span
+              className={`font-medium ${
                 openStatus.tone === 'emerald'
-                  ? '#E6F7EF'
+                  ? 'text-[#059669]'
                   : openStatus.tone === 'amber'
-                  ? '#FEF3C7'
-                  : '#FEE2E2',
-              borderColor:
-                openStatus.tone === 'emerald'
-                  ? '#39B980'
-                  : openStatus.tone === 'amber'
-                  ? '#F59E0B'
-                  : '#EF4444',
-              color:
-                openStatus.tone === 'emerald'
-                  ? '#1D7A52'
-                  : openStatus.tone === 'amber'
-                  ? '#92400E'
-                  : '#991B1B',
-            }}
-          >
-            <span>{openStatus.badgeText}</span>
-          </span>
+                  ? 'text-[#B45309]'
+                  : 'text-[#64748B]'
+              }`}
+            >
+              {openStatus.badgeText}
+            </span>
+
+            {etaInfo && (
+              <>
+                <span className="text-[#CBD5E1]">•</span>
+                <span className="font-medium text-[#475569]">{etaInfo.distanceText}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           {onToggleSave && (
             <button
               type="button"
               onClick={() => onToggleSave(place)}
-              title={isSaved ? 'Bỏ lưu địa điểm này' : 'Lưu địa điểm vào tài khoản của bạn'}
-              className={`px-2.5 py-0.5 rounded-xl text-[11px] font-extrabold border transition-all cursor-pointer flex items-center gap-1 ${
+              title={isSaved ? 'Bỏ lưu địa điểm này' : 'Lưu địa điểm'}
+              className={`h-7 px-2 rounded-[9px] text-[11px] font-medium border transition-colors cursor-pointer inline-flex items-center gap-1 ${
                 isSaved
-                  ? 'bg-[#FEF3C7] text-[#B45309] border-[#F59E0B] shadow-xs'
-                  : 'bg-[#FFFDF9] text-[#403064] border-[#403064]/30 hover:bg-[#FEF3C7]/60'
+                  ? 'bg-[#ECFDF5] text-[#059669] border-[#059669]/40'
+                  : 'bg-[#F8FAFC] text-[#475569] border-[#E2E8F0] hover:bg-[#F1F5F9]'
               }`}
             >
-              <span>{isSaved ? '★ Đã lưu' : '☆ Lưu'}</span>
+              <Bookmark
+                size={12}
+                strokeWidth={1.75}
+                className={isSaved ? 'fill-[#059669] text-[#059669]' : 'text-[#64748B]'}
+              />
+              <span>{isSaved ? 'Đã lưu' : 'Lưu'}</span>
             </button>
           )}
           <button
             type="button"
             onClick={onClose}
             aria-label="Đóng thông tin địa điểm"
-            className="px-2 py-0.5 rounded-xl bg-[#F1ECE1] text-[#403064] hover:bg-[#E5DEC9] text-xs font-bold transition-colors cursor-pointer shrink-0"
+            className="w-7 h-7 rounded-[9px] bg-[#F8FAFC] text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#0F172A] border border-[#E2E8F0] flex items-center justify-center transition-colors cursor-pointer shrink-0"
           >
-            ×
+            <X size={14} strokeWidth={1.75} />
           </button>
         </div>
       </div>
 
-      {/* Tên & Địa chỉ */}
-      <div className="mt-1.5">
-        <h3 className="text-[14px] sm:text-[15px] font-extrabold text-[#2D2246] leading-snug">
-          {place.name}
-        </h3>
-        <p className="text-[11.5px] text-[#65587F] mt-0.5">
-          <span>{place.address}</span>
-        </p>
-      </div>
+      {/* Address & Metadata */}
+      <p className="mt-1.5 text-[12px] text-[#64748B] line-clamp-1">
+        {place.address}
+      </p>
 
-      {/* THANH KHOẢNG CÁCH & 4 PHƯƠNG TIỆN DI CHUYỂN CHUẨN GOOGLE MAPS */}
-      {etaInfo && (
-        <div className="mt-2 p-2.5 rounded-2xl bg-[#E6F7EF]/85 border border-[#39B980] space-y-1.5 text-[11.5px]">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-extrabold text-[#1D7A52]">
-              Quãng đường dự kiến:{' '}
-              <strong className="text-[#2D2246]">{etaInfo.distanceText}</strong>
-            </span>
-            <span className="text-[10.5px] font-bold text-[#65587F]">
-              Chọn phương tiện để đi
-            </span>
-          </div>
-          <div className="grid grid-cols-4 gap-1 text-[10.5px] font-bold">
-            {(
-              [
-                { id: 'car', label: 'Ô tô', time: etaInfo.carText },
-                { id: 'motorbike', label: 'Xe máy', time: etaInfo.bikeText },
-                { id: 'bicycle', label: 'Xe đạp', time: etaInfo.bicycleText },
-                { id: 'walk', label: 'Đi bộ', time: etaInfo.walkText },
-              ] as Array<{ id: TravelMode; label: string; time: string }>
-            ).map((m) => {
-              const active = selectedMode === m.id;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedMode(m.id);
-                    if (onDrawRouteToPlace && place.lat !== null && place.lng !== null) {
-                      onDrawRouteToPlace(place, m.id);
-                    }
-                  }}
-                  className={`py-1 px-1.5 rounded-xl border text-center transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-[#2D2246] text-white border-[#2D2246]'
-                      : 'bg-[#FFFDF9] text-[#2D2246] border-[#39B980]/40 hover:bg-[#E6F7EF]'
-                  }`}
-                >
-                  <div className="font-extrabold leading-tight">{m.label}</div>
-                  <div
-                    className={`text-[10px] leading-tight ${
-                      active ? 'text-[#6EE7B7]' : 'text-[#1D7A52]'
-                    }`}
-                  >
-                    {m.time}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+      {/* Travel Mode Pills (when route is active or distance available) */}
+      {etaInfo && isRouteActiveForThisPlace && (
+        <div className="mt-2.5 grid grid-cols-4 gap-1 p-1 rounded-[12px] bg-[#F8FAFC] border border-[#E2E8F0] text-[11px]">
+          {(
+            [
+              { id: 'motorbike', label: 'Xe máy', time: etaInfo.bikeText },
+              { id: 'car', label: 'Ô tô', time: etaInfo.carText },
+              { id: 'bicycle', label: 'Xe đạp', time: etaInfo.bicycleText },
+              { id: 'walk', label: 'Đi bộ', time: etaInfo.walkText },
+            ] as Array<{ id: TravelMode; label: string; time: string }>
+          ).map((m) => {
+            const active = selectedMode === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  setSelectedMode(m.id);
+                  if (onDrawRouteToPlace && place.lat !== null && place.lng !== null) {
+                    onDrawRouteToPlace(place, m.id);
+                  }
+                }}
+                className={`py-1 px-1.5 rounded-[8px] text-center transition-colors cursor-pointer ${
+                  active
+                    ? 'bg-[#0F172A] text-white font-semibold'
+                    : 'text-[#475569] hover:bg-white font-medium'
+                }`}
+              >
+                <div className="leading-tight">{m.label}</div>
+                <div className={`text-[10px] leading-tight ${active ? 'text-[#6EE7B7]' : 'text-[#059669]'}`}>
+                  {m.time}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* Lời nhắn trực tiếp từ chủ quán + Giờ mở cửa + SĐT liên hệ */}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-[#403064]">
-        <span className="px-2 py-0.5 rounded-lg bg-[#F3EFE6] font-semibold">
-          {openStatus.detailText}
-        </span>
-        {contactPhone && (
-          <a
-            href={`tel:${contactPhone.replace(/[^0-9+]/g, '')}`}
-            className="px-2 py-0.5 rounded-lg bg-[#EFF6FF] text-[#1D4ED8] border border-[#3B82F6]/30 font-extrabold hover:bg-[#DBEAFE]"
+      {/* Primary Action Buttons: [Chi tiết] [Chỉ đường] [Google Maps] */}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {place.originalPlace && (
+          <button
+            type="button"
+            onClick={() => onOpenFullPlaceModal(place)}
+            className="h-8 px-3 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] text-[12px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
-            SĐT: {contactPhone}
-          </a>
+            <FileText size={13} strokeWidth={1.7} className="text-[#475569]" />
+            <span>Chi tiết</span>
+          </button>
         )}
-        {place.metadata.priceRange && (
-          <span className="px-2 py-0.5 rounded-lg bg-[#E6F7EF] text-[#1D7A52] font-bold">
-            {place.metadata.priceRange}
-          </span>
-        )}
-        {place.metadata.subType && (
-          <span className="px-2 py-0.5 rounded-lg bg-[#F3EFE6] font-semibold">
-            {place.metadata.subType}
-          </span>
-        )}
-      </div>
 
-      {/* Món tủ nếu là quán trong danh mục */}
-      {place.metadata.signatureDishName && (
-        <div className="mt-2 px-3 py-1.5 rounded-2xl bg-[#F8F5EE] border border-[#E5DEC9] flex items-center justify-between text-xs">
-          <span className="text-[#65587F] font-medium truncate">
-            Món nổi bật:{' '}
-            <strong className="text-[#2D2246]">{place.metadata.signatureDishName}</strong>
-          </span>
-          {place.metadata.signatureDishPrice && (
-            <span className="font-extrabold text-[#1D7A52] shrink-0 ml-2">
-              {place.metadata.signatureDishPrice}.000đ
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Nút hành động: Chỉ đường ngay trên bản đồ + Thực đơn + Gọi SĐT + Google Maps */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         {onDrawRouteToPlace && place.lat !== null && place.lng !== null && (
           <button
             type="button"
@@ -286,52 +237,66 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
                 onDrawRouteToPlace(place, selectedMode);
               }
             }}
-            className="flex-1 min-w-[130px] py-1.5 px-3 rounded-2xl border-2 border-[#403064] text-[11.5px] font-extrabold flex items-center justify-center shadow-sm transition-colors cursor-pointer"
-            style={{
-              backgroundColor: isRouteActiveForThisPlace ? '#403064' : '#39B980',
-              color: '#FFFFFF',
-            }}
+            className={`flex-1 min-w-[110px] h-8 px-3 rounded-[10px] text-[12px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+              isRouteActiveForThisPlace
+                ? 'bg-[#0F172A] text-white'
+                : 'bg-[#059669] hover:bg-[#047857] text-white'
+            }`}
           >
-            <span>
-              {isRouteActiveForThisPlace ? 'Đang chỉ đường (Tắt)' : 'Bắt đầu chỉ đường'}
-            </span>
-          </button>
-        )}
-
-        {contactPhone && (
-          <a
-            href={`tel:${contactPhone.replace(/[^0-9+]/g, '')}`}
-            className="py-1.5 px-3 rounded-2xl bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] border border-[#3B82F6]/40 text-[11.5px] font-extrabold flex items-center justify-center"
-          >
-            <span>Gọi điện</span>
-          </a>
-        )}
-
-        {place.originalPlace && (
-          <button
-            type="button"
-            onClick={() => onOpenFullPlaceModal(place)}
-            className="py-1.5 px-3 rounded-2xl bg-[#403064] hover:bg-[#523E7D] text-white text-[11.5px] font-extrabold flex items-center justify-center shadow-sm transition-colors cursor-pointer"
-          >
-            <span>Thực đơn</span>
+            <Navigation size={13} strokeWidth={1.75} />
+            <span>{isRouteActiveForThisPlace ? 'Tắt chỉ đường' : 'Chỉ đường'}</span>
           </button>
         )}
 
         <button
           type="button"
           onClick={handleOpenGoogleMaps}
-          className="py-1.5 px-2.5 rounded-2xl bg-[#F1ECE1] hover:bg-[#E5DEC9] text-[#403064] border border-[#403064]/30 text-[11.5px] font-bold flex items-center justify-center transition-colors cursor-pointer"
-          title="Mở ứng dụng Google Maps dẫn đường giọng nói"
+          className="h-8 px-3 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] text-[12px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+          title="Mở trên Google Maps"
         >
+          <ExternalLink size={13} strokeWidth={1.7} className="text-[#475569]" />
           <span>Google Maps</span>
         </button>
+
+        {contactPhone ? (
+          <a
+            href={`tel:${contactPhone.replace(/[^0-9+]/g, '')}`}
+            className="h-8 px-2.5 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] text-[12px] font-medium inline-flex items-center justify-center gap-1 transition-colors"
+            title={`Gọi ${contactPhone}`}
+          >
+            <Phone size={13} strokeWidth={1.7} className="text-[#059669]" />
+            <span className="hidden sm:inline">{contactPhone}</span>
+          </a>
+        ) : isAdminUser ? (
+          <span
+            data-testid="admin-empty-phone-badge"
+            className="h-8 px-2.5 rounded-[10px] bg-[#F8FAFC] text-[#64748B] border border-dashed border-[#CBD5E1] text-[11px] font-medium inline-flex items-center justify-center"
+          >
+            Chưa có SĐT
+          </span>
+        ) : null}
+
+        {place.media && place.media.some((m) => m.type === 'panorama360') && (
+          <button
+            type="button"
+            onClick={() => {
+              const pano = place.media?.find((m) => m.type === 'panorama360');
+              if (pano?.url) {
+                window.open(pano.url, '_blank', 'noopener,noreferrer');
+              }
+            }}
+            className="h-8 px-2.5 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] text-[12px] font-medium inline-flex items-center justify-center gap-1 transition-colors cursor-pointer"
+          >
+            <Globe size={13} strokeWidth={1.7} className="text-[#059669]" />
+            <span>360°</span>
+          </button>
+        )}
 
         {isAdminUser && place.originalPlace && onOpenMerchantPortal && (
           <button
             type="button"
             onClick={() => onOpenMerchantPortal(place)}
-            className="py-1.5 px-2.5 rounded-2xl bg-[#EDE9FE] hover:bg-[#DDD6FE] text-[#403064] border border-[#403064]/40 text-[11px] font-extrabold flex items-center cursor-pointer"
-            title="Quản lý mã code & thực đơn quán"
+            className="h-8 px-2.5 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] text-[11.5px] font-medium inline-flex items-center cursor-pointer"
           >
             <span>Mã quán</span>
           </button>
@@ -341,10 +306,11 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
           <button
             type="button"
             onClick={() => onEditCoordinates(place)}
-            className="py-1.5 px-2.5 rounded-2xl bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] border border-[#F59E0B] text-[11.5px] font-extrabold flex items-center cursor-pointer shadow-xs"
-            title="Chỉnh sửa tên địa danh, danh mục, địa chỉ, mô tả, tọa độ hoặc ẩn địa điểm"
+            className="h-8 px-2.5 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] text-[11.5px] font-medium inline-flex items-center gap-1 cursor-pointer"
+            title="Chỉnh sửa thông tin & định vị địa điểm"
           >
-            <span>Sửa địa điểm</span>
+            <Settings2 size={13} strokeWidth={1.7} className="text-[#059669]" />
+            <span>Sửa</span>
           </button>
         )}
       </div>

@@ -12,8 +12,10 @@ import {
 } from 'lucide-react';
 import type { PlaceLocation } from '@/lib/map/map-types';
 import {
+  formatPlaceTaxonomyLine,
   getPlaceTaxonomyMeta,
   renderRegistryIcon,
+  resolvePlaceContentProfile,
 } from '@/lib/map/map-category-registry';
 import {
   calculateDistanceAndEta,
@@ -33,7 +35,6 @@ interface MapPlacePopupProps {
   onDrawRouteToPlace?: (place: PlaceLocation, mode?: TravelMode) => void;
   onClearRoute?: () => void;
   isRouteActiveForThisPlace?: boolean;
-  onOpenMerchantPortal?: (place: PlaceLocation) => void;
   isSaved?: boolean;
   onToggleSave?: (place: PlaceLocation) => void;
 }
@@ -49,7 +50,6 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
   onDrawRouteToPlace,
   onClearRoute,
   isRouteActiveForThisPlace,
-  onOpenMerchantPortal,
   isSaved = false,
   onToggleSave,
 }) => {
@@ -58,6 +58,29 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
   if (!place) return null;
 
   const { subMeta } = getPlaceTaxonomyMeta(place);
+  const profileMeta = resolvePlaceContentProfile(place.originalPlace || place);
+  const extraTags = place.extraTags || place.originalPlace?.extraTags || [];
+  const taxonomyLine = formatPlaceTaxonomyLine(subMeta.id, extraTags);
+  const isCatalogEnabled =
+    place.catalogEnabled ??
+    place.originalPlace?.catalogEnabled ??
+    profileMeta.catalogEnabledByDefault;
+  const catalogItemsCount = place.originalPlace?.menu?.length || 0;
+  const primaryDetailLabel = profileMeta.forbidsMenuAndOrdering
+    ? profileMeta.contentProfile === 'government'
+      ? 'Thông tin cơ quan'
+      : profileMeta.contentProfile === 'education'
+      ? 'Thông tin trường'
+      : 'Giới thiệu'
+    : isCatalogEnabled && catalogItemsCount > 0
+    ? profileMeta.contentProfile === 'retail'
+      ? `Xem sản phẩm (${catalogItemsCount})`
+      : profileMeta.contentProfile === 'service' ||
+        profileMeta.contentProfile === 'entertainment'
+      ? `Xem bảng giá (${catalogItemsCount})`
+      : `Xem thực đơn (${catalogItemsCount})`
+    : 'Chi tiết';
+
   const contactPhone = place.phone || '';
   const ratingValue = place.originalPlace?.rating;
 
@@ -103,9 +126,12 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
             {place.name}
           </h3>
           <div className="mt-1 flex items-center flex-wrap gap-1.5 text-[12px] text-[#475569]">
-            <span className="inline-flex items-center gap-1 font-medium text-[#059669]">
+            <span
+              data-testid="map-popup-taxonomy-line"
+              className="inline-flex items-center gap-1 font-medium text-[#059669]"
+            >
               {renderRegistryIcon(subMeta.iconName, 13, 'text-[#059669]')}
-              <span>{subMeta.label}</span>
+              <span>{taxonomyLine}</span>
             </span>
 
             {typeof ratingValue === 'number' && ratingValue > 0 && (
@@ -118,18 +144,22 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
               </>
             )}
 
-            <span className="text-[#CBD5E1]">•</span>
-            <span
-              className={`font-medium ${
-                openStatus.tone === 'emerald'
-                  ? 'text-[#059669]'
-                  : openStatus.tone === 'amber'
-                  ? 'text-[#B45309]'
-                  : 'text-[#64748B]'
-              }`}
-            >
-              {openStatus.badgeText}
-            </span>
+            {(place.openHours || profileMeta.requiresPhoneAndHours) && (
+              <>
+                <span className="text-[#CBD5E1]">•</span>
+                <span
+                  className={`font-medium ${
+                    openStatus.tone === 'emerald'
+                      ? 'text-[#059669]'
+                      : openStatus.tone === 'amber'
+                      ? 'text-[#B45309]'
+                      : 'text-[#64748B]'
+                  }`}
+                >
+                  {openStatus.badgeText}
+                </span>
+              </>
+            )}
 
             {etaInfo && (
               <>
@@ -214,18 +244,17 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
         </div>
       )}
 
-      {/* Primary Action Buttons: [Chi tiết] [Chỉ đường] [Google Maps] */}
+      {/* Primary Action Buttons: [Chi tiết / Thực đơn / Sản phẩm / Giới thiệu] [Chỉ đường] [Google Maps] */}
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {place.originalPlace && (
-          <button
-            type="button"
-            onClick={() => onOpenFullPlaceModal(place)}
-            className="h-8 px-3 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] text-[12px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <FileText size={13} strokeWidth={1.7} className="text-[#475569]" />
-            <span>Chi tiết</span>
-          </button>
-        )}
+        <button
+          type="button"
+          data-testid="map-popup-primary-detail-btn"
+          onClick={() => onOpenFullPlaceModal(place)}
+          className="h-8 px-3 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] text-[12px] font-medium inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+        >
+          <FileText size={13} strokeWidth={1.7} className="text-[#475569]" />
+          <span>{primaryDetailLabel}</span>
+        </button>
 
         {onDrawRouteToPlace && place.lat !== null && place.lng !== null && (
           <button
@@ -267,7 +296,7 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
             <Phone size={13} strokeWidth={1.7} className="text-[#059669]" />
             <span className="hidden sm:inline">{contactPhone}</span>
           </a>
-        ) : isAdminUser ? (
+        ) : isAdminUser && profileMeta.requiresPhoneAndHours ? (
           <span
             data-testid="admin-empty-phone-badge"
             className="h-8 px-2.5 rounded-[10px] bg-[#F8FAFC] text-[#64748B] border border-dashed border-[#CBD5E1] text-[11px] font-medium inline-flex items-center justify-center"
@@ -289,16 +318,6 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
           >
             <Globe size={13} strokeWidth={1.7} className="text-[#059669]" />
             <span>360°</span>
-          </button>
-        )}
-
-        {isAdminUser && place.originalPlace && onOpenMerchantPortal && (
-          <button
-            type="button"
-            onClick={() => onOpenMerchantPortal(place)}
-            className="h-8 px-2.5 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] text-[11.5px] font-medium inline-flex items-center cursor-pointer"
-          >
-            <span>Mã quán</span>
           </button>
         )}
 

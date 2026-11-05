@@ -1,0 +1,21 @@
+{
+  // Cloudflare Workers Production Configuration for XuanHoaCoGi (V4)
+  // Routes /api/founder-security/* to worker.js and serves SPA routes (/terms, /privacy, /community-guidelines, /data-rights)
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xuanhoacogi",
+  "main": "worker.js",
+  "compatibility_date": "2026-03-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "VITE_FIREBASE_PROJECT_ID": "xuanhoacogi",
+    "VITE_FIREBASE_DATABASE_URL": "https://xuanhoacogi-default-rtdb.firebaseio.com",
+    "VITE_FIREBASE_API_KEY": "AIzaSyCOiXc2W9oW6R-pycAyQl6iIe_LDCQezNw",
+    "ALLOW_EMULATOR_TOKENS": "false"
+  }
+}

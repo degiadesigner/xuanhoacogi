@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { update, get } from 'firebase/database';
 import { firebaseConfig, getRealtimeDb, ref } from './firebase';
+import { hasValidCurrentConsent, isOptionalTasteAndPhoneEnabled } from './legal-compliance';
 
 export type UserResidentType = 'student_sp2' | 'student_other' | 'local' | 'worker' | 'tourist';
 
@@ -51,11 +52,8 @@ export interface UserAuthProfile {
   photoURL?: string;
   hasCompletedProfile: boolean;
   isFirstTimeSetupDone?: boolean;
-  isMerchantAccount?: boolean; // Đã xác thực Mã Code Quán -> Trở thành Nick Quán Chính Chủ
-  isMapManager?: boolean; // Đã xác thực Mã Quản lý Maps (XH-MAPS-8899) -> Cấp quyền CTV Quản lý Định vị & Tạo Địa điểm mới
-  merchantPlaceId?: string;
-  merchantPlaceName?: string;
-  merchantVerifiedCode?: string;
+  consentConfirmedVersion?: string;
+  isMapManager?: boolean; // Tài khoản Quản lý Bản đồ (được Admin phân quyền qua Firebase Auth / Members Registry)
   createdAt: number;
 }
 
@@ -190,12 +188,25 @@ function deleteAuthCookie(): void {
   } catch {}
 }
 
+function stripRetiredMerchantProfileFields(raw: any): UserAuthProfile {
+  if (!raw || typeof raw !== 'object') return raw;
+  const copy = { ...raw };
+  delete copy.isMerchantAccount;
+  delete copy.merchantPlaceId;
+  delete copy.merchantPlaceName;
+  delete copy.merchantVerifiedCode;
+  if (copy.avatar === '🏪') {
+    copy.avatar = '🐭';
+  }
+  return copy as UserAuthProfile;
+}
+
 function getSavedProfileByEmail(email?: string): UserAuthProfile | null {
   if (typeof window === 'undefined' || !email) return null;
   try {
     const raw = localStorage.getItem(PROFILE_BY_EMAIL_PREFIX + email.trim().toLowerCase());
     if (!raw) return null;
-    return JSON.parse(raw);
+    return stripRetiredMerchantProfileFields(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -206,7 +217,7 @@ export function getStoredAuthUser(): UserAuthProfile | null {
   try {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     if (raw) {
-      const user: UserAuthProfile = JSON.parse(raw);
+      const user: UserAuthProfile = stripRetiredMerchantProfileFields(JSON.parse(raw));
       if (user && user.isLoggedIn) {
         return user;
       }
@@ -216,15 +227,17 @@ export function getStoredAuthUser(): UserAuthProfile | null {
     if (localStorage.getItem(LOGGED_OUT_KEY) !== '1') {
       const cookieUser = readAuthCookie();
       if (cookieUser && cookieUser.isLoggedIn) {
+        const sanitized = stripRetiredMerchantProfileFields(cookieUser);
         try {
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(cookieUser));
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sanitized));
         } catch {}
-        return cookieUser;
+        return sanitized;
       }
     }
     return null;
   } catch {
-    return readAuthCookie();
+    const c = readAuthCookie();
+    return c ? stripRetiredMerchantProfileFields(c) : null;
   }
 }
 
@@ -241,8 +254,22 @@ function encodeEmailForRtdbKey(email: string): string {
     .replace(/\]/g, '%5D');
 }
 
+export function isVerifiedFirebaseAuthUid(uid?: string | null): boolean {
+  if (!uid || typeof uid !== 'string') return false;
+  const clean = uid.trim();
+  if (clean.startsWith('uid_') || clean.startsWith('google_') || clean.startsWith('fb_')) {
+    return false;
+  }
+  // Google OAuth sub là chuỗi 18–25 chữ số thuần — tuyệt đối KHÔNG phải Firebase Auth UID
+  if (/^\d+$/.test(clean)) return false;
+  return /^[A-Za-z0-9]{20,36}$/.test(clean);
+}
+
 function getCanonicalUidForEmail(email: string, fallbackUid?: string): string {
   const clean = email.trim().toLowerCase();
+  if (isVerifiedFirebaseAuthUid(fallbackUid)) {
+    return fallbackUid!.trim();
+  }
   if (fallbackUid && !fallbackUid.startsWith('uid_17') && !fallbackUid.startsWith('google_17')) {
     return fallbackUid;
   }
@@ -298,9 +325,17 @@ export function saveAuthUser(user: UserAuthProfile): void {
       localStorage.setItem(PROFILE_BY_EMAIL_PREFIX + normalizedEmail, JSON.stringify(normalizedUser));
 
       // Đồng bộ tức thì (Realtime) 1 Gmail = 1 Nick duy nhất lên Firebase Realtime Database
+      // Chỉ đồng bộ lên Cloud sau khi người dùng đã xác nhận Điều khoản & Thông báo dữ liệu cần thiết
       try {
         const rtdb = getRealtimeDb();
-        if (rtdb && normalizedUser.isLoggedIn) {
+        const hasConsent =
+          Boolean(normalizedUser.consentConfirmedVersion) ||
+          hasValidCurrentConsent(normalizedUser.uid, normalizedEmail);
+        if (rtdb && normalizedUser.isLoggedIn && hasConsent) {
+          const allowOptionalTasteAndPhone = isOptionalTasteAndPhoneEnabled(
+            normalizedUser.uid,
+            normalizedEmail
+          );
           const safeKey = encodeEmailForRtdbKey(normalizedEmail);
           const payload: Record<string, any> = {
             uid: normalizedUser.uid,
@@ -310,9 +345,10 @@ export function saveAuthUser(user: UserAuthProfile): void {
             avatar: normalizedUser.avatar || '🐭',
             avatarId: normalizedUser.avatarId || 'm_ty',
             gender: normalizedUser.gender || 'male',
-            phone: normalizedUser.phone || '',
+            phone: allowOptionalTasteAndPhone ? normalizedUser.phone || '' : '',
             residentType: normalizedUser.residentType || 'student_sp2',
-            tastePreferences: normalizedUser.tastePreferences || [],
+            tastePreferences: allowOptionalTasteAndPhone ? normalizedUser.tastePreferences || [] : [],
+            consentConfirmedVersion: normalizedUser.consentConfirmedVersion || null,
             createdAt: normalizedUser.createdAt || Date.now(),
             lastActiveAt: Date.now(),
           };
@@ -396,14 +432,20 @@ export function createOrUpdateAuthUserFromGoogle(googleData: {
       existingFromAdmin
   );
 
+  const preferredUid = isVerifiedFirebaseAuthUid(googleData.uid)
+    ? googleData.uid
+    : isVerifiedFirebaseAuthUid(baseProfile?.uid)
+    ? baseProfile!.uid!
+    : googleData.uid || baseProfile?.uid;
+
   const updated: UserAuthProfile = {
     isLoggedIn: true,
-    uid: getCanonicalUidForEmail(cleanEmail, googleData.uid || baseProfile?.uid),
+    uid: getCanonicalUidForEmail(cleanEmail, preferredUid),
     email: cleanEmail,
     displayName: baseProfile?.displayName || cleanDisplayName,
-    nickname: baseProfile?.merchantPlaceName || baseProfile?.nickname || cleanDisplayName,
+    nickname: baseProfile?.nickname || cleanDisplayName,
     gender: baseProfile?.gender || 'male',
-    avatar: baseProfile?.isMerchantAccount ? '🏪' : baseProfile?.avatar || '🐭',
+    avatar: baseProfile?.avatar === '🏪' ? '🐭' : baseProfile?.avatar || '🐭',
     avatarId: baseProfile?.avatarId || 'm_ty',
     phone: baseProfile?.phone || '',
     residentType: (baseProfile?.residentType as UserResidentType) || 'student_sp2',
@@ -412,10 +454,6 @@ export function createOrUpdateAuthUserFromGoogle(googleData: {
     photoURL: googleData.photoURL || baseProfile?.photoURL,
     hasCompletedProfile: true,
     isFirstTimeSetupDone: alreadyRegistered,
-    isMerchantAccount: baseProfile?.isMerchantAccount,
-    merchantPlaceId: baseProfile?.merchantPlaceId,
-    merchantPlaceName: baseProfile?.merchantPlaceName,
-    merchantVerifiedCode: baseProfile?.merchantVerifiedCode,
     createdAt: baseProfile?.createdAt || Date.now(),
   };
 
@@ -431,9 +469,14 @@ export function createOrUpdateAuthUserFromGoogle(googleData: {
             if (snap.exists()) {
               const cloudMember = snap.val();
               if (cloudMember && cloudMember.email) {
+                const bestCloudOrLocalUid = isVerifiedFirebaseAuthUid(updated.uid)
+                  ? updated.uid
+                  : isVerifiedFirebaseAuthUid(cloudMember.uid)
+                  ? cloudMember.uid
+                  : updated.uid || cloudMember.uid;
                 const restored: UserAuthProfile = {
                   ...updated,
-                  uid: getCanonicalUidForEmail(cleanEmail, cloudMember.uid || updated.uid),
+                  uid: getCanonicalUidForEmail(cleanEmail, bestCloudOrLocalUid),
                   displayName: cloudMember.displayName || cloudMember.nickname || updated.displayName,
                   nickname: cloudMember.nickname || cloudMember.displayName || updated.nickname,
                   avatar: cloudMember.avatar || updated.avatar,
@@ -645,7 +688,10 @@ async function parseOAuthHashAndSignIn(rawHash: string): Promise<{
         const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const credential = GoogleAuthProvider.credential(idToken || null, accessToken);
-        await signInWithCredential(auth, credential);
+        const credRes = await signInWithCredential(auth, credential);
+        if (credRes?.user?.uid && googleUser) {
+          googleUser.uid = credRes.user.uid;
+        }
       } catch (fbErr) {
         console.warn('Firebase credential sync warning:', fbErr);
       }
@@ -713,13 +759,22 @@ export async function checkRedirectAuthResult(): Promise<UserAuthProfile | null>
         console.warn('UserInfo fetch fallback to JWT user:', err);
       }
 
-      // Đồng bộ ngầm sang Firebase Authentication (IndexedDB)
+      // Đồng bộ ngầm sang Firebase Authentication (IndexedDB) & cập nhật đúng Firebase Auth UID
       if (firebaseConfig.apiKey) {
         try {
           const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
           const auth = getAuth(app);
           const credential = GoogleAuthProvider.credential(idToken || null, accessToken);
-          await signInWithCredential(auth, credential);
+          const credRes = await signInWithCredential(auth, credential);
+          if (credRes?.user?.uid && finalUser) {
+            finalUser = createOrUpdateAuthUserFromGoogle({
+              uid: credRes.user.uid,
+              email: credRes.user.email || finalUser.email || 'thuckhach@gmail.com',
+              displayName:
+                credRes.user.displayName || finalUser.displayName || 'Thực Khách',
+              photoURL: credRes.user.photoURL || finalUser.photoURL || undefined,
+            });
+          }
         } catch (fbErr) {
           console.warn('Firebase credential sync warning:', fbErr);
         }
@@ -754,31 +809,58 @@ export async function checkRedirectAuthResult(): Promise<UserAuthProfile | null>
       console.warn('getRedirectResult warning:', redirErr);
     }
 
-    // 3. Nếu người dùng chưa chủ động bấm Đăng xuất mà localStorage bị trống, tự động khôi phục từ Firebase IndexedDB
-    if (localStorage.getItem(LOGGED_OUT_KEY) !== '1' && !getStoredAuthUser()) {
-      return await new Promise<UserAuthProfile | null>((resolve) => {
+    // 3. Nếu người dùng chưa chủ động bấm Đăng xuất:
+    // - Nếu localStorage bị trống: tự động khôi phục từ Firebase IndexedDB.
+    // - Nếu localStorage đã có user nhưng uid đang là Google sub (21 chữ số) hoặc uid_...: đồng bộ sang Firebase Auth UID thật (28 ký tự).
+    if (localStorage.getItem(LOGGED_OUT_KEY) !== '1') {
+      const existingStored = getStoredAuthUser();
+      if (!existingStored) {
+        return await new Promise<UserAuthProfile | null>((resolve) => {
+          const unsubscribe = onAuthStateChanged(
+            auth,
+            (fbUser: User | null) => {
+              unsubscribe();
+              if (fbUser && localStorage.getItem(LOGGED_OUT_KEY) !== '1') {
+                const restored = createOrUpdateAuthUserFromGoogle({
+                  uid: fbUser.uid,
+                  email: fbUser.email || 'thuckhach@gmail.com',
+                  displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Thực Khách',
+                  photoURL: fbUser.photoURL || undefined,
+                });
+                resolve(restored);
+              } else {
+                resolve(null);
+              }
+            },
+            () => {
+              unsubscribe();
+              resolve(null);
+            }
+          );
+        });
+      } else {
         const unsubscribe = onAuthStateChanged(
           auth,
           (fbUser: User | null) => {
             unsubscribe();
-            if (fbUser && localStorage.getItem(LOGGED_OUT_KEY) !== '1') {
-              const restored = createOrUpdateAuthUserFromGoogle({
+            if (
+              fbUser?.uid &&
+              existingStored.email &&
+              (!fbUser.email ||
+                fbUser.email.trim().toLowerCase() === existingStored.email.trim().toLowerCase()) &&
+              existingStored.uid !== fbUser.uid
+            ) {
+              saveAuthUser({
+                ...existingStored,
                 uid: fbUser.uid,
-                email: fbUser.email || 'thuckhach@gmail.com',
-                displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Thực Khách',
-                photoURL: fbUser.photoURL || undefined,
               });
-              resolve(restored);
-            } else {
-              resolve(null);
             }
           },
           () => {
             unsubscribe();
-            resolve(null);
           }
         );
-      });
+      }
     }
   } catch (err: any) {
     console.warn('Lỗi kiểm tra trạng thái xác thực:', err?.message || err);

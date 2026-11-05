@@ -36,6 +36,7 @@ import {
   getPlaceDisplayTypeBadge,
   isEntertainmentOrServicePlace,
 } from '@/lib/place-map-utils';
+import { resolvePlaceContentProfile } from '@/lib/map/map-category-registry';
 
 const QUICK_PLACE_TAGS = [
   '😋 Đồ ăn tươi ngon',
@@ -161,8 +162,31 @@ export function PlaceModal({
   }, [activePlace?.id]);
 
   const safeMenu = activePlace?.menu || [];
-  const isNonFoodVenue = isEntertainmentOrServicePlace(activePlace);
-  const isCivicLandmark = Boolean(activePlace?.id?.startsWith('osm_'));
+  const profileMeta = useMemo(
+    () =>
+      resolvePlaceContentProfile({
+        subcategoryId: activePlace?.subcategoryId,
+        parentCategoryId: activePlace?.parentCategoryId,
+        contentProfile: activePlace?.contentProfile,
+        catalogMode: activePlace?.catalogMode,
+        catalogEnabled: activePlace?.catalogEnabled,
+      }),
+    [
+      activePlace?.subcategoryId,
+      activePlace?.parentCategoryId,
+      activePlace?.contentProfile,
+      activePlace?.catalogMode,
+      activePlace?.catalogEnabled,
+    ]
+  );
+  const isCivicLandmark =
+    Boolean(activePlace?.id?.startsWith('osm_')) || profileMeta.forbidsMenuAndOrdering;
+  const isRetailPlace = profileMeta.contentProfile === 'retail';
+  const isNonFoodVenue =
+    isRetailPlace ||
+    profileMeta.contentProfile === 'service' ||
+    profileMeta.contentProfile === 'entertainment' ||
+    isEntertainmentOrServicePlace(activePlace);
 
   const availableMenuCategories = useMemo(() => {
     const counts = { an: 0, nhau: 0, uong: 0 };
@@ -379,7 +403,69 @@ export function PlaceModal({
             ) : null}
           </div>
 
-          {/* 3 TỌA ĐỘ TRỌNG YẾU (Hoặc Thông tin Dịch vụ cho Quán Vui chơi / Dịch vụ - Mục 27) */}
+          {/* THÔNG TIN CHỨC NĂNG CƠ QUAN / TRƯỜNG HỌC / ĐỊA DANH (KHÔNG BAO GIỜ HIỆN MENU QUÁN ĂN) */}
+          {isCivicLandmark && (
+            <div
+              data-testid="place-modal-civic-info-card"
+              className="my-3 p-3.5 rounded-xl"
+              style={{
+                background: 'rgba(15, 23, 42, 0.55)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+              }}
+            >
+              <div className="flex items-center gap-2 mb-2 text-sky-300 font-bold text-xs uppercase tracking-wider">
+                <ShieldCheck size={14} className="text-sky-400" />
+                <span>
+                  {profileMeta.contentProfile === 'government'
+                    ? 'Thông tin Cơ quan Hành chính / Công an'
+                    : profileMeta.contentProfile === 'education'
+                    ? 'Thông tin Trường học / Cơ sở Giáo dục'
+                    : 'Thông tin Địa danh / Tiện ích Công cộng'}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-200">
+                <div>
+                  <span className="text-slate-400">Phân loại chuẩn: </span>
+                  <strong className="text-white">{typeBadge}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400">
+                    {profileMeta.contentProfile === 'government' ? 'Giờ làm việc: ' : 'Giờ mở cửa: '}
+                  </span>
+                  <strong className="text-emerald-300">
+                    {activePlace.openHours || 'Theo giờ hành chính'}
+                  </strong>
+                </div>
+                {activePlace.educationLevel && (
+                  <div>
+                    <span className="text-slate-400">Cấp học / Đào tạo: </span>
+                    <strong className="text-amber-300">{activePlace.educationLevel}</strong>
+                  </div>
+                )}
+                {activePlace.agencyFunction && (
+                  <div className="sm:col-span-2">
+                    <span className="text-slate-400">Chức năng: </span>
+                    <span className="text-slate-100">{activePlace.agencyFunction}</span>
+                  </div>
+                )}
+                {activePlace.website && (
+                  <div className="sm:col-span-2">
+                    <span className="text-slate-400">Website: </span>
+                    <a
+                      href={activePlace.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sky-400 underline font-semibold"
+                    >
+                      {activePlace.website}
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 3 TỌA ĐỘ TRỌNG YẾU (Hoặc Thông tin Sản phẩm / Dịch vụ cho Cửa hàng / Dịch vụ - Mục 27) */}
           {!isCivicLandmark && (
             <div className="golden-coords-grid">
               {/* 1. Loại hình / Dịch vụ hoặc Cự ly */}
@@ -387,7 +473,11 @@ export function PlaceModal({
                 <div className="coord-card-head">
                   <MapPin size={15} className="text-amber-400" />
                   <span className="coord-card-label">
-                    {isNonFoodVenue ? 'DỊCH VỤ CHÍNH' : 'CỰ LY THỰC TẾ'}
+                    {isRetailPlace
+                      ? 'LOẠI HÌNH CỬA HÀNG'
+                      : isNonFoodVenue
+                      ? 'DỊCH VỤ CHÍNH'
+                      : 'CỰ LY THỰC TẾ'}
                   </span>
                 </div>
                 <strong className="coord-card-value">
@@ -415,10 +505,12 @@ export function PlaceModal({
                   </span>
                 </div>
                 <strong className="coord-card-value" style={{ color: amenity.badgeColor }}>
-                  {isNonFoodVenue ? activePlace.openHours || '08:00 - 24:00' : amenity.label}
+                  {isNonFoodVenue ? activePlace.openHours || '08:00 - 22:00' : amenity.label}
                 </strong>
                 <span className="coord-card-sub">
-                  {activePlace.serviceMode === 'delivery_only'
+                  {isRetailPlace
+                    ? 'Cửa hàng & tư vấn trực tiếp'
+                    : activePlace.serviceMode === 'delivery_only'
                     ? 'Bếp chuyên ship tận nơi'
                     : activePlace.serviceMode === 'both'
                     ? 'Phục vụ tại chỗ & ship'
@@ -431,13 +523,25 @@ export function PlaceModal({
                 <div className="coord-card-head">
                   <DollarSign size={15} className="text-emerald-400" />
                   <span className="coord-card-label">
-                    {isNonFoodVenue ? 'MỨC GIÁ' : 'TẦM GIÁ / NGƯỜI'}
+                    {isRetailPlace
+                      ? 'DANH MỤC BÁN LẺ'
+                      : isNonFoodVenue
+                      ? 'MỨC GIÁ'
+                      : 'TẦM GIÁ / NGƯỜI'}
                   </span>
                 </div>
                 <strong className="coord-card-value text-amber-300">
-                  {isNonFoodVenue ? activePlace.priceRange || perPerson : perPerson}
+                  {isRetailPlace
+                    ? 'Sản phẩm & Phụ kiện'
+                    : isNonFoodVenue
+                    ? activePlace.priceRange || perPerson
+                    : perPerson}
                 </strong>
-                <span className="coord-card-sub">Niêm yết: {activePlace.priceRange}</span>
+                <span className="coord-card-sub">
+                  {isRetailPlace
+                    ? 'Liên hệ báo giá chính hãng'
+                    : `Niêm yết: ${activePlace.priceRange}`}
+                </span>
               </div>
             </div>
           )}
@@ -493,21 +597,24 @@ export function PlaceModal({
           )}
 
           {/* ==============================================================
-              TRONG QUÁN CÓ GÌ? (MỤC 28)
-              Search trong quán: "Tìm món trong quán…"
-              Filter: [ Ăn ] [ Nhậu ] [ Uống ]
-              Danh sách món / dịch vụ + giá
+              MODULE DANH SÁCH TÙY THEO CONTENT PROFILE (MỤC 3 & 4)
+              - Food/Drink: Thực đơn quán
+              - Retail (Cửa hàng điện thoại...): Sản phẩm & Phụ kiện
+              - Service / Entertainment: Dịch vụ & Bảng giá
+              - Government / Education / Landmark: Ẩn hoàn toàn
               ============================================================== */}
-          {!isCivicLandmark && safeMenu.length > 0 && (
-            <div className="golden-menu-dropdown mt-3">
+          {!isCivicLandmark && profileMeta.catalogEnabled && safeMenu.length > 0 && (
+            <div className="golden-menu-dropdown mt-3" data-testid="place-modal-catalog-section">
               <div className="flex flex-col gap-2.5 pb-3 border-b border-white/10">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <UtensilsCrossed size={14} className="text-amber-400" />
                     <span className="font-bold text-xs uppercase tracking-wider text-amber-300">
-                      {isNonFoodVenue
-                        ? `Bảng Dịch Vụ & Giá Niêm Yết (${displayMenu.length})`
-                        : `Trong quán có gì? (${displayMenu.length}/${safeMenu.length} món)`}
+                      {isRetailPlace
+                        ? `Sản phẩm & Phụ kiện (${displayMenu.length})`
+                        : isNonFoodVenue
+                        ? `Dịch vụ & Bảng giá (${displayMenu.length})`
+                        : `Thực đơn quán (${displayMenu.length}/${safeMenu.length} món)`}
                     </span>
                   </div>
 
@@ -548,13 +655,17 @@ export function PlaceModal({
                   )}
                 </div>
 
-                {/* Search trong quán: "Tìm món trong quán…" */}
+                {/* Search trong quán */}
                 <div className="golden-menu-search w-full">
                   <Search size={13} className="text-slate-400 shrink-0" />
                   <input
                     type="text"
                     placeholder={
-                      isNonFoodVenue ? 'Tìm dịch vụ trong quán…' : 'Tìm món trong quán…'
+                      isRetailPlace
+                        ? 'Tìm sản phẩm, phụ kiện…'
+                        : isNonFoodVenue
+                        ? 'Tìm dịch vụ, bảng giá…'
+                        : 'Tìm món trong quán…'
                     }
                     value={menuSearch}
                     onChange={(e) => setMenuSearch(e.target.value)}

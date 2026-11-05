@@ -23,7 +23,8 @@ import {
   Store,
 } from 'lucide-react';
 import { formatTypography } from '@/lib/utils';
-import { getPlaceMainCategories } from '@/lib/place-map-utils';
+import { getPlaceDisplayTypeBadge } from '@/lib/place-map-utils';
+import { resolvePlaceContentProfile } from '@/lib/map/map-category-registry';
 
 export interface PlaceCardProps {
   place: Place;
@@ -80,67 +81,14 @@ function getPlaceShortAddress(place: Place): string {
 }
 
 /**
- * Mục 13: Chỉ hiện 1 category chính ngắn gọn (VD: Ăn vặt, Bi-a, Cafe, Vui chơi, Nhậu...)
+ * Hiển thị chuẩn đồng bộ 3 cấp: Loại chi tiết · Tag bổ sung (VD: "Ăn vặt · Ăn đêm · Có giao hàng")
  */
 function getPrimaryShortCategory(place: Place, sectorTag?: string): { primary: string; extraCount: number } {
-  const combined = `${place.name || ''} ${place.tagline || ''} ${place.subcategory || ''} ${(place.tags || []).join(' ')}`.toLowerCase();
-  const mainCats = getPlaceMainCategories(place, sectorTag);
-  const extraCount = Math.max(0, mainCats.length - 1);
-
-  if (place.id?.startsWith('osm_') || sectorTag === 'dia-danh') {
-    if (combined.includes('đh ') || combined.includes('đại học') || combined.includes('cao đẳng') || combined.includes('trường')) {
-      return { primary: 'Trường học', extraCount: 0 };
-    }
-    if (combined.includes('hồ ') || combined.includes('quảng trường') || combined.includes('công viên')) {
-      return { primary: 'Địa danh', extraCount: 0 };
-    }
-    return { primary: 'Tiện ích', extraCount: 0 };
-  }
-
-  if (place.subcategory === 'Bi-a' || combined.includes('bi-a') || combined.includes('billiards')) {
-    return { primary: 'Bi-a', extraCount };
-  }
-  if (place.subcategory === 'Game' || combined.includes('cyber') || combined.includes('quán game')) {
-    return { primary: 'Game', extraCount };
-  }
-  if (place.subcategory === 'Karaoke' || combined.includes('karaoke')) {
-    return { primary: 'Karaoke', extraCount };
-  }
-  if (place.id === 'khu-vui-choi-happi-kid' || combined.includes('khu vui chơi') || place.subcategory === 'Giải trí') {
-    return { primary: 'Vui chơi', extraCount };
-  }
-  if (place.subcategory === 'Điện thoại' || sectorTag === 'dien-thoai' || combined.includes('điện thoại')) {
-    return { primary: 'Điện thoại', extraCount: 0 };
-  }
-  if (place.subcategory === 'Làm đẹp' || combined.includes('hair') || combined.includes('nail') || combined.includes('spa')) {
-    return { primary: 'Làm đẹp', extraCount: 0 };
-  }
-  if (place.subcategory === 'Tạp hóa' || combined.includes('tạp hóa') || combined.includes('siêu thị')) {
-    return { primary: 'Tạp hóa', extraCount: 0 };
-  }
-
-  const style = getPlaceStyleGroup(place);
-  if (style === 'nhau-lau') {
-    if (combined.includes('lẩu') || combined.includes('nướng')) return { primary: 'Lẩu · Nướng', extraCount };
-    return { primary: 'Nhậu', extraCount };
-  }
-  if (style === 'uong') {
-    if (combined.includes('trà sữa')) return { primary: 'Trà sữa', extraCount };
-    return { primary: 'Cafe', extraCount };
-  }
-  if (style === 'an-vat') {
-    return { primary: 'Ăn vặt', extraCount };
-  }
-  if (style === 'vui-choi') {
-    return { primary: 'Vui chơi', extraCount };
-  }
-  if (combined.includes('phở') || combined.includes('bún')) {
-    return { primary: 'Bún · Phở', extraCount };
-  }
-  if (combined.includes('bánh mì') || combined.includes('bánh cuốn')) {
-    return { primary: 'Bánh mì', extraCount };
-  }
-  return { primary: 'Cơm · Món', extraCount };
+  const taxonomyLine = getPlaceDisplayTypeBadge(place, sectorTag);
+  return {
+    primary: taxonomyLine || 'Quán Xuân Hòa',
+    extraCount: 0,
+  };
 }
 
 /**
@@ -160,12 +108,31 @@ function getCompactLocationText(place: Place): string {
 }
 
 /**
- * Mục 15 & 43: Giá ngắn gọn 1 dòng (VD: 20k–35k, Từ 55k, 60k/giờ), không lặp chữ "Món từ" hay "Khoảng giá"
+ * Mục 15 & 43: Giá ngắn gọn 1 dòng (VD: 20k–35k, Từ 55k, 60k/giờ), hoặc nhãn chuẩn theo ContentProfile
  */
 function getCompactPriceLabel(place: Place): string {
+  const profile = resolvePlaceContentProfile({
+    subcategoryId: place.subcategoryId,
+    parentCategoryId: place.parentCategoryId,
+    contentProfile: place.contentProfile,
+    catalogMode: place.catalogMode,
+    catalogEnabled: place.catalogEnabled,
+  });
+
+  if (profile.forbidsMenuAndOrdering) {
+    if (profile.contentProfile === 'government') return 'Cơ quan hành chính';
+    if (profile.contentProfile === 'education') return place.educationLevel || 'Trường học';
+    return 'Địa danh Xuân Hòa';
+  }
+
   if (place.id?.startsWith('osm_') || (place.minPrice === 0 && place.maxPrice === 0)) {
     return 'Công cộng';
   }
+
+  if (profile.contentProfile === 'retail') {
+    return profile.catalogEnabled ? 'Sản phẩm & Phụ kiện' : 'Cửa hàng bán lẻ';
+  }
+
   const raw = (place.priceRange || '').trim();
   if (raw.toLowerCase().includes('/giờ') || raw.toLowerCase().includes('/h')) {
     if (place.minPrice > 0 && place.maxPrice > place.minPrice) {

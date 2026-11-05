@@ -53,6 +53,8 @@ import { UserGuideView } from '@/components/UserGuideView';
 import { AboutView } from '@/components/AboutView';
 import { ComingSoonView } from '@/components/ComingSoonView';
 import { AdminDashboardView } from '@/components/AdminDashboardView';
+import { LegalPagesView } from '@/components/LegalPagesView';
+import { LegalPageSlug, hasValidCurrentConsent } from '@/lib/legal-compliance';
 import { SettingsMenuModal } from '@/components/SettingsMenuModal';
 import { GoogleGIcon } from '@/components/GoogleGIcon';
 import { AuthModal } from '@/components/AuthModal';
@@ -76,34 +78,65 @@ import {
   syncUserToAdminRegistry,
   getMemberRestrictionStatus,
   initAdminCloudSync,
-  getPrimaryClaimedPlaceForUser,
   getEffectiveAdminRoleInfo,
   getLoggedAdminSession,
   ensureCloudPermissionsSyncedForEmail,
 } from '@/lib/admin-store';
 
-export type AppView = 'spin' | 'places' | 'map' | 'dishes' | 'guide' | 'about' | 'coming-soon' | 'admin';
+export type AppView =
+  | 'spin'
+  | 'places'
+  | 'map'
+  | 'dishes'
+  | 'guide'
+  | 'about'
+  | 'coming-soon'
+  | 'admin'
+  | 'terms'
+  | 'privacy'
+  | 'community-guidelines'
+  | 'data-rights';
 
 function parseHashToView(): AppView {
   if (typeof window === 'undefined') return 'spin';
   const hash = window.location.hash.toLowerCase();
   const pathname = (window.location.pathname || '').toLowerCase();
 
-  // 1. Ưu tiên kiểm tra hash tường minh trước để khi từ /quanly nhảy sang #/bandoso luôn chuyển trang tức thì
+  // 0. Ưu tiên kiểm tra 4 trang pháp lý công khai (/terms, /privacy, /community-guidelines, /data-rights)
   if (
-    hash.includes('bandoso') ||
-    hash.includes('demo-ban-do') ||
-    hash.includes('ban-do') ||
-    hash.includes('map') ||
-    hash.includes('chu-quan') ||
-    hash.includes('merchant') ||
-    hash.includes('claim=') ||
-    hash.includes('pick=') ||
-    hash.includes('flylat=') ||
-    hash.includes('select=')
+    pathname === '/terms' ||
+    pathname === '/terms/' ||
+    hash === '#/terms' ||
+    hash.startsWith('#/terms?')
   ) {
-    return 'map';
+    return 'terms';
   }
+  if (
+    pathname === '/privacy' ||
+    pathname === '/privacy/' ||
+    hash === '#/privacy' ||
+    hash.startsWith('#/privacy?')
+  ) {
+    return 'privacy';
+  }
+  if (
+    pathname === '/community-guidelines' ||
+    pathname === '/community-guidelines/' ||
+    hash === '#/community-guidelines' ||
+    hash.startsWith('#/community-guidelines?')
+  ) {
+    return 'community-guidelines';
+  }
+  if (
+    pathname === '/data-rights' ||
+    pathname === '/data-rights/' ||
+    hash === '#/data-rights' ||
+    hash.startsWith('#/data-rights?')
+  ) {
+    return 'data-rights';
+  }
+
+  // 1. Ưu tiên kiểm tra hash tường minh trước (kiểm tra admin/quanly trước 'map' để #/admin?tab=maps không bị nhảy nhầm sang #/bandoso)
   if (
     hash.includes('quanly') ||
     hash.includes('quan-ly') ||
@@ -111,6 +144,17 @@ function parseHashToView(): AppView {
     hash.includes('quan-tri')
   ) {
     return 'admin';
+  }
+  if (
+    hash.includes('bandoso') ||
+    hash.includes('demo-ban-do') ||
+    hash.includes('ban-do') ||
+    hash.includes('map') ||
+    hash.includes('pick=') ||
+    hash.includes('flylat=') ||
+    hash.includes('select=')
+  ) {
+    return 'map';
   }
   if (hash.includes('coming-soon') || hash.includes('sap-ra-mat') || hash.includes('teaser')) {
     return 'coming-soon';
@@ -216,7 +260,10 @@ export default function Home() {
               }
               setCurrentView('spin');
             }
-          } else if (!user.isFirstTimeSetupDone) {
+          } else if (
+            !user.isFirstTimeSetupDone ||
+            !hasValidCurrentConsent(user.uid, user.email)
+          ) {
             setAuthModalStep(2);
             setIsAuthModalOpen(true);
           }
@@ -250,18 +297,42 @@ export default function Home() {
 
   const navigateTo = useCallback((view: AppView) => {
     setCurrentView(view);
-    const hashMap: Record<AppView, string> = {
-      spin: '#/',
-      places: '#/quan-an',
-      map: '#/bandoso',
-      dishes: '#/quan-an',
-      guide: '#/cach-su-dung',
-      about: '#/gioi-thieu',
-      'coming-soon': '#/sap-ra-mat',
-      admin: '#/quanly',
-    };
+    const legalSlugs: LegalPageSlug[] = [
+      'terms',
+      'privacy',
+      'community-guidelines',
+      'data-rights',
+    ];
     if (typeof window !== 'undefined') {
-      if (view === 'map' && window.location.hash.startsWith('#/bandoso?')) {
+      if (legalSlugs.includes(view as LegalPageSlug)) {
+        window.history.pushState({}, '', `/${view}`);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      const hashMap: Record<AppView, string> = {
+        spin: '#/',
+        places: '#/quan-an',
+        map: '#/bandoso',
+        dishes: '#/quan-an',
+        guide: '#/cach-su-dung',
+        about: '#/gioi-thieu',
+        'coming-soon': '#/sap-ra-mat',
+        admin: '#/quanly',
+        terms: '#/terms',
+        privacy: '#/privacy',
+        'community-guidelines': '#/community-guidelines',
+        'data-rights': '#/data-rights',
+      };
+      const curPath = (window.location.pathname || '').toLowerCase();
+      if (
+        curPath === '/terms' ||
+        curPath === '/privacy' ||
+        curPath === '/community-guidelines' ||
+        curPath === '/data-rights'
+      ) {
+        window.history.pushState({}, '', `/${hashMap[view]}`);
+      } else if (view === 'map' && window.location.hash.startsWith('#/bandoso?')) {
         // Giữ nguyên query params (?select=...&flyLat=...) khi chuyển sang Bản Đồ Số
       } else {
         window.location.hash = hashMap[view];
@@ -278,6 +349,7 @@ export default function Home() {
       setCurrentView('map');
     };
     window.addEventListener('hashchange', handleHash);
+    window.addEventListener('popstate', handleHash);
     window.addEventListener('xuanhoa_open_internal_map', handleOpenInternalMap);
     // Prefetch dữ liệu bản đồ số sau 1.2s để khi bấm [🗺 Bản đồ số] mở tức thì 0ms
     const timer = window.setTimeout(() => {
@@ -285,6 +357,7 @@ export default function Home() {
     }, 1200);
     return () => {
       window.removeEventListener('hashchange', handleHash);
+      window.removeEventListener('popstate', handleHash);
       window.removeEventListener('xuanhoa_open_internal_map', handleOpenInternalMap);
       window.clearTimeout(timer);
     };
@@ -1210,26 +1283,17 @@ export default function Home() {
                 >
                   <User size={22} className="text-amber-400" />
                 </button>
-              ) : (() => {
-                const merchantShop = getPrimaryClaimedPlaceForUser(authUser);
-                const isShopAcc = Boolean(merchantShop || authUser.isMerchantAccount);
-                const displayTitle = merchantShop?.place.name || authUser.merchantPlaceName || authUser.nickname;
-                return (
-                  <button 
-                    type="button"
-                    className="header-icon-action-btn header-user-avatar-btn"
-                    onClick={() => setIsUserProfileModalOpen(true)}
-                    title={
-                      isShopAcc
-                        ? `🏪 Nick Quán Chính Chủ: ${displayTitle}`
-                        : `${authUser.nickname} · ${t('dock_profile')}`
-                    }
-                    aria-label={t('dock_profile')}
-                  >
-                    <span className="text-2xl leading-none">{isShopAcc ? '🏪' : authUser.avatar || '🐱'}</span>
-                  </button>
-                );
-              })()}
+              ) : (
+                <button 
+                  type="button"
+                  className="header-icon-action-btn header-user-avatar-btn"
+                  onClick={() => setIsUserProfileModalOpen(true)}
+                  title={`${authUser.nickname} · ${t('dock_profile')}`}
+                  aria-label={t('dock_profile')}
+                >
+                  <span className="text-2xl leading-none">{authUser.avatar || '🐱'}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1989,6 +2053,17 @@ export default function Home() {
         onGoToPlaces={() => navigateTo('places')}
       />
     )}
+
+    {(currentView === 'terms' ||
+      currentView === 'privacy' ||
+      currentView === 'community-guidelines' ||
+      currentView === 'data-rights') && (
+      <LegalPagesView
+        activeSlug={currentView}
+        onSelectSlug={(slug) => navigateTo(slug)}
+        onBackToApp={() => navigateTo('spin')}
+      />
+    )}
   </main>
 
   {/* Winner Modal (Món Ăn) */}
@@ -2099,6 +2174,7 @@ export default function Home() {
       user={authUser}
       profile={profile}
       onOpenScoreboard={() => setIsScoreboardOpen(true)}
+      onNavigateLegalPage={(slug) => navigateTo(slug)}
       onEditProfile={() => {
         setAuthModalStep(2);
         setIsAuthModalOpen(true);
@@ -2142,7 +2218,55 @@ export default function Home() {
         {t('brand_domain')}<span>{t('brand_suffix')}</span>
       </a>
     </div>
-    <div className="site-footer-links">
+    <div className="site-footer-links flex flex-wrap items-center justify-center gap-3">
+      <a
+        href="/terms"
+        data-testid="footer-link-terms"
+        onClick={(e) => {
+          e.preventDefault();
+          navigateTo('terms');
+        }}
+        className="text-xs text-slate-400 hover:text-amber-400 underline-offset-2 hover:underline"
+      >
+        Điều khoản sử dụng
+      </a>
+      <span className="text-slate-600">·</span>
+      <a
+        href="/privacy"
+        data-testid="footer-link-privacy"
+        onClick={(e) => {
+          e.preventDefault();
+          navigateTo('privacy');
+        }}
+        className="text-xs text-slate-400 hover:text-amber-400 underline-offset-2 hover:underline"
+      >
+        Chính sách bảo mật
+      </a>
+      <span className="text-slate-600">·</span>
+      <a
+        href="/community-guidelines"
+        data-testid="footer-link-community"
+        onClick={(e) => {
+          e.preventDefault();
+          navigateTo('community-guidelines');
+        }}
+        className="text-xs text-slate-400 hover:text-amber-400 underline-offset-2 hover:underline"
+      >
+        Quy định cộng đồng
+      </a>
+      <span className="text-slate-600">·</span>
+      <a
+        href="/data-rights"
+        data-testid="footer-link-data-rights"
+        onClick={(e) => {
+          e.preventDefault();
+          navigateTo('data-rights');
+        }}
+        className="text-xs text-slate-400 hover:text-amber-400 underline-offset-2 hover:underline"
+      >
+        Quyền dữ liệu cá nhân
+      </a>
+      <span className="text-slate-600">·</span>
       <span className="site-footer-rights">
         © 2026 <strong>MinhTT</strong>. All rights reserved.
       </span>

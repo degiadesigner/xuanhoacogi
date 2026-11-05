@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { xuanHoaPlaces, Place } from '@/lib/places-xuanhoa';
-import { getActivePublicPlaces, getAdminState } from '@/lib/admin-store';
-import { VERIFIED_OSM_POIS, haversineDistanceMeters } from '@/lib/map/map-data';
+import { getActivePublicPlaces, getAdminState, getAllManagedPlaces } from '@/lib/admin-store';
+import { getManagedOsmLandmarks, haversineDistanceMeters } from '@/lib/map/map-data';
 import {
   MAIN_PLACE_CATEGORIES,
   MainPlaceCategoryKey,
@@ -68,60 +68,90 @@ const CATEGORY_DROPDOWN_ITEMS: Array<{
 
 function buildLandmarkPlaces(): Place[] {
   const adminState = getAdminState();
+  const osmPlaces: Place[] = getManagedOsmLandmarks(false).map((poi): Place => {
+    const ov = adminState.places?.[poi.id];
+    const name = ov?.name || poi.name;
+    const address = ov?.address || poi.address;
+    const tagline = ov?.tagline || poi.metadata?.subType || 'Địa danh & Tiện ích Xuân Hòa';
+    const phone = ov?.phone || poi.phone;
+    const openHours = ov?.openHours || poi.openHours || 'Mở cửa tự do';
+    const mapsUrl = ov?.mapsUrl || poi.metadata?.mapsUrl;
+    const lat = typeof ov?.lat === 'number' ? ov.lat : poi.lat;
+    const lng = typeof ov?.lng === 'number' ? ov.lng : poi.lng;
 
-  return VERIFIED_OSM_POIS.filter((poi) => (adminState.places?.[poi.id] as any)?.isHidden !== true).map(
-    (poi): Place => {
-      const ov = adminState.places?.[poi.id];
-      const name = ov?.name || poi.name;
-      const address = ov?.address || poi.address;
-      const tagline = ov?.tagline || poi.metadata?.subType || 'Địa danh & Tiện ích Xuân Hòa';
-      const phone = ov?.phone || poi.phone;
-      const openHours = ov?.openHours || poi.openHours || 'Mở cửa tự do';
-      const mapsUrl = ov?.mapsUrl || poi.metadata?.mapsUrl;
-      const lat = typeof ov?.lat === 'number' ? ov.lat : poi.lat;
-      const lng = typeof ov?.lng === 'number' ? ov.lng : poi.lng;
+    return {
+      id: poi.id,
+      name,
+      tagline,
+      category: 'restaurant',
+      subcategory: poi.metadata?.subType || 'Địa danh',
+      parentCategoryId: poi.parentCategoryId,
+      subcategoryId: poi.subcategoryId,
+      extraTags: poi.extraTags,
+      contentProfile: poi.contentProfile,
+      catalogMode: poi.catalogMode,
+      catalogEnabled: poi.catalogEnabled,
+      website: poi.website,
+      educationLevel: poi.educationLevel,
+      agencyFunction: poi.agencyFunction,
+      address,
+      distance: poi.metadata?.distance || 'Phường Xuân Hòa',
+      zone: 'center',
+      rating: 4.9,
+      reviewCount: 120,
+      priceRange: poi.metadata?.priceRange || 'Công cộng',
+      minPrice: 0,
+      maxPrice: 0,
+      imageUrl: '/brand/brand-icon-mark.webp',
+      openHours,
+      serviceMode: 'dine_in_only',
+      phone,
+      mapsQuery: `${name} Xuân Hòa`,
+      mapsUrl,
+      lat: lat ?? undefined,
+      lng: lng ?? undefined,
+      rarity: 2,
+      quip: tagline,
+      signatureDish: {
+        id: `${poi.id}-sig`,
+        name: poi.metadata?.subType || tagline,
+        price: 0,
+      },
+      menu: [],
+      tags: [
+        poi.metadata?.subType || 'Địa danh',
+        ...(poi.extraTags || []),
+        poi.category === 'school'
+          ? 'Trường học'
+          : poi.category === 'public'
+          ? 'Cơ quan & Công cộng'
+          : 'Tiện ích',
+      ],
+    };
+  });
 
-      return {
-        id: poi.id,
-        name,
-        tagline,
-        category: 'restaurant',
-        subcategory: poi.metadata?.subType || 'Địa danh',
-        address,
-        distance: poi.metadata?.distance || 'Phường Xuân Hòa',
-        zone: 'center',
-        rating: 4.9,
-        reviewCount: 120,
-        priceRange: poi.metadata?.priceRange || 'Công cộng',
-        minPrice: 0,
-        maxPrice: 0,
-        imageUrl: '/brand/brand-icon-mark.webp',
-        openHours,
-        serviceMode: 'dine_in_only',
-        phone,
-        mapsQuery: `${name} Xuân Hòa`,
-        mapsUrl,
-        lat: lat ?? undefined,
-        lng: lng ?? undefined,
-        rarity: 2,
-        quip: tagline,
-        signatureDish: {
-          id: `${poi.id}-sig`,
-          name: poi.metadata?.subType || tagline,
-          price: 0,
-        },
-        menu: [],
-        tags: [
-          poi.metadata?.subType || 'Địa danh',
-          poi.category === 'school'
-            ? 'Trường học'
-            : poi.category === 'public'
-            ? 'Công viên & Hồ'
-            : 'Tiện ích',
-        ],
-      };
-    }
+  // Bổ sung các địa danh / cơ quan / trường học tùy chỉnh do Admin tạo
+  const customCivicItems = getAllManagedPlaces().filter(
+    (item) =>
+      item.status === 'active' &&
+      item.visibilityStatus === 'visible' &&
+      !adminState.places?.[item.place.id]?.pendingWebApproval &&
+      !adminState.places?.[item.place.id]?.pendingMapApproval &&
+      (item.sectorTag === 'dia-danh' ||
+        item.parentCategoryId === 'public' ||
+        item.parentCategoryId === 'education' ||
+        item.parentCategoryId === 'landmark' ||
+        item.parentCategoryId === 'health')
   );
+
+  const seenIds = new Set(osmPlaces.map((p) => p.id));
+  for (const item of customCivicItems) {
+    if (seenIds.has(item.place.id)) continue;
+    seenIds.add(item.place.id);
+    osmPlaces.push(item.place);
+  }
+
+  return osmPlaces;
 }
 
 interface IndexedPlaceEntry {
@@ -200,6 +230,7 @@ export function PlacesCatalogView({
         place.category,
         place.subcategory,
         typeBadge,
+        ...(place.extraTags || []),
         ...(place.tags || []),
       ]
         .filter(Boolean)

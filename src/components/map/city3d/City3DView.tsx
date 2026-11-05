@@ -37,9 +37,11 @@ import type { MapCategoryKey, PlaceLocation } from '@/lib/map/map-types';
 import { MAP_CATEGORIES, MAP_CATEGORY_BY_ID } from '@/lib/map/map-categories';
 import {
   doesPlaceMatchQuickFilter,
+  formatPlaceTaxonomyLine,
   getPlaceTaxonomyMeta,
   isDefaultVisibleMapLandmark,
   renderRegistryIcon,
+  resolvePlaceContentProfile,
 } from '@/lib/map/map-category-registry';
 import { MapQuickCategoryBar } from '@/components/map/MapQuickCategoryBar';
 import { XUANHOA_DEFAULT_CENTER } from '@/lib/map/map-config';
@@ -68,7 +70,7 @@ import {
   isPlaceHiddenOrDeletedInAdmin,
   logMapDebug,
   loginAdminWithCredentials,
-  verifyAndClaimPlaceWithCode,
+  resolvePlaceOrPendingProposalCoordinates,
 } from '@/lib/admin-store';
 import { renderCategoryIcon } from '@/components/map/MapCategoryPanel';
 import {
@@ -99,7 +101,11 @@ import {
   type MasterBuildingRecord,
 } from '@/lib/map/xuanhoa-master-data';
 import { reverseAreaName } from './city3d-live';
-import { createIconicLandmarksGroup, syncIconicLandmarksGroup } from './city3d-landmarks';
+import {
+  computeActiveLandmarkFootprints3D,
+  createIconicLandmarksGroup,
+  syncIconicLandmarksGroup,
+} from './city3d-landmarks';
 import {
   SKY,
   createSkyDome,
@@ -116,11 +122,14 @@ import {
 } from '@/lib/map/poi-lod';
 import {
   LANDMARK_BINDINGS_SYNC_EVENT,
+  TWELVE_3D_LANDMARKS_LIST,
   computeCornerSnapAlignment,
   computeThreePointAlignment,
+  getLandmarkBindings,
   getLandmarkEditAnchors,
   getOrCreateLandmarkBindingForPlace,
   type LandmarkBindingRecord,
+  type Twelve3DLandmarkOption,
 } from '@/lib/map/landmark-bindings';
 import {
   LandmarkAdminControls,
@@ -786,6 +795,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
   rLabelsRef.current = precomputedRoadLabels;
   const selectedPlaceRef = useRef<PlaceLocation | null>(selected);
   selectedPlaceRef.current = selected;
+  const placesRef = useRef<PlaceLocation[]>(places);
+  placesRef.current = places;
 
   // Lắng nghe sự kiện đồng bộ Landmark Bindings từ Admin (Phần 48)
   useEffect(() => {
@@ -907,32 +918,50 @@ export const City3DView: React.FC<City3DViewProps> = ({
   // Đồng bộ tức thì vị trí / hướng xoay / tỷ lệ & Gizmo của toàn bộ mô hình Landmark 3D theo Place & Binding (Phần 13, 21, 24, 48)
   useEffect(() => {
     if (!iconicLandmarksGroupRef.current || !originState) return;
+    const masterDataset = getLoadedMasterDataset();
+    const adminEditState =
+      isStrictSuperAdmin && selected && adminLandmarkMode3D
+        ? {
+            activePlaceId: selected.id,
+            mode: adminLandmarkMode3D,
+            subTool: directEditSubTool,
+            previewPlaceLatLng: pendingMoveCoords3D,
+            previewBindingPatch: previewBindingPatch3D,
+            threePointWorld: [
+              threePointState.pointA,
+              threePointState.pointB,
+              threePointState.pointC,
+            ]
+              .filter((pt): pt is [number, number] => Boolean(pt))
+              .map(([px, pz]) => ({
+                x: px,
+                y: getElevationAtLocal(px, -pz),
+                z: pz,
+              })),
+          }
+        : null;
     syncIconicLandmarksGroup({
       rootGroup: iconicLandmarksGroupRef.current,
       origin: originState,
       places,
-      masterDataset: getLoadedMasterDataset(),
-      adminEditState:
-        hasAdminAccess && selected && adminLandmarkMode3D
-          ? {
-              activePlaceId: selected.id,
-              mode: adminLandmarkMode3D,
-              subTool: directEditSubTool,
-              previewPlaceLatLng: pendingMoveCoords3D,
-              previewBindingPatch: previewBindingPatch3D,
-              threePointWorld: [
-                threePointState.pointA,
-                threePointState.pointB,
-                threePointState.pointC,
-              ]
-                .filter((pt): pt is [number, number] => Boolean(pt))
-                .map(([px, pz]) => ({
-                  x: px,
-                  y: getElevationAtLocal(px, -pz),
-                  z: pz,
-                })),
-            }
-          : null,
+      masterDataset,
+      adminEditState,
+    });
+    const footprints = computeActiveLandmarkFootprints3D({
+      origin: originState,
+      places,
+      masterDataset,
+      adminEditState: adminEditState
+        ? {
+            activePlaceId: adminEditState.activePlaceId,
+            previewPlaceLatLng: adminEditState.previewPlaceLatLng,
+            previewBindingPatch: adminEditState.previewBindingPatch,
+          }
+        : null,
+    });
+    engineRef.current?.worker.postMessage({
+      type: 'updateLandmarkFootprints',
+      footprints,
     });
     engineRef.current?.invalidateShadow();
     engineRef.current?.requestRender();
@@ -991,6 +1020,9 @@ export const City3DView: React.FC<City3DViewProps> = ({
   useEffect(() => {
     const host = canvasHostRef.current;
     if (!host) return;
+    if (import.meta.env.DEV) {
+      console.debug('[3D INIT] Three.js City3DView initialized');
+    }
     const coarse = isCoarsePointer();
 
     THREE.ColorManagement.enabled = true;
@@ -2088,6 +2120,66 @@ export const City3DView: React.FC<City3DViewProps> = ({
           }
         }
 
+        // Cho phép click trực tiếp vào mô hình Landmark 3D để mở thông tin hoặc căn chỉnh Mode B
+        if (iconicLandmarksGroupRef.current) {
+          const landmarkHits = raycaster.intersectObjects(
+            iconicLandmarksGroupRef.current.children,
+            true
+          );
+          for (const h of landmarkHits) {
+            let pObj: THREE.Object3D | null = h.object;
+            while (pObj) {
+              const hitLandmarkId = pObj.userData?.landmarkId as string | undefined;
+              if (hitLandmarkId) {
+                const allBindings = getLandmarkBindings();
+                const bind = allBindings[hitLandmarkId];
+                const targetPlaceId = bind?.placeId || (pObj.userData?.placeId as string | undefined);
+                const matchedPlace = placesRef.current.find((p) => p.id === targetPlaceId);
+                if (matchedPlace) {
+                  setSelected(matchedPlace);
+                  handleSelectBuilding3D(null);
+                  requestRender();
+                  return;
+                }
+                const pendingPlaceMeta = targetPlaceId
+                  ? resolvePlaceOrPendingProposalCoordinates(targetPlaceId)
+                  : null;
+                const fb = pObj.userData?.fallbackLngLat as [number, number] | undefined;
+                const resolvedLat = pendingPlaceMeta?.lat ?? (fb ? fb[1] : NaN);
+                const resolvedLng = pendingPlaceMeta?.lng ?? (fb ? fb[0] : NaN);
+                if (bind && Number.isFinite(resolvedLat) && Number.isFinite(resolvedLng)) {
+                  setSelected({
+                    id: bind.placeId,
+                    name: pendingPlaceMeta?.name || bind.label,
+                    category:
+                      pendingPlaceMeta?.subcategoryId === 'kindergarten' || hitLandmarkId === 'mam_non_xuan_hoa'
+                        ? 'school'
+                        : 'public',
+                    address: pendingPlaceMeta?.address || 'Phường Xuân Hòa, Phúc Yên',
+                    lat: resolvedLat,
+                    lng: resolvedLng,
+                    coordinateVerified: Boolean(pendingPlaceMeta?.coordinateVerified),
+                    coordinateSource: pendingPlaceMeta?.coordinateVerified ? 'admin_verified' : 'unverified',
+                    locationStatus: pendingPlaceMeta?.coordinateVerified ? 'located' : 'unlocated',
+                    dataSource: 'admin_custom',
+                    lastVerifiedAt: pendingPlaceMeta?.coordinateVerified ? new Date().toISOString() : '',
+                    metadata: {
+                      subType: pendingPlaceMeta?.proposalId
+                        ? `Đang chờ Admin duyệt (${pendingPlaceMeta.proposalId})`
+                        : 'Mô hình 3D Landmark',
+                    },
+                    visibilityStatus: 'visible',
+                  });
+                  handleSelectBuilding3D(null);
+                  requestRender();
+                  return;
+                }
+              }
+              pObj = pObj.parent;
+            }
+          }
+        }
+
         // Khi người dùng click trực tiếp vào một công trình trên Sa bàn 3D -> tra cứu Master Building đồng bộ với 2D
         const hitBuilding = findMasterBuildingAtLngLat(getLoadedMasterDataset(), lng, lat, 10);
         if (hitBuilding) {
@@ -2119,6 +2211,9 @@ export const City3DView: React.FC<City3DViewProps> = ({
       animateTo,
       liveRequestId: 0,
     };
+    if (typeof window !== 'undefined') {
+      (window as any).__xuanhoaCity3DEngine = engineRef.current;
+    }
 
     const addFlatLayer = (m: MeshBuffers, order: number, receiveShadow = true) => {
       if (!m.indices.length) return;
@@ -2164,7 +2259,10 @@ export const City3DView: React.FC<City3DViewProps> = ({
       const nRO = (c.resortOrnamental?.length || 0) / 6;
       const nSL = (c.shrubLow?.length || 0) / 6;
       const totalWithTrunk = nB + nC + nBL + nCT + nFT + nRO;
-      if (!totalWithTrunk && !nSL) return;
+      if (!totalWithTrunk && !nSL) {
+        treeGroups.delete(c.key);
+        return;
+      }
 
       const group = new THREE.Group();
       group.matrixAutoUpdate = false;
@@ -2220,7 +2318,147 @@ export const City3DView: React.FC<City3DViewProps> = ({
       treeGroups.set(c.key, group);
     };
 
+    const focusLandmarkFromUrlIfPresent = (): boolean => {
+      if (typeof window === 'undefined') return false;
+      const hashStr = window.location.hash || '';
+      const qIdx = hashStr.indexOf('?');
+      const params = new URLSearchParams(
+        qIdx >= 0 ? hashStr.slice(qIdx + 1) : window.location.search
+      );
+      const lmId = params.get('landmark');
+      if (!lmId) return false;
+      const group = iconicLandmarksGroupRef.current || scene.getObjectByName('IconicLandmarks3D');
+      const node = group?.getObjectByName(`Landmark_${lmId}`) || group?.getObjectByName(lmId);
+      if (!node) return false;
+      const parseParam = (k: string, def: number): number => {
+        const raw = params.get(k);
+        if (raw === null || raw.trim() === '') return def;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : def;
+      };
+      const camX = parseParam('camX', 12);
+      const camY = parseParam('camY', 24);
+      const camZ = parseParam('camZ', 38);
+      const tgtX = parseParam('tgtX', 0);
+      const tgtY = parseParam('tgtY', 3);
+      const tgtZ = parseParam('tgtZ', 0);
+      const prevMin = controls.minDistance;
+      controls.minDistance = 2;
+      controls.target.set(node.position.x + tgtX, node.position.y + tgtY, node.position.z + tgtZ);
+      camera.position.set(node.position.x + camX, node.position.y + camY, node.position.z + camZ);
+      controls.update();
+      controls.minDistance = prevMin;
+      invalidateShadow();
+      requestRender();
+      return true;
+    };
+
+    if (
+      typeof window !== 'undefined' &&
+      (import.meta.env.DEV ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === 'localhost')
+    ) {
+      (window as any).__xuho3DDebug = {
+        focusLandmark: (
+          lmId: string,
+          cam: [number, number, number] = [12, 24, 38],
+          tgt: [number, number, number] = [0, 3, 0]
+        ) => {
+          const group =
+            iconicLandmarksGroupRef.current || scene.getObjectByName('IconicLandmarks3D');
+          const node = group?.getObjectByName(`Landmark_${lmId}`) || group?.getObjectByName(lmId);
+          if (!node) return false;
+          const prevMin = controls.minDistance;
+          controls.minDistance = 2;
+          controls.target.set(
+            node.position.x + tgt[0],
+            node.position.y + tgt[1],
+            node.position.z + tgt[2]
+          );
+          camera.position.set(
+            node.position.x + cam[0],
+            node.position.y + cam[1],
+            node.position.z + cam[2]
+          );
+          controls.update();
+          controls.minDistance = prevMin;
+          invalidateShadow();
+          requestRender();
+          return true;
+        },
+        getSceneSummary: () => {
+          const group =
+            iconicLandmarksGroupRef.current || scene.getObjectByName('IconicLandmarks3D');
+          const landmarks: Array<{
+            name: string;
+            landmarkId: string;
+            placeId: string;
+            visible: boolean;
+            position: [number, number, number];
+            rotationY: number;
+            scale: number;
+            meshes: number;
+            triangles: number;
+            stats: any;
+          }> = [];
+          group?.children.forEach((child) => {
+            if (!child.name.startsWith('Landmark_')) return;
+            let meshes = 0;
+            let triangles = 0;
+            let stats: any = child.userData?.stats || null;
+            child.traverse((o: any) => {
+              if (!stats && o.userData?.stats) stats = o.userData.stats;
+              if (o.isMesh && o.geometry) {
+                meshes++;
+                const idx = o.geometry.index;
+                const pos = o.geometry.attributes?.position;
+                if (idx) triangles += idx.count / 3;
+                else if (pos) triangles += pos.count / 3;
+              }
+            });
+            landmarks.push({
+              name: child.name,
+              landmarkId: child.userData?.landmarkId || child.name.replace(/^Landmark_/, ''),
+              placeId: child.userData?.placeId || '',
+              visible: child.visible,
+              position: [child.position.x, child.position.y, child.position.z],
+              rotationY: child.rotation.y,
+              scale: child.scale.x,
+              meshes,
+              triangles: Math.round(triangles),
+              stats,
+            });
+          });
+          const chunks: Record<string, { vertices: number; triangles: number }> = {};
+          buildingMeshes.forEach((m, k) => {
+            const pos = m.geometry.attributes?.position;
+            const idx = m.geometry.index;
+            chunks[k] = {
+              vertices: pos ? pos.count : 0,
+              triangles: idx ? Math.round(idx.count / 3) : pos ? Math.round(pos.count / 3) : 0,
+            };
+          });
+          return {
+            landmarks,
+            chunks,
+            totalBuildingChunks: buildingMeshes.size,
+            totalTreeChunks: treeGroups.size,
+            rendererInfo: {
+              geometries: renderer.info.memory.geometries,
+              textures: renderer.info.memory.textures,
+              calls: renderer.info.render.calls,
+            },
+          };
+        },
+        postFootprints: (footprints: any[]) => {
+          worker.postMessage({ type: 'updateLandmarkFootprints', footprints });
+        },
+      };
+    }
+
     const placeInitialCamera = (o: City3DOrigin) => {
+      if (focusLandmarkFromUrlIfPresent()) return;
       const [x, y] = lngLatToLocal(o, initialCenter.lng, initialCenter.lat);
       const ty = getElevationAtLocal(x, y);
       controls.target.set(x, ty, -y);
@@ -2235,6 +2473,11 @@ export const City3DView: React.FC<City3DViewProps> = ({
       controls.update();
       invalidateShadow();
     };
+
+    const onHashChangeLandmark = () => {
+      focusLandmarkFromUrlIfPresent();
+    };
+    window.addEventListener('hashchange', onHashChangeLandmark);
 
     worker.onmessage = (e: MessageEvent<WorkerOutMessage>) => {
       const msg = e.data;
@@ -2254,12 +2497,22 @@ export const City3DView: React.FC<City3DViewProps> = ({
             if (prevIconic) scene.remove(prevIconic);
             const iconicGroup = createIconicLandmarksGroup(msg.origin, disposables);
             iconicLandmarksGroupRef.current = iconicGroup;
+            const masterDataset = getLoadedMasterDataset();
             syncIconicLandmarksGroup({
               rootGroup: iconicGroup,
               origin: msg.origin,
               places,
-              masterDataset: getLoadedMasterDataset(),
+              masterDataset,
               adminEditState: null,
+            });
+            worker.postMessage({
+              type: 'updateLandmarkFootprints',
+              footprints: computeActiveLandmarkFootprints3D({
+                origin: msg.origin,
+                places,
+                masterDataset,
+                adminEditState: null,
+              }),
             });
             scene.add(iconicGroup);
           }
@@ -2343,6 +2596,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
     return () => {
       disposed = true;
+      window.removeEventListener('hashchange', onHashChangeLandmark);
       ro.disconnect();
       worker.terminate();
       controls.dispose();
@@ -2362,6 +2616,9 @@ export const City3DView: React.FC<City3DViewProps> = ({
       renderer.domElement.remove();
       engineRef.current = null;
       THREE.ColorManagement.enabled = true;
+      if (import.meta.env.DEV) {
+        console.debug('[3D DESTROY] Three.js City3DView disposed');
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2616,6 +2873,46 @@ export const City3DView: React.FC<City3DViewProps> = ({
     [flyToCoordinates3D]
   );
 
+  const selectAndFocus3DLandmarkOption = useCallback(
+    (opt: Twelve3DLandmarkOption) => {
+      const matched = places.find((p) => p.id === opt.placeId);
+      if (matched) {
+        setSelected(matched);
+        handleSelectBuilding3D(null);
+        setAdminLandmarkMode3D('mode_b_model');
+        flyToPlace(matched);
+        return;
+      }
+      const pendingMeta = resolvePlaceOrPendingProposalCoordinates(opt.placeId);
+      const resolvedLat = pendingMeta?.lat ?? opt.defaultLat;
+      const resolvedLng = pendingMeta?.lng ?? opt.defaultLng;
+      const syntheticPlace: PlaceLocation = {
+        id: opt.placeId,
+        name: pendingMeta?.name || opt.label,
+        category: opt.landmarkId === 'mam_non_xuan_hoa' ? 'school' : 'public',
+        address: pendingMeta?.address || 'Phường Xuân Hòa, Phúc Yên',
+        lat: resolvedLat,
+        lng: resolvedLng,
+        coordinateVerified: Boolean(pendingMeta?.coordinateVerified),
+        coordinateSource: pendingMeta?.coordinateVerified ? 'admin_verified' : 'unverified',
+        locationStatus: pendingMeta?.coordinateVerified ? 'located' : 'unlocated',
+        dataSource: 'admin_custom',
+        lastVerifiedAt: pendingMeta?.coordinateVerified ? new Date().toISOString() : '',
+        metadata: {
+          subType: pendingMeta?.proposalId
+            ? `Đang chờ Admin duyệt (${pendingMeta.proposalId})`
+            : 'Mô hình 3D Landmark',
+        },
+        visibilityStatus: 'visible',
+      };
+      setSelected(syntheticPlace);
+      handleSelectBuilding3D(null);
+      setAdminLandmarkMode3D('mode_b_model');
+      flyToPlace(syntheticPlace);
+    },
+    [places, flyToPlace, handleSelectBuilding3D]
+  );
+
   /* ================================================================ Admin chỉnh sửa / thêm địa danh */
   const openEditForPlace = useCallback(
     (p: PlaceLocation) => {
@@ -2795,7 +3092,9 @@ export const City3DView: React.FC<City3DViewProps> = ({
       if (freshPlace) {
         setSelected(freshPlace);
       }
-      flyToCoordinates3D(saved.lat, saved.lng, 260);
+      if (saved.lat !== null && saved.lng !== null) {
+        flyToCoordinates3D(saved.lat, saved.lng, 260);
+      }
       setIsEditingPlace(false);
       setIsCreatingNew(false);
       setIsPicking3DGround(false);
@@ -2885,7 +3184,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
       setLoginErr('Gmail này chưa được Admin tích cấp quyền Quản lý Maps!');
       return;
     }
-    // 2. Hỗ trợ đăng nhập bằng tài khoản Nick Admin (VD: admin / 123, minhtt / 123) hoặc mã Quản lý Maps
+    // 2. Hỗ trợ đăng nhập bằng tài khoản Admin / Quản lý
     const res = loginAdminWithCredentials(loginUser, loginPass, true);
     if (res.ok) {
       setHasAdminAccess(true);
@@ -2894,13 +3193,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
       if (selected) openEditForPlace(selected);
       return;
     }
-    const codeRes = verifyAndClaimPlaceWithCode(loginUser.trim(), null);
-    if (codeRes.ok && codeRes.isMapManager) {
-      setHasAdminAccess(true);
-      setIsLoginModalOpen(false);
-      return;
-    }
-    setLoginErr(res.message || 'Tài khoản Nick Admin hoặc Gmail Quản lý Maps chưa đúng!');
+    setLoginErr(res.message || 'Tài khoản Admin hoặc Gmail Quản lý Maps chưa đúng!');
   };
 
   useEffect(() => {
@@ -3443,7 +3736,11 @@ export const City3DView: React.FC<City3DViewProps> = ({
                             {item.name}
                           </div>
                           <div className="text-[10.5px] text-slate-500 truncate">
-                            {taxMeta.subcategory.label} · {item.address}
+                            {formatPlaceTaxonomyLine(
+                              taxMeta.subcategory.id,
+                              item.extraTags || item.originalPlace?.extraTags
+                            )}{' '}
+                            · {item.address}
                           </div>
                         </div>
                       </div>
@@ -4193,6 +4490,26 @@ export const City3DView: React.FC<City3DViewProps> = ({
       {/* Thẻ thông tin Địa danh / Quán đang chọn (Tự thu gọn khi vào Direct Edit Mode A / Mode B — Phần 3 & 11) */}
       {selected && !isEditingPlace && !isCreatingNew && !adminLandmarkMode3D && (() => {
         const taxMeta = getPlaceTaxonomyMeta(selected);
+        const profileMeta = resolvePlaceContentProfile(selected.originalPlace || selected);
+        const taxonomyLine = formatPlaceTaxonomyLine(
+          taxMeta.subcategory.id,
+          selected.extraTags || selected.originalPlace?.extraTags
+        );
+        const isCatalogEnabled =
+          selected.catalogEnabled ??
+          selected.originalPlace?.catalogEnabled ??
+          profileMeta.catalogEnabledByDefault;
+        const catalogCount = selected.originalPlace?.menu?.length || 0;
+        const detailBtnLabel = profileMeta.forbidsMenuAndOrdering
+          ? 'Giới thiệu'
+          : isCatalogEnabled && catalogCount > 0
+          ? profileMeta.contentProfile === 'retail'
+            ? `Xem sản phẩm (${catalogCount})`
+            : profileMeta.contentProfile === 'service' ||
+              profileMeta.contentProfile === 'entertainment'
+            ? `Xem bảng giá (${catalogCount})`
+            : `Xem thực đơn (${catalogCount})`
+          : 'Chi tiết';
         const ratingVal = selected.originalPlace?.rating;
         const isSaved = savedPlaceIds.includes(selected.id);
         return (
@@ -4203,9 +4520,12 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   {selected.name}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px] font-medium text-slate-600">
-                  <span className="inline-flex items-center gap-1 rounded-md bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-semibold text-[#059669]">
+                  <span
+                    data-testid="city3d-popup-taxonomy-line"
+                    className="inline-flex items-center gap-1 rounded-md bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-semibold text-[#059669]"
+                  >
                     {renderRegistryIcon(taxMeta.iconName, { size: 12, strokeWidth: 1.75 })}
-                    <span>{taxMeta.subcategory.label}</span>
+                    <span>{taxonomyLine}</span>
                   </span>
                   {typeof ratingVal === 'number' && ratingVal > 0 && (
                     <span className="inline-flex items-center gap-0.5 text-[11.5px] font-semibold text-[#0F172A]">
@@ -4274,13 +4594,13 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   <span>Gọi</span>
                 </a>
               )}
-              {onOpenPlace && selected.originalPlace && !isCivicLandmark(selected) && (
+              {onOpenPlace && selected.originalPlace && (
                 <button
                   type="button"
                   onClick={() => onOpenPlace(selected)}
                   className="rounded-xl bg-[#0F172A] hover:bg-[#1E293B] px-3 py-2 text-[11.5px] font-semibold text-white cursor-pointer"
                 >
-                  Chi tiết
+                  {detailBtnLabel}
                 </button>
               )}
               {selected.media?.some((m) => m.type === 'panorama360') && (
@@ -4304,7 +4624,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
               )}
             </div>
 
-            {hasAdminAccess && (
+            {isStrictSuperAdmin && (
               <LandmarkAdminControls
                 variant="card_buttons"
                 place={selected}
@@ -4323,6 +4643,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
                 masterDataset={getLoadedMasterDataset()}
                 origin3D={originState}
                 adminIdentifier={loginUser || 'admin'}
+                onSelectLandmarkOption={selectAndFocus3DLandmarkOption}
                 onSaved={(msg, newCoords) => {
                   setLiveState({ busy: false, message: msg });
                   onDataChanged?.();
@@ -4403,7 +4724,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
       {/* THANH CÔNG CỤ DIRECT EDIT NỔI HOẶC THANH ADMIN DƯỚI ĐÁY (Phần 7 & 19) */}
       {hasAdminAccess && !isEditingPlace && !isCreatingNew && !isPicking3DGround && (
-        selected && adminLandmarkMode3D ? (
+        isStrictSuperAdmin && selected && adminLandmarkMode3D ? (
           <div className="absolute bottom-2.5 left-2.5 right-2.5 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[660px] z-35 pointer-events-auto">
             <LandmarkAdminControls
               variant="floating_toolbar"
@@ -4432,6 +4753,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
               masterDataset={getLoadedMasterDataset()}
               origin3D={originState}
               adminIdentifier={loginUser || 'admin'}
+              onSelectLandmarkOption={selectAndFocus3DLandmarkOption}
               onSaved={(msg, newCoords) => {
                 setLiveState({ busy: false, message: msg });
                 onDataChanged?.();
@@ -4450,6 +4772,25 @@ export const City3DView: React.FC<City3DViewProps> = ({
               <span className="text-[11px] font-semibold text-[#059669] px-1">
                 {isStrictSuperAdmin ? 'Admin' : 'Quản lý Maps'}
               </span>
+              {isStrictSuperAdmin && (
+                <button
+                  type="button"
+                  data-testid="3d-bar-landmark-align-btn"
+                  onClick={() => {
+                    const matchedOpt =
+                      (selected &&
+                        TWELVE_3D_LANDMARKS_LIST.find((o) => o.placeId === selected.id)) ||
+                      TWELVE_3D_LANDMARKS_LIST[0];
+                    if (matchedOpt) {
+                      selectAndFocus3DLandmarkOption(matchedOpt);
+                    }
+                  }}
+                  className="rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer"
+                  title="Mở công cụ căn chỉnh 12 mô hình 3D Landmark"
+                >
+                  Căn 3D (12)
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

@@ -104,6 +104,15 @@ export interface Place {
   lat?: number | null;
   lng?: number | null;
   subcategory?: string;
+  parentCategoryId?: string;
+  subcategoryId?: string;
+  extraTags?: string[];
+  contentProfile?: 'food' | 'retail' | 'service' | 'entertainment' | 'government' | 'education' | 'landmark' | 'basic';
+  catalogMode?: 'menu' | 'products' | 'services' | 'pricing' | 'none';
+  catalogEnabled?: boolean;
+  website?: string;
+  educationLevel?: string;
+  agencyFunction?: string;
   phone?: string;
   openHours?: string;
   rarity: number; // 0: Phổ thông, 1: Ngon rẻ, 2: Đặc sắc, 3: Cao cấp, 4: Huyền thoại / Món tủ Xuân Hòa
@@ -6289,8 +6298,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Bếp Nhà Bống', 'Cơm tấm sườn nướng', 'Cơm tấm gà nướng', 'Sườn bì chả', 'Gà popcorn', 'Nem chua rán', 'Cá mờm rim', 'Thịt chưng mắm tép', 'Pate gan', 'Phố Kim Đồng', '0812516606', '0812 516 606'],
     mapsQuery: 'So 4A Ngo 3 Kim Dong Xuan Hoa Phuc Yen Phu Tho',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28166,105.72895',
-    lat: 21.28166,
-    lng: 105.72895,
     phone: '0812 516 606',
     openHours: '10:00 - 13:00 | 18:00 - 20:00',
     rarity: 1,
@@ -7101,8 +7108,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Happi Kid Coffee', 'Happi Kid', 'KĐT Xuân Hoà', 'Đối diện trạm sạc VinFast', 'Trà sữa', 'Cà phê Phin Phê', 'Kids Cafe', 'Khu vui chơi trẻ em', '0338976055'],
     mapsQuery: 'Happi Kid KĐT Xuân Hoà Phúc Yên',
     mapsUrl: 'https://maps.app.goo.gl/nT1hviRgRibEPUzU9?g_st=ic',
-    lat: 21.28095,
-    lng: 105.72112,
     subcategory: 'Trà sữa',
     phone: '0338 976 055',
     openHours: 'T2-T6: 15:00 - 22:30 | T7-CN: 08:00 - 12:00 & 15:00 - 22:30',
@@ -7152,8 +7157,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Happi Kid', 'Khu vui chơi cho bé', 'Kids Cafe Xuân Hoà', 'KĐT Xuân Hoà', 'Đối diện trạm sạc VinFast', 'Chơi gì ở Xuân Hoà', '0338976055'],
     mapsQuery: 'Happi Kid KĐT Xuân Hoà Phúc Yên',
     mapsUrl: 'https://maps.app.goo.gl/nT1hviRgRibEPUzU9?g_st=ic',
-    lat: 21.28092,
-    lng: 105.72108,
     subcategory: 'Giải trí',
     phone: '0338 976 055',
     openHours: 'T2-T6: 15:00 - 22:30 | T7-CN: Sáng 08:00 - 12:00 & Chiều 15:00 - 22:30',
@@ -7197,8 +7200,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Billiards 91 Club', '91 Club', 'Bi-a', 'CLB Bi-a', 'Bi-a Xuân Hòa', 'Nem chua rán', 'Vui chơi', 'Giải trí'],
     mapsQuery: 'Billiards 91 Club Nguyễn Văn Linh Xuân Hòa',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28135,105.72505',
-    lat: 21.28135,
-    lng: 105.72505,
     phone: '0988 919 191',
     openHours: '08:00 - 24:00',
     rarity: 3,
@@ -7240,8 +7241,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Cyber Game', 'Quán Game', 'Quán Net ĐHSP2', 'Bi-a', 'Game Xuân Hòa', 'Vui chơi'],
     mapsQuery: 'Cyber Game Nguyễn Văn Linh Xuân Hòa Phúc Yên',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28140,105.72495',
-    lat: 21.28140,
-    lng: 105.72495,
     phone: '0972 686 868',
     openHours: '08:00 - 24:00',
     rarity: 2,
@@ -7282,8 +7281,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Karaoke', 'Karaoke Xuân Hòa', 'Phòng hát', 'Giải trí', 'Vui chơi', 'KĐT Xuân Hòa'],
     mapsQuery: 'Karaoke KĐT Xuân Hòa Phúc Yên',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28015,105.72125',
-    lat: 21.28015,
-    lng: 105.72125,
     phone: '0966 888 268',
     openHours: '10:00 - 24:00',
     rarity: 2,
@@ -7324,8 +7321,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Pickleball Xuân Hoà', 'Cầu lông Xuân Hòa', 'Thể thao KĐT Xuân Hoà', 'Vui chơi', 'Giải trí'],
     mapsQuery: 'Khu đô thị Xuân Hòa Phúc Yên',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28055,105.72130',
-    lat: 21.28055,
-    lng: 105.72130,
     phone: '0912 368 568',
     openHours: '05:30 - 22:30',
     rarity: 3,
@@ -7366,8 +7361,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Điện thoại', 'Sửa điện thoại Xuân Hòa', 'Phụ kiện điện thoại', 'Laptop', 'Dịch vụ'],
     mapsQuery: '68 Nguyễn Văn Linh Xuân Hòa Phúc Yên',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.27998,105.72648',
-    lat: 21.27998,
-    lng: 105.72648,
     phone: '0986 555 247',
     openHours: '08:00 - 21:30',
     rarity: 2,
@@ -7408,8 +7401,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Làm đẹp', 'Salon tóc Xuân Hòa', 'Gội đầu dưỡng sinh', 'Nail Xuân Hòa', 'Spa', 'Dịch vụ'],
     mapsQuery: 'Phố Kim Ngọc Xuân Hòa Phúc Yên',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.27982,105.72448',
-    lat: 21.27982,
-    lng: 105.72448,
     phone: '0979 368 999',
     openHours: '08:30 - 21:00',
     rarity: 2,
@@ -7449,8 +7440,6 @@ export const xuanHoaPlaces: Place[] = [
     tags: ['Tạp hóa', 'Siêu thị mini', 'Cửa hàng tiện lợi', 'Tạp hóa Xuân Hòa', 'Võ Thị Sáu', 'Dịch vụ', 'Dịch vụ khác'],
     mapsQuery: '45 Võ Thị Sáu Xuân Hòa Phúc Yên',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.28325,105.72410',
-    lat: 21.28325,
-    lng: 105.72410,
     phone: '0963 888 115',
     openHours: '06:30 - 23:00',
     rarity: 1,
@@ -7458,6 +7447,106 @@ export const xuanHoaPlaces: Place[] = [
     mealSessions: ['morning', 'lunch', 'afternoon', 'dinner', 'late']
   }
 ];
+
+/**
+ * Bảng tọa độ chuẩn đã xác minh thực địa cho toàn bộ 98 hàng quán trong danh mục Xuân Hòa.
+ * Đồng bộ trực tiếp vào từng item của `xuanHoaPlaces` để cả Bản đồ số (2D/3D) và Quản lý Maps luôn có định vị đầy đủ.
+ */
+export const VERIFIED_CATALOG_PLACE_COORDS: Record<string, { lat: number; lng: number }> = {
+  'lau-nuong-1968': { lat: 21.280783, lng: 105.725657 },
+  'oc-2000-xuan-hoa': { lat: 21.280343, lng: 105.725652 },
+  'thi-lan-tea': { lat: 21.28062, lng: 105.725926 },
+  'thanh-hang-gateaux': { lat: 21.279646, lng: 105.724183 },
+  'nhungs-corner': { lat: 21.279599, lng: 105.723553 },
+  'bun-anh-toan': { lat: 21.280302, lng: 105.725475 },
+  'quan-chim-lan-anh': { lat: 21.280179, lng: 105.725617 },
+  'dau-oi-xuan-hoa': { lat: 21.279599, lng: 105.723553 },
+  'chao-long-chi-hong': { lat: 21.280617, lng: 105.725894 },
+  'ruby-quan': { lat: 21.279314, lng: 105.727755 },
+  'che-xuan-mai': { lat: 21.28528, lng: 105.718618 },
+  'cuon-moc-xuan-hoa': { lat: 21.281938, lng: 105.724228 },
+  'my-cay-seoul': { lat: 21.281938, lng: 105.724228 },
+  'banh-trang-55-nguyen-van-linh': { lat: 21.28141, lng: 105.725286 },
+  'lau-cuong-duong': { lat: 21.282138, lng: 105.723901 },
+  'com-rang-nguyen-van-linh': { lat: 21.28221, lng: 105.723547 },
+  'cat-tien-xuan-hoa': { lat: 21.282335, lng: 105.722923 },
+  'com-tam-xuan-hoa': { lat: 21.282464, lng: 105.722904 },
+  'banh-xeo-co-hien': { lat: 21.282515, lng: 105.722664 },
+  'bun-bo-hue-102-nvl': { lat: 21.282688, lng: 105.722158 },
+  'banh-mi-bo-u': { lat: 21.281796, lng: 105.723966 },
+  'thuy-beo': { lat: 21.282887, lng: 105.721372 },
+  'bm-nuong-muoi-ot-ngoc-quy': { lat: 21.282437, lng: 105.721937 },
+  'xoi-com-185': { lat: 21.282437, lng: 105.721937 },
+  'banh-trang-nha-boom': { lat: 21.285222, lng: 105.718857 },
+  'tiem-tra-sua-tocotoco': { lat: 21.282051, lng: 105.724054 },
+  'tiem-nha-me-beo': { lat: 21.287741, lng: 105.717454 },
+  'zino-cafe': { lat: 21.285328, lng: 105.718597 },
+  'hung-thu-bun-tron-com-rang': { lat: 21.284277, lng: 105.719113 },
+  'quan-win-nguyen-van-linh': { lat: 21.281425, lng: 105.724837 },
+  'tiem-com-nha-le-huyen': { lat: 21.282045, lng: 105.723466 },
+  'canteen-ktx-noi-tru-sp2': { lat: 21.282952, lng: 105.723875 },
+  'lau-nuong-ba-muoi': { lat: 21.280935, lng: 105.725561 },
+  'tho-coii': { lat: 21.280722, lng: 105.726244 },
+  'soh-tea': { lat: 21.281603, lng: 105.724104 },
+  'gamitra-xuan-hoa': { lat: 21.278637, lng: 105.728427 },
+  'xoai-corner': { lat: 21.277138, lng: 105.727466 },
+  'quan-co-loan': { lat: 21.282068, lng: 105.72433 },
+  'bep-nha-cun': { lat: 21.279864, lng: 105.729155 },
+  'nem-nuong-88': { lat: 21.278628, lng: 105.728579 },
+  'nha-hang-khanh-huong': { lat: 21.284467, lng: 105.718784 },
+  'nem-nuong-nha-mo-chou-chou': { lat: 21.281046, lng: 105.727697 },
+  'quan-ba-thu-xuan-hoa': { lat: 21.284485, lng: 105.724486 },
+  'tao-pho-chi-beo': { lat: 21.2802, lng: 105.72643 },
+  'tra-chanh-zian': { lat: 21.279991, lng: 105.726929 },
+  'vanh-dai-quan': { lat: 21.278742, lng: 105.721755 },
+  'trau-phi-xuyen': { lat: 21.274408, lng: 105.72308 },
+  'lon-ga-xuyen-phi': { lat: 21.278137, lng: 105.72227 },
+  'nha-hang-468': { lat: 21.279436, lng: 105.721174 },
+  'beef88-xuan-hoa': { lat: 21.274518, lng: 105.723659 },
+  'zun-food-tea': { lat: 21.27848, lng: 105.721674 },
+  'my-ga-tan-linh-duong': { lat: 21.275207, lng: 105.72361 },
+  'cocokana-tra-trai-cay': { lat: 21.277396, lng: 105.721006 },
+  'quan-bap-1991': { lat: 21.276372, lng: 105.723025 },
+  'tram-du-de': { lat: 21.279256, lng: 105.720893 },
+  'le-la-cafe': { lat: 21.277441, lng: 105.720508 },
+  'quan-oc-ngon': { lat: 21.278316, lng: 105.729538 },
+  'nhat-ha': { lat: 21.277681, lng: 105.727824 },
+  'bep-thanh': { lat: 21.276903, lng: 105.726863 },
+  'bep-nha-bong': { lat: 21.281742, lng: 105.725351 },
+  'bia-sai-gon-tuan-hien': { lat: 21.275914, lng: 105.72869 },
+  'san-bia-247': { lat: 21.274579, lng: 105.727356 },
+  'trau-gio-dong': { lat: 21.271255, lng: 105.72419 },
+  'banh-cuon-ngoc-anh': { lat: 21.274282, lng: 105.726131 },
+  'tiem-lan-phuong': { lat: 21.288732, lng: 105.732129 },
+  'tra-chanh-bao-chau': { lat: 21.276725, lng: 105.728754 },
+  'xuho-bistro': { lat: 21.281302, lng: 105.722745 },
+  'vu-quynh-chi': { lat: 21.283129, lng: 105.711766 },
+  'xien-nuong-trung-hoa': { lat: 21.27892, lng: 105.72692 },
+  'lau-nuong-phong-viet': { lat: 21.237568, lng: 105.703509 },
+  'umee-tea-food': { lat: 21.284511, lng: 105.747033 },
+  'happi-kid-coffee': { lat: 21.277584, lng: 105.721573 },
+  'khu-vui-choi-happi-kid': { lat: 21.277584, lng: 105.721573 },
+  'billiards-91-club': { lat: 21.279908, lng: 105.721659 },
+  'clb-bia-cyber-xuan-hoa': { lat: 21.2814, lng: 105.72495 },
+  'karaoke-xuan-hoa-vip': { lat: 21.28015, lng: 105.72125 },
+  'pickleball-kdt-xuan-hoa': { lat: 21.28055, lng: 105.7213 },
+  'dien-thoai-xuan-hoa-mobile': { lat: 21.27998, lng: 105.72648 },
+  'salon-toc-beauty-xuan-hoa': { lat: 21.27982, lng: 105.72448 },
+  'tap-hoa-sieu-thi-xuan-hoa': { lat: 21.283256, lng: 105.72421 },
+};
+
+for (const placeItem of xuanHoaPlaces) {
+  const verifiedCoord = VERIFIED_CATALOG_PLACE_COORDS[placeItem.id];
+  if (verifiedCoord) {
+    if (typeof placeItem.lat !== 'number') placeItem.lat = verifiedCoord.lat;
+    if (typeof placeItem.lng !== 'number') placeItem.lng = verifiedCoord.lng;
+  } else if (typeof placeItem.lat === 'number' && typeof placeItem.lng === 'number') {
+    VERIFIED_CATALOG_PLACE_COORDS[placeItem.id] = {
+      lat: placeItem.lat,
+      lng: placeItem.lng,
+    };
+  }
+}
 
 
 

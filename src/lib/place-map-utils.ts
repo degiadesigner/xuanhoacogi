@@ -1,106 +1,22 @@
-import { type Place, getPlaceStyleGroup, xuanHoaPlaces } from './places-xuanhoa';
+import {
+  type Place,
+  getPlaceStyleGroup,
+  xuanHoaPlaces,
+  VERIFIED_CATALOG_PLACE_COORDS,
+} from './places-xuanhoa';
 import { getAdminState } from './admin-store';
 import { VERIFIED_OSM_POIS } from './map/map-data';
 import type { PlaceLocation } from './map/map-types';
+import {
+  MAP_CATEGORY_REGISTRY,
+  resolvePlaceTaxonomy,
+  resolvePlaceContentProfile,
+  formatPlaceTaxonomyLine,
+  type MapSubcategoryId,
+} from './map/map-category-registry';
 
-const CATALOG_STREET_MATCHED_COORDS: Record<string, { lat: number; lng: number }> = {
-  'lau-nuong-1968': { lat: 21.28046, lng: 105.72548 },
-  'oc-2000-xuan-hoa': { lat: 21.27812, lng: 105.72268 },
-  'thi-lan-tea': { lat: 21.28054, lng: 105.72588 },
-  'thanh-hang-gateaux': { lat: 21.27858, lng: 105.72312 },
-  'nhungs-corner': { lat: 21.27972, lng: 105.72434 },
-  'bun-anh-toan': { lat: 21.27838, lng: 105.72288 },
-  'quan-chim-lan-anh': { lat: 21.27825, lng: 105.72272 },
-  'tiem-tra-thanh-thanh': { lat: 21.27992, lng: 105.72468 },
-  'dau-oi-xuan-hoa': { lat: 21.27962, lng: 105.72422 },
-  'chao-long-chi-hong': { lat: 21.28068, lng: 105.72604 },
-  'nha-hang-binh-nam': { lat: 21.27805, lng: 105.72895 },
-  'ruby-quan': { lat: 21.27835, lng: 105.72855 },
-  'che-xuan-mai': { lat: 21.27895, lng: 105.72775 },
-  'cuon-moc-xuan-hoa': { lat: 21.27942, lng: 105.72715 },
-  'my-cay-seoul': { lat: 21.27958, lng: 105.72695 },
-  'banh-trang-55-nguyen-van-linh': { lat: 21.27978, lng: 105.72672 },
-  'lau-cuong-duong': { lat: 21.27995, lng: 105.72652 },
-  'com-rang-nguyen-van-linh': { lat: 21.28015, lng: 105.72628 },
-  'cat-tien-xuan-hoa': { lat: 21.28035, lng: 105.72605 },
-  'com-tam-xuan-hoa': { lat: 21.28048, lng: 105.72592 },
-  'banh-xeo-co-hien': { lat: 21.28072, lng: 105.72565 },
-  'bun-bo-hue-102-nvl': { lat: 21.28102, lng: 105.72535 },
-  'banh-mi-bo-u': { lat: 21.28122, lng: 105.72512 },
-  'thuy-beo': { lat: 21.28148, lng: 105.72485 },
-  'bm-nuong-muoi-ot-ngoc-quy': { lat: 21.28192, lng: 105.72435 },
-  'xoi-com-185': { lat: 21.28208, lng: 105.72415 },
-  'banh-trang-nha-boom': { lat: 21.28245, lng: 105.72368 },
-  'tiem-tra-sua-tocotoco': { lat: 21.28262, lng: 105.72348 },
-  'tiem-nha-me-beo': { lat: 21.28345, lng: 105.72245 },
-  'zino-cafe': { lat: 21.28378, lng: 105.72202 },
-  'hung-thu-bun-tron-com-rang': { lat: 21.28405, lng: 105.72168 },
-  'quan-win-nguyen-van-linh': { lat: 21.27868, lng: 105.72812 },
-  'tiem-com-nha-le-huyen': { lat: 21.28175, lng: 105.72455 },
-  'canteen-ktx-noi-tru-sp2': { lat: 21.28335, lng: 105.72345 },
-  'tiem-me-soc': { lat: 21.28285, lng: 105.72318 },
-  'sui-cao-tieu-lau-quan': { lat: 21.28225, lng: 105.72392 },
-  'lau-nuong-ba-muoi': { lat: 21.28095, lng: 105.72585 },
-  'tho-coii': { lat: 21.28028, lng: 105.72638 },
-  'soh-tea': { lat: 21.27918, lng: 105.72745 },
-  'xoai-corner': { lat: 21.28022, lng: 105.72642 },
-  'goky-xuan-hoa': { lat: 21.28312, lng: 105.72285 },
-  'quan-co-loan': { lat: 21.27932, lng: 105.72728 },
-  'bep-nha-cun': { lat: 21.27852, lng: 105.72832 },
-  'nem-nuong-88': { lat: 21.28078, lng: 105.72598 },
-  'hi-tea': { lat: 21.28168, lng: 105.72472 },
-  'nha-hang-khanh-huong': { lat: 21.28112, lng: 105.72555 },
-  'nem-nuong-nha-mo-chou-chou': { lat: 21.28082, lng: 105.72785 },
-  'quan-ba-thu-xuan-hoa': { lat: 21.28465, lng: 105.72415 },
-  'tao-pho-chi-beo': { lat: 21.28245, lng: 105.72452 },
-  'mr-tea-xuan-hoa': { lat: 21.28285, lng: 105.72432 },
-  'tra-chanh-zian': { lat: 21.28152, lng: 105.72518 },
-  'vanh-dai-quan': { lat: 21.28025, lng: 105.72082 },
-  'trau-phi-xuyen': { lat: 21.28265, lng: 105.71967 },
-  'lon-ga-xuyen-phi': { lat: 21.27774, lng: 105.72211 },
-  'nha-hang-468': { lat: 21.27815, lng: 105.72195 },
-  'bun-cha-xuan-hoa': { lat: 21.27865, lng: 105.72165 },
-  'beef88-xuan-hoa': { lat: 21.28079, lng: 105.72055 },
-  'zun-food-tea': { lat: 21.28048, lng: 105.72072 },
-  'my-ga-tan-linh-duong': { lat: 21.27925, lng: 105.72135 },
-  'cocokana-tra-trai-cay': { lat: 21.27965, lng: 105.72115 },
-  'quan-bap-1991': { lat: 21.28334, lng: 105.71978 },
-  'trang-hai-san': { lat: 21.28618, lng: 105.72325 },
-  'tram-du-de': { lat: 21.28115, lng: 105.72145 },
-  'le-la-cafe': { lat: 21.28145, lng: 105.72185 },
-  'happi-kid-coffee': { lat: 21.28095, lng: 105.72112 },
-  'khu-vui-choi-happi-kid': { lat: 21.28092, lng: 105.72108 },
-  'billiards-91-club': { lat: 21.28135, lng: 105.72505 },
-  'clb-bia-cyber-xuan-hoa': { lat: 21.28140, lng: 105.72495 },
-  'karaoke-xuan-hoa-vip': { lat: 21.28015, lng: 105.72125 },
-  'pickleball-kdt-xuan-hoa': { lat: 21.28055, lng: 105.72130 },
-  'dien-thoai-xuan-hoa-mobile': { lat: 21.27998, lng: 105.72648 },
-  'salon-toc-beauty-xuan-hoa': { lat: 21.27982, lng: 105.72448 },
-  'tap-hoa-sieu-thi-xuan-hoa': { lat: 21.28325, lng: 105.72410 },
-  'tiem-banh-a-salty-name': { lat: 21.27788, lng: 105.72915 },
-  'quan-oc-ngon': { lat: 21.27915, lng: 105.73005 },
-  'nhat-ha': { lat: 21.27773, lng: 105.72826 },
-  'bep-thanh': { lat: 21.27715, lng: 105.72738 },
-  'bep-nha-bong': { lat: 21.28166, lng: 105.72895 },
-  'bia-sai-gon-tuan-hien': { lat: 21.27845, lng: 105.73245 },
-  'san-bia-247': { lat: 21.27858, lng: 105.73125 },
-  'trau-gio-dong': { lat: 21.27795, lng: 105.72995 },
-  'bun-rieu-ba-mai': { lat: 21.27822, lng: 105.73065 },
-  'banh-cuon-ngoc-anh': { lat: 21.27838, lng: 105.73165 },
-  'tiem-lan-phuong': { lat: 21.27868, lng: 105.73285 },
-  'tra-chanh-bao-chau': { lat: 21.27878, lng: 105.73215 },
-  'lau-ngua-tay-bac': { lat: 21.30485, lng: 105.72865 },
-  'cafe-1975-xuan-hoa': { lat: 21.27585, lng: 105.72545 },
-  'pho-bo-xuan-hoa': { lat: 21.27625, lng: 105.72585 },
-  'xuho-bistro': { lat: 21.27945, lng: 105.72865 },
-  'vu-quynh-chi': { lat: 21.28525, lng: 105.71985 },
-  'matcha-house-xuan-hoa': { lat: 21.28058, lng: 105.72665 },
-  'quan-dua-kha-do': { lat: 21.27385, lng: 105.72615 },
-  'xien-nuong-trung-hoa': { lat: 21.27892, lng: 105.72692 },
-  'lau-nuong-phong-viet': { lat: 21.27465, lng: 105.72485 },
-  'lau-thai-ha-tinh': { lat: 21.27515, lng: 105.72515 },
-  'umee-tea-food': { lat: 21.28184, lng: 105.73415 },
-};
+const CATALOG_STREET_MATCHED_COORDS: Record<string, { lat: number; lng: number }> =
+  VERIFIED_CATALOG_PLACE_COORDS;
 
 const CATALOG_EXPLICIT_MAPS_URLS: Record<string, string> = {
   'khu-vui-choi-happi-kid': 'https://maps.app.goo.gl/nT1hviRgRibEPUzU9?g_st=ic',
@@ -410,6 +326,13 @@ export function isEntertainmentOrServicePlace(
 ): boolean {
   if (!place) return false;
   if (place.id?.startsWith('osm_')) return true;
+  if (place.contentProfile && place.contentProfile !== 'food') return true;
+  const ov = place.id ? getAdminState().places?.[place.id] : undefined;
+  const effSubId = ov?.subcategoryId || ov?.categoryId || place.subcategoryId;
+  if (effSubId && effSubId in MAP_CATEGORY_REGISTRY) {
+    const subMeta = MAP_CATEGORY_REGISTRY[effSubId as MapSubcategoryId];
+    return subMeta.contentProfile !== 'food';
+  }
   if (
     sectorTag === 'bia-game' ||
     sectorTag === 'an-choi' ||
@@ -432,125 +355,119 @@ export function isEntertainmentOrServicePlace(
 }
 
 /**
- * Trả về nhãn loại hình hiển thị trên Card cho địa điểm (VD: "🎱 Bi-a", "🎮 Cyber Game", "🎤 Karaoke", "🎈 Khu vui chơi", "📱 Điện thoại"...)
+ * Trả về nhãn loại hình hiển thị trên Card & Modal đồng bộ 100% với Taxonomy 3 cấp (Phần 2.2)
+ * Ví dụ: Chọn Nhóm Ăn uống, Loại Ăn vặt, Tag: Ăn đêm, Có giao hàng
+ * -> Hiển thị: "Ăn vặt · Ăn đêm · Có giao hàng"
  */
 export function getPlaceDisplayTypeBadge(place: Place, sectorTag?: string): string {
-  const combined = `${place.name || ''} ${place.tagline || ''} ${place.subcategory || ''} ${(place.tags || []).join(' ')}`.toLowerCase();
-  if (place.id?.startsWith('osm_') || sectorTag === 'dia-danh') {
-    if (combined.includes('đh ') || combined.includes('đại học') || combined.includes('cao đẳng') || combined.includes('trường') || combined.includes('ktx')) {
-      return '🎓 Trường học & Giáo dục';
-    }
-    if (combined.includes('hồ ') || combined.includes('quảng trường') || combined.includes('núi') || combined.includes('công viên')) {
-      return '🌳 Hồ & Địa danh';
-    }
-    if (combined.includes('y tế') || combined.includes('phòng khám') || combined.includes('bưu điện')) {
-      return '🏥 Y tế & Bưu chính';
-    }
-    return '🏛️ Cơ quan & Địa danh';
-  }
-  if (place.subcategory === 'Bi-a' || (combined.includes('bi-a') || combined.includes('billiards'))) {
-    if (combined.includes('cyber') || combined.includes('game')) return '🎱 Bi-a & Cyber Game';
-    return '🎱 Bi-a';
-  }
-  if (place.subcategory === 'Game' || combined.includes('cyber') || combined.includes('quán game') || combined.includes('quán net')) {
-    return '🎮 Cyber Game';
-  }
-  if (place.subcategory === 'Karaoke' || combined.includes('karaoke')) {
-    return '🎤 Karaoke';
-  }
-  if (place.id === 'khu-vui-choi-happi-kid' || combined.includes('khu vui chơi')) {
-    return '🎈 Khu vui chơi & Kids Cafe';
-  }
-  if (combined.includes('pickleball') || combined.includes('thể thao')) {
-    return '🎾 Thể thao & Giải trí';
-  }
-  if (place.subcategory === 'Điện thoại' || sectorTag === 'dien-thoai' || combined.includes('điện thoại') || combined.includes('mobile')) {
-    return '📱 Điện thoại & Phụ kiện';
-  }
-  if (place.subcategory === 'Làm đẹp' || combined.includes('hair') || combined.includes('nail') || combined.includes('spa') || combined.includes('làm đẹp')) {
-    return '💇‍♀️ Làm đẹp & Spa';
-  }
-  if (place.subcategory === 'Tạp hóa' || combined.includes('tạp hóa') || combined.includes('siêu thị')) {
-    return '🛒 Tạp hóa & Siêu thị';
-  }
-  const style = getPlaceStyleGroup(place);
-  switch (style) {
-    case 'nhau-lau':
-      return '🍻 Nhậu & Lẩu Nướng';
-    case 'uong':
-      return '🧋 Cafe & Đồ Uống';
-    case 'an-vat':
-      return '🍢 Quán Ăn Vặt';
-    case 'vui-choi':
-      return '🎡 Vui Chơi & Giải Trí';
-    default:
-      return '🍜 Cơm & Bún Phở';
-  }
+  const ov = place.id ? getAdminState().places?.[place.id] : undefined;
+  const taxonomy = resolvePlaceTaxonomy({
+    id: place.id,
+    name: ov?.name || place.name,
+    subType: ov?.tagline || place.tagline,
+    tags: ov?.tags || place.tags,
+    sectorTag: ov?.sectorTag || sectorTag,
+    mapCategory: ov?.mapCategory,
+    category: ov?.category || place.category,
+    explicitParentId: ov?.parentCategoryId || place.parentCategoryId,
+    explicitSubcategoryId: ov?.subcategoryId || ov?.categoryId || place.subcategoryId,
+  });
+  const extraTags = Array.isArray(ov?.extraTags)
+    ? ov!.extraTags
+    : Array.isArray(place.extraTags)
+    ? place.extraTags
+    : [];
+  return formatPlaceTaxonomyLine(taxonomy.subcategoryId, extraTags, 3);
 }
 
 /**
- * Xác định các Category chính mà một địa điểm thuộc về (Mục 6)
+ * Xác định các Category chính mà một địa điểm thuộc về (Mục 6 & Phần 2)
  */
 export function getPlaceMainCategories(
   place: Place,
   sectorTag?: string
 ): Exclude<MainPlaceCategoryKey, 'all'>[] {
   const result = new Set<Exclude<MainPlaceCategoryKey, 'all'>>();
-  const combined = `${place.name || ''} ${place.tagline || ''} ${place.subcategory || ''} ${(place.tags || []).join(' ')}`.toLowerCase();
+  const ov = place.id ? getAdminState().places?.[place.id] : undefined;
+  const effSector = ov?.sectorTag || sectorTag;
+  const taxonomy = resolvePlaceTaxonomy({
+    id: place.id,
+    name: ov?.name || place.name,
+    subType: ov?.tagline || place.tagline,
+    tags: ov?.tags || place.tags,
+    sectorTag: effSector,
+    mapCategory: ov?.mapCategory,
+    category: ov?.category || place.category,
+    explicitParentId: ov?.parentCategoryId || place.parentCategoryId,
+    explicitSubcategoryId: ov?.subcategoryId || ov?.categoryId || place.subcategoryId,
+  });
 
-  if (place.id.startsWith('osm_') || sectorTag === 'dia-danh') {
+  if (
+    place.id.startsWith('osm_') ||
+    effSector === 'dia-danh' ||
+    taxonomy.parentCategoryId === 'public' ||
+    taxonomy.parentCategoryId === 'education' ||
+    taxonomy.parentCategoryId === 'health' ||
+    taxonomy.parentCategoryId === 'landmark'
+  ) {
     result.add('dia-danh');
-    if (combined.includes('chợ') || combined.includes('ngân hàng') || combined.includes('xăng')) {
+    if (taxonomy.parentCategoryId === 'health' && taxonomy.subcategoryId === 'pharmacy') {
       result.add('dich-vu');
-    }
-    if (combined.includes('flamingo') || combined.includes('golf') || combined.includes('đại lải') || combined.includes('quảng trường') || combined.includes('hồ điều hòa')) {
-      result.add('vui-choi');
     }
     return Array.from(result);
   }
 
-  // Dịch vụ
   if (
-    sectorTag === 'dien-thoai' ||
-    sectorTag === 'dich-vu' ||
-    ['Điện thoại', 'Làm đẹp', 'Tạp hóa', 'Dịch vụ khác'].includes(place.subcategory || '') ||
-    combined.includes('điện thoại') ||
-    combined.includes('làm đẹp') ||
-    combined.includes('hair') ||
-    combined.includes('nail') ||
-    combined.includes('tạp hóa') ||
-    combined.includes('siêu thị mini')
+    taxonomy.parentCategoryId === 'shopping' ||
+    taxonomy.parentCategoryId === 'service' ||
+    taxonomy.parentCategoryId === 'transport' ||
+    effSector === 'dien-thoai' ||
+    effSector === 'dich-vu'
   ) {
     result.add('dich-vu');
+    return Array.from(result);
   }
 
-  // Vui chơi
   if (
-    sectorTag === 'bia-game' ||
-    sectorTag === 'an-choi' ||
-    ['Bi-a', 'Game', 'Karaoke', 'Giải trí'].includes(place.subcategory || '') ||
-    getPlaceStyleGroup(place) === 'vui-choi'
+    taxonomy.parentCategoryId === 'entertainment' ||
+    taxonomy.parentCategoryId === 'sports' ||
+    effSector === 'bia-game' ||
+    effSector === 'an-choi'
   ) {
     result.add('vui-choi');
+    return Array.from(result);
   }
 
-  if (result.size > 0 && !combined.includes('kids cafe')) {
+  if (taxonomy.parentCategoryId === 'night_food') {
+    result.add('nhau');
+    result.add('an');
+    return Array.from(result);
+  }
+
+  if (taxonomy.parentCategoryId === 'drink') {
+    result.add('uong');
+    return Array.from(result);
+  }
+
+  if (taxonomy.parentCategoryId === 'food') {
+    result.add('an');
+    const combined = `${place.name || ''} ${place.tagline || ''} ${(place.tags || []).join(' ')}`.toLowerCase();
+    if (taxonomy.subcategoryId === 'street_food' && (combined.includes('trà') || combined.includes('cafe') || combined.includes('sữa') || combined.includes('chè'))) {
+      result.add('uong');
+    }
+    if (taxonomy.subcategoryId === 'hotpot' || taxonomy.subcategoryId === 'grill' || taxonomy.subcategoryId === 'seafood') {
+      result.add('nhau');
+    }
     return Array.from(result);
   }
 
   const style = getPlaceStyleGroup(place);
   if (style === 'nhau-lau') {
     result.add('nhau');
-    // Các quán lẩu nướng / nhà hàng cũng phục vụ ăn chính
     result.add('an');
   } else if (style === 'uong') {
     result.add('uong');
-  } else if (style === 'an-vat') {
-    result.add('an');
-    if (combined.includes('trà') || combined.includes('cafe') || combined.includes('sữa') || combined.includes('chè')) {
-      result.add('uong');
-    }
-  } else if (style === 'an-chinh') {
+  } else {
     result.add('an');
   }
 
@@ -558,7 +475,7 @@ export function getPlaceMainCategories(
 }
 
 /**
- * Xác định các Subcategory (Mục 7) của một địa điểm trong Category chính tương ứng
+ * Xác định các Subcategory (Mục 7 & Phần 2) của một địa điểm trong Category chính tương ứng
  */
 export function getPlaceSubcategories(
   place: Place,
@@ -566,12 +483,27 @@ export function getPlaceSubcategories(
   sectorTag?: string
 ): string[] {
   const subs = new Set<string>();
+  const ov = place.id ? getAdminState().places?.[place.id] : undefined;
+  const effSector = ov?.sectorTag || sectorTag;
+  const taxonomy = resolvePlaceTaxonomy({
+    id: place.id,
+    name: ov?.name || place.name,
+    subType: ov?.tagline || place.tagline,
+    tags: ov?.tags || place.tags,
+    sectorTag: effSector,
+    mapCategory: ov?.mapCategory,
+    category: ov?.category || place.category,
+    explicitParentId: ov?.parentCategoryId || place.parentCategoryId,
+    explicitSubcategoryId: ov?.subcategoryId || ov?.categoryId || place.subcategoryId,
+  });
+  const subId = taxonomy.subcategoryId;
   const menuText = (place.menu || []).map((m) => m.name).join(' ');
   const combined = `${place.name || ''} ${place.tagline || ''} ${place.subcategory || ''} ${(place.tags || []).join(' ')} ${menuText}`.toLowerCase();
 
   if (mainCategory === 'an' || mainCategory === 'all') {
-    if (combined.includes('cơm')) subs.add('Cơm');
+    if (subId === 'rice' || combined.includes('cơm')) subs.add('Cơm');
     if (
+      subId === 'noodle' ||
       combined.includes('phở') ||
       combined.includes('bún') ||
       combined.includes('miến') ||
@@ -582,10 +514,12 @@ export function getPlaceSubcategories(
     ) {
       subs.add('Phở / Bún');
     }
-    if (combined.includes('bánh mì') || combined.includes('bánh mỳ') || combined.includes('bánh cuốn')) {
+    if (subId === 'banh_mi' || combined.includes('bánh mì') || combined.includes('bánh mỳ') || combined.includes('bánh cuốn')) {
       subs.add('Bánh mì');
     }
     if (
+      subId === 'street_food' ||
+      subId === 'fast_food' ||
       getPlaceStyleGroup(place) === 'an-vat' ||
       combined.includes('ăn vặt') ||
       combined.includes('bánh tráng') ||
@@ -600,58 +534,61 @@ export function getPlaceSubcategories(
     ) {
       subs.add('Ăn vặt');
     }
-    if (combined.includes('nướng') || combined.includes('chảo gang') || combined.includes('bbq')) {
+    if (subId === 'grill' || subId === 'grill_pub' || combined.includes('nướng') || combined.includes('chảo gang') || combined.includes('bbq')) {
       subs.add('Nướng');
     }
-    if (combined.includes('lẩu')) {
+    if (subId === 'hotpot' || subId === 'hotpot_pub' || combined.includes('lẩu')) {
       subs.add('Lẩu');
     }
   }
 
   if (mainCategory === 'nhau' || mainCategory === 'all') {
-    if (getPlaceStyleGroup(place) === 'nhau-lau' || combined.includes('nhậu') || combined.includes('quán nhậu') || combined.includes('đặc sản')) {
+    if (subId === 'pub' || getPlaceStyleGroup(place) === 'nhau-lau' || combined.includes('nhậu') || combined.includes('quán nhậu') || combined.includes('đặc sản')) {
       subs.add('Quán nhậu');
     }
-    if (combined.includes('bia') || combined.includes('beer')) {
+    if (subId === 'beer' || subId === 'beer_garden' || combined.includes('bia') || combined.includes('beer')) {
       subs.add('Bia');
     }
-    if (combined.includes('nướng') || combined.includes('chảo gang') || combined.includes('xiên nướng')) {
+    if (subId === 'grill' || subId === 'grill_pub' || combined.includes('nướng') || combined.includes('chảo gang') || combined.includes('xiên nướng')) {
       subs.add('Nướng');
     }
-    if (combined.includes('lẩu')) {
+    if (subId === 'hotpot' || subId === 'hotpot_pub' || combined.includes('lẩu')) {
       subs.add('Lẩu');
     }
-    if (combined.includes('hải sản') || combined.includes('ốc')) {
+    if (subId === 'seafood' || combined.includes('hải sản') || combined.includes('ốc')) {
       subs.add('Hải sản');
     }
   }
 
   if (mainCategory === 'uong' || mainCategory === 'all') {
-    if (combined.includes('cafe') || combined.includes('cà phê') || combined.includes('phê ') || combined.includes('bạc xỉu')) {
+    if (subId === 'cafe' || combined.includes('cafe') || combined.includes('cà phê') || combined.includes('phê ') || combined.includes('bạc xỉu')) {
       subs.add('Cafe');
     }
-    if (combined.includes('trà sữa') || combined.includes('ô long') || combined.includes('olong') || combined.includes('matcha') || combined.includes('kem trứng')) {
+    if (subId === 'milk_tea' || combined.includes('trà sữa') || combined.includes('ô long') || combined.includes('olong') || combined.includes('matcha') || combined.includes('kem trứng')) {
       subs.add('Trà sữa');
     }
-    if (combined.includes('nước ép') || combined.includes('sinh tố') || combined.includes('trà trái cây') || combined.includes('trà hoa quả') || combined.includes('sữa chua')) {
+    if (subId === 'juice' || combined.includes('nước ép') || combined.includes('sinh tố') || combined.includes('trà trái cây') || combined.includes('trà hoa quả') || combined.includes('sữa chua')) {
       subs.add('Nước ép');
     }
-    if (getPlaceStyleGroup(place) === 'uong' || combined.includes('trà chanh') || combined.includes('chè') || combined.includes('tào phớ') || combined.includes('đồ uống')) {
+    if (subId === 'tea' || subId === 'beverage' || getPlaceStyleGroup(place) === 'uong' || combined.includes('trà chanh') || combined.includes('chè') || combined.includes('tào phớ') || combined.includes('đồ uống')) {
       subs.add('Đồ uống');
     }
   }
 
   if (mainCategory === 'vui-choi' || mainCategory === 'all') {
-    if (place.subcategory === 'Bi-a' || combined.includes('bi-a') || combined.includes('billiards') || combined.includes('bida')) {
+    if (subId === 'billiards' || place.subcategory === 'Bi-a' || combined.includes('bi-a') || combined.includes('billiards') || combined.includes('bida')) {
       subs.add('Bi-a');
     }
-    if (place.subcategory === 'Game' || combined.includes('cyber') || combined.includes('quán game') || combined.includes('quán net') || combined.includes('esport')) {
+    if (subId === 'gaming' || place.subcategory === 'Game' || combined.includes('cyber') || combined.includes('quán game') || combined.includes('quán net') || combined.includes('esport')) {
       subs.add('Game');
     }
-    if (place.subcategory === 'Karaoke' || combined.includes('karaoke') || combined.includes('phòng hát')) {
+    if (subId === 'karaoke' || place.subcategory === 'Karaoke' || combined.includes('karaoke') || combined.includes('phòng hát')) {
       subs.add('Karaoke');
     }
     if (
+      subId === 'sports' ||
+      subId === 'kids_playground' ||
+      subId === 'entertainment_center' ||
       place.subcategory === 'Giải trí' ||
       combined.includes('khu vui chơi') ||
       combined.includes('happi kid') ||
@@ -665,27 +602,43 @@ export function getPlaceSubcategories(
   }
 
   if (mainCategory === 'dich-vu' || mainCategory === 'all') {
-    if (place.subcategory === 'Điện thoại' || sectorTag === 'dien-thoai' || combined.includes('điện thoại') || combined.includes('mobile') || combined.includes('phụ kiện')) {
+    if (subId === 'phone_shop' || subId === 'electronics' || place.subcategory === 'Điện thoại' || effSector === 'dien-thoai' || combined.includes('điện thoại') || combined.includes('mobile') || combined.includes('phụ kiện')) {
       subs.add('Điện thoại');
     }
-    if (place.subcategory === 'Làm đẹp' || combined.includes('làm đẹp') || combined.includes('salon') || combined.includes('hair') || combined.includes('nail') || combined.includes('spa') || combined.includes('dưỡng sinh')) {
+    if (subId === 'beauty' || subId === 'barber' || place.subcategory === 'Làm đẹp' || combined.includes('làm đẹp') || combined.includes('salon') || combined.includes('hair') || combined.includes('nail') || combined.includes('spa') || combined.includes('dưỡng sinh')) {
       subs.add('Làm đẹp');
     }
-    if (place.subcategory === 'Tạp hóa' || combined.includes('tạp hóa') || combined.includes('siêu thị') || combined.includes('mart') || combined.includes('chợ')) {
+    if (subId === 'grocery' || subId === 'supermarket' || subId === 'convenience_store' || subId === 'market' || place.subcategory === 'Tạp hóa' || combined.includes('tạp hóa') || combined.includes('siêu thị') || combined.includes('mart') || combined.includes('chợ')) {
       subs.add('Tạp hóa');
     }
-    if (place.subcategory === 'Dịch vụ khác' || sectorTag === 'dich-vu' || combined.includes('ngân hàng') || combined.includes('xăng') || combined.includes('dịch vụ')) {
+    if (
+      taxonomy.parentCategoryId === 'transport' ||
+      taxonomy.parentCategoryId === 'service' ||
+      subId === 'fashion' ||
+      place.subcategory === 'Dịch vụ khác' ||
+      effSector === 'dich-vu' ||
+      combined.includes('ngân hàng') ||
+      combined.includes('xăng') ||
+      combined.includes('dịch vụ')
+    ) {
       subs.add('Dịch vụ khác');
     }
   }
 
   if (mainCategory === 'dia-danh' || mainCategory === 'all') {
-    if (place.id.startsWith('osm_') || sectorTag === 'dia-danh') {
-      if (combined.includes('đh ') || combined.includes('đại học') || combined.includes('cao đẳng') || combined.includes('trường') || combined.includes('ktx')) {
+    if (
+      place.id.startsWith('osm_') ||
+      effSector === 'dia-danh' ||
+      taxonomy.parentCategoryId === 'education' ||
+      taxonomy.parentCategoryId === 'public' ||
+      taxonomy.parentCategoryId === 'landmark' ||
+      taxonomy.parentCategoryId === 'health'
+    ) {
+      if (taxonomy.parentCategoryId === 'education' || combined.includes('đh ') || combined.includes('đại học') || combined.includes('cao đẳng') || combined.includes('trường') || combined.includes('ktx')) {
         subs.add('Trường học');
-      } else if (combined.includes('ubnd') || combined.includes('đảng ủy') || combined.includes('công an') || combined.includes('hành chính') || combined.includes('lữ đoàn')) {
+      } else if (taxonomy.parentCategoryId === 'public' || combined.includes('ubnd') || combined.includes('đảng ủy') || combined.includes('công an') || combined.includes('hành chính') || combined.includes('lữ đoàn')) {
         subs.add('Hành chính');
-      } else if (combined.includes('hồ') || combined.includes('quảng trường') || combined.includes('núi') || combined.includes('vòng tròn') || combined.includes('cầu')) {
+      } else if (taxonomy.parentCategoryId === 'landmark' || combined.includes('hồ') || combined.includes('quảng trường') || combined.includes('núi') || combined.includes('vòng tròn') || combined.includes('cầu')) {
         subs.add('Hồ / Công viên');
       } else {
         subs.add('Y tế / Bưu điện');

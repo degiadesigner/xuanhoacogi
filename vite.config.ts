@@ -3,6 +3,24 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/postcss';
 import { fileURLToPath } from 'node:url';
 import https from 'node:https';
+// @ts-ignore
+import { createFounderSecurityBackend } from './server/founder-security-backend.mjs';
+
+const founderSecurityBackend = createFounderSecurityBackend({
+  useLocalMirrorOnly: process.env.FOUNDER_BACKEND_LOCAL_ONLY === '1',
+});
+
+function founderSecurityBackendPlugin(): Plugin {
+  return {
+    name: 'xuanhoa-founder-security-backend',
+    configureServer(server) {
+      server.middlewares.use(founderSecurityBackend.middleware);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(founderSecurityBackend.middleware);
+    },
+  };
+}
 
 const ALLOWED_GMAPS_HOSTS = new Set([
   'maps.app.goo.gl',
@@ -434,7 +452,7 @@ function googleMapsShortUrlResolverPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), googleMapsShortUrlResolverPlugin()],
+  plugins: [react(), googleMapsShortUrlResolverPlugin(), founderSecurityBackendPlugin()],
   server: {
     host: '127.0.0.1',
     port: 5173,

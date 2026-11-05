@@ -42,7 +42,9 @@ export type PlaceLocationStatus =
   | 'unlocated'
   | 'invalid_coordinates'
   | 'invalid'
-  | 'pending_geocode';
+  | 'pending_geocode'
+  | 'suspicious'
+  | 'outside_service_area';
 
 /**
  * Trạng thái của link Google Maps (độc lập hoàn toàn với locationStatus).
@@ -109,9 +111,16 @@ export interface PlaceLocation {
   id: string;
   name: string;
   category: Exclude<MapCategoryKey, 'all' | 'game_asset'>;
-  /** Taxonomy 2 cấp thống nhất (Parent -> Subcategory, Phần 11–22) */
+  /** Taxonomy 3 cấp thống nhất (Parent -> Subcategory -> ExtraTags, Phần 2.1) */
   parentCategoryId?: string;
   subcategoryId?: string;
+  extraTags?: string[];
+  contentProfile?: 'food' | 'retail' | 'service' | 'entertainment' | 'government' | 'education' | 'landmark' | 'basic';
+  catalogMode?: 'menu' | 'products' | 'services' | 'pricing' | 'none';
+  catalogEnabled?: boolean;
+  website?: string;
+  educationLevel?: string;
+  agencyFunction?: string;
   /** Cho phép Admin bật/tắt hiển thị mặc định khi mở bản đồ (Phần 51) */
   showByDefault?: boolean;
   address: string;
@@ -120,6 +129,7 @@ export interface PlaceLocation {
   coordinateSource: CoordinateSource;
   coordinateVerified: boolean;
   locationStatus?: PlaceLocationStatus;
+  coordinateQualityStatus?: 'located' | 'unlocated' | 'suspicious' | 'outside_service_area';
   mapsLinkStatus?: MapsLinkStatus;
   visibilityStatus?: PlaceVisibilityStatus;
   version?: number;
@@ -142,17 +152,19 @@ export interface PlaceLocation {
     signatureDishName?: string;
     signatureDishPrice?: number;
     tags?: string[];
+    extraTags?: string[];
     website?: string;
+    educationLevel?: string;
+    agencyFunction?: string;
+    contentProfile?: 'food' | 'retail' | 'service' | 'entertainment' | 'government' | 'education' | 'landmark' | 'basic';
+    catalogMode?: 'menu' | 'products' | 'services' | 'pricing' | 'none';
+    catalogEnabled?: boolean;
     subType?: string;
     quip?: string;
     mapsQuery?: string;
     mapsUrl?: string;
-    merchantClaimCode?: string;
-    claimedByEmail?: string;
-    claimedByName?: string;
     liveStatus?: 'open_normal' | 'busy_hot' | 'closed_today';
     liveStatusNote?: string;
-    hasPendingSubmission?: boolean;
     sectorTag?: string;
     parentCategoryId?: string;
     subcategoryId?: string;

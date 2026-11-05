@@ -40,7 +40,9 @@ import {
   Sparkles,
   UserPlus,
   Bell,
+  MoreHorizontal,
 } from 'lucide-react';
+import { PlaceFields, type PlaceFieldsValue } from '@/components/admin/PlaceFields';
 import {
   AdminThemeMode,
   AdminPlaceItem,
@@ -65,14 +67,13 @@ import {
   updateAdminSystemSettings,
   getAdminAccounts,
   getLoggedAdminSession,
+  loginAdminWithFirebaseAuth,
   loginAdminWithCredentials,
+  getFounderLoginLockoutStatus,
+  requestBackupFounderPasswordRecovery,
   logoutAdminSession,
   upsertAdminAccount,
   deleteAdminAccount,
-  getOrGenerateMerchantCode,
-  getAllMerchantSubmissions,
-  simulateMerchantDemoSubmission,
-  assignMerchantOwnerByEmail,
   setMapAccessMode,
   updateMemberManagerPermissions,
   getEffectiveAdminRoleInfo,
@@ -82,6 +83,7 @@ import {
   requestOrExecuteDeletePlace,
   clearPlaceCoordinates,
   computePlaceLocationStatus,
+  evaluatePlaceCoordinateQuality,
   computeMapsLinkStatus,
   computePlaceVisibilityStatus,
   logMapDebug,
@@ -97,11 +99,14 @@ import {
   createOrUpdateAuthUserFromGoogle,
 } from '@/lib/auth';
 import { GoogleGIcon } from '@/components/GoogleGIcon';
-import { DigitalMapView, prefetchDigitalMapGeoLayers } from '@/components/DigitalMapView';
+import { prefetchDigitalMapGeoLayers } from '@/components/DigitalMapView';
+
+const LazyDigitalMapView = React.lazy(() =>
+  import('@/components/DigitalMapView').then(m => ({ default: m.DigitalMapView }))
+);
 import { AdminMembersManagementView } from '@/components/admin/AdminMembersManagementView';
 import { queryMembersPage } from '@/lib/member-query-engine';
 import { Place } from '@/lib/places-xuanhoa';
-import { MerchantPortalModal } from '@/components/map/MerchantPortalModal';
 import { triggerFeedback, FeedbackSoundType } from '@/lib/ui-feedback';
 import {
   getAllAdminPlaceAndLandmarkItems,
@@ -124,8 +129,11 @@ import type { MapCategoryKey } from '@/lib/map/map-types';
 import {
   MAP_PARENT_CATEGORIES,
   MAP_CATEGORY_REGISTRY,
+  STANDARD_EXTRA_TAGS,
+  formatPlaceTaxonomyLine,
   getDefaultSectorTagForSubcategory,
   getSubcategoriesByParent,
+  resolvePlaceContentProfile,
   resolvePlaceTaxonomy,
   searchSubcategoriesByQuery,
   type MapParentCategoryId,
@@ -231,25 +239,36 @@ function matchesMapCategoryFilter(
   mapCatFilter: string
 ): boolean {
   if (mapCatFilter === 'all') return true;
-  if (mapCat === mapCatFilter) return true;
-  const ov = getAdminState().places?.[item.place.id];
+  if (
+    item.subcategoryId === mapCatFilter ||
+    item.categoryId === mapCatFilter ||
+    item.parentCategoryId === mapCatFilter ||
+    mapCat === mapCatFilter
+  ) {
+    return true;
+  }
+  if (mapCatFilter === 'pub' && item.subcategoryId === 'beer') return true;
+  if (mapCatFilter === 'beer' && mapCat === 'pub') return true;
+
   const tax = resolvePlaceTaxonomy({
     id: item.place.id,
     name: item.place.name,
     address: item.place.address,
     tagline: item.place.tagline,
     tags: item.place.tags,
-    sectorTag: ov?.sectorTag || item.sectorTag,
-    mapCategory: ov?.mapCategory || mapCat,
-    parentCategoryId: ov?.parentCategoryId,
-    subcategoryId: ov?.subcategoryId,
+    sectorTag: item.sectorTag,
+    mapCategory: mapCat,
+    parentCategoryId: item.parentCategoryId,
+    subcategoryId: item.subcategoryId,
   });
   if (tax.parentCategoryId === mapCatFilter || tax.subcategoryId === mapCatFilter) {
     return true;
   }
   if (mapCatFilter === 'billiards') {
     const nameLower = item.place.name.toLowerCase();
-    const normHay = item.normalizedHaystack || normalizeVietnamese(`${item.place.name} ${(item.place.tags || []).join(' ')}`);
+    const normHay =
+      item.normalizedHaystack ||
+      normalizeVietnamese(`${item.place.name} ${(item.place.tags || []).join(' ')}`);
     return (
       tax.subcategoryId === 'billiards' ||
       item.sectorTag === 'bia-game' ||
@@ -296,6 +315,8 @@ const MapPlaceListRow = React.memo<MapPlaceListRowProps>(function MapPlaceListRo
 }) {
   return (
     <div
+      data-testid={`admin-map-list-row-${item.place.id}`}
+      data-place-name={item.place.name}
       onClick={() => onSelect(item)}
       style={{
         minHeight: '54px',
@@ -453,9 +474,25 @@ export function AdminDashboardView({
     }
   };
 
-  // Giữ nguyên mục đang xem (Quản lý Thành viên, Quản lý Maps, Quản lý Quán...) kể cả khi bấm F5 tải lại trang
+  // Giữ nguyên mục đang xem (Quản lý Thành viên, Quản lý Maps, Quản lý Quán...) kể cả khi bấm F5 tải lại trang, hỗ trợ ?tab=maps trên URL hash
   const [activeSection, setActiveSection] = useState<AdminSection>(() => {
     if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      const qIdx = hash.indexOf('?');
+      if (qIdx >= 0) {
+        const params = new URLSearchParams(hash.slice(qIdx + 1));
+        const tabParam = params.get('tab') as AdminSection | null;
+        if (
+          tabParam === 'overview' ||
+          tabParam === 'places' ||
+          tabParam === 'maps' ||
+          tabParam === 'members' ||
+          tabParam === 'reviews' ||
+          tabParam === 'logs'
+        ) {
+          return tabParam;
+        }
+      }
       const saved = localStorage.getItem('xuanhoa_admin_active_section_v1') as AdminSection | null;
       if (
         saved === 'overview' ||
@@ -472,8 +509,44 @@ export function AdminDashboardView({
   });
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncSectionFromHash = () => {
+      const hash = window.location.hash || '';
+      const qIdx = hash.indexOf('?');
+      if (qIdx >= 0) {
+        const params = new URLSearchParams(hash.slice(qIdx + 1));
+        const tabParam = params.get('tab') as AdminSection | null;
+        if (
+          tabParam === 'overview' ||
+          tabParam === 'places' ||
+          tabParam === 'maps' ||
+          tabParam === 'members' ||
+          tabParam === 'reviews' ||
+          tabParam === 'logs'
+        ) {
+          setActiveSection(tabParam);
+        }
+      }
+    };
+    syncSectionFromHash();
+    window.addEventListener('hashchange', syncSectionFromHash);
+    return () => window.removeEventListener('hashchange', syncSectionFromHash);
+  }, []);
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('xuanhoa_admin_active_section_v1', activeSection);
+    }
+    if (import.meta.env?.DEV) {
+      const t0 = performance.now();
+      requestAnimationFrame(() => {
+        console.debug(
+          `[ADMIN ROUTE] section=${activeSection} renderMs=${(performance.now() - t0).toFixed(1)}`
+        );
+      });
+    }
+    if (activeSection === 'maps') {
+      prefetchDigitalMapGeoLayers().catch(() => {});
     }
   }, [activeSection]);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -493,6 +566,10 @@ export function AdminDashboardView({
   const [loginRememberMe, setLoginRememberMe] = useState(true);
   const [showLoginPass, setShowLoginPass] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [forgotPasswordInput, setForgotPasswordInput] = useState('');
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState('');
+  const [forgotPasswordSubmitting, setForgotPasswordSubmitting] = useState(false);
 
   // Bảng Cài đặt gọn gàng ở góc phải
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -500,6 +577,7 @@ export function AdminDashboardView({
   // Quản lý Quán (3 cột: Cột 1 Danh sách & Duyệt Quán | Cột 2 Thông tin | Cột 3 Thực đơn)
   const [placeListTab, setPlaceListTab] = useState<'all' | 'pending_web'>('all');
   const [placeSearch, setPlaceSearch] = useState('');
+  const [debouncedPlaceSearch, setDebouncedPlaceSearch] = useState('');
   const [placeSectorFilter, setPlaceSectorFilter] = useState<string>('all');
   const [placeStatusFilter, setPlaceStatusFilter] = useState<'all' | 'active' | 'boosted' | 'locked' | 'deleted'>('all');
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
@@ -510,11 +588,27 @@ export function AdminDashboardView({
   const [mapSearch, setMapSearch] = useState('');
   const [debouncedMapSearch, setDebouncedMapSearch] = useState('');
   const [mapCatFilter, setMapCatFilter] = useState<string>('all');
-  const [mapCoordFilter, setMapCoordFilter] = useState<'all' | 'verified' | 'unverified' | 'invalid' | 'locked'>('all');
+  const [mapCoordFilter, setMapCoordFilter] = useState<
+    'all' | 'verified' | 'unverified_coord' | 'unverified' | 'invalid' | 'pending_approval' | 'locked'
+  >('all');
   const resolveRequestIdRef = useRef(0);
   const resolveAbortRef = useRef<AbortController | null>(null);
   const isSavingPlaceRef = useRef(false);
   const [isSavingPlace, setIsSavingPlace] = useState(false);
+  const [saveErrorMsg, setSaveErrorMsg] = useState<string | null>(null);
+  const [showMoreActionsMenu, setShowMoreActionsMenu] = useState(false);
+  const [confirmDeleteScope, setConfirmDeleteScope] = useState<'web' | 'maps' | null>(null);
+
+  useEffect(() => {
+    if (!placeSearch.trim()) {
+      setDebouncedPlaceSearch('');
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setDebouncedPlaceSearch(placeSearch);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [placeSearch]);
 
   useEffect(() => {
     if (!mapSearch.trim()) {
@@ -523,7 +617,7 @@ export function AdminDashboardView({
     }
     const timer = window.setTimeout(() => {
       setDebouncedMapSearch(mapSearch);
-    }, 140);
+    }, 180);
     return () => window.clearTimeout(timer);
   }, [mapSearch]);
 
@@ -545,6 +639,11 @@ export function AdminDashboardView({
   const [editPlaceMapCategory, setEditPlaceMapCategory] = useState<EditableMapCategory>('food');
   const [editPlaceParentCat, setEditPlaceParentCat] = useState<MapParentCategoryId>('food');
   const [editPlaceSubcategory, setEditPlaceSubcategory] = useState<MapSubcategoryId>('rice');
+  const [editPlaceExtraTags, setEditPlaceExtraTags] = useState<string[]>([]);
+  const [editPlaceCatalogEnabled, setEditPlaceCatalogEnabled] = useState(true);
+  const [editPlaceWebsite, setEditPlaceWebsite] = useState('');
+  const [editPlaceEducationLevel, setEditPlaceEducationLevel] = useState('');
+  const [editPlaceAgencyFunction, setEditPlaceAgencyFunction] = useState('');
   const [editPlaceCatQuickSearch, setEditPlaceCatQuickSearch] = useState('');
   const [editPlaceShowByDefault, setEditPlaceShowByDefault] = useState(false);
   const [editPlaceLat, setEditPlaceLat] = useState('');
@@ -581,12 +680,96 @@ export function AdminDashboardView({
   const [newMenuDishCat, setNewMenuDishCat] = useState('Món chính');
   const [newMenuDishDesc, setNewMenuDishDesc] = useState('');
 
+  // Baseline của Place đang chọn để tính isDirty chính xác
+  const [editPlaceBaseline, setEditPlaceBaseline] = useState<{
+    id: string;
+    name: string;
+    parentCategoryId: MapParentCategoryId;
+    subcategoryId: MapSubcategoryId;
+    extraTagsKey: string;
+    catalogEnabled: boolean;
+    showByDefault: boolean;
+    phone: string;
+    openHours: string;
+    address: string;
+    mapsUrl: string;
+    lat: string;
+    lng: string;
+    sectorTag: string;
+    serviceMode: Place['serviceMode'];
+    tagline: string;
+    tagsText: string;
+    minPrice: number;
+    maxPrice: number;
+    sigName: string;
+    sigPrice: number;
+  } | null>(null);
+
+  const isPlaceDirty = useMemo(() => {
+    if (!editPlaceBaseline || editPlaceBaseline.id !== selectedPlaceId) return false;
+    return (
+      editPlaceName.trim() !== editPlaceBaseline.name.trim() ||
+      editPlaceParentCat !== editPlaceBaseline.parentCategoryId ||
+      editPlaceSubcategory !== editPlaceBaseline.subcategoryId ||
+      editPlaceExtraTags.join('|') !== editPlaceBaseline.extraTagsKey ||
+      editPlaceCatalogEnabled !== editPlaceBaseline.catalogEnabled ||
+      editPlaceShowByDefault !== editPlaceBaseline.showByDefault ||
+      editPlacePhone.trim() !== editPlaceBaseline.phone.trim() ||
+      editPlaceHours.trim() !== editPlaceBaseline.openHours.trim() ||
+      editPlaceAddress.trim() !== editPlaceBaseline.address.trim() ||
+      editPlaceMapsUrl.trim() !== editPlaceBaseline.mapsUrl.trim() ||
+      editPlaceLat.trim() !== editPlaceBaseline.lat.trim() ||
+      editPlaceLng.trim() !== editPlaceBaseline.lng.trim() ||
+      editPlaceSectorTag !== editPlaceBaseline.sectorTag ||
+      editPlaceServiceMode !== editPlaceBaseline.serviceMode ||
+      editPlaceTagline.trim() !== editPlaceBaseline.tagline.trim() ||
+      editPlaceTagsText.trim() !== editPlaceBaseline.tagsText.trim() ||
+      Number(editPlaceMinPrice) !== Number(editPlaceBaseline.minPrice) ||
+      Number(editPlaceMaxPrice) !== Number(editPlaceBaseline.maxPrice) ||
+      editPlaceSigName.trim() !== editPlaceBaseline.sigName.trim() ||
+      Number(editPlaceSigPrice) !== Number(editPlaceBaseline.sigPrice)
+    );
+  }, [
+    editPlaceBaseline,
+    selectedPlaceId,
+    editPlaceName,
+    editPlaceParentCat,
+    editPlaceSubcategory,
+    editPlaceExtraTags,
+    editPlaceCatalogEnabled,
+    editPlaceShowByDefault,
+    editPlacePhone,
+    editPlaceHours,
+    editPlaceAddress,
+    editPlaceMapsUrl,
+    editPlaceLat,
+    editPlaceLng,
+    editPlaceSectorTag,
+    editPlaceServiceMode,
+    editPlaceTagline,
+    editPlaceTagsText,
+    editPlaceMinPrice,
+    editPlaceMaxPrice,
+    editPlaceSigName,
+    editPlaceSigPrice,
+  ]);
+
   // Modal tạo Quán / Địa danh mới
   const [isNewPlaceModalOpen, setIsNewPlaceModalOpen] = useState(false);
   const [newPlaceForm, setNewPlaceForm] = useState({
     name: '',
     sectorTag: 'an-chinh',
     mapCategory: 'food' as EditableMapCategory,
+    parentCategoryId: 'food' as MapParentCategoryId,
+    subcategoryId: 'local_food' as MapSubcategoryId,
+    extraTags: [] as string[],
+    catalogEnabled: true,
+    catalogItems: [] as CustomMenuEntry[],
+    website: '',
+    educationLevel: '',
+    agencyFunction: '',
+    showByDefault: false,
+    tagline: '',
     phone: '',
     openHours: '07:00 - 22:00',
     address: 'P. Xuân Hòa, Phúc Yên, Vĩnh Phúc',
@@ -619,10 +802,6 @@ export function AdminDashboardView({
     canManageMaps: false,
   });
 
-  const [isMerchantModalOpen, setIsMerchantModalOpen] = useState(false);
-  const [merchantModalTab, setMerchantModalTab] = useState<
-    'merchant' | 'admin_approvals' | 'admin_codes'
-  >('admin_approvals');
   const [justSavedPlace, setJustSavedPlace] = useState(false);
   const [copiedBtnKey, setCopiedBtnKey] = useState<string | null>(null);
   const [toastId, setToastId] = useState(0);
@@ -676,7 +855,9 @@ export function AdminDashboardView({
         setRefreshTick(t => t + 1);
       }
     } catch {}
-    prefetchDigitalMapGeoLayers().catch(() => {});
+    if (import.meta.env?.DEV) {
+      console.debug('[SUBSCRIBE] xuanhoa_admin_sync + xuanhoa_auth_change');
+    }
     const onSync = () => setRefreshTick(t => t + 1);
     const onAuthChange = (e: Event) => {
       const customEvt = e as CustomEvent<UserAuthProfile | null>;
@@ -686,6 +867,9 @@ export function AdminDashboardView({
     window.addEventListener('xuanhoa_admin_sync', onSync);
     window.addEventListener('xuanhoa_auth_change', onAuthChange);
     return () => {
+      if (import.meta.env?.DEV) {
+        console.debug('[UNSUBSCRIBE] xuanhoa_admin_sync + xuanhoa_auth_change');
+      }
       window.removeEventListener('xuanhoa_admin_sync', onSync);
       window.removeEventListener('xuanhoa_auth_change', onAuthChange);
     };
@@ -720,15 +904,37 @@ export function AdminDashboardView({
   // Tách biệt hoàn toàn:
   // - commercialPlaces: CHỈ chứa các Quán ăn / Nhậu / Cafe / Ăn vặt / Dịch vụ (Dùng cho Quản lý Quán)
   // - allMapPlaces: Chứa toàn bộ Địa điểm Bản đồ gồm Hành chính & Công cộng, Trường học, và Quán (Dùng cho Quản lý Maps)
-  const commercialPlaces = useMemo(() => getCommercialAdminPlaceItems(), [refreshTick]);
-  const allMapPlaces = useMemo(() => getAllAdminPlaceAndLandmarkItems(), [refreshTick]);
+  const commercialPlaces = useMemo(() => {
+    const t0 = import.meta.env?.DEV ? performance.now() : 0;
+    const res = getCommercialAdminPlaceItems();
+    if (import.meta.env?.DEV) {
+      console.debug(`[DATA FETCH] commercialPlaces count=${res.length} ms=${(performance.now() - t0).toFixed(1)}`);
+    }
+    return res;
+  }, [refreshTick]);
+
+  const allMapPlaces = useMemo(() => {
+    const t0 = import.meta.env?.DEV ? performance.now() : 0;
+    const res = getAllAdminPlaceAndLandmarkItems();
+    if (import.meta.env?.DEV) {
+      console.debug(`[DATA FETCH] allMapPlaces count=${res.length} ms=${(performance.now() - t0).toFixed(1)}`);
+    }
+    return res;
+  }, [refreshTick]);
+
   const managedOsmLandmarks = useMemo(() => getManagedOsmLandmarks(true), [refreshTick]);
   const osmLandmarkById = useMemo(
     () => new Map(managedOsmLandmarks.map(l => [l.id, l])),
     [managedOsmLandmarks]
   );
-  const allDishes = useMemo(() => getAllManagedDishes(), [refreshTick]);
-  const allReviews = useMemo(() => getAllSystemReviews(), [refreshTick]);
+  const allDishes = useMemo(() => {
+    if (activeSection !== 'overview' && activeSection !== 'places') return [];
+    return getAllManagedDishes();
+  }, [refreshTick, activeSection]);
+  const allReviews = useMemo(() => {
+    if (activeSection !== 'overview' && activeSection !== 'reviews') return [];
+    return getAllSystemReviews();
+  }, [refreshTick, activeSection]);
 
   // Danh sách chờ Admin duyệt (CHỈ khi Quản lý thực hiện Thêm mới hoặc Yêu cầu Xóa)
   const pendingWebPlaces = useMemo(() => {
@@ -746,6 +952,7 @@ export function AdminDashboardView({
   }, [allMapPlaces, adminState]);
 
   const allMembers = useMemo(() => {
+    if (activeSection !== 'overview' && activeSection !== 'members') return [];
     const uniqueByEmail = new Map<string, (typeof adminState.members)[string]>();
     for (const m of Object.values(adminState.members || {})) {
       if (!m || !m.email) continue;
@@ -755,7 +962,7 @@ export function AdminDashboardView({
       }
     }
     return Array.from(uniqueByEmail.values()).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
-  }, [adminState]);
+  }, [adminState, activeSection]);
 
   const sectorTags: SectorCategoryTag[] = useMemo(() => {
     return adminState.sectorTags && adminState.sectorTags.length > 0
@@ -797,7 +1004,6 @@ export function AdminDashboardView({
   const selectPlaceForEdit = useCallback((item: AdminPlaceItem, playFeedback = true) => {
     if (playFeedback) triggerFeedback('tap');
     resolveRequestIdRef.current += 1;
-    const reqId = resolveRequestIdRef.current;
     if (resolveAbortRef.current) {
       resolveAbortRef.current.abort();
       resolveAbortRef.current = null;
@@ -806,25 +1012,43 @@ export function AdminDashboardView({
     const targetPlaceId = item.place.id;
     loadedPlaceIdRef.current = targetPlaceId;
     setSelectedPlaceId(targetPlaceId);
-    setEditPlaceName(item.place.name);
-    setEditPlaceTagline(item.place.tagline);
-    setEditPlaceSectorTag(item.sectorTag || 'an-chinh');
+    setShowMoreActionsMenu(false);
+    setConfirmDeleteScope(null);
+    setSaveErrorMsg(null);
+
+    const initName = item.place.name;
+    const initTagline = item.place.tagline || '';
+    const initSectorTag = item.sectorTag || 'an-chinh';
+    const initTagsText = (item.place.tags || []).join(', ');
+    const initAddress = item.place.address || '';
+    const initPhone = item.place.phone || '';
+    const initHours = item.openingHours || item.place.openHours || '07:00 - 22:00';
+    const initServiceMode = item.place.serviceMode || 'both';
+    const initMapsUrl = item.place.mapsUrl || '';
+    const initMinPrice = item.place.minPrice;
+    const initMaxPrice = item.place.maxPrice;
+    const initSigName = item.place.signatureDish.name;
+    const initSigPrice = item.place.signatureDish.price;
+
+    setEditPlaceName(initName);
+    setEditPlaceTagline(initTagline);
+    setEditPlaceSectorTag(initSectorTag);
     setEditPlaceCategory(item.place.category);
-    setEditPlaceTagsText((item.place.tags || []).join(', '));
-    setEditPlaceAddress(item.place.address);
+    setEditPlaceTagsText(initTagsText);
+    setEditPlaceAddress(initAddress);
     setEditPlaceZone(item.place.zone || 'dhsp2');
     setEditPlaceDistance(item.place.distance || 'Cách ĐHSP2 400m');
-    setEditPlacePhone(item.place.phone || '');
-    setEditPlaceHours(item.place.openHours || '07:00 - 22:00');
-    setEditPlaceServiceMode(item.place.serviceMode || 'both');
+    setEditPlacePhone(initPhone);
+    setEditPlaceHours(initHours);
+    setEditPlaceServiceMode(initServiceMode);
     setEditPlacePriorityBoost(item.priorityBoost || 1);
     setEditPlaceDeliveryNote(item.place.deliveryNote || '');
     setEditPlaceMapsQuery(item.place.mapsQuery || `${item.place.name} Xuân Hòa Phúc Yên`);
-    setEditPlaceMapsUrl(item.place.mapsUrl || '');
-    setEditPlaceMinPrice(item.place.minPrice);
-    setEditPlaceMaxPrice(item.place.maxPrice);
-    setEditPlaceSigName(item.place.signatureDish.name);
-    setEditPlaceSigPrice(item.place.signatureDish.price);
+    setEditPlaceMapsUrl(initMapsUrl);
+    setEditPlaceMinPrice(initMinPrice);
+    setEditPlaceMaxPrice(initMaxPrice);
+    setEditPlaceSigName(initSigName);
+    setEditPlaceSigPrice(initSigPrice);
     setEditPlaceQuip(item.place.quip || '');
     setEditPlaceImageUrl(item.place.imageUrl || '');
 
@@ -839,22 +1063,29 @@ export function AdminDashboardView({
       ov?.mapCategory === 'school' ||
       ov?.mapCategory === 'medical';
     const isExplicitlyUnpinned =
-      ov?.coordinateVerified === false &&
-      !ov?.pendingMapApproval &&
-      !(ov?.mapsUrl || item.place.mapsUrl);
+      ov?.adminExplicitlyUnpinned === true ||
+      (ov?.coordinateVerified === false &&
+        ov?.locationStatus === 'unlocated' &&
+        !ov?.pendingMapApproval);
     const hasVerifiedOvCoords =
       !isExplicitlyUnpinned &&
       typeof ov?.lat === 'number' &&
       typeof ov?.lng === 'number' &&
-      (isCivic || ov?.adminPinApproved === true || ov?.coordinateVerified === true || Boolean(ov?.pendingMapApproval));
+      (isCivic || ov?.adminPinApproved === true || ov?.coordinateVerified === true || ov?.locationStatus === 'located' || Boolean(ov?.pendingMapApproval));
+    const hasItemCoords =
+      !isExplicitlyUnpinned &&
+      typeof item.lat === 'number' &&
+      typeof item.lng === 'number';
     const parsedFromMapsUrl =
-      !hasVerifiedOvCoords && (ov?.mapsUrl || item.place.mapsUrl)
-        ? parseCoordinatesFromInputOrUrl(ov?.mapsUrl || item.place.mapsUrl || '')
+      !isExplicitlyUnpinned && !hasVerifiedOvCoords && !hasItemCoords && ov?.mapsUrl
+        ? parseCoordinatesFromInputOrUrl(ov.mapsUrl)
         : null;
     const resolvedLat = isExplicitlyUnpinned
       ? null
       : hasVerifiedOvCoords
       ? ov!.lat
+      : hasItemCoords
+      ? item.lat!
       : parsedFromMapsUrl
       ? parsedFromMapsUrl.lat
       : osmItem?.lat ?? null;
@@ -862,50 +1093,18 @@ export function AdminDashboardView({
       ? null
       : hasVerifiedOvCoords
       ? ov!.lng
+      : hasItemCoords
+      ? item.lng!
       : parsedFromMapsUrl
       ? parsedFromMapsUrl.lng
       : osmItem?.lng ?? null;
     const hasResolvedCoords = typeof resolvedLat === 'number' && typeof resolvedLng === 'number';
-    setEditPlaceLat(hasResolvedCoords ? String(resolvedLat) : '');
-    setEditPlaceLng(hasResolvedCoords ? String(resolvedLng) : '');
+    const initLatStr = hasResolvedCoords ? String(resolvedLat) : '';
+    const initLngStr = hasResolvedCoords ? String(resolvedLng) : '';
+    setEditPlaceLat(initLatStr);
+    setEditPlaceLng(initLngStr);
     setHasActivelyPinnedOnMap(hasResolvedCoords);
 
-    if (!hasResolvedCoords && (ov?.mapsUrl || item.place.mapsUrl) && ov?.mapsLinkStatus !== 'invalid') {
-      const candidateShortUrl = (ov?.mapsUrl || item.place.mapsUrl || '').trim();
-      if (/^https?:\/\//i.test(candidateShortUrl)) {
-        const abortCtrl = new AbortController();
-        resolveAbortRef.current = abortCtrl;
-        expandAndParseShortMapsUrl(candidateShortUrl, abortCtrl.signal).then(expanded => {
-          if (resolveRequestIdRef.current !== reqId || loadedPlaceIdRef.current !== targetPlaceId) {
-            return;
-          }
-          if (expanded) {
-            setEditPlaceLat(String(expanded.lat));
-            setEditPlaceLng(String(expanded.lng));
-            setHasActivelyPinnedOnMap(true);
-            savePlaceAdminOverride(
-              targetPlaceId,
-              {
-                lat: expanded.lat,
-                lng: expanded.lng,
-                coordinateVerified: true,
-                adminPinApproved: true,
-                locationStatus: 'located',
-                mapsLinkStatus: 'valid',
-                coordinateSource: 'google_maps_resolved',
-                lastVerifiedAt: new Date().toISOString().slice(0, 10),
-              },
-              'Tự động giải mã tọa độ từ link Google Maps rút gọn'
-            );
-            setMapFlyTrigger(t => t + 1);
-            setRefreshTick(t => t + 1);
-            setInlineActionFeedback(
-              `📍 Đã tự động giải mã & ghim tọa độ (${expanded.lat}, ${expanded.lng}) lên Bản đồ!`
-            );
-          }
-        });
-      }
-    }
     if (playFeedback) {
       setInlineActionFeedback(
         hasResolvedCoords
@@ -929,19 +1128,73 @@ export function AdminDashboardView({
       tags: item.place.tags,
       sectorTag: ov?.sectorTag || item.sectorTag,
       mapCategory: resolvedMapCat,
-      parentCategoryId: ov?.parentCategoryId,
-      subcategoryId: ov?.subcategoryId,
+      parentCategoryId: ov?.parentCategoryId || item.parentCategoryId,
+      subcategoryId: ov?.subcategoryId || ov?.categoryId || item.subcategoryId || item.categoryId,
     });
+    const initShowByDefault =
+      ov?.showByDefault ??
+      ov?.defaultMapVisible ??
+      item.showByDefault ??
+      item.defaultMapVisible ??
+      MAP_CATEGORY_REGISTRY[resolvedTax.subcategoryId]?.defaultMapVisible ??
+      (resolvedTax.parentCategoryId === 'landmark' ||
+        resolvedTax.parentCategoryId === 'public' ||
+        resolvedTax.parentCategoryId === 'education');
+
+    const initExtraTags = Array.isArray(ov?.extraTags)
+      ? ov.extraTags
+      : Array.isArray(item.extraTags)
+      ? item.extraTags
+      : Array.isArray(item.place.extraTags)
+      ? item.place.extraTags
+      : [];
+    const initProfile = resolvePlaceContentProfile({
+      subcategoryId: resolvedTax.subcategoryId,
+      parentCategoryId: resolvedTax.parentCategoryId,
+      contentProfile: ov?.contentProfile || item.contentProfile || item.place.contentProfile,
+      catalogMode: ov?.catalogMode || item.catalogMode || item.place.catalogMode,
+      catalogEnabled:
+        ov?.catalogEnabled ?? item.catalogEnabled ?? item.place.catalogEnabled,
+    });
+
     setEditPlaceParentCat(resolvedTax.parentCategoryId);
     setEditPlaceSubcategory(resolvedTax.subcategoryId);
-    setEditPlaceCatQuickSearch('');
-    setEditPlaceShowByDefault(
-      ov?.showByDefault ??
-        (resolvedTax.parentCategoryId === 'landmark' ||
-          resolvedTax.parentCategoryId === 'public' ||
-          resolvedTax.parentCategoryId === 'education')
+    setEditPlaceExtraTags(initExtraTags);
+    setEditPlaceCatalogEnabled(initProfile.catalogEnabled);
+    setEditPlaceWebsite(ov?.website || item.website || item.place.website || '');
+    setEditPlaceEducationLevel(
+      ov?.educationLevel || item.educationLevel || item.place.educationLevel || ''
     );
+    setEditPlaceAgencyFunction(
+      ov?.agencyFunction || item.agencyFunction || item.place.agencyFunction || ''
+    );
+    setEditPlaceCatQuickSearch('');
+    setEditPlaceShowByDefault(initShowByDefault);
     setAdminGeoSuggestions([]);
+
+    setEditPlaceBaseline({
+      id: targetPlaceId,
+      name: initName,
+      parentCategoryId: resolvedTax.parentCategoryId,
+      subcategoryId: resolvedTax.subcategoryId,
+      extraTagsKey: initExtraTags.join('|'),
+      catalogEnabled: initProfile.catalogEnabled,
+      showByDefault: initShowByDefault,
+      phone: initPhone,
+      openHours: initHours,
+      address: initAddress,
+      mapsUrl: initMapsUrl,
+      lat: initLatStr,
+      lng: initLngStr,
+      sectorTag: initSectorTag,
+      serviceMode: initServiceMode,
+      tagline: initTagline,
+      tagsText: initTagsText,
+      minPrice: initMinPrice,
+      maxPrice: initMaxPrice,
+      sigName: initSigName,
+      sigPrice: initSigPrice,
+    });
 
     setEditPlaceMenu(
       (item.fullMenu || []).map(m => ({
@@ -969,10 +1222,17 @@ export function AdminDashboardView({
 
   // Lọc và sắp xếp danh sách quán theo đúng bảng chữ cái A -> B -> C -> D (hoặc tab Duyệt Quán)
   const filteredPlaces = useMemo(() => {
-    const q = placeSearch.trim().toLowerCase();
+    const q = debouncedPlaceSearch.trim().toLowerCase();
     const sourceList = placeListTab === 'pending_web' ? pendingWebPlaces : commercialPlaces;
     const list = sourceList.filter(item => {
-      if (placeSectorFilter !== 'all' && item.sectorTag !== placeSectorFilter) return false;
+      if (placeSectorFilter !== 'all') {
+        const matchesSectorOrTax =
+          item.sectorTag === placeSectorFilter ||
+          item.subcategoryId === placeSectorFilter ||
+          item.categoryId === placeSectorFilter ||
+          item.parentCategoryId === placeSectorFilter;
+        if (!matchesSectorOrTax) return false;
+      }
       if (placeStatusFilter === 'boosted') {
         if (item.priorityBoost <= 1) return false;
       } else if (placeStatusFilter !== 'all' && item.status !== placeStatusFilter) {
@@ -995,7 +1255,7 @@ export function AdminDashboardView({
 
     // Luôn xếp chuẩn theo bảng chữ cái A -> B -> C -> D
     return [...list].sort((a, b) => a.place.name.localeCompare(b.place.name, 'vi'));
-  }, [commercialPlaces, pendingWebPlaces, placeListTab, placeSearch, placeSectorFilter, placeStatusFilter]);
+  }, [commercialPlaces, pendingWebPlaces, placeListTab, debouncedPlaceSearch, placeSectorFilter, placeStatusFilter]);
 
   // Lọc danh sách Địa điểm cho mục Quản lý Maps (Cột 1 của Quản lý Maps) — Tách bạch tuyệt đối locationStatus và mapsLinkStatus
   const getResolvedPlaceCoordsAndCat = useCallback(
@@ -1009,34 +1269,88 @@ export function AdminDashboardView({
         ov?.mapCategory === 'public' ||
         ov?.mapCategory === 'school' ||
         ov?.mapCategory === 'medical';
-      const isExplicitlyUnpinned = ov?.coordinateVerified === false;
+      const isExplicitlyUnpinned = ov?.coordinateVerified === false && ov?.locationStatus === 'unlocated';
+      const hasPendingMapApproval = Boolean(ov?.pendingMapApproval);
       const hasVerifiedOv =
         !isExplicitlyUnpinned &&
         typeof ov?.lat === 'number' &&
         typeof ov?.lng === 'number' &&
         (ov?.coordinateVerified === true || ov?.locationStatus === 'located') &&
-        !ov?.pendingMapApproval &&
+        !ov?.pendingMapApproval?.isNewPlace &&
         (isCivic || ov?.adminPinApproved === true || ov?.coordinateVerified === true);
-      const lat = isExplicitlyUnpinned ? null : hasVerifiedOv ? ov!.lat! : osmItem?.lat ?? null;
-      const lng = isExplicitlyUnpinned ? null : hasVerifiedOv ? ov!.lng! : osmItem?.lng ?? null;
+      const hasItemCoords =
+        !isExplicitlyUnpinned &&
+        typeof item.lat === 'number' &&
+        typeof item.lng === 'number';
+      const lat = isExplicitlyUnpinned
+        ? null
+        : hasVerifiedOv
+        ? ov!.lat!
+        : hasItemCoords
+        ? item.lat!
+        : osmItem?.lat ?? null;
+      const lng = isExplicitlyUnpinned
+        ? null
+        : hasVerifiedOv
+        ? ov!.lng!
+        : hasItemCoords
+        ? item.lng!
+        : osmItem?.lng ?? null;
       const hasCoords = typeof lat === 'number' && typeof lng === 'number';
+      const hasUnverifiedCoord =
+        !hasCoords &&
+        typeof ov?.lat === 'number' &&
+        typeof ov?.lng === 'number' &&
+        !Number.isNaN(ov.lat) &&
+        !Number.isNaN(ov.lng);
       const mapCat = (osmItem?.category ||
         resolvePlaceMapCategory(
           item.place,
           ov?.sectorTag || item.sectorTag,
           ov?.mapCategory || item.mapCategory
         )) as EditableMapCategory;
+      const subcatId = (ov?.subcategoryId || ov?.categoryId || item.subcategoryId || item.categoryId) as MapSubcategoryId | undefined;
+      const subMeta = subcatId ? MAP_CATEGORY_REGISTRY[subcatId] : undefined;
+      const catLabel =
+        subMeta?.label ||
+        EDITABLE_MAP_CATEGORIES.find(c => c.id === mapCat)?.label ||
+        mapCat;
       const rawMapsUrl = (ov?.mapsUrl ?? item.place.mapsUrl ?? '').trim();
       const mapsLinkStatus = computeMapsLinkStatus(ov, item.place.mapsUrl);
-      const isLinkError = mapsLinkStatus === 'invalid' || mapsLinkStatus === 'unresolved';
-      const locationStatus: 'located' | 'unlocated' | 'invalid_coordinates' = hasCoords
+      const coordQuality = evaluatePlaceCoordinateQuality({
+        id: item.place.id,
+        name: item.place.name,
+        lat,
+        lng,
+      });
+      const hasVersionConflict = Boolean(
+        ov?.pendingMapApproval &&
+          typeof ov.pendingMapApproval.baseVersion === 'number' &&
+          typeof ov.version === 'number' &&
+          ov.version > ov.pendingMapApproval.baseVersion
+      );
+      const isCoordQualityInvalid =
+        coordQuality.status === 'suspicious' || coordQuality.status === 'outside_service_area';
+      const isLinkError =
+        mapsLinkStatus === 'invalid' ||
+        mapsLinkStatus === 'unresolved' ||
+        isCoordQualityInvalid ||
+        hasVersionConflict;
+      const locationStatus: 'located' | 'unlocated' | 'invalid_coordinates' = isCoordQualityInvalid
+        ? 'invalid_coordinates'
+        : hasCoords
         ? 'located'
         : 'unlocated';
       return {
         lat,
         lng,
         hasCoords,
+        hasUnverifiedCoord,
+        hasPendingMapApproval,
+        hasVersionConflict,
         mapCat,
+        subcatId,
+        catLabel,
         locationStatus,
         mapsLinkStatus,
         isLinkError,
@@ -1051,29 +1365,43 @@ export function AdminDashboardView({
     const sourceList = mapListTab === 'pending_maps' ? pendingMapPlaces : allMapPlaces;
     let total = 0;
     let located = 0;
+    let unverifiedCoord = 0;
     let unlocated = 0;
     let invalid = 0;
+    let pendingApproval = 0;
     for (const item of sourceList) {
-      const { hasCoords, mapCat, isLinkError } = getResolvedPlaceCoordsAndCat(item);
+      const {
+        hasCoords,
+        hasUnverifiedCoord,
+        hasPendingMapApproval,
+        mapCat,
+        isLinkError,
+      } = getResolvedPlaceCoordsAndCat(item);
       if (!matchesMapCategoryFilter(item, mapCat, mapCatFilter)) continue;
       total++;
       if (hasCoords) located++;
+      else if (hasUnverifiedCoord) unverifiedCoord++;
       else unlocated++;
       if (isLinkError) invalid++;
+      if (hasPendingMapApproval) pendingApproval++;
     }
     logMapDebug('FILTER COUNTS', {
       mapListTab,
       mapCatFilter,
       total,
       located,
+      unverifiedCoord,
       unlocated,
       linkError: invalid,
+      pendingApproval,
     });
     return {
       total,
       located,
+      unverifiedCoord,
       unlocated,
       invalid,
+      pendingApproval,
       commercialCount: commercialPlaces.length,
       landmarkCount: Math.max(0, allMapPlaces.length - commercialPlaces.length),
     };
@@ -1091,11 +1419,20 @@ export function AdminDashboardView({
     const qNorm = qRaw ? normalizeVietnamese(debouncedMapSearch) : '';
     const sourceList = mapListTab === 'pending_maps' ? pendingMapPlaces : allMapPlaces;
     const list = sourceList.filter(item => {
-      const { hasCoords, mapCat, isLinkError, rawMapsUrl } = getResolvedPlaceCoordsAndCat(item);
+      const {
+        hasCoords,
+        hasUnverifiedCoord,
+        hasPendingMapApproval,
+        mapCat,
+        isLinkError,
+        rawMapsUrl,
+      } = getResolvedPlaceCoordsAndCat(item);
       if (!matchesMapCategoryFilter(item, mapCat, mapCatFilter)) return false;
       if (mapCoordFilter === 'verified' && !hasCoords) return false;
-      if (mapCoordFilter === 'unverified' && hasCoords) return false;
+      if (mapCoordFilter === 'unverified_coord' && !hasUnverifiedCoord) return false;
+      if (mapCoordFilter === 'unverified' && (hasCoords || hasUnverifiedCoord)) return false;
       if (mapCoordFilter === 'invalid' && !isLinkError) return false;
+      if (mapCoordFilter === 'pending_approval' && !hasPendingMapApproval) return false;
       if (mapCoordFilter === 'locked' && item.status !== 'locked') return false;
       if (!qRaw) return true;
 
@@ -1119,6 +1456,16 @@ export function AdminDashboardView({
     mapCoordFilter,
     getResolvedPlaceCoordsAndCat,
   ]);
+
+  useEffect(() => {
+    if (
+      activeSection === 'maps' &&
+      filteredMapPlaces.length > 0 &&
+      !filteredMapPlaces.some(p => p.place.id === selectedPlaceId)
+    ) {
+      selectPlaceForEdit(filteredMapPlaces[0], false);
+    }
+  }, [activeSection, filteredMapPlaces, selectedPlaceId, selectPlaceForEdit]);
 
   const getMatchedDishPreview = (item: AdminPlaceItem): string | null => {
     const q = placeSearch.trim().toLowerCase();
@@ -1232,7 +1579,9 @@ export function AdminDashboardView({
     setRefreshTick(t => t + 1);
     setJustSavedPlace(true);
     setTimeout(() => setJustSavedPlace(false), 1800);
-    const pinMsg = `✅ Đã chấm & lưu ngay vị trí "${targetName}" (${cleanLat}, ${cleanLng})!`;
+    const pinMsg = ctx.isSuperAdmin
+      ? `✅ Đã chấm & lưu ngay vị trí "${targetName}" (${cleanLat}, ${cleanLng})!`
+      : `⏳ Đã gửi đề xuất ghim tọa độ (${cleanLat}, ${cleanLng}) cho "${targetName}" chờ Admin duyệt! Bản đồ công khai giữ nguyên vị trí cũ cho tới khi được duyệt.`;
     setInlineActionFeedback(pinMsg);
     showToast(pinMsg, 'approve');
   }, []);
@@ -1265,44 +1614,15 @@ export function AdminDashboardView({
     onBackToApp();
   };
 
-  // Xử lý đăng nhập Admin (theo Nick + Mật khẩu) hoặc Quản lý (nếu gõ trực tiếp Gmail vào ô tài khoản)
+  // Xử lý đăng nhập Admin / Quản lý qua Firebase Authentication (Email/Tài khoản + Mật khẩu bắt buộc)
   const handleAdminLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
-    const cleanInput = loginUsername.trim().toLowerCase();
-    if (cleanInput.includes('@')) {
-      await ensureCloudPermissionsSyncedForEmail(cleanInput);
-      const freshState = getAdminState();
-      const member = freshState.members?.[cleanInput];
-      const isSuperEmail = Boolean(
-        freshState.adminEmails?.some(em => em.trim().toLowerCase() === cleanInput)
-      );
-      if (isSuperEmail || (member && (member.canManageWeb || member.canManageMaps || member.status === 'admin'))) {
-        saveAuthUser({
-          isLoggedIn: true,
-          uid: member?.uid || `uid_${cleanInput.replace(/[^a-z0-9]/g, '_')}`,
-          email: cleanInput,
-          displayName: member?.displayName || member?.nickname || cleanInput,
-          nickname: member?.nickname || member?.displayName || cleanInput,
-          gender: member?.gender || 'male',
-          avatar: member?.avatar || '🛡️',
-          avatarId: member?.avatarId || 'm_ty',
-          hasCompletedProfile: true,
-          isFirstTimeSetupDone: true,
-          createdAt: member?.createdAt || Date.now(),
-        });
-        setRefreshTick(t => t + 1);
-        showToast(`Xin chào ${member?.nickname || cleanInput}!`);
-        return;
-      }
-      // Không được cấp quyền quản lý -> đẩy thẳng ra trang chính dùng như khách hàng
-      redirectToCustomerHome();
-      return;
-    }
-
-    const res = loginAdminWithCredentials(loginUsername, loginPassword, loginRememberMe);
+    // SEC-FINAL-01: Loại bỏ hoàn toàn cơ chế tự đăng nhập chỉ bằng địa chỉ Email không cần mật khẩu
+    // và không dùng đối chiếu hash mật khẩu tĩnh ở frontend.
+    const res = await loginAdminWithFirebaseAuth(loginUsername, loginPassword, loginRememberMe);
     if (!res.ok || !res.account) {
-      setLoginError(res.message || 'Sai tài khoản hoặc mật khẩu');
+      setLoginError(res.message || 'Xác thực thất bại: Sai tài khoản hoặc mật khẩu');
       return;
     }
     setLoggedAdmin(res.account);
@@ -1352,6 +1672,13 @@ export function AdminDashboardView({
   // Lưu thay đổi của Quán & Thực đơn (Chỉnh sửa: Áp dụng ngay lập tức không cần chờ duyệt; Admin lưu là mệnh lệnh tối cao)
   const handleSavePlaceAndMenu = (customMenuOverride?: CustomMenuEntry[], toastLabel?: string) => {
     if (!selectedPlaceItem || isSavingPlaceRef.current) return;
+    const cleanPlaceName = editPlaceName.trim();
+    if (!cleanPlaceName) {
+      setSaveErrorMsg('Tên địa điểm không được để trống.');
+      showToast('⚠️ Tên địa điểm không được để trống!', 'warn');
+      return;
+    }
+    setSaveErrorMsg(null);
     isSavingPlaceRef.current = true;
     setIsSavingPlace(true);
     window.setTimeout(() => {
@@ -1359,34 +1686,56 @@ export function AdminDashboardView({
       setIsSavingPlace(false);
     }, 280);
 
-    const isEditingMapsSection = activeSection === 'maps';
+    const subMeta = MAP_CATEGORY_REGISTRY[editPlaceSubcategory];
+    const resolvedParentCat: MapParentCategoryId = subMeta ? subMeta.parentId : editPlaceParentCat;
+    const resolvedEditProfile = resolvePlaceContentProfile({
+      subcategoryId: editPlaceSubcategory,
+      parentCategoryId: resolvedParentCat,
+      catalogEnabled: editPlaceCatalogEnabled,
+    });
     const isLandmarkCat =
-      isEditingMapsSection &&
-      (editPlaceMapCategory === 'public' || editPlaceMapCategory === 'school');
+      resolvedEditProfile.forbidsMenuAndOrdering ||
+      resolvedParentCat === 'landmark' ||
+      resolvedParentCat === 'public' ||
+      resolvedParentCat === 'education' ||
+      resolvedParentCat === 'health';
 
-    const resolvedSectorTag = isLandmarkCat
+    const resolvedSectorTag = subMeta
+      ? getDefaultSectorTagForSubcategory(subMeta)
+      : isLandmarkCat
       ? 'dia-danh'
-      : editPlaceSectorTag === 'dia-danh' && !isEditingMapsSection
+      : editPlaceSectorTag === 'dia-danh'
       ? 'an-chinh'
       : editPlaceSectorTag;
 
-    const resolvedMapCat: EditableMapCategory = isEditingMapsSection
-      ? editPlaceMapCategory
-      : mapSectorTagToMapCategory(
-          resolvedSectorTag,
-          `${editPlaceName} ${editPlaceTagline} ${editPlaceTagsText}`,
-          editPlaceMapCategory
-        );
+    const resolvedMapCat: EditableMapCategory = (subMeta?.legacyCategory ||
+      editPlaceMapCategory ||
+      mapSectorTagToMapCategory(
+        resolvedSectorTag,
+        `${cleanPlaceName} ${editPlaceTagline} ${editPlaceTagsText}`,
+        editPlaceMapCategory
+      )) as EditableMapCategory;
 
-    const menuToSave = isLandmarkCat
+    // Quan trọng: Khi catalogEnabled = false (ẩn tạm thời), dữ liệu customMenu vẫn được bảo toàn!
+    // Chỉ xóa thực đơn khi là cơ quan hành chính / trường học / địa danh (forbidsMenuAndOrdering).
+    const menuToSave = resolvedEditProfile.forbidsMenuAndOrdering
       ? []
       : customMenuOverride !== undefined
       ? customMenuOverride
       : editPlaceMenu;
-    const parsedTags = editPlaceTagsText
-      .split(',')
-      .map(t => t.trim())
-      .filter(Boolean);
+    const cleanExtraTags = Array.from(
+      new Set((editPlaceExtraTags || []).map(t => t.trim()).filter(Boolean))
+    );
+    const parsedTags = Array.from(
+      new Set([
+        ...(subMeta ? [subMeta.label] : []),
+        ...cleanExtraTags,
+        ...editPlaceTagsText
+          .split(',')
+          .map(t => t.trim())
+          .filter(Boolean),
+      ])
+    );
 
     let mappedCategory: Place['category'] = editPlaceCategory;
     if (resolvedSectorTag === 'nhau-lau' || resolvedSectorTag === 'bia-game' || resolvedSectorTag === 'an-choi') {
@@ -1416,108 +1765,136 @@ export function AdminDashboardView({
 
     const initialMapsLinkStatus = !cleanMapsUrl
       ? 'none'
-      : parseCoordinatesFromInputOrUrl(cleanMapsUrl)
+      : parseCoordinatesFromInputOrUrl(cleanMapsUrl) || hasValidCoords
       ? 'valid'
       : isShortOrUnresolvableMapsUrl(cleanMapsUrl)
       ? 'unresolved'
       : 'invalid';
 
     const targetPlaceId = selectedPlaceItem.place.id;
-    const cleanPlaceName = editPlaceName.trim() || selectedPlaceItem.place.name;
 
-    savePlaceAdminOverride(
-      targetPlaceId,
-      {
-        name: cleanPlaceName,
-        tagline: editPlaceTagline.trim(),
-        sectorTag: resolvedSectorTag,
-        mapCategory: resolvedMapCat,
-        parentCategoryId: editPlaceParentCat,
-        subcategoryId: editPlaceSubcategory,
-        showByDefault: editPlaceShowByDefault,
-        category: mappedCategory,
-        tags: parsedTags,
-        address: editPlaceAddress.trim(),
-        zone: editPlaceZone,
-        distance: editPlaceDistance.trim(),
-        phone: editPlacePhone.trim(),
-        openHours: editPlaceHours.trim(),
-        serviceMode: editPlaceServiceMode,
-        priorityBoost: editPlacePriorityBoost,
-        isFeatured: editPlacePriorityBoost > 1,
-        deliveryNote: editPlaceDeliveryNote.trim(),
-        mapsQuery: editPlaceMapsQuery.trim() || `${cleanPlaceName} Xuân Hòa Phúc Yên`,
-        mapsUrl: cleanMapsUrl,
-        mapsLinkStatus: initialMapsLinkStatus,
-        minPrice: isLandmarkCat ? 0 : Number(editPlaceMinPrice) || 20,
-        maxPrice: isLandmarkCat ? 0 : Number(editPlaceMaxPrice) || 60,
-        signatureDishName: isLandmarkCat ? 'Cơ quan / Địa danh' : editPlaceSigName.trim() || 'Món tủ',
-        signatureDishPrice: isLandmarkCat ? 0 : Number(editPlaceSigPrice) || 35,
-        quip: editPlaceQuip.trim(),
-        imageUrl: editPlaceImageUrl.trim() || undefined,
-        customMenu: menuToSave,
-        ...(hasValidCoords
-          ? {
-              lat: Number(numLat!.toFixed(6)),
-              lng: Number(numLng!.toFixed(6)),
-              coordinateVerified: isSuperAdmin || isLandmarkCat,
-              adminPinApproved: isSuperAdmin || isLandmarkCat,
-              locationStatus: 'located',
-              coordinateSource: 'admin_verified',
-              ...(!isSuperAdmin && !isLandmarkCat
-                ? {
-                    pendingMapApproval: {
-                      submittedBy: roleInfo.identifier || 'quanlymaps',
-                      submittedByName: roleInfo.displayName || 'Quản lý Maps',
-                      submittedAt: Date.now(),
-                      actionType: 'update',
-                      actionSummary: `Chờ Admin duyệt tọa độ (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})`,
-                      previousLat: null,
-                      previousLng: null,
-                    },
-                  }
-                : {}),
-            }
-          : {}),
-        // Chỉnh sửa thông tin/tọa độ có hiệu lực ngay lập tức. Nếu Admin lưu trên mục đang chờ duyệt thì tự động duyệt luôn!
-        ...(isSuperAdmin
-          ? {
-              status: 'active',
-              pendingWebApproval: null,
-              pendingMapApproval: null,
-            }
-          : {}),
-      },
-      toastLabel || `Cập nhật "${cleanPlaceName}"`
-    );
+    try {
+      savePlaceAdminOverride(
+        targetPlaceId,
+        {
+          name: cleanPlaceName,
+          tagline: editPlaceTagline.trim(),
+          sectorTag: resolvedSectorTag,
+          mapCategory: resolvedMapCat,
+          parentCategoryId: resolvedParentCat,
+          subcategoryId: editPlaceSubcategory,
+          categoryId: editPlaceSubcategory,
+          extraTags: cleanExtraTags,
+          contentProfile: resolvedEditProfile.contentProfile,
+          catalogMode: resolvedEditProfile.catalogMode,
+          catalogEnabled: resolvedEditProfile.catalogEnabled,
+          website: editPlaceWebsite.trim() || undefined,
+          educationLevel: editPlaceEducationLevel.trim() || undefined,
+          agencyFunction: editPlaceAgencyFunction.trim() || undefined,
+          showByDefault: editPlaceShowByDefault,
+          defaultMapVisible: editPlaceShowByDefault,
+          category: mappedCategory,
+          tags: parsedTags,
+          address: editPlaceAddress.trim(),
+          zone: editPlaceZone,
+          distance: editPlaceDistance.trim(),
+          phone: editPlacePhone.trim(),
+          openHours: editPlaceHours.trim(),
+          openingHours: editPlaceHours.trim(),
+          serviceMode: editPlaceServiceMode,
+          priorityBoost: editPlacePriorityBoost,
+          isFeatured: editPlacePriorityBoost > 1,
+          deliveryNote: editPlaceDeliveryNote.trim(),
+          mapsQuery: editPlaceMapsQuery.trim() || `${cleanPlaceName} Xuân Hòa Phúc Yên`,
+          mapsUrl: cleanMapsUrl,
+          mapsLinkStatus: initialMapsLinkStatus,
+          minPrice: isLandmarkCat ? 0 : Number(editPlaceMinPrice) || 20,
+          maxPrice: isLandmarkCat ? 0 : Number(editPlaceMaxPrice) || 60,
+          signatureDishName: isLandmarkCat ? 'Cơ quan / Địa danh' : editPlaceSigName.trim() || 'Món tủ',
+          signatureDishPrice: isLandmarkCat ? 0 : Number(editPlaceSigPrice) || 35,
+          quip: editPlaceQuip.trim(),
+          imageUrl: editPlaceImageUrl.trim() || undefined,
+          customMenu: menuToSave,
+          ...(hasValidCoords
+            ? {
+                lat: Number(numLat!.toFixed(6)),
+                lng: Number(numLng!.toFixed(6)),
+                coordinateVerified: true,
+                adminPinApproved: true,
+                locationStatus: 'located',
+                coordinateSource: 'admin_verified',
+              }
+            : {}),
+          status: selectedPlaceItem.status === 'locked' ? 'locked' : 'active',
+          pendingWebApproval: null,
+          pendingMapApproval: null,
+        },
+        toastLabel || `Cập nhật "${cleanPlaceName}"`
+      );
+    } catch (err: any) {
+      setSaveErrorMsg(err?.message || 'Lỗi khi lưu thay đổi. Dữ liệu form vẫn được giữ nguyên.');
+      showToast('⚠️ Lỗi khi lưu thay đổi — bấm Thử lại', 'warn');
+      return;
+    }
 
+    setEditPlaceParentCat(resolvedParentCat);
+    setEditPlaceSectorTag(resolvedSectorTag);
     setEditPlaceMapCategory(resolvedMapCat);
+    const savedLatStr = hasValidCoords ? String(Number(numLat!.toFixed(6))) : editPlaceLat.trim();
+    const savedLngStr = hasValidCoords ? String(Number(numLng!.toFixed(6))) : editPlaceLng.trim();
     if (hasValidCoords) {
-      const cleanLat = Number(numLat!.toFixed(6));
-      const cleanLng = Number(numLng!.toFixed(6));
-      setEditPlaceLat(String(cleanLat));
-      setEditPlaceLng(String(cleanLng));
+      setEditPlaceLat(savedLatStr);
+      setEditPlaceLng(savedLngStr);
       setHasActivelyPinnedOnMap(true);
       setMapFlyTrigger(t => t + 1);
     }
+
+    setEditPlaceBaseline({
+      id: targetPlaceId,
+      name: cleanPlaceName,
+      parentCategoryId: resolvedParentCat,
+      subcategoryId: editPlaceSubcategory,
+      extraTagsKey: cleanExtraTags.join('|'),
+      catalogEnabled: resolvedEditProfile.catalogEnabled,
+      showByDefault: editPlaceShowByDefault,
+      phone: editPlacePhone.trim(),
+      openHours: editPlaceHours.trim(),
+      address: editPlaceAddress.trim(),
+      mapsUrl: cleanMapsUrl,
+      lat: savedLatStr,
+      lng: savedLngStr,
+      sectorTag: resolvedSectorTag,
+      serviceMode: editPlaceServiceMode,
+      tagline: editPlaceTagline.trim(),
+      tagsText: editPlaceTagsText.trim(),
+      minPrice: Number(editPlaceMinPrice) || 20,
+      maxPrice: Number(editPlaceMaxPrice) || 60,
+      sigName: editPlaceSigName.trim(),
+      sigPrice: Number(editPlaceSigPrice) || 35,
+    });
 
     setRefreshTick(t => t + 1);
     setJustSavedPlace(true);
     setTimeout(() => setJustSavedPlace(false), 1800);
 
-    const isUnresolvedMapsLink = initialMapsLinkStatus === 'unresolved' || initialMapsLinkStatus === 'invalid';
-    const finalMsg =
-      toastLabel ||
-      (hasValidCoords
-        ? `✅ Đã cập nhật & ghim Bản đồ "${cleanPlaceName}" (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})`
-        : isUnresolvedMapsLink
-        ? `⚠️ Đã lưu "${cleanPlaceName}" — đang kiểm tra link Google Maps...`
-        : `✅ Đã cập nhật "${cleanPlaceName}"`);
+    const mapsUrlChanged = cleanMapsUrl !== (editPlaceBaseline?.mapsUrl || '').trim();
+    const isUnresolvedMapsLink =
+      !hasValidCoords &&
+      mapsUrlChanged &&
+      (initialMapsLinkStatus === 'unresolved' || initialMapsLinkStatus === 'invalid');
+    const finalMsg = !isSuperAdmin
+      ? `⏳ Đã gửi đề xuất chỉnh sửa "${cleanPlaceName}" chờ Admin duyệt! Bản đồ công khai giữ nguyên dữ liệu cũ cho tới khi được duyệt.`
+      : toastLabel ||
+        (hasValidCoords
+          ? `✅ Đã lưu thay đổi "${cleanPlaceName}" (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})`
+          : isUnresolvedMapsLink
+          ? `⚠️ Đã lưu "${cleanPlaceName}" — đang kiểm tra link Google Maps...`
+          : `✅ Đã lưu thay đổi "${cleanPlaceName}"`);
     setInlineActionFeedback(finalMsg);
     showToast(finalMsg, !hasValidCoords && isUnresolvedMapsLink ? 'warn' : 'approve');
 
-    // Nếu người dùng dán link Google Maps rút gọn chưa có tọa độ trực tiếp, phân giải qua Server-Side Resolver (KHÔNG tự động fallback sang Nominatim khi lưu)
-    if (!hasValidCoords && cleanMapsUrl) {
+    // Chỉ phân giải link Google Maps rút gọn khi chưa có tọa độ và link Maps vừa được dán/thay đổi
+    if (!hasValidCoords && cleanMapsUrl && mapsUrlChanged) {
       resolveRequestIdRef.current += 1;
       const reqId = resolveRequestIdRef.current;
       if (resolveAbortRef.current) {
@@ -1549,8 +1926,8 @@ export function AdminDashboardView({
             savePlaceAdminOverride(targetPlaceId, {
               lat: resolved.lat,
               lng: resolved.lng,
-              coordinateVerified: isSuperAdmin || isLandmarkCat,
-              adminPinApproved: isSuperAdmin || isLandmarkCat,
+              coordinateVerified: true,
+              adminPinApproved: true,
               locationStatus: 'located',
               mapsLinkStatus: 'valid',
               coordinateSource: 'google_maps_resolved',
@@ -1666,11 +2043,26 @@ export function AdminDashboardView({
       return;
     }
     const isFromMapsSection = activeSection === 'maps';
+    const subMeta = MAP_CATEGORY_REGISTRY[newPlaceForm.subcategoryId];
+    const resolvedParentCat: MapParentCategoryId = subMeta
+      ? subMeta.parentId
+      : newPlaceForm.parentCategoryId;
+    const resolvedSubcat: MapSubcategoryId = subMeta ? subMeta.id : newPlaceForm.subcategoryId;
+    const resolvedCreateProfile = resolvePlaceContentProfile({
+      subcategoryId: resolvedSubcat,
+      parentCategoryId: resolvedParentCat,
+      catalogEnabled: newPlaceForm.catalogEnabled,
+    });
     const isLandmarkCat =
-      isFromMapsSection &&
-      (newPlaceForm.mapCategory === 'public' || newPlaceForm.mapCategory === 'school');
+      resolvedCreateProfile.forbidsMenuAndOrdering ||
+      resolvedParentCat === 'landmark' ||
+      resolvedParentCat === 'public' ||
+      resolvedParentCat === 'education' ||
+      resolvedParentCat === 'health';
 
-    const resolvedSectorTag = isLandmarkCat
+    const resolvedSectorTag = subMeta
+      ? getDefaultSectorTagForSubcategory(subMeta)
+      : isLandmarkCat
       ? 'dia-danh'
       : newPlaceForm.sectorTag === 'dia-danh'
       ? 'an-chinh'
@@ -1686,29 +2078,72 @@ export function AdminDashboardView({
       mappedCategory = 'fast_food';
     }
 
-    const resolvedMapCat: EditableMapCategory = isFromMapsSection
-      ? newPlaceForm.mapCategory
-      : mapSectorTagToMapCategory(
-          resolvedSectorTag,
-          `${newPlaceForm.name} ${newPlaceForm.address}`,
-          newPlaceForm.mapCategory
-        );
+    const resolvedMapCat: EditableMapCategory = (subMeta?.legacyCategory ||
+      newPlaceForm.mapCategory ||
+      mapSectorTagToMapCategory(
+        resolvedSectorTag,
+        `${newPlaceForm.name} ${newPlaceForm.address}`,
+        newPlaceForm.mapCategory
+      )) as EditableMapCategory;
     const mapCatLabel =
-      EDITABLE_MAP_CATEGORIES.find(c => c.id === resolvedMapCat)?.label || resolvedMapCat;
+      subMeta?.label ||
+      EDITABLE_MAP_CATEGORIES.find(c => c.id === resolvedMapCat)?.label ||
+      resolvedMapCat;
+
+    const cleanNewExtraTags = Array.from(
+      new Set((newPlaceForm.extraTags || []).map(t => t.trim()).filter(Boolean))
+    );
+    const customCatalogItems: CustomMenuEntry[] = isLandmarkCat
+      ? []
+      : Array.isArray(newPlaceForm.catalogItems) && newPlaceForm.catalogItems.length > 0
+      ? newPlaceForm.catalogItems
+      : [
+          {
+            id: `${newId}_m1`,
+            name:
+              resolvedCreateProfile.contentProfile === 'retail'
+                ? 'Phụ kiện / Sản phẩm tiêu biểu'
+                : resolvedCreateProfile.contentProfile === 'service' ||
+                  resolvedCreateProfile.contentProfile === 'entertainment'
+                ? 'Dịch vụ tiêu chuẩn'
+                : newPlaceForm.sigDishName.trim() || 'Món đặc trưng',
+            price: Number(newPlaceForm.sigDishPrice) || 35,
+            category: resolvedCreateProfile.sectionTitle,
+            serviceTag: 'both',
+            isLocked: false,
+          },
+        ];
 
     const created: Place = {
       id: newId,
       name: newPlaceForm.name.trim(),
       category: mappedCategory,
-      tagline: isLandmarkCat
-        ? `${newPlaceForm.mapCategory === 'school' ? 'Trường học & Giảng đường' : 'Hành chính & Công cộng'} • Xuân Hòa`
-        : `${newPlaceForm.name.trim()} • Xuân Hòa`,
-      tags: isLandmarkCat
-        ? [newPlaceForm.mapCategory === 'school' ? 'Trường học' : 'Hành chính', 'Xuân Hòa']
-        : [getSectorShortLabel(resolvedSectorTag), mapCatLabel, 'Xuân Hòa'],
-      serviceMode: 'dine_in_only',
+      parentCategoryId: resolvedParentCat,
+      subcategoryId: resolvedSubcat,
+      extraTags: cleanNewExtraTags,
+      contentProfile: resolvedCreateProfile.contentProfile,
+      catalogMode: resolvedCreateProfile.catalogMode,
+      catalogEnabled: resolvedCreateProfile.catalogEnabled,
+      website: newPlaceForm.website.trim() || undefined,
+      educationLevel: newPlaceForm.educationLevel.trim() || undefined,
+      agencyFunction: newPlaceForm.agencyFunction.trim() || undefined,
+      tagline:
+        newPlaceForm.tagline?.trim() ||
+        (isLandmarkCat
+          ? `${mapCatLabel} • Xuân Hòa`
+          : `${formatPlaceTaxonomyLine(mapCatLabel, cleanNewExtraTags)} • Xuân Hòa`),
+      tags: Array.from(
+        new Set(
+          isLandmarkCat
+            ? [mapCatLabel, ...cleanNewExtraTags, 'Xuân Hòa']
+            : [getSectorShortLabel(resolvedSectorTag), mapCatLabel, ...cleanNewExtraTags, 'Xuân Hòa']
+        )
+      ),
+      serviceMode: cleanNewExtraTags.some(t => /giao hàng|ship/i.test(t))
+        ? 'both'
+        : 'dine_in_only',
       zone: 'dhsp2',
-      address: newPlaceForm.address.trim(),
+      address: newPlaceForm.address.trim() || 'P. Xuân Hòa, Phúc Yên, Vĩnh Phúc',
       distance: 'Cách ĐHSP2 350m',
       minPrice: isLandmarkCat ? 0 : 25,
       maxPrice: isLandmarkCat ? 0 : 65,
@@ -1723,23 +2158,25 @@ export function AdminDashboardView({
       mapsUrl: newPlaceForm.mapsUrl.trim() || undefined,
       signatureDish: {
         id: `${newId}_sig`,
-        name: isLandmarkCat ? 'Địa danh / Cơ quan' : newPlaceForm.sigDishName.trim() || 'Món đặc trưng',
-        price: isLandmarkCat ? 0 : Number(newPlaceForm.sigDishPrice) || 35,
+        name: isLandmarkCat
+          ? mapCatLabel
+          : customCatalogItems[0]?.name || newPlaceForm.sigDishName.trim() || 'Món đặc trưng',
+        price: isLandmarkCat
+          ? 0
+          : customCatalogItems[0]?.price ?? (Number(newPlaceForm.sigDishPrice) || 35),
       },
       menu: isLandmarkCat
         ? []
-        : [
-            {
-              id: `${newId}_m1`,
-              name: newPlaceForm.sigDishName.trim() || 'Món đặc trưng',
-              price: Number(newPlaceForm.sigDishPrice) || 35,
-              tag: 'Bán chạy',
-              serviceTag: 'both',
-            },
-          ],
+        : customCatalogItems.map((entry, idx) => ({
+            id: entry.id || `${newId}_item_${idx + 1}`,
+            name: entry.name,
+            price: entry.price,
+            tag: entry.category || 'Bán chạy',
+            serviceTag: entry.serviceTag || 'both',
+          })),
       quip: isLandmarkCat
-        ? 'Địa điểm Hành chính / Công cộng / Trường học trên Bản đồ số Xuân Hòa.'
-        : 'Quán tại Xuân Hòa Có Gì.',
+        ? `${mapCatLabel} trên Bản đồ số Xuân Hòa.`
+        : 'Địa điểm tại Xuân Hòa Có Gì.',
     };
     createNewCustomPlace(created);
     const parsedFromUrl = parseCoordinatesFromInputOrUrl(
@@ -1760,27 +2197,55 @@ export function AdminDashboardView({
     const cleanNewMapsUrl = newPlaceForm.mapsUrl.trim();
     const initialNewMapsLinkStatus = !cleanNewMapsUrl
       ? 'none'
-      : parseCoordinatesFromInputOrUrl(cleanNewMapsUrl)
+      : parseCoordinatesFromInputOrUrl(cleanNewMapsUrl) || hasCoords
       ? 'valid'
       : isShortOrUnresolvableMapsUrl(cleanNewMapsUrl)
       ? 'unresolved'
       : 'invalid';
     const isUnresolvedMapsLink =
-      initialNewMapsLinkStatus === 'unresolved' || initialNewMapsLinkStatus === 'invalid';
+      !hasCoords &&
+      (initialNewMapsLinkStatus === 'unresolved' || initialNewMapsLinkStatus === 'invalid');
+
+    const resolvedShowByDefault =
+      newPlaceForm.showByDefault ??
+      subMeta?.defaultMapVisible ??
+      (resolvedParentCat === 'landmark' ||
+        resolvedParentCat === 'public' ||
+        resolvedParentCat === 'education');
 
     savePlaceAdminOverride(newId, {
+      name: created.name,
+      tagline: created.tagline,
+      address: created.address,
+      phone: created.phone,
+      openHours: created.openHours,
+      openingHours: created.openHours,
+      mapsUrl: cleanNewMapsUrl || undefined,
       status: 'active',
       sectorTag: resolvedSectorTag,
       mapCategory: resolvedMapCat,
-      customMenu: isLandmarkCat ? [] : undefined,
+      parentCategoryId: resolvedParentCat,
+      subcategoryId: resolvedSubcat,
+      categoryId: resolvedSubcat,
+      extraTags: cleanNewExtraTags,
+      contentProfile: resolvedCreateProfile.contentProfile,
+      catalogMode: resolvedCreateProfile.catalogMode,
+      catalogEnabled: resolvedCreateProfile.catalogEnabled,
+      website: created.website,
+      educationLevel: created.educationLevel,
+      agencyFunction: created.agencyFunction,
+      showByDefault: resolvedShowByDefault,
+      defaultMapVisible: resolvedShowByDefault,
+      customMenu: isLandmarkCat ? [] : customCatalogItems,
       locationStatus: hasCoords ? 'located' : 'unlocated',
       mapsLinkStatus: initialNewMapsLinkStatus,
+      createdAt: Date.now(),
       ...(hasCoords
         ? {
             lat: Number(numLat!.toFixed(6)),
             lng: Number(numLng!.toFixed(6)),
-            coordinateVerified: isSuperAdmin,
-            adminPinApproved: isSuperAdmin,
+            coordinateVerified: true,
+            adminPinApproved: true,
             coordinateSource: 'admin_verified',
           }
         : {}),
@@ -1793,9 +2258,7 @@ export function AdminDashboardView({
                 submittedByName: roleInfo.displayName || 'Quản lý Maps',
                 submittedAt: Date.now(),
                 actionType: 'create',
-                actionSummary: isLandmarkCat
-                  ? `Thêm địa danh định vị mới (${newPlaceForm.mapCategory === 'school' ? 'Trường học' : 'Hành chính & Công cộng'})`
-                  : 'Thêm địa điểm định vị mới',
+                actionSummary: `Thêm địa điểm mới (${mapCatLabel})`,
                 previousLat: null,
                 previousLng: null,
                 isNewPlace: true,
@@ -1838,13 +2301,22 @@ export function AdminDashboardView({
     setEditPlacePhone(created.phone || '');
     setEditPlaceHours(created.openHours || '07:00 - 22:00');
     setEditPlaceMapCategory(resolvedMapCat);
+    setEditPlaceParentCat(resolvedParentCat);
+    setEditPlaceSubcategory(resolvedSubcat);
+    setEditPlaceExtraTags(cleanNewExtraTags);
+    setEditPlaceCatalogEnabled(resolvedCreateProfile.catalogEnabled);
+    setEditPlaceWebsite(created.website || '');
+    setEditPlaceEducationLevel(created.educationLevel || '');
+    setEditPlaceAgencyFunction(created.agencyFunction || '');
+    setEditPlaceMenu(customCatalogItems);
+    setEditPlaceShowByDefault(resolvedShowByDefault);
     setEditPlaceMapsQuery(created.mapsQuery || `${created.name} Xuân Hòa Phúc Yên`);
     setEditPlaceMapsUrl(created.mapsUrl || '');
+    const savedLatStr = hasCoords ? String(Number(numLat!.toFixed(6))) : '';
+    const savedLngStr = hasCoords ? String(Number(numLng!.toFixed(6))) : '';
     if (hasCoords) {
-      const cleanLat = Number(numLat!.toFixed(6));
-      const cleanLng = Number(numLng!.toFixed(6));
-      setEditPlaceLat(String(cleanLat));
-      setEditPlaceLng(String(cleanLng));
+      setEditPlaceLat(savedLatStr);
+      setEditPlaceLng(savedLngStr);
       setHasActivelyPinnedOnMap(true);
       setMapFlyTrigger(t => t + 1);
     } else {
@@ -1852,6 +2324,30 @@ export function AdminDashboardView({
       setEditPlaceLng('');
       setHasActivelyPinnedOnMap(false);
     }
+
+    setEditPlaceBaseline({
+      id: newId,
+      name: created.name,
+      parentCategoryId: resolvedParentCat,
+      subcategoryId: resolvedSubcat,
+      extraTagsKey: cleanNewExtraTags.join('|'),
+      catalogEnabled: resolvedCreateProfile.catalogEnabled,
+      showByDefault: resolvedShowByDefault,
+      phone: created.phone || '',
+      openHours: created.openHours || '07:00 - 22:00',
+      address: created.address,
+      mapsUrl: created.mapsUrl || '',
+      lat: savedLatStr,
+      lng: savedLngStr,
+      sectorTag: resolvedSectorTag,
+      serviceMode: created.serviceMode,
+      tagline: created.tagline,
+      tagsText: (created.tags || []).join(', '),
+      minPrice: created.minPrice,
+      maxPrice: created.maxPrice,
+      sigName: created.signatureDish.name,
+      sigPrice: created.signatureDish.price,
+    });
 
     setIsNewPlaceModalOpen(false);
     setRefreshTick(t => t + 1);
@@ -1861,7 +2357,7 @@ export function AdminDashboardView({
     const addMsg = !isSuperAdmin
       ? `✅ Đã thêm "${created.name}" và gửi vào Hộp Duyệt chờ Admin duyệt!`
       : hasCoords
-      ? `✅ Đã thêm mới & ghim Bản đồ ngay lập tức: "${created.name}" (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})!`
+      ? `✅ Đã tạo & ghim Bản đồ ngay lập tức: "${created.name}" (${Number(numLat!.toFixed(6))}, ${Number(numLng!.toFixed(6))})!`
       : isUnresolvedMapsLink
       ? `⚠️ Đã tạo "${created.name}"! Link Maps rút gọn không chứa sẵn tọa độ số — đã đưa vào mục Chưa định vị trong Quản lý Maps để chấm tay.`
       : `✅ Đã tạo "${created.name}" (nằm trong mục Chưa định vị của Quản lý Maps)! Hãy dán link Maps hoặc bấm lên Bản đồ để ghim vị trí.`;
@@ -2112,8 +2608,11 @@ export function AdminDashboardView({
               <Shield size={21} />
             </div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, letterSpacing: '-0.01em' }}>
-              Đăng nhập Quản trị
+              Đăng nhập Founder & Quản trị
             </h2>
+            <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: theme.textMuted, fontWeight: 600 }}>
+              Primary Founder (Gmail) • Backup Founder / Admin (Tên đăng nhập & Mật khẩu)
+            </p>
           </div>
 
           {/* 1 NÚT KẾT NỐI GMAIL DUY NHẤT: ĐƯỢC CẤP QUYỀN THÌ VÀO, KHÔNG THÌ ĐẨY RA TRANG CHÍNH */}
@@ -2141,7 +2640,7 @@ export function AdminDashboardView({
           >
             <GoogleGIcon size={18} />
             <span>
-              {isGoogleAuthLoading ? 'Đang kết nối Gmail...' : 'Kết nối bằng Gmail'}
+              {isGoogleAuthLoading ? 'Đang kết nối Gmail...' : 'Kết nối bằng Gmail (Primary Founder / Admin)'}
             </span>
           </button>
 
@@ -2155,19 +2654,20 @@ export function AdminDashboardView({
           >
             <div style={{ flex: 1, height: '1px', background: theme.border }} />
             <span style={{ fontSize: '10.5px', fontWeight: 700, color: theme.textMuted }}>
-              HOẶC TÀI KHOẢN ADMIN
+              HOẶC BACKUP FOUNDER / TÀI KHOẢN QUẢN TRỊ
             </span>
             <div style={{ flex: 1, height: '1px', background: theme.border }} />
           </div>
 
           <form onSubmit={handleAdminLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
             <div>
-              <label style={compactLabelStyle(theme)}>Tài khoản</label>
+              <label style={compactLabelStyle(theme)}>Tên đăng nhập / Email</label>
               <input
                 type="text"
+                data-testid="founder-login-username"
                 value={loginUsername}
                 onChange={e => setLoginUsername(e.target.value)}
-                placeholder="Nhập tài khoản..."
+                placeholder="Nhập tên đăng nhập Backup Founder hoặc Email..."
                 autoComplete="username"
                 style={compactInputStyle(theme)}
               />
@@ -2178,6 +2678,7 @@ export function AdminDashboardView({
               <div style={{ position: 'relative' }}>
                 <input
                   type={showLoginPass ? 'text' : 'password'}
+                  data-testid="founder-login-password"
                   value={loginPassword}
                   onChange={e => setLoginPassword(e.target.value)}
                   placeholder="Nhập mật khẩu..."
@@ -2205,26 +2706,57 @@ export function AdminDashboardView({
               </div>
             </div>
 
-            <label
+            <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 gap: '8px',
-                fontSize: '12px',
-                fontWeight: 600,
-                color: theme.textSecondary,
-                cursor: 'pointer',
-                userSelect: 'none',
               }}
             >
-              <input
-                type="checkbox"
-                checked={loginRememberMe}
-                onChange={e => setLoginRememberMe(e.target.checked)}
-                style={{ width: '14px', height: '14px', accentColor: theme.accent, cursor: 'pointer' }}
-              />
-              <span>Ghi nhớ đăng nhập</span>
-            </label>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: theme.textSecondary,
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={loginRememberMe}
+                  onChange={e => setLoginRememberMe(e.target.checked)}
+                  style={{ width: '14px', height: '14px', accentColor: theme.accent, cursor: 'pointer' }}
+                />
+                <span>Ghi nhớ đăng nhập</span>
+              </label>
+
+              <button
+                type="button"
+                data-testid="founder-forgot-password-btn"
+                onClick={() => {
+                  setForgotPasswordInput(loginUsername);
+                  setForgotPasswordMessage('');
+                  setShowForgotPasswordModal(true);
+                }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: theme.accent,
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: 0,
+                  textDecoration: 'underline',
+                }}
+              >
+                Quên mật khẩu?
+              </button>
+            </div>
 
             {loginError && (
               <div
@@ -2291,6 +2823,93 @@ export function AdminDashboardView({
               <ArrowLeft size={14} /> Trang chủ Xuân Hòa Có Gì
             </button>
           </div>
+
+          {showForgotPasswordModal && (
+            <div
+              data-testid="founder-forgot-password-modal"
+              style={{
+                marginTop: '14px',
+                padding: '12px',
+                borderRadius: '11px',
+                background: theme.bgElevated,
+                border: `1.5px solid #C4B5FD`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#5B21B6' }}>
+                  🔑 Khôi phục mật khẩu Backup Founder
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPasswordModal(false)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: theme.textMuted,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div style={{ fontSize: '11px', color: theme.textMuted }}>
+                Nhập <b>tên đăng nhập dự phòng</b> hoặc <b>email khôi phục đã xác minh</b>. Hoặc Primary Founder (Dê Già Designer) có thể đặt lại mật khẩu trực tiếp trong Bảng Bảo mật tài khoản.
+              </div>
+              <input
+                type="text"
+                data-testid="founder-forgot-password-input"
+                value={forgotPasswordInput}
+                onChange={e => setForgotPasswordInput(e.target.value)}
+                placeholder="Tên đăng nhập hoặc email khôi phục..."
+                style={compactInputStyle(theme)}
+              />
+              {forgotPasswordMessage && (
+                <div
+                  data-testid="founder-forgot-password-result"
+                  style={{
+                    padding: '7px 9px',
+                    borderRadius: '7px',
+                    background: '#EDE9FE',
+                    color: '#5B21B6',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                  }}
+                >
+                  {forgotPasswordMessage}
+                </div>
+              )}
+              <button
+                type="button"
+                data-testid="founder-forgot-password-submit"
+                disabled={forgotPasswordSubmitting}
+                onClick={async () => {
+                  setForgotPasswordSubmitting(true);
+                  try {
+                    const res = await requestBackupFounderPasswordRecovery(forgotPasswordInput);
+                    setForgotPasswordMessage(res.message);
+                  } finally {
+                    setForgotPasswordSubmitting(false);
+                  }
+                }}
+                style={{
+                  height: '32px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#6D28D9',
+                  color: '#FFFFFF',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: forgotPasswordSubmitting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {forgotPasswordSubmitting ? 'Đang xử lý...' : 'Gửi yêu cầu khôi phục mật khẩu'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* BẢN QUYỀN DƯỚI CHÂN WEB ĐẸP & TINH TẾ */}
@@ -2963,12 +3582,29 @@ export function AdminDashboardView({
                     </span>
                     <button
                       onClick={() => {
-                        setNewPlaceForm(prev => ({
-                          ...prev,
+                        setNewPlaceForm({
                           name: '',
                           sectorTag: 'an-chinh',
                           mapCategory: 'food',
-                        }));
+                          parentCategoryId: 'food',
+                          subcategoryId: 'local_food',
+                          extraTags: [],
+                          catalogEnabled: true,
+                          catalogItems: [],
+                          website: '',
+                          educationLevel: '',
+                          agencyFunction: '',
+                          showByDefault: false,
+                          tagline: '',
+                          phone: '',
+                          openHours: '07:00 - 22:00',
+                          address: 'P. Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+                          mapsUrl: '',
+                          lat: '',
+                          lng: '',
+                          sigDishName: 'Món đặc trưng',
+                          sigDishPrice: 35,
+                        });
                         setIsNewPlaceModalOpen(true);
                       }}
                       style={{
@@ -3041,15 +3677,33 @@ export function AdminDashboardView({
                         onChange={e => setPlaceSectorFilter(e.target.value)}
                         style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
                       >
-                        <option value="all">Tất cả phân khu</option>
-                        {commercialSectorTags.map(sec => {
-                          const cnt = commercialPlaces.filter(p => p.sectorTag === sec.id).length;
-                          return (
-                            <option key={sec.id} value={sec.id}>
-                              {sec.label.split(' (')[0]} ({cnt})
+                        <option value="all">Tất cả danh mục ({commercialPlaces.length})</option>
+                        <optgroup label="Nhóm chính">
+                          {MAP_PARENT_CATEGORIES.filter(p => p.id !== 'uncategorized').map(p => (
+                            <option key={`web-parent-${p.id}`} value={p.id}>
+                              {p.label}
                             </option>
-                          );
-                        })}
+                          ))}
+                        </optgroup>
+                        <optgroup label="Loại chi tiết">
+                          {Object.values(MAP_CATEGORY_REGISTRY)
+                            .filter(s => s.id !== 'uncategorized')
+                            .map(sub => (
+                              <option key={`web-sub-${sub.id}`} value={sub.id}>
+                                {sub.label}
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="Phân khu cũ">
+                          {commercialSectorTags.map(sec => {
+                            const cnt = commercialPlaces.filter(p => p.sectorTag === sec.id).length;
+                            return (
+                              <option key={sec.id} value={sec.id}>
+                                {sec.label.split(' (')[0]} ({cnt})
+                              </option>
+                            );
+                          })}
+                        </optgroup>
                       </select>
 
                       <select
@@ -3174,7 +3828,9 @@ export function AdminDashboardView({
                             }}
                           >
                             <span style={{ color: theme.accent, fontWeight: 700 }}>
-                              {getSectorShortLabel(item.sectorTag)}
+                              {MAP_CATEGORY_REGISTRY[
+                                ((ov?.subcategoryId || item.subcategoryId) as MapSubcategoryId) || 'local_food'
+                              ]?.label || getSectorShortLabel(item.sectorTag)}
                             </span>
                             <span>•</span>
                             <span>{item.fullMenu.length} món</span>
@@ -3500,26 +4156,58 @@ export function AdminDashboardView({
                           <span>{selectedPlaceItem.status === 'active' ? 'Block' : 'Mở khóa'}</span>
                         </button>
 
-                        {/* NÚT XÓA: ADMIN XÓA NGAY LẬP TỨC, QUẢN LÝ XÓA SẼ GỬI VÀO HỘP DUYỆT */}
-                        <button
-                          onClick={() => handleDeletePlaceAction('web')}
-                          style={{
-                            ...actionBtnStyle(theme, false),
-                            padding: '6px 10px',
-                            fontSize: '11.5px',
-                            color: '#B91C1C',
-                          }}
-                          title={
-                            isSuperAdmin
-                              ? 'Admin xóa ngay lập tức'
-                              : 'Quản lý gửi yêu cầu xóa chờ Admin duyệt'
-                          }
-                        >
-                          <Trash2 size={12} />
-                          <span>{isSuperAdmin ? 'Xóa ngay' : 'Xóa (Chờ duyệt)'}</span>
-                        </button>
+                        {/* NÚT XÓA: CÓ BƯỚC XÁC NHẬN AN TOÀN */}
+                        {confirmDeleteScope === 'web' ? (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmDeleteScope(null);
+                                handleDeletePlaceAction('web');
+                              }}
+                              style={{
+                                ...actionBtnStyle(theme, false),
+                                padding: '6px 10px',
+                                fontSize: '11.5px',
+                                background: '#DC2626',
+                                borderColor: '#DC2626',
+                                color: '#FFFFFF',
+                              }}
+                            >
+                              Xác nhận xóa
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteScope(null)}
+                              style={{
+                                ...actionBtnStyle(theme, false),
+                                padding: '6px 8px',
+                                fontSize: '11.5px',
+                              }}
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteScope('web')}
+                            style={{
+                              ...actionBtnStyle(theme, false),
+                              padding: '6px 10px',
+                              fontSize: '11.5px',
+                              color: '#B91C1C',
+                            }}
+                            title="Xóa địa điểm (có xác nhận)"
+                          >
+                            <Trash2 size={12} />
+                            <span>Xóa</span>
+                          </button>
+                        )}
 
                         <button
+                          type="button"
+                          disabled={isSavingPlace}
                           onClick={() => handleSavePlaceAndMenu()}
                           style={{
                             display: 'inline-flex',
@@ -3532,11 +4220,18 @@ export function AdminDashboardView({
                             color: '#FFFFFF',
                             fontSize: '12px',
                             fontWeight: 800,
-                            cursor: 'pointer',
+                            cursor: isSavingPlace ? 'wait' : 'pointer',
+                            opacity: isSavingPlace ? 0.8 : 1,
                           }}
                         >
                           {justSavedPlace ? <Check size={13} /> : <Save size={13} />}
-                          <span>{justSavedPlace ? 'Đã Lưu' : 'Lưu Quán'}</span>
+                          <span>
+                            {isSavingPlace
+                              ? 'Đang lưu...'
+                              : justSavedPlace
+                              ? '✓ Đã lưu'
+                              : 'Lưu thay đổi'}
+                          </span>
                         </button>
                       </div>
                     </div>
@@ -3624,98 +4319,134 @@ export function AdminDashboardView({
                         />
                       </div>
 
-                      {/* PHÂN KHU NGÀNH NGHỀ (CHỈ HIỆN CÁC NGÀNH QUÁN ĂN / NHẬU / CAFE / DỊCH VỤ, KHÔNG HIỆN ĐỊA DANH HÀNH CHÍNH) */}
+                      {/* DANH MỤC ĐỒNG BỘ 100% VỚI QUẢN LÝ MAPS & BẢN ĐỒ SỐ */}
                       <div>
-                        <div
+                        <label style={compactLabelStyle(theme)}>Nhóm danh mục (Parent)</label>
+                        <select
+                          value={editPlaceParentCat}
+                          onChange={e => {
+                            triggerFeedback('tap');
+                            const nextParent = e.target.value as MapParentCategoryId;
+                            setEditPlaceParentCat(nextParent);
+                            const subs = getSubcategoriesByParent(nextParent);
+                            const firstSub = subs[0];
+                            if (firstSub) {
+                              setEditPlaceSubcategory(firstSub.id);
+                              setEditPlaceMapCategory(firstSub.legacyCategory as EditableMapCategory);
+                              setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(firstSub));
+                            }
+                          }}
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            height: '18px',
-                            marginBottom: '5px',
+                            ...lightSelectStyle(theme),
+                            height: '38px',
+                            padding: '0 10px',
+                            fontSize: '13px',
+                            boxSizing: 'border-box',
                           }}
                         >
-                          <label style={{ ...compactLabelStyle(theme), marginBottom: 0 }}>
-                            Phân khu Ngành nghề
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => setIsAddingSectorInline(!isAddingSectorInline)}
-                            style={{
-                              border: 'none',
-                              background: 'transparent',
-                              color: theme.accent,
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              padding: 0,
-                              lineHeight: '18px',
-                            }}
-                          >
-                            {isAddingSectorInline ? 'Đóng' : '+ Thêm mới'}
-                          </button>
-                        </div>
+                          {MAP_PARENT_CATEGORIES.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                        {!isAddingSectorInline ? (
-                          <select
-                            value={editPlaceSectorTag === 'dia-danh' ? 'an-chinh' : editPlaceSectorTag}
-                            onChange={e => {
-                              const nextSec = e.target.value;
-                              setEditPlaceSectorTag(nextSec);
-                              setEditPlaceMapCategory(
-                                mapSectorTagToMapCategory(
-                                  nextSec,
-                                  `${editPlaceName} ${editPlaceTagline} ${editPlaceTagsText}`,
-                                  editPlaceMapCategory
-                                )
-                              );
-                            }}
+                      <div>
+                        <label style={compactLabelStyle(theme)}>Loại chi tiết (Subcategory)</label>
+                        <select
+                          value={editPlaceSubcategory}
+                          onChange={e => {
+                            triggerFeedback('tap');
+                            const nextSubId = e.target.value as MapSubcategoryId;
+                            setEditPlaceSubcategory(nextSubId);
+                            const subMeta = MAP_CATEGORY_REGISTRY[nextSubId];
+                            if (subMeta) {
+                              setEditPlaceParentCat(subMeta.parentId);
+                              setEditPlaceMapCategory(subMeta.legacyCategory as EditableMapCategory);
+                              setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(subMeta));
+                              setEditPlaceCatalogEnabled(Boolean(subMeta.defaultCatalogEnabled));
+                            }
+                          }}
+                          style={{
+                            ...lightSelectStyle(theme),
+                            height: '38px',
+                            padding: '0 10px',
+                            fontSize: '13px',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          {getSubcategoriesByParent(editPlaceParentCat).map(sub => (
+                            <option key={sub.id} value={sub.id}>
+                              {sub.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* CẤP 3 — TAG BỔ SUNG (EXTRA TAGS) ĐỒNG BỘ 100% TRÊN WEBSITE & MAPS */}
+                      <div className="xh-col-span-2">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', gap: '6px', flexWrap: 'wrap' }}>
+                          <label style={{ ...compactLabelStyle(theme), marginBottom: 0 }}>
+                            Cấp 3 — Tag bổ sung (Hiển thị trên thẻ & bản đồ)
+                          </label>
+                          <span
+                            data-testid="admin-web-taxonomy-preview"
                             style={{
-                              ...lightSelectStyle(theme),
-                              height: '38px',
-                              padding: '0 10px',
-                              fontSize: '13px',
-                              boxSizing: 'border-box',
+                              fontSize: '10.5px',
+                              fontWeight: 800,
+                              color: '#065F46',
+                              background: '#ECFDF5',
+                              border: '1px solid #A7F3D0',
+                              padding: '1px 7px',
+                              borderRadius: '999px',
                             }}
                           >
-                            {commercialSectorTags.map(sec => (
-                              <option key={sec.id} value={sec.id}>
-                                {sec.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '5px' }}>
-                            <input
-                              type="text"
-                              value={inlineSectorLabel}
-                              onChange={e => setInlineSectorLabel(e.target.value)}
-                              placeholder="Tên ngành mới..."
-                              style={{ ...compactInputStyle(theme), flex: 1 }}
-                            />
-                            <button
-                              type="button"
-                              onClick={handleAddInlineSector}
-                              style={{
-                                height: '38px',
-                                padding: '0 12px',
-                                borderRadius: '8px',
-                                border: 'none',
-                                background: theme.accent,
-                                color: '#FFF',
-                                fontSize: '12px',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Thêm
-                            </button>
-                          </div>
-                        )}
+                            {formatPlaceTaxonomyLine(
+                              MAP_CATEGORY_REGISTRY[editPlaceSubcategory]?.label || 'Quán',
+                              editPlaceExtraTags
+                            )}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                          {STANDARD_EXTRA_TAGS.map(tag => {
+                            const active = editPlaceExtraTags.some(
+                              t => t.toLowerCase() === tag.toLowerCase()
+                            );
+                            return (
+                              <button
+                                key={`web-extra-${tag}`}
+                                type="button"
+                                onClick={() => {
+                                  triggerFeedback('tap');
+                                  setEditPlaceExtraTags(prev =>
+                                    prev.some(t => t.toLowerCase() === tag.toLowerCase())
+                                      ? prev.filter(t => t.toLowerCase() !== tag.toLowerCase())
+                                      : [...prev, tag]
+                                  );
+                                }}
+                                style={{
+                                  padding: '3px 8px',
+                                  borderRadius: '999px',
+                                  border: active
+                                    ? '1.5px solid #059669'
+                                    : `1px solid ${theme.border}`,
+                                  background: active ? '#ECFDF5' : theme.bgInput,
+                                  color: active ? '#047857' : theme.textSecondary,
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {active ? `✓ ${tag}` : `+ ${tag}`}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       {/* HÌNH THỨC PHỤC VỤ */}
-                      <div>
+                      <div className="xh-col-span-2">
                         <label style={compactLabelStyle(theme)}>Hình thức Phục vụ</label>
                         <select
                           value={editPlaceServiceMode}
@@ -4091,44 +4822,108 @@ export function AdminDashboardView({
                     maxHeight: 'calc(100vh - 86px)',
                   }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '8px',
-                      paddingBottom: '10px',
-                      borderBottom: `1px solid ${theme.border}`,
-                      marginBottom: '10px',
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <UtensilsCrossed size={15} style={{ color: theme.accent }} />
-                      <span style={{ fontSize: '14.5px', fontWeight: 800 }}>
-                        3. Thực đơn ({editPlaceMenu.length} món)
-                      </span>
-                    </div>
+                  {(() => {
+                    const activeProfile = resolvePlaceContentProfile({
+                      subcategoryId: editPlaceSubcategory,
+                      parentCategoryId: editPlaceParentCat,
+                      catalogEnabled: editPlaceCatalogEnabled,
+                    });
+                    return (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                          paddingBottom: '10px',
+                          borderBottom: `1px solid ${theme.border}`,
+                          marginBottom: '10px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <UtensilsCrossed size={15} style={{ color: theme.accent }} />
+                          <span style={{ fontSize: '14.5px', fontWeight: 800 }}>
+                            3. {activeProfile.sectionTitle} ({editPlaceMenu.length})
+                          </span>
+                          {!activeProfile.forbidsMenuAndOrdering && (
+                            <label
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                color: editPlaceCatalogEnabled ? '#047857' : theme.textMuted,
+                                background: editPlaceCatalogEnabled ? '#ECFDF5' : theme.bgInput,
+                                border: editPlaceCatalogEnabled
+                                  ? '1px solid #A7F3D0'
+                                  : `1px solid ${theme.border}`,
+                                padding: '2px 7px',
+                                borderRadius: '999px',
+                                cursor: 'pointer',
+                              }}
+                              title="Tắt hiển thị sẽ ẩn danh sách ngoài trang công khai nhưng giữ nguyên dữ liệu đã nhập"
+                            >
+                              <input
+                                type="checkbox"
+                                data-testid="admin-web-catalog-enabled-toggle"
+                                checked={editPlaceCatalogEnabled}
+                                onChange={e => {
+                                  const nextEnabled = e.target.checked;
+                                  setEditPlaceCatalogEnabled(nextEnabled);
+                                  if (selectedPlaceItem) {
+                                    savePlaceAdminOverride(
+                                      selectedPlaceItem.place.id,
+                                      { catalogEnabled: nextEnabled },
+                                      nextEnabled
+                                        ? `Bật hiển thị ${activeProfile.sectionTitle}`
+                                        : `Tạm ẩn ${activeProfile.sectionTitle} (giữ nguyên dữ liệu)`
+                                    );
+                                    setRefreshTick(t => t + 1);
+                                    showToast(
+                                      nextEnabled
+                                        ? `Đã bật hiển thị ${activeProfile.sectionTitle}`
+                                        : `Đã tạm ẩn ${activeProfile.sectionTitle} (không mất dữ liệu)`
+                                    );
+                                  }
+                                }}
+                                style={{ width: 13, height: 13, accentColor: '#059669' }}
+                              />
+                              <span>{editPlaceCatalogEnabled ? 'Đang hiện' : 'Đang ẩn'}</span>
+                            </label>
+                          )}
+                        </div>
 
-                    <button
-                      onClick={() => setIsAddingDishRow(!isAddingDishRow)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: '6px 10px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: theme.accent,
-                        color: '#FFFFFF',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Plus size={13} /> Thêm Món
-                    </button>
-                  </div>
+                        {!activeProfile.forbidsMenuAndOrdering && (
+                          <button
+                            onClick={() => setIsAddingDishRow(!isAddingDishRow)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '6px 10px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              background: theme.accent,
+                              color: '#FFFFFF',
+                              fontSize: '11.5px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Plus size={13} />{' '}
+                            {activeProfile.contentProfile === 'retail'
+                              ? 'Thêm Sản phẩm'
+                              : activeProfile.contentProfile === 'service' ||
+                                activeProfile.contentProfile === 'entertainment'
+                              ? 'Thêm Dịch vụ'
+                              : 'Thêm Món'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* TÌM MÓN TRONG CỘT 3 */}
                   <div
@@ -4724,13 +5519,31 @@ export function AdminDashboardView({
                       )}
                       <button
                         type="button"
+                        data-testid="admin-open-create-place-btn"
                         onClick={() => {
-                          setNewPlaceForm(prev => ({
-                            ...prev,
+                          setNewPlaceForm({
                             name: '',
-                            sectorTag: 'dia-danh',
-                            mapCategory: 'public',
-                          }));
+                            sectorTag: 'an-chinh',
+                            mapCategory: 'food',
+                            parentCategoryId: 'food',
+                            subcategoryId: 'local_food',
+                            extraTags: [],
+                            catalogEnabled: true,
+                            catalogItems: [],
+                            website: '',
+                            educationLevel: '',
+                            agencyFunction: '',
+                            showByDefault: false,
+                            tagline: '',
+                            phone: '',
+                            openHours: '07:00 - 22:00',
+                            address: 'P. Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+                            mapsUrl: '',
+                            lat: '',
+                            lng: '',
+                            sigDishName: 'Món đặc trưng',
+                            sigDishPrice: 35,
+                          });
                           setIsNewPlaceModalOpen(true);
                         }}
                         style={{
@@ -4983,25 +5796,24 @@ export function AdminDashboardView({
                             </option>
                           ))}
                         </optgroup>
-                        <optgroup label="Loại chi tiết nổi bật">
-                          <option value="fuel_station">Cây xăng (Trạm xăng)</option>
-                          <option value="billiards">Bi-a (Billiards)</option>
-                          <option value="pub">Bia hơi / Quán nhậu</option>
-                          <option value="cafe">Cafe</option>
-                          <option value="phone_shop">Cửa hàng điện thoại</option>
-                          <option value="pharmacy">Hiệu thuốc</option>
-                        </optgroup>
-                        <optgroup label="Nhóm bản đồ cũ">
-                          {EDITABLE_MAP_CATEGORIES.map(c => (
-                            <option key={c.id} value={c.id}>
-                              {c.label}
-                            </option>
-                          ))}
-                        </optgroup>
+                        {MAP_PARENT_CATEGORIES.filter(p => p.id !== 'uncategorized').map(parent => (
+                          <optgroup key={`group-${parent.id}`} label={`Loại: ${parent.label}`}>
+                            {getSubcategoriesByParent(parent.id).map(sub => (
+                              <option key={sub.id} value={sub.id}>
+                                {sub.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
                       </select>
                       <select
+                        data-testid="admin-map-coord-filter-select"
                         value={mapCoordFilter}
-                        onChange={e => setMapCoordFilter(e.target.value as any)}
+                        onChange={e => {
+                          const nextVal = e.target.value as any;
+                          setMapListTab('all');
+                          setMapCoordFilter(nextVal);
+                        }}
                         style={{
                           width: '100%',
                           minWidth: 0,
@@ -5018,10 +5830,12 @@ export function AdminDashboardView({
                           boxSizing: 'border-box',
                         }}
                       >
-                        <option value="all">Trạng thái ({mapLocationStats.total})</option>
-                        <option value="verified">Đã định vị ({mapLocationStats.located})</option>
-                        <option value="unverified">Chưa định vị ({mapLocationStats.unlocated})</option>
-                        <option value="invalid">⚠ Link Maps lỗi ({mapLocationStats.invalid})</option>
+                        <option value="all">Tất cả ({mapLocationStats.total})</option>
+                        <option value="verified">Đã xác minh vị trí ({mapLocationStats.located})</option>
+                        <option value="unverified_coord">Có tọa độ chưa xác minh ({mapLocationStats.unverifiedCoord})</option>
+                        <option value="unverified">Chưa có tọa độ ({mapLocationStats.unlocated})</option>
+                        <option value="invalid">Tọa độ lỗi / xung đột ({mapLocationStats.invalid})</option>
+                        <option value="pending_approval">Đang chờ duyệt ({mapLocationStats.pendingApproval})</option>
                         <option value="locked">Đang khóa (Block)</option>
                       </select>
                     </div>
@@ -5046,9 +5860,7 @@ export function AdminDashboardView({
                       filteredMapPlaces.map(item => {
                         const isSelected = selectedPlaceId === item.place.id;
                         const ov = adminState.places?.[item.place.id];
-                        const { hasCoords, mapCat, isLinkError } = getResolvedPlaceCoordsAndCat(item);
-                        const catLabel =
-                          EDITABLE_MAP_CATEGORIES.find(c => c.id === mapCat)?.label || mapCat;
+                        const { hasCoords, catLabel, isLinkError } = getResolvedPlaceCoordsAndCat(item);
                         const pendingMap = ov?.pendingMapApproval;
                         const isDelReq = Boolean(
                           pendingMap?.isDeleteRequest || pendingMap?.actionType === 'delete'
@@ -5090,10 +5902,14 @@ export function AdminDashboardView({
                       overflow: 'hidden',
                     }}
                   >
-                    {/* HEADER CỘT 2 — THẲNG HÀNG CAO ĐỘ VỚI CỘT 1 VÀ CỘT 3 */}
+                    {/* HEADER CỘT 2 — REDESIGN THEO MỤC XXI & XXVIII: [Gỡ vị trí] [⋯] [Lưu thay đổi] */}
                     <div
                       className="xh-maps-col-header"
                       style={{
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 30,
+                        background: '#FFFFFF',
                         minHeight: '46px',
                         padding: '8px 12px',
                         borderBottom: '1px solid #E8E2D8',
@@ -5104,9 +5920,9 @@ export function AdminDashboardView({
                         boxSizing: 'border-box',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '13.5px', fontWeight: 800, color: theme.textPrimary, whiteSpace: 'nowrap' }}>
-                          2. Định vị
+                          Sửa địa điểm
                         </span>
                         <span
                           style={{
@@ -5130,6 +5946,22 @@ export function AdminDashboardView({
                             ? '📍 Đã định vị'
                             : '⏳ Chưa định vị'}
                         </span>
+                        {selectedPlaceItem.status === 'locked' && (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '5px',
+                              background: '#FEF3C7',
+                              color: '#B45309',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                            }}
+                          >
+                            🔒 Đang ẩn (Block)
+                          </span>
+                        )}
                         {getResolvedPlaceCoordsAndCat(selectedPlaceItem).isLinkError && (
                           <span
                             style={{
@@ -5147,50 +5979,54 @@ export function AdminDashboardView({
                             ⚠ Link Maps lỗi
                           </span>
                         )}
+                        {isPlaceDirty && (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              color: '#D97706',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            • Chưa lưu
+                          </span>
+                        )}
                       </div>
 
-                      {/* NHÓM NÚT SECONDARY NHỎ + 1 NÚT PRIMARY DUY NHẤT */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const nextStatus = selectedPlaceItem.status === 'active' ? 'locked' : 'active';
-                            savePlaceAdminOverride(
-                              selectedPlaceItem.place.id,
-                              { status: nextStatus },
-                              nextStatus === 'locked' ? 'Block địa điểm trên Maps' : 'Mở khóa địa điểm Maps'
-                            );
-                            setRefreshTick(t => t + 1);
-                            const msg =
-                              nextStatus === 'locked'
-                                ? `Đã khóa "${selectedPlaceItem.place.name}" trên Bản đồ`
-                                : `Đã mở khóa "${selectedPlaceItem.place.name}" trên Bản đồ`;
-                            setInlineActionFeedback(msg);
-                            showToast(msg);
-                          }}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                            height: '28px',
-                            padding: '0 6px',
-                            borderRadius: '6px',
-                            border: '1px solid #E8E2D8',
-                            background: '#F8F6F1',
-                            color: selectedPlaceItem.status === 'active' ? theme.textSecondary : '#047857',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {selectedPlaceItem.status === 'active' ? <Lock size={11} /> : <Unlock size={11} />}
-                          <span>{selectedPlaceItem.status === 'active' ? 'Block' : 'Mở'}</span>
-                        </button>
+                      {/* MOBILE CLOSE BUTTON (CHỈ HIỆN TRÊN MOBILE THEO MỤC XXVIII) */}
+                      <button
+                        type="button"
+                        className="xh-show-mobile-only"
+                        onClick={() => setMobileShowDetailPane(false)}
+                        style={{
+                          display: 'none',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '30px',
+                          height: '30px',
+                          borderRadius: '8px',
+                          border: '1px solid #E8E2D8',
+                          background: '#F8F6F1',
+                          color: theme.textPrimary,
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                        title="Đóng & quay lại danh sách"
+                      >
+                        <X size={15} />
+                      </button>
 
-                        {editPlaceLat.trim() !== '' && editPlaceLng.trim() !== '' && (
+                      {/* DESKTOP ACTION BAR: [Gỡ vị trí] [⋯] [Lưu thay đổi] */}
+                      <div
+                        className="xh-hide-mobile"
+                        style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, position: 'relative' }}
+                      >
+                        {/* 1. SECONDARY: Gỡ vị trí (Chỉ Admin mới được gỡ vị trí đã xác minh) */}
+                        {isSuperAdmin && (
                           <button
                             type="button"
+                            data-testid="admin-clear-coords-btn"
+                            disabled={editPlaceLat.trim() === '' && editPlaceLng.trim() === ''}
                             onClick={() => {
                               clearPlaceCoordinates(
                                 selectedPlaceItem.place.id,
@@ -5199,8 +6035,11 @@ export function AdminDashboardView({
                               setEditPlaceLat('');
                               setEditPlaceLng('');
                               setHasActivelyPinnedOnMap(false);
+                              setEditPlaceBaseline(prev =>
+                                prev ? { ...prev, lat: '', lng: '' } : prev
+                              );
                               setRefreshTick(t => t + 1);
-                              const msg = `Đã gỡ ghim "${selectedPlaceItem.place.name}" về Chưa định vị`;
+                              const msg = `Đã gỡ vị trí "${selectedPlaceItem.place.name}" về Chưa định vị`;
                               setInlineActionFeedback(msg);
                               showToast(msg, 'tap');
                             }}
@@ -5208,145 +6047,531 @@ export function AdminDashboardView({
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '3px',
-                              height: '28px',
-                              padding: '0 6px',
-                              borderRadius: '6px',
+                              height: '30px',
+                              padding: '0 8px',
+                              borderRadius: '7px',
                               border: '1px solid #E8E2D8',
                               background: '#F8F6F1',
                               color: theme.textSecondary,
                               fontSize: '11px',
                               fontWeight: 600,
-                              cursor: 'pointer',
+                              cursor:
+                                editPlaceLat.trim() === '' && editPlaceLng.trim() === ''
+                                  ? 'not-allowed'
+                                  : 'pointer',
+                              opacity:
+                                editPlaceLat.trim() === '' && editPlaceLng.trim() === '' ? 0.5 : 1,
                               whiteSpace: 'nowrap',
                             }}
-                            title="Gỡ ghim tọa độ"
+                            title="Xóa tọa độ, chuyển về Chưa định vị nhưng giữ nguyên địa điểm"
                           >
                             <RotateCcw size={11} />
-                            <span>Gỡ</span>
+                            <span>Gỡ vị trí</span>
                           </button>
                         )}
 
+                        {/* 2. MORE MENU [⋯]: Block/Unblock, Khôi phục, Cài đặt nâng cao, Xóa (nguy hiểm ở cuối) */}
                         <button
                           type="button"
-                          onClick={() => handleDeletePlaceAction('maps')}
+                          data-testid="admin-more-actions-btn"
+                          onClick={() => {
+                            setShowMoreActionsMenu(v => !v);
+                            setConfirmDeleteScope(null);
+                          }}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '3px',
-                            height: '28px',
-                            padding: '0 6px',
-                            borderRadius: '6px',
-                            border: '1px solid #FECACA',
-                            background: '#FEF2F2',
-                            color: '#B91C1C',
-                            fontSize: '11px',
-                            fontWeight: 600,
+                            justifyContent: 'center',
+                            width: '30px',
+                            height: '30px',
+                            borderRadius: '7px',
+                            border: '1px solid #E8E2D8',
+                            background: showMoreActionsMenu ? theme.accentSoft : '#F8F6F1',
+                            color: showMoreActionsMenu ? theme.accent : theme.textSecondary,
                             cursor: 'pointer',
-                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
                           }}
+                          title="Tác vụ khác (Block, Khôi phục, Xóa...)"
                         >
-                          <Trash2 size={11} />
-                          <span>Xóa</span>
+                          <MoreHorizontal size={14} />
                         </button>
 
+                        {/* 3. PRIMARY: Lưu thay đổi / Gửi yêu cầu duyệt */}
                         <button
                           type="button"
+                          data-testid="admin-save-place-btn"
                           disabled={isSavingPlace}
                           onClick={() => handleSavePlaceAndMenu()}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
-                            height: '28px',
-                            padding: '0 9px',
-                            borderRadius: '6px',
+                            height: '30px',
+                            padding: '0 11px',
+                            borderRadius: '7px',
                             border: 'none',
-                            background: '#047857',
+                            background: justSavedPlace
+                              ? '#059669'
+                              : isSuperAdmin
+                              ? '#047857'
+                              : '#D97706',
                             color: '#FFFFFF',
-                            fontSize: '11px',
+                            fontSize: '11.5px',
                             fontWeight: 700,
                             cursor: isSavingPlace ? 'wait' : 'pointer',
                             opacity: isSavingPlace ? 0.8 : 1,
                             whiteSpace: 'nowrap',
+                            boxShadow: isPlaceDirty
+                              ? '0 0 0 2px rgba(4, 120, 87, 0.25)'
+                              : 'none',
                           }}
                         >
                           {justSavedPlace ? <Check size={12} /> : <Save size={12} />}
-                          <span>{justSavedPlace ? '✓ Đã lưu' : 'Lưu Định Vị'}</span>
+                          <span>
+                            {isSavingPlace
+                              ? 'Đang lưu...'
+                              : justSavedPlace
+                              ? isSuperAdmin
+                                ? '✓ Đã lưu'
+                                : '✓ Đã gửi duyệt'
+                              : isSuperAdmin
+                              ? 'Lưu thay đổi'
+                              : 'Gửi yêu cầu duyệt'}
+                          </span>
                         </button>
                       </div>
                     </div>
 
+                    {/* MENU [⋯] DROPDOWN KHI BẤM NÚT ⋯ (CẢ DESKTOP VÀ MOBILE DÙNG CHUNG) */}
+                    {showMoreActionsMenu && (
+                      <div
+                        data-testid="admin-more-actions-dropdown"
+                        style={{
+                          margin: '8px 12px 0 12px',
+                          padding: '8px',
+                          borderRadius: '10px',
+                          background: '#F8FAFC',
+                          border: '1px solid #CBD5E1',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          boxShadow: '0 8px 20px rgba(15, 23, 42, 0.08)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '2px 6px 4px 6px',
+                            borderBottom: '1px solid #E2E8F0',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            color: '#475569',
+                          }}
+                        >
+                          <span>Tác vụ quản lý: {selectedPlaceItem.place.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowMoreActionsMenu(false);
+                              setConfirmDeleteScope(null);
+                            }}
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              color: '#64748B',
+                              cursor: 'pointer',
+                              padding: '2px',
+                            }}
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          data-testid="admin-menu-block-btn"
+                          onClick={() => {
+                            const nextStatus = selectedPlaceItem.status === 'active' ? 'locked' : 'active';
+                            savePlaceAdminOverride(
+                              selectedPlaceItem.place.id,
+                              { status: nextStatus },
+                              nextStatus === 'locked' ? 'Block địa điểm trên Maps' : 'Mở khóa địa điểm Maps'
+                            );
+                            setShowMoreActionsMenu(false);
+                            setRefreshTick(t => t + 1);
+                            const msg =
+                              nextStatus === 'locked'
+                                ? `🔒 Đã Block (ẩn khỏi bản đồ public): "${selectedPlaceItem.place.name}"`
+                                : `🔓 Đã Mở khóa (hiện lại trên bản đồ): "${selectedPlaceItem.place.name}"`;
+                            setInlineActionFeedback(msg);
+                            showToast(msg);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '7px 10px',
+                            borderRadius: '7px',
+                            border: 'none',
+                            background: '#FFFFFF',
+                            color: selectedPlaceItem.status === 'active' ? '#B45309' : '#047857',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          {selectedPlaceItem.status === 'active' ? <Lock size={13} /> : <Unlock size={13} />}
+                          <span>
+                            {selectedPlaceItem.status === 'active'
+                              ? 'Block (Ẩn khỏi bản đồ public — vẫn còn trong Admin)'
+                              : 'Mở khóa (Hiện lại trên bản đồ public)'}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearPlaceCoordinates(
+                              selectedPlaceItem.place.id,
+                              selectedPlaceItem.place.name
+                            );
+                            setEditPlaceLat('');
+                            setEditPlaceLng('');
+                            setHasActivelyPinnedOnMap(false);
+                            setEditPlaceBaseline(prev =>
+                              prev ? { ...prev, lat: '', lng: '' } : prev
+                            );
+                            setShowMoreActionsMenu(false);
+                            setRefreshTick(t => t + 1);
+                            const msg = `Đã gỡ vị trí "${selectedPlaceItem.place.name}" về Chưa định vị`;
+                            setInlineActionFeedback(msg);
+                            showToast(msg, 'tap');
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '7px 10px',
+                            borderRadius: '7px',
+                            border: 'none',
+                            background: '#FFFFFF',
+                            color: '#334155',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <RotateCcw size={13} />
+                          <span>Gỡ vị trí (Đưa về Chưa định vị, giữ nguyên địa điểm)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAdvancedPlaceFields(v => !v);
+                            setShowMoreActionsMenu(false);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '7px 10px',
+                            borderRadius: '7px',
+                            border: 'none',
+                            background: '#FFFFFF',
+                            color: '#334155',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <Settings size={13} />
+                          <span>
+                            {showAdvancedPlaceFields
+                              ? 'Thu gọn cài đặt nâng cao'
+                              : 'Mở cài đặt nâng cao (Mô tả ngắn, Tags...)'}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetPlaceToDefault(selectedPlaceItem.place.id);
+                            setShowMoreActionsMenu(false);
+                            setRefreshTick(t => t + 1);
+                            showToast(`Đã khôi phục mặc định cho "${selectedPlaceItem.place.name}"`);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '7px 10px',
+                            borderRadius: '7px',
+                            border: 'none',
+                            background: '#FFFFFF',
+                            color: '#475569',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <RotateCcw size={13} />
+                          <span>Khôi phục dữ liệu gốc mặc định</span>
+                        </button>
+
+                        <div style={{ borderTop: '1px solid #E2E8F0', margin: '3px 0' }} />
+
+                        {confirmDeleteScope === 'maps' ? (
+                          <div
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              background: '#FEF2F2',
+                              border: '1px solid #FCA5A5',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '8px',
+                            }}
+                          >
+                            <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#991B1B' }}>
+                              Xác nhận xóa "{selectedPlaceItem.place.name}"?
+                            </span>
+                            <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
+                              <button
+                                type="button"
+                                data-testid="admin-confirm-delete-btn"
+                                onClick={() => {
+                                  setConfirmDeleteScope(null);
+                                  setShowMoreActionsMenu(false);
+                                  handleDeletePlaceAction('maps');
+                                }}
+                                style={{
+                                  height: '28px',
+                                  padding: '0 10px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background: '#DC2626',
+                                  color: '#FFFFFF',
+                                  fontSize: '11.5px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Xóa vĩnh viễn
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteScope(null)}
+                                style={{
+                                  height: '28px',
+                                  padding: '0 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #CBD5E1',
+                                  background: '#FFFFFF',
+                                  color: '#475569',
+                                  fontSize: '11.5px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Hủy
+                              </button>
+                            </div>
+                          </div>
+                        ) : isSuperAdmin ? (
+                          <button
+                            type="button"
+                            data-testid="admin-menu-delete-btn"
+                            onClick={() => setConfirmDeleteScope('maps')}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '7px 10px',
+                              borderRadius: '7px',
+                              border: '1px solid #FECACA',
+                              background: '#FEF2F2',
+                              color: '#B91C1C',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                            }}
+                          >
+                            <Trash2 size={13} />
+                            <span>Xóa địa điểm (Nguy hiểm — Cần xác nhận)</span>
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
+
                     {/* BODY FORM GỌN SẠCH — KHOẢNG CÁCH 10–12px */}
                     <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {/* DUYỆT NHANH NẾU ĐỊA ĐIỂM ĐANG CHỜ DUYỆT */}
+                      {/* SO SÁNH TRƯỚC → SAU & DUYỆT NHANH NẾU ĐỊA ĐIỂM ĐANG CHỜ DUYỆT */}
                       {(() => {
                         const ov = adminState.places?.[selectedPlaceItem.place.id];
                         const pending = ov?.pendingMapApproval;
                         if (!pending) return null;
                         const isDel = pending.isDeleteRequest || pending.actionType === 'delete';
+                        const hasCoordDiff =
+                          typeof pending.proposedLat === 'number' &&
+                          typeof pending.proposedLng === 'number';
+                        const hasConflict =
+                          typeof pending.baseVersion === 'number' &&
+                          typeof ov?.version === 'number' &&
+                          ov.version > pending.baseVersion;
                         return (
                           <div
+                            data-testid="admin-pending-comparison-card"
                             style={{
-                              padding: '8px 10px',
-                              borderRadius: '8px',
+                              padding: '10px 12px',
+                              borderRadius: '9px',
                               background: isDel ? '#FEF2F2' : '#FFFBEB',
                               border: isDel ? '1px solid #FCA5A5' : '1px solid #FCD34D',
                               display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '8px',
+                              flexDirection: 'column',
+                              gap: '6px',
                               fontSize: '11px',
                             }}
                           >
-                            <div style={{ color: isDel ? '#991B1B' : '#92400E', fontWeight: 600 }}>
-                              <strong>{pending.submittedByName}</strong>: {pending.actionSummary}
-                            </div>
-                            {isSuperAdmin && (
-                              <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    approvePendingPlaceItem(selectedPlaceItem.place.id, 'maps');
-                                    setRefreshTick(t => t + 1);
-                                    showToast(`Đã duyệt "${selectedPlaceItem.place.name}"`, 'approve');
-                                  }}
-                                  style={{
-                                    height: '26px',
-                                    padding: '0 8px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    background: isDel ? '#DC2626' : '#059669',
-                                    color: '#FFFFFF',
-                                    fontSize: '11px',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  ✓ Duyệt
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    rejectPendingPlaceItem(selectedPlaceItem.place.id, 'maps');
-                                    setRefreshTick(t => t + 1);
-                                    showToast(`Đã từ chối "${selectedPlaceItem.place.name}"`, 'warn');
-                                  }}
-                                  style={{
-                                    height: '26px',
-                                    padding: '0 7px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #FCA5A5',
-                                    background: '#FFFFFF',
-                                    color: '#B91C1C',
-                                    fontSize: '11px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Từ chối
-                                </button>
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '8px',
+                              }}
+                            >
+                              <div style={{ color: isDel ? '#991B1B' : '#92400E', fontWeight: 700 }}>
+                                ⏳ Đề xuất bởi <strong>{pending.submittedByName}</strong> •{' '}
+                                {new Date(pending.submittedAt).toLocaleTimeString('vi-VN', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}{' '}
+                                — {pending.actionSummary}
                               </div>
-                            )}
+                              {isSuperAdmin && (
+                                <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
+                                  <button
+                                    type="button"
+                                    data-testid="admin-approve-pending-btn"
+                                    onClick={() => {
+                                      approvePendingPlaceItem(selectedPlaceItem.place.id, 'maps');
+                                      if (hasCoordDiff) {
+                                        setEditPlaceLat(String(pending.proposedLat));
+                                        setEditPlaceLng(String(pending.proposedLng));
+                                        setHasActivelyPinnedOnMap(true);
+                                        setMapFlyTrigger(t => t + 1);
+                                      }
+                                      setRefreshTick(t => t + 1);
+                                      showToast(
+                                        `✅ Đã duyệt đề xuất cho "${selectedPlaceItem.place.name}"! Bản đồ công khai đã cập nhật ngay.`,
+                                        'approve'
+                                      );
+                                    }}
+                                    style={{
+                                      height: '26px',
+                                      padding: '0 9px',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      background: isDel ? '#DC2626' : '#059669',
+                                      color: '#FFFFFF',
+                                      fontSize: '11px',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    ✓ Duyệt
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid="admin-reject-pending-btn"
+                                    onClick={() => {
+                                      rejectPendingPlaceItem(selectedPlaceItem.place.id, 'maps');
+                                      setRefreshTick(t => t + 1);
+                                      showToast(
+                                        `Đã từ chối đề xuất cho "${selectedPlaceItem.place.name}". Giữ nguyên dữ liệu gốc.`,
+                                        'warn'
+                                      );
+                                    }}
+                                    style={{
+                                      height: '26px',
+                                      padding: '0 8px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #FCA5A5',
+                                      background: '#FFFFFF',
+                                      color: '#B91C1C',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Từ chối
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* BẢNG SO SÁNH TRƯỚC -> SAU */}
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr',
+                                gap: '3px',
+                                padding: '6px 8px',
+                                borderRadius: '6px',
+                                background: 'rgba(255,255,255,0.75)',
+                                border: '1px dashed #F59E0B',
+                                color: '#78350F',
+                                fontSize: '10.5px',
+                              }}
+                            >
+                              {hasCoordDiff && (
+                                <div>
+                                  📍 <strong>Tọa độ (Trước → Sau):</strong>{' '}
+                                  <code>
+                                    {typeof pending.previousLat === 'number' &&
+                                    typeof pending.previousLng === 'number'
+                                      ? `${pending.previousLat}, ${pending.previousLng}`
+                                      : 'Chưa ghim'}
+                                  </code>{' '}
+                                  →{' '}
+                                  <code style={{ color: '#047857', fontWeight: 800 }}>
+                                    {pending.proposedLat}, {pending.proposedLng}
+                                  </code>{' '}
+                                  <span style={{ color: '#B45309' }}>
+                                    (Cột 3 đang hiển thị cả Ghim cũ & Ghim đề xuất)
+                                  </span>
+                                </div>
+                              )}
+                              {pending.proposedName &&
+                                pending.proposedName !== selectedPlaceItem.place.name && (
+                                  <div>
+                                    🏷️ <strong>Tên (Trước → Sau):</strong> "{selectedPlaceItem.place.name}" → "
+                                    <strong>{pending.proposedName}</strong>"
+                                  </div>
+                                )}
+                              {pending.proposedAddress &&
+                                pending.proposedAddress !== selectedPlaceItem.place.address && (
+                                  <div>
+                                    🏠 <strong>Địa chỉ (Trước → Sau):</strong> "
+                                    {selectedPlaceItem.place.address}" → "
+                                    <strong>{pending.proposedAddress}</strong>"
+                                  </div>
+                                )}
+                              {hasConflict && (
+                                <div style={{ color: '#DC2626', fontWeight: 800 }}>
+                                  ⚠️ Cảnh báo xung đột phiên bản: Địa điểm đã được cập nhật (v{ov?.version}) sau khi đề xuất này được gửi (base v{pending.baseVersion}).
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })()}
@@ -5450,10 +6675,12 @@ export function AdminDashboardView({
                                 fontSize: '10.5px',
                                 fontWeight: 700,
                                 cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
                               }}
                               title="Bật để địa điểm luôn hiển thị mặc định khi mở bản đồ"
                             >
-                              <span>Hiện mặc định trên bản đồ:</span>
+                              <span>Hiện mặc định:</span>
                               <strong>{editPlaceShowByDefault ? 'ON' : 'OFF'}</strong>
                             </button>
                           </div>
@@ -5536,6 +6763,7 @@ export function AdminDashboardView({
                                 Nhóm (Parent Category)
                               </span>
                               <select
+                                data-testid="admin-map-parent-category-select"
                                 value={editPlaceParentCat}
                                 onChange={e => {
                                   triggerFeedback('tap');
@@ -5572,6 +6800,7 @@ export function AdminDashboardView({
                                 Loại chi tiết (Subcategory)
                               </span>
                               <select
+                                data-testid="admin-map-subcategory-select"
                                 value={editPlaceSubcategory}
                                 onChange={e => {
                                   triggerFeedback('tap');
@@ -5582,6 +6811,7 @@ export function AdminDashboardView({
                                     setEditPlaceParentCat(subMeta.parentId);
                                     setEditPlaceMapCategory(subMeta.legacyCategory as EditableMapCategory);
                                     setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(subMeta));
+                                    setEditPlaceCatalogEnabled(Boolean(subMeta.defaultCatalogEnabled));
                                   }
                                 }}
                                 style={{
@@ -5602,15 +6832,89 @@ export function AdminDashboardView({
                               </select>
                             </div>
                           </div>
+
+                          {/* CẤP 3 — TAG BỔ SUNG (EXTRA TAGS) */}
+                          <div style={{ marginTop: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '10.5px', fontWeight: 600, color: theme.textMuted }}>
+                                Tag bổ sung (Cấp 3)
+                              </span>
+                              <span
+                                data-testid="admin-map-taxonomy-preview"
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 800,
+                                  color: '#065F46',
+                                  background: '#ECFDF5',
+                                  border: '1px solid #A7F3D0',
+                                  padding: '1px 6px',
+                                  borderRadius: '999px',
+                                }}
+                              >
+                                {formatPlaceTaxonomyLine(
+                                  MAP_CATEGORY_REGISTRY[editPlaceSubcategory]?.label || 'Địa điểm',
+                                  editPlaceExtraTags
+                                )}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              {STANDARD_EXTRA_TAGS.map(tag => {
+                                const active = editPlaceExtraTags.some(
+                                  t => t.toLowerCase() === tag.toLowerCase()
+                                );
+                                return (
+                                  <button
+                                    key={`map-extra-${tag}`}
+                                    type="button"
+                                    onClick={() => {
+                                      triggerFeedback('tap');
+                                      setEditPlaceExtraTags(prev =>
+                                        prev.some(t => t.toLowerCase() === tag.toLowerCase())
+                                          ? prev.filter(t => t.toLowerCase() !== tag.toLowerCase())
+                                          : [...prev, tag]
+                                      );
+                                    }}
+                                    style={{
+                                      padding: '2px 7px',
+                                      borderRadius: '999px',
+                                      border: active
+                                        ? '1.5px solid #059669'
+                                        : '1px solid #CBD5E1',
+                                      background: active ? '#ECFDF5' : '#FFFFFF',
+                                      color: active ? '#047857' : '#475569',
+                                      fontSize: '10.5px',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {active ? `✓ ${tag}` : `+ ${tag}`}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="xh-col-span-2">
+                        <div>
                           <label style={compactLabelStyle(theme)}>Số điện thoại liên hệ</label>
                           <input
                             type="text"
+                            data-testid="admin-edit-place-phone"
                             value={editPlacePhone}
                             onChange={e => setEditPlacePhone(e.target.value)}
                             placeholder="Chưa cập nhật SĐT"
+                            style={compactInputStyle(theme)}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={compactLabelStyle(theme)}>Giờ mở cửa – đóng cửa</label>
+                          <input
+                            type="text"
+                            data-testid="admin-edit-place-hours"
+                            value={editPlaceHours}
+                            onChange={e => setEditPlaceHours(e.target.value)}
+                            placeholder="VD: 07:00 - 22:00"
                             style={compactInputStyle(theme)}
                           />
                         </div>
@@ -5619,6 +6923,7 @@ export function AdminDashboardView({
                           <label style={compactLabelStyle(theme)}>Địa chỉ chi tiết (Số nhà, Đường, Khu vực)</label>
                           <input
                             type="text"
+                            data-testid="admin-edit-place-address"
                             value={editPlaceAddress}
                             onChange={e => setEditPlaceAddress(e.target.value)}
                             style={compactInputStyle(theme)}
@@ -5884,6 +7189,7 @@ export function AdminDashboardView({
                           <label style={compactLabelStyle(theme)}>Vĩ độ (Lat)</label>
                           <input
                             type="text"
+                            data-testid="admin-edit-place-lat"
                             value={editPlaceLat}
                             onChange={e => setEditPlaceLat(e.target.value)}
                             placeholder="21.2897..."
@@ -5895,13 +7201,388 @@ export function AdminDashboardView({
                           <label style={compactLabelStyle(theme)}>Kinh độ (Lng)</label>
                           <input
                             type="text"
+                            data-testid="admin-edit-place-lng"
                             value={editPlaceLng}
                             onChange={e => setEditPlaceLng(e.target.value)}
                             placeholder="105.7112..."
                             style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
                           />
                         </div>
+
+                        {/* THÔNG TIN XÁC MINH TỌA ĐỘ, NÚT KIỂM TRA TỌA ĐỘ & LỊCH SỬ VỊ TRÍ (PHẦN 6) */}
+                        <div className="xh-col-span-2">
+                          {(() => {
+                            const ov = adminState.places?.[selectedPlaceItem.place.id];
+                            const resolvedInfo = getResolvedPlaceCoordsAndCat(selectedPlaceItem);
+                            const srcCode = String(
+                              ov?.coordinateSource ||
+                                (resolvedInfo.hasCoords ? 'admin_verified' : 'unverified')
+                            );
+                            const srcLabel =
+                              srcCode === 'admin_verified'
+                                ? 'Admin ghim xác minh (admin_verified)'
+                                : srcCode === 'google_maps_resolved'
+                                ? 'Giải mã Google Maps (google_maps_resolved)'
+                                : srcCode === 'manager_proposed'
+                                ? 'Quản lý đề xuất (manager_proposed)'
+                                : srcCode === 'osm_seed' || srcCode === 'openstreetmap'
+                                ? 'Dữ liệu nền OSM chuẩn (openstreetmap)'
+                                : 'Chưa xác minh (unverified)';
+                            const statusLabel = resolvedInfo.hasPendingMapApproval
+                              ? '⏳ Đang chờ Admin duyệt'
+                              : resolvedInfo.hasCoords
+                              ? '✓ Đã xác minh vị trí'
+                              : resolvedInfo.hasUnverifiedCoord
+                              ? '⚠ Có tọa độ chưa xác minh'
+                              : 'Chưa có tọa độ';
+                            const lastUpdatedTs =
+                              ov?.lastVerifiedAt || ov?.updatedAt || ov?.createdAt || null;
+                            const historyList = Array.isArray(ov?.locationHistory)
+                              ? ov!.locationHistory!.slice(0, 3)
+                              : [];
+                            return (
+                              <div
+                                data-testid="admin-coord-metadata-card"
+                                style={{
+                                  padding: '8px 10px',
+                                  borderRadius: '8px',
+                                  background: '#F8FAFC',
+                                  border: '1px solid #E2E8F0',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '6px',
+                                  fontSize: '11px',
+                                  color: '#334155',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '8px',
+                                    flexWrap: 'wrap',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <div>
+                                      <strong>Nguồn tọa độ:</strong>{' '}
+                                      <span data-testid="admin-coord-source-label" style={{ color: '#0F172A' }}>
+                                        {srcLabel}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <strong>Trạng thái:</strong>{' '}
+                                      <span
+                                        style={{
+                                          fontWeight: 700,
+                                          color: resolvedInfo.hasCoords ? '#047857' : '#B45309',
+                                        }}
+                                      >
+                                        {statusLabel}
+                                      </span>
+                                      {lastUpdatedTs && (
+                                        <span style={{ color: '#64748B', marginLeft: '6px' }}>
+                                          • Cập nhật:{' '}
+                                          {new Date(lastUpdatedTs).toLocaleString('vi-VN', {
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    data-testid="admin-verify-coord-btn"
+                                    onClick={() => {
+                                      const nLat =
+                                        editPlaceLat.trim() !== '' ? Number(editPlaceLat) : null;
+                                      const nLng =
+                                        editPlaceLng.trim() !== '' ? Number(editPlaceLng) : null;
+                                      const qual = evaluatePlaceCoordinateQuality({
+                                        id: selectedPlaceItem.place.id,
+                                        name: editPlaceName.trim() || selectedPlaceItem.place.name,
+                                        lat: nLat,
+                                        lng: nLng,
+                                      });
+                                      if (qual.status === 'located' && nLat !== null && nLng !== null) {
+                                        setHasActivelyPinnedOnMap(true);
+                                        setMapFlyTrigger(t => t + 1);
+                                        const msg = `✓ Tọa độ hợp lệ (${nLat.toFixed(6)}, ${nLng.toFixed(6)}) nằm trong vùng Xuân Hòa — đã di chuyển Bản đồ Cột 3 tới điểm ghim!`;
+                                        setInlineActionFeedback(msg);
+                                        showToast(msg, 'approve');
+                                      } else {
+                                        const warnMsg =
+                                          qual.reason ||
+                                          'Chưa có tọa độ hợp lệ. Hãy chấm trực tiếp lên Bản đồ Cột 3 hoặc bấm Tìm tọa độ.';
+                                        setInlineActionFeedback(`⚠️ ${warnMsg}`);
+                                        showToast(`⚠️ ${warnMsg}`, 'warn');
+                                      }
+                                    }}
+                                    style={{
+                                      height: '28px',
+                                      padding: '0 10px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #059669',
+                                      background: '#ECFDF5',
+                                      color: '#047857',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    🎯 Kiểm tra tọa độ
+                                  </button>
+                                </div>
+
+                                {historyList.length > 0 && (
+                                  <div
+                                    data-testid="admin-coord-history-list"
+                                    style={{
+                                      borderTop: '1px dashed #CBD5E1',
+                                      paddingTop: '5px',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '2px',
+                                      fontSize: '10.5px',
+                                      color: '#475569',
+                                    }}
+                                  >
+                                    <strong style={{ color: '#334155' }}>
+                                      Lịch sử chỉnh sửa vị trí ({ov?.locationHistory?.length || 0}):
+                                    </strong>
+                                    {historyList.map((h, hIdx) => {
+                                      const hTs = h.timestamp || h.updatedAt || Date.now();
+                                      const hActor = h.actor || h.updatedBy || 'admin';
+                                      return (
+                                        <div key={`${hTs}-${hIdx}`}>
+                                          •{' '}
+                                          {new Date(hTs).toLocaleString('vi-VN', {
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })}{' '}
+                                          ({hActor}):{' '}
+                                          <code>
+                                            {typeof h.previousLat === 'number'
+                                              ? `${h.previousLat}, ${h.previousLng}`
+                                              : 'Chưa ghim'}
+                                          </code>{' '}
+                                          →{' '}
+                                          <code>
+                                            {typeof h.newLat === 'number'
+                                              ? `${h.newLat}, ${h.newLng}`
+                                              : 'Gỡ vị trí'}
+                                          </code>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {/* D. NỘI DUNG MỞ RỘNG THEO CONTENT PROFILE */}
+                        <div className="xh-col-span-2" style={{ paddingTop: '4px', borderTop: '1px dashed #E2E8F0' }}>
+                          {(() => {
+                            const mapProfile = resolvePlaceContentProfile({
+                              subcategoryId: editPlaceSubcategory,
+                              parentCategoryId: editPlaceParentCat,
+                              catalogEnabled: editPlaceCatalogEnabled,
+                            });
+                            if (mapProfile.forbidsMenuAndOrdering) {
+                              return (
+                                <div
+                                  data-testid="admin-map-civic-no-menu-banner"
+                                  style={{
+                                    padding: '7px 10px',
+                                    borderRadius: '8px',
+                                    background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    color: '#1E3A8A',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  🏛️ <strong>{mapProfile.sectionTitle}</strong>: Không hiển thị thực đơn, sản phẩm hay nút đặt hàng.
+                                </div>
+                              );
+                            }
+                            return (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: '8px',
+                                  padding: '6px 9px',
+                                  borderRadius: '8px',
+                                  background: '#F8FAFC',
+                                  border: '1px solid #E2E8F0',
+                                }}
+                              >
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#334155' }}>
+                                  Module: <strong style={{ color: '#059669' }}>{mapProfile.sectionTitle}</strong> ({editPlaceMenu.length} mục)
+                                </span>
+                                <label
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    color: editPlaceCatalogEnabled ? '#047857' : '#64748B',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    data-testid="admin-map-catalog-enabled-toggle"
+                                    checked={editPlaceCatalogEnabled}
+                                    onChange={e => setEditPlaceCatalogEnabled(e.target.checked)}
+                                    style={{ width: 14, height: 14, accentColor: '#059669' }}
+                                  />
+                                  <span>{editPlaceCatalogEnabled ? 'Hiện công khai' : 'Tạm ẩn (giữ dữ liệu)'}</span>
+                                </label>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {showAdvancedPlaceFields && (
+                          <div className="xh-col-span-2" style={{ paddingTop: '4px', borderTop: '1px dashed #E2E8F0' }}>
+                            <label style={compactLabelStyle(theme)}>Mô tả ngắn (Tagline)</label>
+                            <input
+                              type="text"
+                              value={editPlaceTagline}
+                              onChange={e => setEditPlaceTagline(e.target.value)}
+                              placeholder="Mô tả ngắn hiển thị trên thẻ..."
+                              style={compactInputStyle(theme)}
+                            />
+                          </div>
+                        )}
                       </div>
+
+                      {saveErrorMsg && (
+                        <div
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            background: '#FEF2F2',
+                            border: '1px solid #FCA5A5',
+                            color: '#991B1B',
+                            fontSize: '11.5px',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                          }}
+                        >
+                          <span>{saveErrorMsg}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleSavePlaceAndMenu()}
+                            style={{
+                              height: '26px',
+                              padding: '0 8px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              background: '#DC2626',
+                              color: '#FFFFFF',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                            }}
+                          >
+                            Thử lại
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* STICKY FOOTER BAR TRÊN MOBILE THEO MỤC XXVIII: [ ⋯ ] [ Lưu thay đổi ] */}
+                    <div
+                      className="xh-show-mobile-only xh-mobile-sticky-action-bar"
+                      style={{
+                        display: 'none',
+                        position: 'sticky',
+                        bottom: 0,
+                        zIndex: 35,
+                        background: '#FFFFFF',
+                        borderTop: '1px solid #E8E2D8',
+                        padding: '8px 12px',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        boxShadow: '0 -4px 12px rgba(15, 23, 42, 0.06)',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMoreActionsMenu(v => !v);
+                          setConfirmDeleteScope(null);
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '5px',
+                          height: '38px',
+                          padding: '0 14px',
+                          borderRadius: '9px',
+                          border: '1px solid #CBD5E1',
+                          background: showMoreActionsMenu ? theme.accentSoft : '#F8FAFC',
+                          color: '#334155',
+                          fontSize: '12.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <MoreHorizontal size={16} />
+                        <span>Tác vụ</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isSavingPlace}
+                        onClick={() => handleSavePlaceAndMenu()}
+                        style={{
+                          flex: 1,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          height: '38px',
+                          padding: '0 16px',
+                          borderRadius: '9px',
+                          border: 'none',
+                          background: justSavedPlace ? '#059669' : '#047857',
+                          color: '#FFFFFF',
+                          fontSize: '13px',
+                          fontWeight: 800,
+                          cursor: isSavingPlace ? 'wait' : 'pointer',
+                        }}
+                      >
+                        {justSavedPlace ? <Check size={14} /> : <Save size={14} />}
+                        <span>
+                          {isSavingPlace
+                            ? 'Đang lưu...'
+                            : justSavedPlace
+                            ? '✓ Đã lưu'
+                            : 'Lưu thay đổi'}
+                        </span>
+                      </button>
                     </div>
                   </div>
                 ) : null}
@@ -6029,30 +7710,51 @@ export function AdminDashboardView({
                           <span>Đang định vị & di chuyển bản đồ...</span>
                         </div>
                       )}
-                      <DigitalMapView
-                        authUser={effectiveAuthUser}
-                        onBackToHome={onBackToApp}
-                        embeddedInAdmin={true}
-                        adminSelectedPlaceId={selectedPlaceItem.place.id}
-                        adminPreviewLat={
-                          hasActivelyPinnedOnMap &&
-                          editPlaceLat.trim() !== '' &&
-                          !Number.isNaN(Number(editPlaceLat))
-                            ? Number(editPlaceLat)
-                            : null
+                      <React.Suspense
+                        fallback={
+                          <div
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              minHeight: '500px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: '#F8F6F1',
+                              color: theme.textMuted,
+                              fontSize: '12.5px',
+                              fontWeight: 600,
+                            }}
+                          >
+                            Đang tải Bản đồ số Xuân Hòa...
+                          </div>
                         }
-                        adminPreviewLng={
-                          hasActivelyPinnedOnMap &&
-                          editPlaceLng.trim() !== '' &&
-                          !Number.isNaN(Number(editPlaceLng))
-                            ? Number(editPlaceLng)
-                            : null
-                        }
-                        adminFlyTrigger={mapFlyTrigger}
-                        adminSyncVersion={refreshTick}
-                        onAdminPickCoordinates={handleAdminMapPickCoordinates}
-                        onAdminSelectPlace={handleAdminMapSelectPlace}
-                      />
+                      >
+                        <LazyDigitalMapView
+                          authUser={effectiveAuthUser}
+                          onBackToHome={onBackToApp}
+                          embeddedInAdmin={true}
+                          adminSelectedPlaceId={selectedPlaceItem.place.id}
+                          adminPreviewLat={
+                            hasActivelyPinnedOnMap &&
+                            editPlaceLat.trim() !== '' &&
+                            !Number.isNaN(Number(editPlaceLat))
+                              ? Number(editPlaceLat)
+                              : null
+                          }
+                          adminPreviewLng={
+                            hasActivelyPinnedOnMap &&
+                            editPlaceLng.trim() !== '' &&
+                            !Number.isNaN(Number(editPlaceLng))
+                              ? Number(editPlaceLng)
+                              : null
+                          }
+                          adminFlyTrigger={mapFlyTrigger}
+                          adminSyncVersion={refreshTick}
+                          onAdminPickCoordinates={handleAdminMapPickCoordinates}
+                          onAdminSelectPlace={handleAdminMapSelectPlace}
+                        />
+                      </React.Suspense>
                     </div>
                   </div>
                 ) : null}
@@ -6586,14 +8288,16 @@ export function AdminDashboardView({
         </div>
       )}
 
-      {/* MODAL THÊM QUÁN MỚI (QUẢN LÝ QUÁN) HOẶC THÊM ĐỊNH VỊ MỚI (QUẢN LÝ MAPS) */}
+      {/* MODAL THÊM ĐỊA ĐIỂM MỚI — DÙNG CHUNG COMPONENT PlaceFields & MAP_CATEGORY_REGISTRY */}
       {isNewPlaceModalOpen && (
-        <div className="xh-modal-backdrop">
+        <div className="xh-modal-backdrop" onClick={() => setIsNewPlaceModalOpen(false)}>
           <div
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: '450px',
+              maxWidth: '480px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
               background: theme.bgCard,
               color: theme.textPrimary,
               borderRadius: '16px',
@@ -6602,236 +8306,128 @@ export function AdminDashboardView({
               boxShadow: '0 20px 50px rgba(0,0,0,0.18)',
             }}
           >
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: 800 }}>
-              {activeSection === 'maps'
-                ? '📍 Thêm Địa Điểm Định Vị Mới (Maps)'
-                : '🏪 Thêm Quán Mới (Quản lý Quán)'}
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
+                Thêm Địa Điểm Mới
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsNewPlaceModalOpen(false)}
+                style={{
+                  border: `1px solid ${theme.border}`,
+                  background: theme.bgElevated,
+                  borderRadius: '7px',
+                  padding: '4px',
+                  cursor: 'pointer',
+                  color: theme.textPrimary,
+                }}
+              >
+                <X size={15} />
+              </button>
+            </div>
             <div style={{ fontSize: '11.5px', color: theme.textMuted, marginBottom: '12px' }}>
-              {activeSection === 'maps'
-                ? 'Chọn đúng mục Hành chính & Công cộng, Trường học... Các mục Hành chính/Trường học chỉ nằm trên Bản đồ số, không đẩy sang Quản lý Quán.'
-                : 'Chỉ dành cho Quán ăn, Quán nhậu, Cafe, Ăn vặt, Dịch vụ.'}
+              Dùng chung một hệ danh mục chuẩn (Nhóm → Loại chi tiết). Nhập tọa độ/link Maps để ghim ngay hoặc để trống để thêm vào Chưa định vị.
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div>
-                <label style={compactLabelStyle(theme)}>
-                  {activeSection === 'maps' ? 'Tên Địa điểm / Cơ quan / Quán *' : 'Tên Quán *'}
-                </label>
-                <input
-                  type="text"
-                  value={newPlaceForm.name}
-                  onChange={e => setNewPlaceForm({ ...newPlaceForm, name: e.target.value })}
-                  placeholder={
-                    activeSection === 'maps'
-                      ? 'VD: UBND Phường Xuân Hòa / Công an Phường Xuân Hòa...'
-                      : 'VD: Lẩu Nướng Cô Ba / Bi-a Club...'
-                  }
-                  style={compactInputStyle(theme)}
-                />
-              </div>
 
-              {activeSection === 'maps' ? (
-                <div>
-                  <label style={compactLabelStyle(theme)}>
-                    Danh mục Bản đồ số (Chọn đúng mục Hành chính / Trường học / Quán)
-                  </label>
-                  <select
-                    value={newPlaceForm.mapCategory}
-                    onChange={e => {
-                      const nextCat = e.target.value as EditableMapCategory;
-                      setNewPlaceForm({
-                        ...newPlaceForm,
-                        mapCategory: nextCat,
-                        sectorTag:
-                          nextCat === 'public' || nextCat === 'school'
-                            ? 'dia-danh'
-                            : nextCat === 'billiards' || nextCat === 'game'
-                            ? 'bia-game'
-                            : nextCat === 'phone'
-                            ? 'dien-thoai'
-                            : nextCat === 'entertainment'
-                            ? 'an-choi'
-                            : nextCat === 'pub'
-                            ? 'nhau-lau'
-                            : nextCat === 'cafe'
-                            ? 'uong'
-                            : nextCat === 'snack'
-                            ? 'an-vat'
-                            : nextCat === 'service' || nextCat === 'grocery' || nextCat === 'supermarket'
-                            ? 'dich-vu'
-                            : 'an-chinh',
+            <PlaceFields
+              mode="create"
+              value={{
+                name: newPlaceForm.name,
+                parentCategoryId: newPlaceForm.parentCategoryId,
+                subcategoryId: newPlaceForm.subcategoryId,
+                mapCategory: newPlaceForm.mapCategory,
+                sectorTag: newPlaceForm.sectorTag,
+                extraTags: newPlaceForm.extraTags,
+                catalogEnabled: newPlaceForm.catalogEnabled,
+                catalogItems: newPlaceForm.catalogItems,
+                website: newPlaceForm.website,
+                educationLevel: newPlaceForm.educationLevel,
+                agencyFunction: newPlaceForm.agencyFunction,
+                showByDefault: newPlaceForm.showByDefault,
+                phone: newPlaceForm.phone,
+                openHours: newPlaceForm.openHours,
+                address: newPlaceForm.address,
+                mapsUrl: newPlaceForm.mapsUrl,
+                lat: newPlaceForm.lat,
+                lng: newPlaceForm.lng,
+                tagline: newPlaceForm.tagline,
+              }}
+              onChange={patch => {
+                setNewPlaceForm(prev => {
+                  const next = { ...prev, ...patch };
+                  if (patch.subcategoryId) {
+                    const subMeta = MAP_CATEGORY_REGISTRY[patch.subcategoryId];
+                    if (subMeta) {
+                      next.parentCategoryId = subMeta.parentId;
+                      next.mapCategory = subMeta.legacyCategory as EditableMapCategory;
+                      next.sectorTag = getDefaultSectorTagForSubcategory(subMeta);
+                    }
+                  }
+                  if (patch.mapsUrl !== undefined) {
+                    const parsed = parseCoordinatesFromInputOrUrl(patch.mapsUrl);
+                    if (parsed) {
+                      next.lat = String(parsed.lat);
+                      next.lng = String(parsed.lng);
+                    } else if (/^https?:\/\//i.test(patch.mapsUrl.trim())) {
+                      expandAndParseShortMapsUrl(patch.mapsUrl.trim()).then(expanded => {
+                        if (expanded) {
+                          setNewPlaceForm(curr => ({
+                            ...curr,
+                            lat: String(expanded.lat),
+                            lng: String(expanded.lng),
+                          }));
+                          showToast(`📍 Đã giải mã link rút gọn: ${expanded.lat}, ${expanded.lng}`);
+                        }
                       });
-                    }}
-                    style={{ ...lightSelectStyle(theme), padding: '8px 11px', fontSize: '12.5px' }}
-                  >
-                    {EDITABLE_MAP_CATEGORIES.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label style={compactLabelStyle(theme)}>Phân khu Quán (Ngành nghề)</label>
-                  <select
-                    value={newPlaceForm.sectorTag === 'dia-danh' ? 'an-chinh' : newPlaceForm.sectorTag}
-                    onChange={e => {
-                      const sec = e.target.value;
-                      setNewPlaceForm({
-                        ...newPlaceForm,
-                        sectorTag: sec,
-                        mapCategory: mapSectorTagToMapCategory(sec, newPlaceForm.name),
-                      });
-                    }}
-                    style={{ ...lightSelectStyle(theme), padding: '8px 11px', fontSize: '12.5px' }}
-                  >
-                    {commercialSectorTags.map(sec => (
-                      <option key={sec.id} value={sec.id}>
-                        {sec.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div>
-                  <label style={compactLabelStyle(theme)}>Số điện thoại</label>
-                  <input
-                    type="text"
-                    value={newPlaceForm.phone}
-                    onChange={e => setNewPlaceForm({ ...newPlaceForm, phone: e.target.value })}
-                    style={compactInputStyle(theme)}
-                  />
-                </div>
-                <div>
-                  <label style={compactLabelStyle(theme)}>Giờ mở cửa / làm việc</label>
-                  <input
-                    type="text"
-                    value={newPlaceForm.openHours}
-                    onChange={e => setNewPlaceForm({ ...newPlaceForm, openHours: e.target.value })}
-                    style={compactInputStyle(theme)}
-                  />
-                </div>
-              </div>
-              <div>
-                <label style={compactLabelStyle(theme)}>Địa chỉ</label>
-                <input
-                  type="text"
-                  value={newPlaceForm.address}
-                  onChange={e => setNewPlaceForm({ ...newPlaceForm, address: e.target.value })}
-                  style={compactInputStyle(theme)}
-                />
-              </div>
-              <div>
-                <label style={compactLabelStyle(theme)}>
-                  Link Google Maps / Plus Code (VD: 7PQ6+VFP) / Tọa độ
-                </label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <input
-                    type="text"
-                    value={newPlaceForm.mapsUrl}
-                    onChange={e => {
-                      const val = e.target.value;
-                      const parsed = parseCoordinatesFromInputOrUrl(val);
-                      setNewPlaceForm(prev => ({
-                        ...prev,
-                        mapsUrl: val,
-                        lat: parsed ? String(parsed.lat) : prev.lat,
-                        lng: parsed ? String(parsed.lng) : prev.lng,
-                      }));
-                      if (!parsed && /^https?:\/\//i.test(val.trim())) {
-                        expandAndParseShortMapsUrl(val.trim()).then(expanded => {
-                          if (expanded) {
-                            setNewPlaceForm(prev => ({
-                              ...prev,
-                              lat: String(expanded.lat),
-                              lng: String(expanded.lng),
-                            }));
-                            showToast(`📍 Đã giải mã link rút gọn: ${expanded.lat}, ${expanded.lng}`);
-                          }
-                        });
-                      }
-                    }}
-                    placeholder="Dán link Maps, Plus Code (7PQ6+VFP) hoặc 21.289, 105.711..."
-                    style={{ ...compactInputStyle(theme), flex: 1 }}
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const resolved = await resolvePlaceCoordinates({
-                        mapsUrl: newPlaceForm.mapsUrl,
-                        address: newPlaceForm.address,
-                        name: newPlaceForm.name,
-                        allowGeocode: true,
-                      });
-                      if (resolved.lat !== null && resolved.lng !== null) {
-                        setNewPlaceForm(prev => ({
-                          ...prev,
-                          lat: String(resolved.lat),
-                          lng: String(resolved.lng),
-                        }));
-                        showToast(`📍 Đã tìm thấy tọa độ: ${resolved.lat}, ${resolved.lng}`);
-                      } else {
-                        showToast('Không tìm thấy tự động — hãy nhập Plus Code hoặc chấm trên Bản đồ', 'warn');
-                      }
-                    }}
-                    style={{
-                      ...smallRowBtnStyle(theme),
-                      background: theme.accent,
-                      color: '#FFF',
-                      borderColor: theme.accent,
-                    }}
-                  >
-                    Tìm tọa độ
-                  </button>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div>
-                  <label style={compactLabelStyle(theme)}>Vĩ độ (Lat - tự động cắm ghim)</label>
-                  <input
-                    type="text"
-                    value={newPlaceForm.lat}
-                    onChange={e => setNewPlaceForm({ ...newPlaceForm, lat: e.target.value })}
-                    placeholder="21.2897..."
-                    style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
-                  />
-                </div>
-                <div>
-                  <label style={compactLabelStyle(theme)}>Kinh độ (Lng - tự động cắm ghim)</label>
-                  <input
-                    type="text"
-                    value={newPlaceForm.lng}
-                    onChange={e => setNewPlaceForm({ ...newPlaceForm, lng: e.target.value })}
-                    placeholder="105.7112..."
-                    style={{ ...compactInputStyle(theme), fontFamily: 'monospace' }}
-                  />
-                </div>
-              </div>
-            </div>
+                    }
+                  }
+                  return next;
+                });
+              }}
+              onResolveCoordinates={async () => {
+                const resolved = await resolvePlaceCoordinates({
+                  mapsUrl: newPlaceForm.mapsUrl,
+                  address: newPlaceForm.address,
+                  name: newPlaceForm.name,
+                  allowGeocode: true,
+                });
+                if (resolved.lat !== null && resolved.lng !== null) {
+                  setNewPlaceForm(prev => ({
+                    ...prev,
+                    lat: String(resolved.lat),
+                    lng: String(resolved.lng),
+                  }));
+                  showToast(`📍 Đã tìm thấy tọa độ: ${resolved.lat}, ${resolved.lng}`);
+                } else {
+                  showToast('Không tìm thấy tự động — hãy nhập tọa độ hoặc chấm trên Bản đồ sau khi tạo', 'warn');
+                }
+              }}
+            />
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-              <button onClick={() => setIsNewPlaceModalOpen(false)} style={actionBtnStyle(theme, false)}>
+              <button
+                type="button"
+                onClick={() => setIsNewPlaceModalOpen(false)}
+                style={actionBtnStyle(theme, false)}
+              >
                 Hủy
               </button>
               <button
+                type="button"
+                data-testid="admin-create-place-submit-btn"
                 onClick={handleCreatePlace}
                 style={{
                   padding: '8px 16px',
                   borderRadius: '8px',
                   border: 'none',
-                  background: theme.accent,
+                  background: '#047857',
                   color: '#FFF',
                   fontWeight: 700,
                   fontSize: '12.5px',
                   cursor: 'pointer',
                 }}
               >
-                {isSuperAdmin
-                  ? activeSection === 'maps'
-                    ? '✓ Thêm & Ghim Ngay'
-                    : '✓ Tạo Quán Ngay'
-                  : 'Gửi Duyệt Tạo Mới'}
+                Tạo địa điểm
               </button>
             </div>
           </div>
@@ -6902,25 +8498,6 @@ export function AdminDashboardView({
           </div>
         </div>
       )}
-
-      <MerchantPortalModal
-        isOpen={isMerchantModalOpen}
-        onClose={() => setIsMerchantModalOpen(false)}
-        authUser={authUser}
-        isAdminUser={true}
-        initialTab={merchantModalTab}
-        onStartPickOnMap={(placeId, placeName) => {
-          jumpToMapUrl(
-            `#/ban-do?pick=${encodeURIComponent(placeId)}&pickName=${encodeURIComponent(placeName)}`
-          );
-        }}
-        onFlyToCoordinates={(lat, lng, label) => {
-          jumpToMapUrl(
-            `#/ban-do?flyLat=${lat}&flyLng=${lng}&flyLabel=${encodeURIComponent(label || '')}`
-          );
-        }}
-        onDataChanged={() => setRefreshTick(t => t + 1)}
-      />
 
       {/* CSS CHUẨN LIGHT MODE, CỘT 2 VÀ CỘT 3 CAO BẰNG NHAU CÂN ĐỐI 100% */}
       <style>{`
@@ -7015,8 +8592,8 @@ export function AdminDashboardView({
           align-items: stretch;
         }
         .xh-three-col-layout.xh-maps-three-col {
-          grid-template-columns: 280px 420px minmax(0, 1fr);
-          gap: 12px;
+          grid-template-columns: minmax(235px, 25%) minmax(305px, 33%) minmax(340px, 42%);
+          gap: 10px;
           align-items: start;
         }
         .xh-three-col-layout.xh-maps-three-col > .xh-places-list-pane,
@@ -7025,6 +8602,7 @@ export function AdminDashboardView({
           position: static;
           top: auto;
           margin-top: 0;
+          min-width: 0;
         }
         .xh-places-master-detail {
           display: grid;
@@ -7128,6 +8706,15 @@ export function AdminDashboardView({
           .xh-show-mobile-only {
             display: inline-flex !important;
           }
+          .xh-mobile-sticky-action-bar {
+            display: flex !important;
+            position: fixed !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 85 !important;
+            padding: 10px 14px !important;
+          }
           .xh-admin-topbar {
             padding: 8px 10px;
             gap: 6px;
@@ -7161,8 +8748,14 @@ export function AdminDashboardView({
             padding: 12px 10px 50px 10px;
           }
           .xh-three-col-layout,
+          .xh-three-col-layout.xh-maps-three-col,
           .xh-places-master-detail {
-            grid-template-columns: 1fr;
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+          .xh-col-middle-pane {
+            position: static;
+            max-height: none !important;
+            overflow: visible !important;
           }
           .xh-col-right-pane {
             grid-column: 1;

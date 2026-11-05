@@ -75,21 +75,56 @@ export const MAP_UI_PALETTE = {
 } as const;
 
 /**
- * DANH SÁCH 11 NHÓM CHA (PARENT CATEGORIES) + CHƯA PHÂN LOẠI (PHẦN 11 & 53)
+ * DANH SÁCH 12 NHÓM CHA (PARENT CATEGORIES) + CHƯA PHÂN LOẠI (PHẦN 2.1, 11 & 53)
  */
 export type MapParentCategoryId =
   | 'food'
   | 'drink'
   | 'night_food'
+  | 'shopping'
   | 'entertainment'
+  | 'sports'
   | 'transport'
   | 'health'
   | 'education'
   | 'public'
-  | 'shopping'
   | 'service'
   | 'landmark'
   | 'uncategorized';
+
+/**
+ * CONTENT PROFILE & CATALOG MODE (PHẦN 3 & PHẦN 4 MASTER PROMPT)
+ */
+export type ContentProfileType =
+  | 'food'
+  | 'retail'
+  | 'service'
+  | 'entertainment'
+  | 'government'
+  | 'education'
+  | 'landmark'
+  | 'basic';
+
+export type CatalogModeType =
+  | 'menu'
+  | 'products'
+  | 'services'
+  | 'pricing'
+  | 'none';
+
+/**
+ * DANH SÁCH TAG BỔ SUNG CHUẨN (CẤP 3 — EXTRA TAGS — PHẦN 2.1)
+ */
+export const STANDARD_EXTRA_TAGS: readonly string[] = [
+  'Ăn đêm',
+  'Có giao hàng',
+  'Có chỗ đỗ xe',
+  'Phù hợp gia đình',
+  'Có phòng riêng',
+  'Mở cửa 24 giờ',
+  'Điều hòa mát',
+  'Giá sinh viên',
+] as const;
 
 /**
  * DANH SÁCH TOÀN BỘ SUBCATEGORY CHI TIẾT (PHẦN 12–22 & 53)
@@ -118,7 +153,7 @@ export type MapSubcategoryId =
   | 'beer_garden'
   | 'grill_pub'
   | 'hotpot_pub'
-  // 15. Vui chơi (entertainment)
+  // 15. Vui chơi & Thể thao (entertainment / sports)
   | 'billiards'
   | 'gaming'
   | 'karaoke'
@@ -172,6 +207,7 @@ export type MapSubcategoryId =
   // 22. Địa danh (landmark)
   | 'landmark'
   | 'square'
+  | 'roundabout'
   | 'bridge'
   | 'lake'
   | 'park'
@@ -243,12 +279,24 @@ export interface MapParentCategoryMeta {
   isDefaultCoreGroup: boolean;
 }
 
+export type PlaceCategoryType = 'commercial' | 'civic' | 'landmark';
+
 export interface MapSubcategoryMeta {
   id: MapSubcategoryId;
   parentId: MapParentCategoryId;
   label: string;
   shortLabel: string;
   iconName: LucideRegistryIconName;
+  /** Alias chuẩn theo Unified Category Registry Contract (Phần II) */
+  iconKey?: LucideRegistryIconName;
+  type?: PlaceCategoryType;
+  contentProfile?: ContentProfileType;
+  defaultCatalogMode?: CatalogModeType;
+  defaultCatalogEnabled?: boolean;
+  publicVisible?: boolean;
+  adminVisible?: boolean;
+  mapPriority?: number;
+  defaultMapVisible?: boolean;
   legacyCategory: Exclude<MapCategoryKey, 'all' | 'game_asset'>;
   /** Các từ khóa để tìm kiếm nhanh trong Admin & Search */
   searchKeywords: string[];
@@ -257,7 +305,7 @@ export interface MapSubcategoryMeta {
 }
 
 /**
- * DANH MỤC CHA (PARENT CATEGORIES) — PHẦN 11
+ * DANH MỤC CHA (PARENT CATEGORIES) — PHẦN 2.1 & PHẦN 11
  */
 export const MAP_PARENT_CATEGORIES: MapParentCategoryMeta[] = [
   {
@@ -293,6 +341,15 @@ export const MAP_PARENT_CATEGORIES: MapParentCategoryMeta[] = [
     shortLabel: 'Vui chơi',
     iconName: 'Gamepad2',
     defaultSubcategoryId: 'billiards',
+    legacyCategory: 'entertainment',
+    isDefaultCoreGroup: false,
+  },
+  {
+    id: 'sports',
+    label: 'Thể thao',
+    shortLabel: 'Thể thao',
+    iconName: 'Trophy',
+    defaultSubcategoryId: 'sports',
     legacyCategory: 'entertainment',
     isDefaultCoreGroup: false,
   },
@@ -552,11 +609,11 @@ export const MAP_CATEGORY_REGISTRY: Record<MapSubcategoryId, MapSubcategoryMeta>
   beer: {
     id: 'beer',
     parentId: 'night_food',
-    label: 'Bia hơi / Beer club',
+    label: 'Bia hơi / Quán nhậu',
     shortLabel: 'Bia hơi',
     iconName: 'Beer',
     legacyCategory: 'pub',
-    searchKeywords: ['bia', 'bia hơi', 'bia tươi', 'beer club'],
+    searchKeywords: ['bia', 'bia hơi', 'bia tươi', 'beer club', 'quán bia'],
     showByDefault: false,
   },
   beer_garden: {
@@ -598,7 +655,7 @@ export const MAP_CATEGORY_REGISTRY: Record<MapSubcategoryId, MapSubcategoryMeta>
     shortLabel: 'Bi-a',
     iconName: 'CircleDot',
     legacyCategory: 'billiards',
-    searchKeywords: ['bi-a', 'bia club', 'billiards', 'billiard', 'clb bi-a'],
+    searchKeywords: ['bi-a', 'bi a', 'bida', 'bi-da', 'billiards', 'billiard', 'clb bi-a'],
     showByDefault: false,
   },
   gaming: {
@@ -1065,6 +1122,16 @@ export const MAP_CATEGORY_REGISTRY: Record<MapSubcategoryId, MapSubcategoryMeta>
     searchKeywords: ['quảng trường', 'chim xanh', 'sân vận động'],
     showByDefault: true,
   },
+  roundabout: {
+    id: 'roundabout',
+    parentId: 'landmark',
+    label: 'Vòng tròn / Nút giao',
+    shortLabel: 'Vòng tròn',
+    iconName: 'Compass',
+    legacyCategory: 'public',
+    searchKeywords: ['vòng tròn', 'vòng xuyến', 'vòng tròn 1', 'vòng tròn 2', 'ngã tư'],
+    showByDefault: true,
+  },
   bridge: {
     id: 'bridge',
     parentId: 'landmark',
@@ -1129,12 +1196,80 @@ export const MAP_CATEGORY_REGISTRY: Record<MapSubcategoryId, MapSubcategoryMeta>
   },
 };
 
+// Chuẩn hóa đầy đủ trường theo Unified Category Registry Contract (Phần II) & ContentProfile (Phần 3, 4)
+Object.values(MAP_CATEGORY_REGISTRY).forEach((entry, index) => {
+  entry.iconKey = entry.iconName;
+  entry.type =
+    entry.parentId === 'landmark'
+      ? 'landmark'
+      : entry.parentId === 'public' ||
+          entry.parentId === 'education' ||
+          entry.parentId === 'health'
+        ? 'civic'
+        : 'commercial';
+  entry.publicVisible = entry.id !== 'uncategorized';
+  entry.adminVisible = true;
+  entry.mapPriority = entry.showByDefault ? 1 : 2 + (index % 5);
+  entry.defaultMapVisible = entry.showByDefault;
+
+  // ContentProfile & CatalogMode theo Phần 3 & Phần 4 Master Prompt
+  if (entry.parentId === 'food' || entry.parentId === 'drink' || entry.parentId === 'night_food') {
+    entry.contentProfile = 'food';
+    entry.defaultCatalogMode = 'menu';
+    entry.defaultCatalogEnabled = true;
+  } else if (entry.parentId === 'shopping' || entry.id === 'pharmacy') {
+    entry.contentProfile = 'retail';
+    entry.defaultCatalogMode = 'products';
+    entry.defaultCatalogEnabled = entry.parentId === 'shopping';
+  } else if (entry.parentId === 'entertainment' || entry.parentId === 'sports') {
+    entry.contentProfile = 'entertainment';
+    entry.defaultCatalogMode = 'pricing';
+    entry.defaultCatalogEnabled = true;
+  } else if (entry.parentId === 'public' || entry.id === 'hospital' || entry.id === 'health_station') {
+    entry.contentProfile = 'government';
+    entry.defaultCatalogMode = 'none';
+    entry.defaultCatalogEnabled = false;
+  } else if (entry.parentId === 'education') {
+    entry.contentProfile = 'education';
+    entry.defaultCatalogMode = 'none';
+    entry.defaultCatalogEnabled = false;
+  } else if (entry.parentId === 'landmark') {
+    entry.contentProfile = 'landmark';
+    entry.defaultCatalogMode = 'none';
+    entry.defaultCatalogEnabled = false;
+  } else if (entry.id === 'bank' || entry.id === 'atm' || entry.id === 'uncategorized') {
+    entry.contentProfile = 'basic';
+    entry.defaultCatalogMode = 'none';
+    entry.defaultCatalogEnabled = false;
+  } else {
+    entry.contentProfile = 'service';
+    entry.defaultCatalogMode =
+      entry.id === 'fuel_station' || entry.id === 'ev_charging' || entry.id === 'parking' || entry.id === 'bus_station'
+        ? 'pricing'
+        : 'services';
+    entry.defaultCatalogEnabled =
+      entry.id === 'motorbike_repair' ||
+      entry.id === 'car_repair' ||
+      entry.id === 'beauty' ||
+      entry.id === 'barber' ||
+      entry.id === 'laundry' ||
+      entry.id === 'repair_service' ||
+      entry.id === 'hotel';
+  }
+});
+
 export const ALL_MAP_SUBCATEGORIES: MapSubcategoryMeta[] = Object.values(MAP_CATEGORY_REGISTRY);
 
 export const MAP_SUBCATEGORIES_BY_PARENT: Record<MapParentCategoryId, MapSubcategoryMeta[]> =
   MAP_PARENT_CATEGORIES.reduce(
     (acc, parent) => {
-      acc[parent.id] = ALL_MAP_SUBCATEGORIES.filter((sub) => sub.parentId === parent.id);
+      if (parent.id === 'sports') {
+        acc[parent.id] = ALL_MAP_SUBCATEGORIES.filter(
+          (sub) => sub.id === 'sports' || sub.parentId === 'sports'
+        );
+      } else {
+        acc[parent.id] = ALL_MAP_SUBCATEGORIES.filter((sub) => sub.parentId === parent.id);
+      }
       return acc;
     },
     {} as Record<MapParentCategoryId, MapSubcategoryMeta[]>
@@ -1152,13 +1287,155 @@ export function getDefaultSectorTagForSubcategory(sub: MapSubcategoryMeta): stri
     return 'dia-danh';
   }
   if (sub.id === 'billiards' || sub.id === 'gaming') return 'bia-game';
-  if (sub.parentId === 'entertainment') return 'an-choi';
+  if (sub.parentId === 'entertainment' || sub.parentId === 'sports' || sub.id === 'sports') return 'an-choi';
   if (sub.id === 'phone_shop' || sub.id === 'electronics') return 'dien-thoai';
   if (sub.parentId === 'night_food') return 'nhau-lau';
   if (sub.parentId === 'drink') return 'uong';
   if (sub.id === 'street_food' || sub.id === 'fast_food' || sub.id === 'banh_mi') return 'an-vat';
   if (sub.parentId === 'food') return 'an-chinh';
   return 'dich-vu';
+}
+
+/**
+ * GIẢI QUYẾT CONTENT PROFILE & CATALOG MODE CHO MỘT ĐỊA ĐIỂM (PHẦN 3 & PHẦN 4)
+ */
+export function resolvePlaceContentProfile(input: {
+  subcategoryId?: string | null;
+  parentCategoryId?: string | null;
+  subType?: string | null;
+  category?: string | null;
+  name?: string | null;
+  contentProfile?: ContentProfileType | null;
+  catalogMode?: CatalogModeType | null;
+  catalogEnabled?: boolean | null;
+  explicitProfile?: ContentProfileType | null;
+  explicitCatalogMode?: CatalogModeType | null;
+  explicitCatalogEnabled?: boolean | null;
+  hasCatalogItems?: boolean;
+}): {
+  contentProfile: ContentProfileType;
+  catalogMode: CatalogModeType;
+  catalogEnabled: boolean;
+  catalogEnabledByDefault: boolean;
+  requiresPhoneAndHours: boolean;
+  sectionTitle: string;
+  itemLabel: string;
+  priceLabel: string;
+  actionButtonLabel: string;
+  forbidsMenuAndOrdering: boolean;
+} {
+  let subMeta =
+    input.subcategoryId && input.subcategoryId in MAP_CATEGORY_REGISTRY
+      ? MAP_CATEGORY_REGISTRY[input.subcategoryId as MapSubcategoryId]
+      : null;
+
+  if (!subMeta && (input.parentCategoryId || input.subType || input.category || input.name)) {
+    const resolved = resolvePlaceTaxonomy({
+      subcategoryId: input.subcategoryId ?? undefined,
+      parentCategoryId: input.parentCategoryId ?? undefined,
+      subType: input.subType ?? undefined,
+      category: input.category ?? undefined,
+      name: input.name ?? undefined,
+    });
+    subMeta = MAP_CATEGORY_REGISTRY[resolved.subcategoryId];
+  }
+
+  if (!subMeta) {
+    subMeta = MAP_CATEGORY_REGISTRY.local_food;
+  }
+
+  const contentProfile: ContentProfileType =
+    input.explicitProfile || input.contentProfile || subMeta.contentProfile || 'food';
+
+  // Các nhóm hành chính, trường học, địa danh tuyệt đối không hiển thị menu/mua hàng (Phần 3.5, 3.6, 3.7)
+  const forbidsMenuAndOrdering =
+    contentProfile === 'government' ||
+    contentProfile === 'education' ||
+    contentProfile === 'landmark';
+
+  const catalogMode: CatalogModeType = forbidsMenuAndOrdering
+    ? 'none'
+    : input.explicitCatalogMode ||
+      input.catalogMode ||
+      subMeta.defaultCatalogMode ||
+      'menu';
+
+  const catalogEnabledByDefault = forbidsMenuAndOrdering
+    ? false
+    : Boolean(subMeta.defaultCatalogEnabled);
+
+  const explicitEnabled =
+    typeof input.explicitCatalogEnabled === 'boolean'
+      ? input.explicitCatalogEnabled
+      : typeof input.catalogEnabled === 'boolean'
+        ? input.catalogEnabled
+        : undefined;
+
+  const catalogEnabled: boolean = forbidsMenuAndOrdering
+    ? false
+    : typeof explicitEnabled === 'boolean'
+      ? explicitEnabled
+      : Boolean(catalogEnabledByDefault || input.hasCatalogItems);
+
+  const requiresPhoneAndHours = contentProfile !== 'landmark';
+
+  let sectionTitle = 'Thực đơn';
+  let itemLabel = 'Tên món';
+  let priceLabel = 'Giá (nghìn đ)';
+  let actionButtonLabel = 'Xem thực đơn';
+
+  if (catalogMode === 'products' || contentProfile === 'retail') {
+    sectionTitle = 'Sản phẩm & Phụ kiện';
+    itemLabel = 'Tên sản phẩm';
+    priceLabel = 'Giá bán (nghìn đ)';
+    actionButtonLabel = 'Xem sản phẩm';
+  } else if (catalogMode === 'pricing' || contentProfile === 'entertainment') {
+    sectionTitle = 'Dịch vụ & Bảng giá';
+    itemLabel = 'Hạng mục / Giờ chơi';
+    priceLabel = 'Đơn giá (nghìn đ)';
+    actionButtonLabel = 'Xem bảng giá';
+  } else if (catalogMode === 'services' || contentProfile === 'service') {
+    sectionTitle = 'Danh sách dịch vụ & Bảng giá';
+    itemLabel = 'Tên dịch vụ';
+    priceLabel = 'Giá dịch vụ (nghìn đ)';
+    actionButtonLabel = 'Xem dịch vụ';
+  }
+
+  return {
+    contentProfile,
+    catalogMode,
+    catalogEnabled,
+    catalogEnabledByDefault,
+    requiresPhoneAndHours,
+    sectionTitle,
+    itemLabel,
+    priceLabel,
+    actionButtonLabel,
+    forbidsMenuAndOrdering,
+  };
+}
+
+/**
+ * FORMAT CHUỖI HIỂN THỊ PHÂN LOẠI ĐỒNG BỘ WEBSITE + MAPS + ADMIN (PHẦN 2.2)
+ * Ví dụ: Chọn Nhóm Ăn uống, Loại Ăn vặt, Tag: ["Ăn đêm", "Có giao hàng"]
+ * -> Hiển thị: "Ăn vặt · Ăn đêm · Có giao hàng"
+ */
+export function formatPlaceTaxonomyLine(
+  subcategoryOrLabel?: MapSubcategoryId | string | null,
+  extraTags?: string[] | null,
+  maxExtraTags = 3
+): string {
+  let baseLabel = 'Địa điểm';
+  if (subcategoryOrLabel && subcategoryOrLabel in MAP_CATEGORY_REGISTRY) {
+    baseLabel = MAP_CATEGORY_REGISTRY[subcategoryOrLabel as MapSubcategoryId].label;
+  } else if (typeof subcategoryOrLabel === 'string' && subcategoryOrLabel.trim()) {
+    baseLabel = subcategoryOrLabel.trim();
+  }
+  const cleanTags = (extraTags || [])
+    .map((t) => String(t || '').trim())
+    .filter((t) => t.length > 0 && t.toLowerCase() !== baseLabel.toLowerCase())
+    .slice(0, maxExtraTags);
+  return [baseLabel, ...cleanTags].join(' · ');
 }
 
 /**
@@ -1601,6 +1878,9 @@ export function resolvePlaceTaxonomy(input: {
     ) {
       return pickSub('square');
     }
+    if (nameLower.includes('vòng tròn') || nameLower.includes('vòng xuyến')) {
+      return pickSub('roundabout');
+    }
     if (nameLower.startsWith('cầu ') || nameLower.includes('cầu xuân') || nameLower.includes('cầu cà lồ')) {
       return pickSub('bridge');
     }
@@ -1824,12 +2104,58 @@ export function resolvePlaceTaxonomy(input: {
   if (/\batm\b/i.test(haystack)) {
     return pickSub('atm');
   }
+  // 6b. ƯU TIÊN NHẬN DIỆN TÊN QUÁN CHÍNH (`nameLower`) TRƯỚC KHI QUÉT THỰC ĐƠN (`haystack`)
+  // Tránh trường hợp mô tả/thực đơn chứa từ phụ (VD: "thịt bò khách sạn", "trà đá miễn phí", "cơm thêm") làm lệch danh mục chính của quán.
+  if (nameLower.includes('lẩu nướng') || (nameLower.includes('lẩu') && nameLower.includes('nướng'))) {
+    return pickSub('grill_pub');
+  }
   if (
-    haystack.includes('khách sạn') ||
-    haystack.includes('nhà nghỉ') ||
-    haystack.includes('homestay') ||
-    haystack.includes('resort') ||
-    haystack.includes('hotel')
+    nameLower.includes('ăn vặt') ||
+    nameLower.includes('bánh tráng') ||
+    nameLower.includes('bánh xèo') ||
+    nameLower.includes('nem nướng') ||
+    nameLower.includes('tào phớ') ||
+    nameLower.includes('chè ') ||
+    nameLower.startsWith('chè')
+  ) {
+    if (nameLower.includes('trà sữa') && !nameLower.startsWith('ăn vặt')) {
+      return pickSub('milk_tea');
+    }
+    return pickSub('street_food');
+  }
+  if (nameLower.includes('bánh mì') || nameLower.includes('bánh mỳ')) {
+    return pickSub('banh_mi');
+  }
+  if (
+    nameLower.includes('bánh cuốn') ||
+    nameLower.includes('xôi ') ||
+    nameLower.startsWith('xôi') ||
+    nameLower.includes('cháo lòng')
+  ) {
+    return pickSub('local_food');
+  }
+  if (
+    nameLower.includes('bún ') ||
+    nameLower.startsWith('bún') ||
+    nameLower.includes('phở ') ||
+    nameLower.startsWith('phở') ||
+    nameLower.includes('mì cay') ||
+    nameLower.includes('mỳ cay') ||
+    nameLower.includes('mì trộn') ||
+    nameLower.includes('mì gà tần')
+  ) {
+    return pickSub('noodle');
+  }
+  if (nameLower.startsWith('cơm') || nameLower.includes('cơm tấm') || nameLower.includes('cơm rang') || nameLower.includes('tiệm cơm')) {
+    return pickSub('rice');
+  }
+
+  if (
+    nameLower.includes('khách sạn') ||
+    nameLower.includes('nhà nghỉ') ||
+    nameLower.includes('homestay') ||
+    nameLower.includes('resort') ||
+    nameLower.includes('hotel')
   ) {
     return pickSub('hotel');
   }
@@ -2138,19 +2464,43 @@ export function getPlaceTaxonomyMeta(place: {
 }
 
 /**
- * TÌM KIẾM NHANH SUBCATEGORY TRONG ADMIN KHI GÕ TỪ KHÓA (PHẦN 23)
+ * TÌM KIẾM NHANH SUBCATEGORY TRONG ADMIN KHI GÕ TỪ KHÓA (PHẦN 23 & XVIII)
  * VD: Gõ "xăng" -> Cây xăng, "bi-a" -> Bi-a, "bia" -> Bia hơi / Quán nhậu
  */
 export function searchSubcategoriesByQuery(query: string): MapSubcategoryMeta[] {
   const q = query.trim().toLowerCase();
   if (!q) return ALL_MAP_SUBCATEGORIES;
 
-  return ALL_MAP_SUBCATEGORIES.filter((sub) => {
+  // Tách bạch tuyệt đối "bia" (đồ uống có cồn/quán nhậu) và "bi-a" (billiards)
+  const isBareBiaDrinkQuery = q === 'bia' || q.startsWith('bia hơi') || q.startsWith('bia tươi');
+  const isBilliardsQuery =
+    q === 'bi-a' || q === 'bi a' || q === 'bida' || q === 'bi-da' || q.includes('billiard');
+
+  const matches = ALL_MAP_SUBCATEGORIES.filter((sub) => {
+    if (isBareBiaDrinkQuery && sub.id === 'billiards') return false;
+    if (isBilliardsQuery && (sub.id === 'beer' || sub.id === 'beer_garden' || sub.id === 'pub')) {
+      return false;
+    }
     const parent = MAP_PARENT_CATEGORY_BY_ID[sub.parentId];
     if (sub.label.toLowerCase().includes(q)) return true;
     if (sub.shortLabel.toLowerCase().includes(q)) return true;
+    if (sub.searchKeywords.some((kw) => kw.toLowerCase().includes(q))) return true;
     if (parent && parent.label.toLowerCase().includes(q)) return true;
-    return sub.searchKeywords.some((kw) => kw.toLowerCase().includes(q));
+    return false;
+  });
+
+  return matches.sort((a, b) => {
+    const score = (sub: MapSubcategoryMeta) => {
+      const labelLower = sub.label.toLowerCase();
+      const shortLower = sub.shortLabel.toLowerCase();
+      if (labelLower === q || shortLower === q) return 100;
+      if (sub.searchKeywords.some((kw) => kw.toLowerCase() === q)) return 90;
+      if (labelLower.startsWith(q) || shortLower.startsWith(q)) return 80;
+      if (labelLower.includes(q) || shortLower.includes(q)) return 70;
+      if (sub.searchKeywords.some((kw) => kw.toLowerCase().includes(q))) return 60;
+      return 10;
+    };
+    return score(b) - score(a);
   });
 }
 

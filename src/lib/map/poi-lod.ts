@@ -174,35 +174,20 @@ export function getPoiRenderState(input: GetPoiRenderStateInput): PoiRenderState
     ? doesPlaceMatchQuickFilter(place, normalizedFilter)
     : false;
 
-  // 2. QUY TẮC SỐ 1 (PHẦN 5, 29–30, 33, 54):
-  // KHI CHƯA CHỌN DANH MỤC (`!isFilteringActive`):
-  // - Business / Quán bình thường (`!isCoreLandmark`): `visible = false`, `clusterable = false`!
-  // - Chỉ Core Landmarks (`showByDefault: true`) được hiển thị sạch sẽ trên bản đồ.
-  if (!isFilteringActive) {
-    if (!isCoreLandmark) {
-      return {
-        visible: false,
-        showIcon: false,
-        showLabel: false,
-        showDetails: false,
-        priority,
-        clusterable: false,
-      };
-    }
-  } else {
-    // KHI NGƯỜI DÙNG ĐÃ BẤM CHỌN MỘT DANH MỤC (VD: [Ăn uống], [Cafe], [Bi-a], [Cây xăng]...):
-    // - Nếu địa điểm khớp bộ lọc -> hiển thị theo LOD (cluster ở xa, icon ở gần, tên ở rất gần).
-    // - Nếu là Core Landmark đặc biệt (850) -> vẫn giữ hiển thị nền để định hướng không gian, hoặc nếu lọc đúng nhóm của nó.
-    if (!matchesActiveFilter && !isSpecial) {
-      return {
-        visible: false,
-        showIcon: false,
-        showLabel: false,
-        showDetails: false,
-        priority,
-        clusterable: false,
-      };
-    }
+  // 2. QUY TẮC HIỂN THỊ ĐẦY ĐỦ QUÁN & ĐỊA DANH ĐÃ ĐỊNH VỊ (2D & 3D):
+  // - Khi người dùng đang bật một bộ lọc danh mục cụ thể (`isFilteringActive`):
+  //   chỉ hiện các địa điểm khớp bộ lọc đó (và giữ các Core Landmark cấp đặc biệt 850 làm điểm tựa định hướng).
+  // - Khi mở bản đồ mặc định (`!isFilteringActive`):
+  //   hiển thị toàn bộ Địa danh + Quán đã định vị theo cơ chế LOD thông minh (gom cụm ở zoom xa, bung ghim ở zoom phố >= 15.15, hiện tên khi zoom gần >= 16.1).
+  if (isFilteringActive && !matchesActiveFilter && !isSpecial) {
+    return {
+      visible: false,
+      showIcon: false,
+      showLabel: false,
+      showDetails: false,
+      priority,
+      clusterable: false,
+    };
   }
 
   // 3. XỬ LÝ THEO BẢN ĐỒ 2D (MapLibre Zoom)

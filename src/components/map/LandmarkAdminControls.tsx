@@ -10,6 +10,7 @@ import {
   Building2,
   Undo2,
   Eye,
+  EyeOff,
   Sparkles,
   ArrowUp,
   ArrowDown,
@@ -25,11 +26,14 @@ import { haversineDistanceMeters } from '../../lib/map/map-data';
 import { XuanHoaMasterDataset as MasterGeographyDataset } from '../../lib/map/xuanhoa-master-data';
 import { City3DOrigin } from './city3d/city3d-shared';
 import {
+  DEFAULT_LANDMARK_BINDINGS,
   LandmarkBindingRecord,
   LandmarkModelVisibilityMode,
+  TWELVE_3D_LANDMARKS_LIST,
+  Twelve3DLandmarkOption,
   getOrCreateLandmarkBindingForPlace,
-  saveLandmarkBindingOverride,
-  resetLandmarkBindingToDefault,
+  saveLandmarkBindingOverrideAsync,
+  resetLandmarkBindingToDefaultAsync,
   executeAdminMovePlaceWithBindingSync,
   getLandmarkUndoSnapshot,
   undoLastLandmarkOrPlaceAction,
@@ -74,6 +78,8 @@ export interface LandmarkAdminControlsProps {
   onClearThreePoint?: () => void;
   /** Khi bấm Căn mô hình 3D từ bản đồ 2D -> tự chuyển sang 3D Direct Edit */
   onRequestOpen3DDirectEdit?: () => void;
+  /** Chuyển nhanh giữa 12 Landmark 3D ngay trong thanh Direct Edit */
+  onSelectLandmarkOption?: (opt: Twelve3DLandmarkOption) => void;
   /** Chế độ hiển thị: 'card_buttons' (trong popup địa danh) hoặc 'floating_toolbar' (thanh công cụ nổi dưới đáy) */
   variant?: 'card_buttons' | 'floating_toolbar';
 }
@@ -105,6 +111,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   threePointState,
   onClearThreePoint,
   onRequestOpen3DDirectEdit,
+  onSelectLandmarkOption,
   variant = 'card_buttons',
 }) => {
   const effectiveOrigin = origin3D || DEFAULT_ORIGIN;
@@ -112,6 +119,8 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   const [stepMeters, setStepMeters] = useState<1 | 5>(1);
   const [showFineTune, setShowFineTune] = useState(false);
   const [versionTick, setVersionTick] = useState(0);
+  const [isSavingCloud, setIsSavingCloud] = useState(false);
+  const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
 
   const baseBinding = useMemo(
     () => getOrCreateLandmarkBindingForPlace(place),
@@ -138,6 +147,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
 
   useEffect(() => {
     setShowFineTune(false);
+    setCloudSaveError(null);
   }, [place.id, activeMode]);
 
   const movedDistanceMeters = useMemo(() => {
@@ -159,6 +169,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   };
 
   const updateModelPatch = (partial: Partial<LandmarkBindingRecord>) => {
+    setCloudSaveError(null);
     const merged: Partial<LandmarkBindingRecord> = {
       offsetX: workingBinding.offsetX,
       offsetY: workingBinding.offsetY,
@@ -199,27 +210,42 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
     onChangeActiveMode(null);
   };
 
-  const handleSaveModelAlignment = () => {
-    const saved = saveLandmarkBindingOverride(
-      place.id,
-      place.name,
-      workingBinding,
-      adminIdentifier,
-      'align_model',
-      true
-    );
-    onChangePreviewBindingPatch(null);
-    onClearThreePoint?.();
-    onChangeActiveMode(null);
-    setVersionTick((v) => v + 1);
-    onSaved?.(
-      `Đã lưu căn mô hình 3D "${place.name}" (Offset X=${saved.offsetX}m, Z=${saved.offsetZ}m, Xoay=${Math.round(
-        (saved.rotationY * 180) / Math.PI
-      )}°, Scale=${saved.scale.toFixed(2)}x). Tọa độ địa danh giữ nguyên!`
-    );
+  const handleSaveModelAlignment = async () => {
+    if (isSavingCloud) return;
+    setIsSavingCloud(true);
+    setCloudSaveError(null);
+    try {
+      const res = await saveLandmarkBindingOverrideAsync(
+        place.id,
+        place.name,
+        workingBinding,
+        adminIdentifier,
+        'align_model',
+        true
+      );
+      if (!res.ok || !res.cloudSaved) {
+        const errText = `Không ghi được lên Firebase (${res.error || 'PERMISSION_DENIED'}). Cấu hình chưa được đồng bộ đám mây!`;
+        setCloudSaveError(errText);
+        onSaved?.(`❌ ${errText}`);
+        return;
+      }
+      const saved = res.record;
+      onChangePreviewBindingPatch(null);
+      onClearThreePoint?.();
+      onChangeActiveMode(null);
+      setVersionTick((v) => v + 1);
+      onSaved?.(
+        `Đã lưu lên Firebase căn mô hình 3D "${place.name}" (Offset X=${saved.offsetX}m, Y=${saved.offsetY}m, Z=${saved.offsetZ}m, Xoay=${Math.round(
+          (saved.rotationY * 180) / Math.PI
+        )}°, Scale=${saved.scale.toFixed(2)}x, Hiển thị=${saved.visible ? 'Hiện' : 'Ẩn'}). Tọa độ địa danh giữ nguyên!`
+      );
+    } finally {
+      setIsSavingCloud(false);
+    }
   };
 
   const handleCancelModelAlignment = () => {
+    setCloudSaveError(null);
     onChangePreviewBindingPatch(null);
     onClearThreePoint?.();
     onChangeActiveMode(null);
@@ -277,21 +303,47 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
     }
   };
 
-  const handleResetDefault = () => {
-    const resetRec = resetLandmarkBindingToDefault(place.id, place.name, adminIdentifier);
-    if (resetRec) {
-      onChangePreviewBindingPatch({
-        offsetX: resetRec.offsetX,
-        offsetY: resetRec.offsetY,
-        offsetZ: resetRec.offsetZ,
-        rotationY: resetRec.rotationY,
-        scale: resetRec.scale,
-      });
-    } else {
-      onChangePreviewBindingPatch(null);
-    }
+  const handleResetDefault = async () => {
+    if (isSavingCloud) return;
+    setCloudSaveError(null);
+    const defaultBind = DEFAULT_LANDMARK_BINDINGS[workingBinding.landmarkId];
+    const targetPatch: Partial<LandmarkBindingRecord> = defaultBind
+      ? {
+          anchorType: defaultBind.anchorType,
+          offsetX: defaultBind.offsetX,
+          offsetY: defaultBind.offsetY,
+          offsetZ: defaultBind.offsetZ,
+          rotationY: defaultBind.rotationY,
+          scale: defaultBind.scale,
+          visible: defaultBind.visible,
+          modelVisibilityMode: defaultBind.modelVisibilityMode,
+        }
+      : {
+          anchorType: 'place',
+          offsetX: 0,
+          offsetY: 0,
+          offsetZ: 0,
+          rotationY: 0,
+          scale: 1,
+          visible: true,
+          modelVisibilityMode: 'follow_place',
+        };
+    onChangePreviewBindingPatch(targetPatch);
     onClearThreePoint?.();
-    setVersionTick((v) => v + 1);
+    setIsSavingCloud(true);
+    try {
+      const res = await resetLandmarkBindingToDefaultAsync(place.id, place.name, adminIdentifier);
+      if (!res.ok || !res.cloudSaved) {
+        const errText = `Không ghi được mặc định lên Firebase (${res.error || 'PERMISSION_DENIED'}).`;
+        setCloudSaveError(errText);
+        onSaved?.(`❌ ${errText}`);
+        return;
+      }
+      setVersionTick((v) => v + 1);
+      onSaved?.(`Đã khôi phục mặc định mô hình 3D "${place.name}" trên Firebase!`);
+    } finally {
+      setIsSavingCloud(false);
+    }
   };
 
   const rotDegrees = Math.round((workingBinding.rotationY * 180) / Math.PI);
@@ -520,12 +572,54 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
         data-testid="landmark-mode-b-panel"
         className="w-full max-w-2xl mx-auto rounded-2xl border border-blue-500/40 bg-[#0F172A]/95 text-white shadow-[0_12px_36px_rgba(15,23,42,0.42)] backdrop-blur-md p-2 sm:p-2.5 space-y-1.5 sm:space-y-2 pointer-events-auto overflow-hidden"
       >
-        {/* Dòng 1: Thông số Live & Các chế độ Căn Nhanh (Đặt góc, Căn 3 điểm A-B-C, Snap cạnh đường) */}
+        {/* Banner báo lỗi khi ghi Firebase thất bại — không bao giờ báo lưu thành công giả */}
+        {cloudSaveError && (
+          <div
+            data-testid="mode-b-save-error"
+            className="rounded-xl bg-rose-500/20 border border-rose-400/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-200 flex items-center justify-between gap-2"
+          >
+            <span>⚠️ {cloudSaveError}</span>
+            <button
+              type="button"
+              onClick={() => setCloudSaveError(null)}
+              className="text-[10.5px] underline text-rose-300 shrink-0 cursor-pointer"
+            >
+              Đóng
+            </button>
+          </div>
+        )}
+
+        {/* Dòng 1: Chọn nhanh 12 Landmark + Thông số Live & Các chế độ Căn Nhanh */}
         <div className="flex flex-wrap items-center justify-between gap-1 px-0.5">
           <div className="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-1.5 text-[11px] min-w-0">
-            <span className="font-bold text-blue-400 truncate max-w-[125px] sm:max-w-[200px]">
-              {place.name}
-            </span>
+            {onSelectLandmarkOption ? (
+              <select
+                data-testid="mode-b-landmark-select"
+                value={workingBinding.landmarkId}
+                onChange={(e) => {
+                  const chosen = TWELVE_3D_LANDMARKS_LIST.find(
+                    (item) => item.landmarkId === e.target.value
+                  );
+                  if (chosen) {
+                    setCloudSaveError(null);
+                    onChangePreviewBindingPatch(null);
+                    onSelectLandmarkOption(chosen);
+                  }
+                }}
+                className="max-w-[145px] sm:max-w-[195px] rounded-lg bg-slate-800 border border-blue-500/50 px-1.5 py-0.5 text-[11px] font-bold text-blue-300 truncate cursor-pointer"
+                title="Chọn bất kỳ 1 trong 12 công trình 3D để căn chỉnh"
+              >
+                {TWELVE_3D_LANDMARKS_LIST.map((item, idx) => (
+                  <option key={item.landmarkId} value={item.landmarkId}>
+                    {idx + 1}. {item.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="font-bold text-blue-400 truncate max-w-[125px] sm:max-w-[200px]">
+                {place.name}
+              </span>
+            )}
             <div className="inline-flex items-center gap-1 sm:gap-1.5 rounded-lg bg-slate-800/90 border border-slate-700 px-1.5 sm:px-2 py-0.5 font-mono text-[10px] sm:text-[10.5px] text-slate-200 shrink-0">
               <span>
                 X:<strong data-testid="mode-b-offset-x">{workingBinding.offsetX}m</strong>
@@ -536,20 +630,55 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
               </span>
               <span className="text-slate-600">·</span>
               <span>
+                Y:<strong data-testid="mode-b-offset-y">{workingBinding.offsetY}m</strong>
+              </span>
+              <span className="text-slate-600">·</span>
+              <span>
                 <strong data-testid="mode-b-rotation">{rotDegrees}°</strong>
               </span>
               <span className="text-slate-600">·</span>
               <span>
                 <strong data-testid="mode-b-scale">{workingBinding.scale.toFixed(2)}x</strong>
               </span>
-              <span className="hidden" data-testid="mode-b-offset-y">
-                {workingBinding.offsetY}m
-              </span>
             </div>
           </div>
 
-          {/* Các nút hỗ trợ căn thông minh (Phần 2, 23, 24) */}
+          {/* Các nút hỗ trợ căn thông minh (Phần 2, 23, 24) + Bật/tắt hiển thị */}
           <div className="flex items-center gap-1 w-full sm:w-auto justify-between sm:justify-end">
+            <button
+              type="button"
+              data-testid="mode-b-toggle-visible-btn"
+              onClick={() => {
+                const nextVisible = !workingBinding.visible;
+                updateModelPatch({
+                  visible: nextVisible,
+                  modelVisibilityMode: nextVisible
+                    ? workingBinding.modelVisibilityMode === 'manual'
+                      ? 'follow_place'
+                      : workingBinding.modelVisibilityMode
+                    : 'manual',
+                });
+              }}
+              className={`h-6 sm:h-7 px-1.5 sm:px-2 rounded-lg text-[10px] sm:text-[10.5px] font-semibold border whitespace-nowrap flex items-center gap-1 cursor-pointer transition ${
+                workingBinding.visible
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30'
+                  : 'bg-rose-500/25 text-rose-200 border-rose-400/60 hover:bg-rose-500/35'
+              }`}
+              title="Bật / tắt hiển thị mô hình 3D"
+            >
+              {workingBinding.visible ? (
+                <>
+                  <Eye className="w-3 h-3 shrink-0" />
+                  <span data-testid="mode-b-visible-state">Hiện</span>
+                </>
+              ) : (
+                <>
+                  <EyeOff className="w-3 h-3 shrink-0" />
+                  <span data-testid="mode-b-visible-state">Ẩn</span>
+                </>
+              )}
+            </button>
+
             <button
               type="button"
               data-testid="mode-b-tool-corner"
@@ -690,6 +819,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
             <div className="flex items-center gap-1">
               <button
                 type="button"
+                data-testid="mode-b-scale-down-btn"
                 onClick={() =>
                   updateModelPatch({
                     scale: Math.max(0.25, Number((workingBinding.scale - 0.05).toFixed(2))),
@@ -701,6 +831,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="mode-b-scale-reset-btn"
                 onClick={() => updateModelPatch({ scale: 1.0 })}
                 className="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 font-semibold text-slate-200 cursor-pointer"
               >
@@ -708,6 +839,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="mode-b-scale-up-btn"
                 onClick={() =>
                   updateModelPatch({
                     scale: Math.min(3.5, Number((workingBinding.scale + 0.05).toFixed(2))),
@@ -807,6 +939,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
+                  data-testid="mode-b-rot-ccw-btn"
                   onClick={() =>
                     updateModelPatch({
                       rotationY: Number((workingBinding.rotationY - (5 * Math.PI) / 180).toFixed(4)),
@@ -818,6 +951,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
                 </button>
                 <button
                   type="button"
+                  data-testid="mode-b-rot-cw-btn"
                   onClick={() =>
                     updateModelPatch({
                       rotationY: Number((workingBinding.rotationY + (5 * Math.PI) / 180).toFixed(4)),
@@ -844,6 +978,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
                 <span className="text-slate-400">Cao độ Y ({workingBinding.offsetY}m):</span>
                 <button
                   type="button"
+                  data-testid="mode-b-y-down-btn"
                   onClick={() =>
                     updateModelPatch({ offsetY: Number((workingBinding.offsetY - 0.5).toFixed(2)) })
                   }
@@ -853,6 +988,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
                 </button>
                 <button
                   type="button"
+                  data-testid="mode-b-y-up-btn"
                   onClick={() =>
                     updateModelPatch({ offsetY: Number((workingBinding.offsetY + 0.5).toFixed(2)) })
                   }
@@ -865,6 +1001,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
               <div className="flex items-center gap-1.5">
                 <Eye className="w-3 h-3 text-slate-400" />
                 <select
+                  data-testid="mode-b-visibility-mode-select"
                   value={workingBinding.modelVisibilityMode}
                   onChange={(e) =>
                     updateModelPatch({
@@ -890,8 +1027,9 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
           <button
             type="button"
             data-testid="mode-b-cancel-btn"
+            disabled={isSavingCloud}
             onClick={handleCancelModelAlignment}
-            className="h-8 sm:h-9 px-2 sm:px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[11px] sm:text-xs font-semibold text-slate-200 flex items-center gap-1 shrink-0 cursor-pointer transition"
+            className="h-8 sm:h-9 px-2 sm:px-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-600 text-[11px] sm:text-xs font-semibold text-slate-200 flex items-center gap-1 shrink-0 cursor-pointer transition"
           >
             <X className="w-3.5 h-3.5 shrink-0" />
             <span>Hủy</span>
@@ -943,8 +1081,9 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
             <button
               type="button"
               data-testid="mode-b-reset-btn"
+              disabled={isSavingCloud}
               onClick={handleResetDefault}
-              className="h-7 px-1.5 sm:px-2.5 rounded-lg text-[10.5px] sm:text-[11.5px] font-semibold text-slate-300 hover:bg-slate-800 flex items-center gap-1 cursor-pointer transition whitespace-nowrap"
+              className="h-7 px-1.5 sm:px-2.5 rounded-lg text-[10.5px] sm:text-[11.5px] font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1 cursor-pointer transition whitespace-nowrap"
               title="Reset về vị trí mặc định chuẩn"
             >
               <RotateCcw className="hidden sm:block w-3.5 h-3.5 shrink-0" />
@@ -955,11 +1094,12 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
           <button
             type="button"
             data-testid="mode-b-save-btn"
+            disabled={isSavingCloud}
             onClick={handleSaveModelAlignment}
-            className="h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-[11px] sm:text-xs font-bold text-white flex items-center gap-1 shrink-0 shadow-sm cursor-pointer transition"
+            className="h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-[11px] sm:text-xs font-bold text-white flex items-center gap-1 shrink-0 shadow-sm cursor-pointer transition"
           >
             <Check className="w-3.5 h-3.5 shrink-0" />
-            <span>Hoàn tất</span>
+            <span>{isSavingCloud ? 'Đang lưu...' : 'Hoàn tất'}</span>
           </button>
         </div>
       </div>

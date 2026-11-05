@@ -4,6 +4,7 @@ import {
   getElevationAtLngLat,
   getLizardHillLocalHeight,
   lngLatToLocal,
+  type ActiveLandmarkFootprint3D,
   type City3DOrigin,
 } from './city3d-shared';
 import type { PlaceLocation } from '../../../lib/map/map-types';
@@ -14,71 +15,219 @@ import {
   localModelPointToWorld,
   resolveLandmarkWorldTransform,
 } from '../../../lib/map/landmark-bindings';
+import { resolvePlaceOrPendingProposalCoordinates } from '../../../lib/admin-store';
 import { createHPU2Landmark } from './landmarks/hpu2-a1';
 import { createWhiteHouseModel } from './landmarks/nha-trang-xuan-hoa';
 import { createChimXanh } from './landmarks/chim-xanh';
 import { createVongTron1 } from './landmarks/vong-tron-1';
 import { createVongTron2 } from './landmarks/vong-tron-2';
+import { createXuanHoaPrimarySchool } from './landmarks/xuanhoa-primary-school';
+import { createXuanHoaSecondarySchool } from './landmarks/xuanhoa-secondary-school';
+import { createXuanHoaHighSchool } from './landmarks/xuanhoa-high-school';
+import { createChuaHienLuong } from './landmarks/chua-hien-luong';
+import { createChuaAnHoa } from './landmarks/chua-an-hoa';
+import { createMamNonXuanHoa } from './landmarks/mam-non-xuan-hoa';
+import { createMinhHuongHouse } from './landmarks/nha-minh-huong-final';
 
 export interface IconicLandmarkFootprint {
   id: string;
+  landmarkId: string;
   name: string;
   lat: number;
   lng: number;
   clearRadiusMeters: number;
+  localMinX: number;
+  localMaxX: number;
+  localMinZ: number;
+  localMaxZ: number;
+  treeMarginMeters?: number;
 }
 
 /**
- * Tọa độ chuẩn thực tế của các công trình biểu tượng đặc trưng tại Phường Xuân Hòa:
+ * Tọa độ chuẩn thực tế & hộp bao 2D cục bộ (OBB footprint) của các công trình biểu tượng đặc trưng tại Phường Xuân Hòa:
  * 1. Khu Hiệu bộ A1–A3 ĐHSP Hà Nội 2 (`hpu2_a1` -> `osm_building_a1_dhsp2`)
  * 2. Quảng trường Con Chim Xanh (`quang_truong_chim_xanh` -> `osm_landmark_quang_truong_chim_xanh`)
  * 3. Trường Đại học Kiến trúc Hà Nội — Cơ sở Xuân Hòa (`dh_kien_truc` -> `osm_way_1079368029`)
  * 4. Nhà Trắng Xuân Hòa (`nha_trang_xuan_hoa` -> `osm_landmark_nha_trang_xuan_hoa`)
  * 5. Vòng tròn 1 (`vong_tron_1` -> `osm_landmark_vong_tron_1`)
  * 6. Vòng tròn 2 (`vong_tron_2` -> `osm_landmark_vong_tron_2`)
+ * 7. Trường Tiểu học Xuân Hòa (`xuanhoa_primary_school` -> `osm_way_1079368030`)
+ * 8. Trường THCS Xuân Hòa (`xuanhoa_secondary_school` -> `osm_way_662917176`)
+ * 9. Trường THPT Xuân Hòa (`xuanhoa_high_school` -> `osm_way_662917178`)
+ * 10. Chùa Hiền Lương (`chua_hien_luong` -> `xh_landmark_chua_hien_luong`)
+ * 11. Chùa An Hòa (`chua_an_hoa` -> `xh_landmark_chua_an_hoa`)
+ * 12. Trường Mầm non Xuân Hòa (`mam_non_xuan_hoa` -> `xh_landmark_mam_non_xuan_hoa`)
+ * 13. Nhà Minh Hường (`nha_minh_huong` -> `xh_landmark_nha_minh_huong`)
  */
 export const ICONIC_LANDMARK_FOOTPRINTS: IconicLandmarkFootprint[] = [
   {
     id: 'osm_building_a1_dhsp2',
+    landmarkId: 'hpu2_a1',
     name: 'Khu Hiệu bộ A1–A3 (ĐHSP Hà Nội 2)',
     lat: 21.281344,
     lng: 105.726226,
     clearRadiusMeters: 28,
+    localMinX: -26,
+    localMaxX: 26,
+    localMinZ: -20,
+    localMaxZ: 20,
+    treeMarginMeters: 4,
   },
   {
     id: 'osm_landmark_quang_truong_chim_xanh',
+    landmarkId: 'quang_truong_chim_xanh',
     name: 'Quảng trường Con Chim Xanh',
     lat: 21.28078,
     lng: 105.7257,
     clearRadiusMeters: 22,
+    localMinX: -36,
+    localMaxX: 36,
+    localMinZ: -36,
+    localMaxZ: 36,
+    treeMarginMeters: 4,
   },
   {
     id: 'osm_way_1079368029',
+    landmarkId: 'dh_kien_truc',
     name: 'ĐH Kiến trúc Hà Nội (CS Xuân Hòa)',
     lat: 21.27876,
     lng: 105.72852,
     clearRadiusMeters: 20,
+    localMinX: -12,
+    localMaxX: 12,
+    localMinZ: -12,
+    localMaxZ: 12,
+    treeMarginMeters: 3,
   },
   {
     id: 'osm_landmark_nha_trang_xuan_hoa',
+    landmarkId: 'nha_trang_xuan_hoa',
     name: 'Nhà Trắng Xuân Hòa (Tổ hợp Vòng tròn 1)',
     lat: 21.278175,
     lng: 105.729275,
     clearRadiusMeters: 24,
+    localMinX: -18,
+    localMaxX: 24,
+    localMinZ: -18,
+    localMaxZ: 12,
+    treeMarginMeters: 4,
   },
   {
     id: 'osm_landmark_vong_tron_1',
+    landmarkId: 'vong_tron_1',
     name: 'Vòng tròn 1',
     lat: 21.277632,
     lng: 105.729416,
     clearRadiusMeters: 14,
+    localMinX: -12,
+    localMaxX: 12,
+    localMinZ: -12,
+    localMaxZ: 12,
+    treeMarginMeters: 2,
   },
   {
     id: 'osm_landmark_vong_tron_2',
+    landmarkId: 'vong_tron_2',
     name: 'Vòng tròn 2',
     lat: 21.281565,
     lng: 105.725,
     clearRadiusMeters: 20,
+    localMinX: -10,
+    localMaxX: 10,
+    localMinZ: -16,
+    localMaxZ: 16,
+    treeMarginMeters: 2,
+  },
+  {
+    id: 'osm_way_1079368030',
+    landmarkId: 'xuanhoa_primary_school',
+    name: 'Trường Tiểu học Xuân Hòa',
+    lat: 21.282057,
+    lng: 105.727521,
+    clearRadiusMeters: 36,
+    localMinX: -29.5,
+    localMaxX: 29.5,
+    localMinZ: -36.5,
+    localMaxZ: 36.5,
+    treeMarginMeters: 5,
+  },
+  {
+    id: 'osm_way_662917176',
+    landmarkId: 'xuanhoa_secondary_school',
+    name: 'Trường THCS Xuân Hòa',
+    lat: 21.282025,
+    lng: 105.72646,
+    clearRadiusMeters: 36,
+    localMinX: -29.5,
+    localMaxX: 29.5,
+    localMinZ: -36.5,
+    localMaxZ: 36.5,
+    treeMarginMeters: 5,
+  },
+  {
+    id: 'osm_way_662917178',
+    landmarkId: 'xuanhoa_high_school',
+    name: 'Trường THPT Xuân Hòa',
+    lat: 21.284455,
+    lng: 105.721661,
+    clearRadiusMeters: 64,
+    localMinX: -59.5,
+    localMaxX: 59.5,
+    localMinZ: -66.5,
+    localMaxZ: 66.5,
+    treeMarginMeters: 6,
+  },
+  {
+    id: 'xh_landmark_chua_hien_luong',
+    landmarkId: 'chua_hien_luong',
+    name: 'Chùa Hiền Lương',
+    lat: 21.2856174,
+    lng: 105.7175459,
+    clearRadiusMeters: 24,
+    localMinX: -17.5,
+    localMaxX: 17.5,
+    localMinZ: -20.0,
+    localMaxZ: 20.0,
+    treeMarginMeters: 6,
+  },
+  {
+    id: 'xh_landmark_chua_an_hoa',
+    landmarkId: 'chua_an_hoa',
+    name: 'Chùa An Hòa',
+    lat: 21.2891926,
+    lng: 105.7133076,
+    clearRadiusMeters: 34,
+    localMinX: -24.5,
+    localMaxX: 24.5,
+    localMinZ: -41.0,
+    localMaxZ: 24.5,
+    treeMarginMeters: 6,
+  },
+  {
+    id: 'xh_landmark_mam_non_xuan_hoa',
+    landmarkId: 'mam_non_xuan_hoa',
+    name: 'Trường Mầm non Xuân Hòa',
+    lat: 21.2863997,
+    lng: 105.7218583,
+    clearRadiusMeters: 30,
+    localMinX: -24.5,
+    localMaxX: 24.5,
+    localMinZ: -34.0,
+    localMaxZ: 24.0,
+    treeMarginMeters: 6,
+  },
+  {
+    id: 'xh_landmark_nha_minh_huong',
+    landmarkId: 'nha_minh_huong',
+    name: 'Nhà Minh Hường',
+    lat: 21.285862,
+    lng: 105.717861,
+    clearRadiusMeters: 21,
+    localMinX: -11.0,
+    localMaxX: 13.0,
+    localMinZ: -26.0,
+    localMaxZ: 16.0,
+    treeMarginMeters: 6.5,
   },
 ];
 
@@ -1402,20 +1551,6 @@ function buildLevelBCivicAndCampusAccents(
     withFlagpole: false,
   });
 
-  // 4. Cổng Trường THPT Xuân Hòa (Neo vào osm_way_662917178)
-  addArchGateAndFlag({
-    landmarkId: 'gate_thpt_xuan_hoa',
-    lng: 105.721661,
-    lat: 21.284455,
-    rotY: 0.82,
-    span: 8.4,
-    height: 5.3,
-    signMat: navySignMat,
-    roofMat: terracottaMat,
-    withFlagpole: true,
-    flagOffsetZ: -7.5,
-  });
-
   return group;
 }
 
@@ -1766,10 +1901,134 @@ export function createIconicLandmarksGroup(
     root.add(hillModel);
   }
 
-  // 8. Cụm công trình điểm nhấn Level B (UBND Phường, Chợ Xuân Hòa, THPT Xuân Hòa)
+  // 8. Trường Tiểu học Xuân Hòa (Neo vào osm_way_1079368030)
+  {
+    const [x, y] = lngLatToLocal(origin, 105.727521, 21.282057);
+    const baseElev = getElevationAtLngLat(105.727521, 21.282057);
+    const model = createXuanHoaPrimarySchool();
+    model.name = 'Landmark_xuanhoa_primary_school';
+    model.userData.landmarkId = 'xuanhoa_primary_school';
+    model.userData.placeId = 'osm_way_1079368030';
+    model.userData.fallbackLngLat = [105.727521, 21.282057];
+    model.userData.isTerrainBaseZero = false;
+    model.position.set(x + 1.5, baseElev, -y - 1.0);
+    model.rotation.y = 0;
+    disposables.push({ dispose: () => model.dispose() });
+    root.add(model);
+  }
+
+  // 9. Trường THCS Xuân Hòa (Neo vào osm_way_662917176)
+  {
+    const [x, y] = lngLatToLocal(origin, 105.72646, 21.282025);
+    const baseElev = getElevationAtLngLat(105.72646, 21.282025);
+    const model = createXuanHoaSecondarySchool();
+    model.name = 'Landmark_xuanhoa_secondary_school';
+    model.userData.landmarkId = 'xuanhoa_secondary_school';
+    model.userData.placeId = 'osm_way_662917176';
+    model.userData.fallbackLngLat = [105.72646, 21.282025];
+    model.userData.isTerrainBaseZero = false;
+    model.position.set(x - 2.0, baseElev, -y - 3.0);
+    model.rotation.y = -0.065;
+    disposables.push({ dispose: () => model.dispose() });
+    root.add(model);
+  }
+
+  // 10. Trường THPT Xuân Hòa (Neo vào osm_way_662917178)
+  {
+    const [x, y] = lngLatToLocal(origin, 105.721661, 21.284455);
+    const baseElev = getElevationAtLngLat(105.721661, 21.284455);
+    const model = createXuanHoaHighSchool();
+    model.name = 'Landmark_xuanhoa_high_school';
+    model.userData.landmarkId = 'xuanhoa_high_school';
+    model.userData.placeId = 'osm_way_662917178';
+    model.userData.fallbackLngLat = [105.721661, 21.284455];
+    model.userData.isTerrainBaseZero = false;
+    model.position.set(x + 3.0, baseElev, -y - 16.5);
+    model.rotation.y = 0;
+    disposables.push({ dispose: () => model.dispose() });
+    root.add(model);
+  }
+
+  // 10b. Chùa Hiền Lương (Neo vào Place ID chính thức xh_landmark_chua_hien_luong, lấy tọa độ từ Place / đề xuất chờ Admin duyệt)
+  {
+    const placeCoords = resolvePlaceOrPendingProposalCoordinates('xh_landmark_chua_hien_luong');
+    const anchorLat = placeCoords?.lat ?? 21.2856174;
+    const anchorLng = placeCoords?.lng ?? 105.7175459;
+    const [x, y] = lngLatToLocal(origin, anchorLng, anchorLat);
+    const baseElev = getElevationAtLngLat(anchorLng, anchorLat);
+    const model = createChuaHienLuong();
+    model.name = 'Landmark_chua_hien_luong';
+    model.userData.landmarkId = 'chua_hien_luong';
+    model.userData.placeId = 'xh_landmark_chua_hien_luong';
+    model.userData.fallbackLngLat = [anchorLng, anchorLat];
+    model.userData.isTerrainBaseZero = false;
+    model.position.set(x, baseElev, -y);
+    model.rotation.y = 0;
+    disposables.push({ dispose: () => model.dispose() });
+    root.add(model);
+  }
+
+  // 10c. Chùa An Hòa (Neo vào Place ID chính thức xh_landmark_chua_an_hoa, lấy tọa độ từ Place / đề xuất chờ Admin duyệt)
+  {
+    const placeCoords = resolvePlaceOrPendingProposalCoordinates('xh_landmark_chua_an_hoa');
+    const anchorLat = placeCoords?.lat ?? 21.2891926;
+    const anchorLng = placeCoords?.lng ?? 105.7133076;
+    const [x, y] = lngLatToLocal(origin, anchorLng, anchorLat);
+    const baseElev = getElevationAtLngLat(anchorLng, anchorLat);
+    const model = createChuaAnHoa();
+    model.name = 'Landmark_chua_an_hoa';
+    model.userData.landmarkId = 'chua_an_hoa';
+    model.userData.placeId = 'xh_landmark_chua_an_hoa';
+    model.userData.fallbackLngLat = [anchorLng, anchorLat];
+    model.userData.isTerrainBaseZero = false;
+    model.position.set(x, baseElev, -y);
+    model.rotation.y = 0;
+    disposables.push({ dispose: () => model.dispose() });
+    root.add(model);
+  }
+
+  // 10d. Trường Mầm non Xuân Hòa (Neo vào Place ID chính thức xh_landmark_mam_non_xuan_hoa, lấy tọa độ từ Place / đề xuất chờ Admin duyệt)
+  {
+    const placeCoords = resolvePlaceOrPendingProposalCoordinates('xh_landmark_mam_non_xuan_hoa');
+    const anchorLat = placeCoords?.lat ?? 21.2863997;
+    const anchorLng = placeCoords?.lng ?? 105.7218583;
+    const [x, y] = lngLatToLocal(origin, anchorLng, anchorLat);
+    const baseElev = getElevationAtLngLat(anchorLng, anchorLat);
+    const model = createMamNonXuanHoa();
+    model.name = 'Landmark_mam_non_xuan_hoa';
+    model.userData.landmarkId = 'mam_non_xuan_hoa';
+    model.userData.placeId = 'xh_landmark_mam_non_xuan_hoa';
+    model.userData.fallbackLngLat = [anchorLng, anchorLat];
+    model.userData.isTerrainBaseZero = false;
+    model.position.set(x, baseElev, -y);
+    model.rotation.y = 0;
+    disposables.push({ dispose: () => model.dispose() });
+    root.add(model);
+  }
+
+  // 10e. Nhà Minh Hường / Minh Hương (Bản FINAL nha-minh-huong-final/house.js, neo vào Place ID chính thức xh_landmark_nha_minh_huong)
+  {
+    const placeCoords = resolvePlaceOrPendingProposalCoordinates('xh_landmark_nha_minh_huong');
+    const anchorLat = placeCoords?.lat ?? 21.285862;
+    const anchorLng = placeCoords?.lng ?? 105.717861;
+    const [x, y] = lngLatToLocal(origin, anchorLng, anchorLat);
+    const baseElev = getElevationAtLngLat(anchorLng, anchorLat);
+    const model = createMinhHuongHouse({ lod: 0, site: true });
+    model.name = 'Landmark_nha_minh_huong';
+    model.userData.landmarkId = 'nha_minh_huong';
+    model.userData.placeId = 'xh_landmark_nha_minh_huong';
+    model.userData.fallbackLngLat = [anchorLng, anchorLat];
+    model.userData.isTerrainBaseZero = false;
+    model.position.set(x, baseElev, -y);
+    model.rotation.y = 0;
+    disposables.push({ dispose: () => model.dispose() });
+    root.add(model);
+  }
+
+  // 11. Cụm công trình điểm nhấn Level B (UBND Phường, Chợ Xuân Hòa)
   root.add(buildLevelBCivicAndCampusAccents(origin, disposables));
 
-  // 9. Gizmo trực quan 3D cho Admin khi bật Mode A / Mode B (Phần 21)
+  // 12. Gizmo trực quan 3D cho Admin khi bật Mode A / Mode B (Phần 21)
   root.add(createAdminLandmarkGizmoGroup(disposables));
 
   return root;
@@ -1835,15 +2094,30 @@ export function syncIconicLandmarksGroup(params: {
   // Nếu Admin đang kéo thử vị trí mới ở Mode A (`previewPlaceLatLng`), áp dụng tạm thời lên Place đang chọn
   if (
     adminEditState?.activePlaceId &&
-    adminEditState.previewPlaceLatLng &&
-    placesById.has(adminEditState.activePlaceId)
+    adminEditState.previewPlaceLatLng
   ) {
-    const cur = placesById.get(adminEditState.activePlaceId)!;
-    placesById.set(adminEditState.activePlaceId, {
-      ...cur,
-      lat: adminEditState.previewPlaceLatLng.lat,
-      lng: adminEditState.previewPlaceLatLng.lng,
-    });
+    const cur = placesById.get(adminEditState.activePlaceId);
+    if (cur) {
+      placesById.set(adminEditState.activePlaceId, {
+        ...cur,
+        lat: adminEditState.previewPlaceLatLng.lat,
+        lng: adminEditState.previewPlaceLatLng.lng,
+      });
+    } else {
+      placesById.set(adminEditState.activePlaceId, {
+        id: adminEditState.activePlaceId,
+        name: adminEditState.activePlaceId,
+        category: 'public',
+        address: 'Phường Xuân Hòa, Phúc Yên',
+        lat: adminEditState.previewPlaceLatLng.lat,
+        lng: adminEditState.previewPlaceLatLng.lng,
+        coordinateVerified: false,
+        coordinateSource: 'unverified',
+        dataSource: 'admin_custom',
+        lastVerifiedAt: '',
+        metadata: {},
+      });
+    }
   }
 
   let activeGizmoTransform: {
@@ -1896,6 +2170,7 @@ export function syncIconicLandmarksGroup(params: {
           })
         : baseResolved;
 
+    node.userData.placeId = resolved.placeId;
     node.position.set(resolved.modelWorldX, resolved.modelWorldY, resolved.modelWorldZ);
     node.rotation.y = resolved.rotationY;
     node.scale.setScalar(resolved.scale);
@@ -2112,4 +2387,100 @@ export function syncIconicLandmarksGroup(params: {
       gizmo.visible = false;
     }
   }
+}
+
+/**
+ * TÍNH DANH SÁCH FOOTPRINT OBB 2D ĐỘNG CỦA CÁC LANDMARK ĐANG HOẠT ĐỘNG
+ * Dùng để gửi xuống `city3d.worker.ts` mỗi khi:
+ * - Khởi tạo bản đồ 3D (`origin`)
+ * - Admin chỉnh sửa `offsetX/Y/Z`, `rotationY`, `scale`, `visible` (Mode B) hoặc di chuyển địa danh (Mode A)
+ * - Lưu/reload cấu hình Landmark Binding từ `localStorage`
+ */
+export function computeActiveLandmarkFootprints3D(params: {
+  origin: City3DOrigin | null;
+  places: PlaceLocation[];
+  masterDataset?: MasterGeographyDataset | null;
+  adminEditState?: AdminLandmarkEditVisualState | null;
+}): ActiveLandmarkFootprint3D[] {
+  const { origin, places, masterDataset, adminEditState } = params;
+  if (!origin) return [];
+
+  const placesById = new Map<string, PlaceLocation>();
+  for (let i = 0; i < places.length; i++) {
+    const p = places[i];
+    placesById.set(p.id, p);
+  }
+
+  if (adminEditState?.activePlaceId && adminEditState.previewPlaceLatLng) {
+    const cur = placesById.get(adminEditState.activePlaceId);
+    if (cur) {
+      placesById.set(adminEditState.activePlaceId, {
+        ...cur,
+        lat: adminEditState.previewPlaceLatLng.lat,
+        lng: adminEditState.previewPlaceLatLng.lng,
+      });
+    } else {
+      placesById.set(adminEditState.activePlaceId, {
+        id: adminEditState.activePlaceId,
+        name: adminEditState.activePlaceId,
+        category: 'public',
+        address: 'Phường Xuân Hòa, Phúc Yên',
+        lat: adminEditState.previewPlaceLatLng.lat,
+        lng: adminEditState.previewPlaceLatLng.lng,
+        coordinateVerified: false,
+        coordinateSource: 'unverified',
+        dataSource: 'admin_custom',
+        lastVerifiedAt: '',
+        metadata: {},
+      });
+    }
+  }
+
+  const out: ActiveLandmarkFootprint3D[] = [];
+  for (const fp of ICONIC_LANDMARK_FOOTPRINTS) {
+    const fallbackLngLat: [number, number] = [fp.lng, fp.lat];
+    const baseResolved = resolveLandmarkWorldTransform({
+      landmarkId: fp.landmarkId,
+      origin,
+      placesById,
+      fallbackLngLat,
+      masterDataset,
+      isTerrainBaseZero: false,
+    });
+
+    const isEditingThisPlace =
+      Boolean(adminEditState?.activePlaceId) &&
+      (baseResolved.placeId === adminEditState?.activePlaceId ||
+        (adminEditState?.activePlaceId === 'osm_way_1080000083' && fp.landmarkId === 'hpu2_a1'));
+
+    const resolved =
+      isEditingThisPlace && adminEditState?.previewBindingPatch
+        ? resolveLandmarkWorldTransform({
+            landmarkId: fp.landmarkId,
+            origin,
+            placesById,
+            fallbackLngLat,
+            masterDataset,
+            overrideBinding: adminEditState.previewBindingPatch,
+            isTerrainBaseZero: false,
+          })
+        : baseResolved;
+
+    out.push({
+      landmarkId: fp.landmarkId,
+      placeId: resolved.placeId,
+      modelWorldX: resolved.modelWorldX,
+      modelWorldZ: resolved.modelWorldZ,
+      rotationY: resolved.rotationY,
+      scale: resolved.scale,
+      visible: resolved.visible,
+      localMinX: fp.localMinX,
+      localMaxX: fp.localMaxX,
+      localMinZ: fp.localMinZ,
+      localMaxZ: fp.localMaxZ,
+      treeMarginMeters: fp.treeMarginMeters ?? 3,
+    });
+  }
+
+  return out;
 }

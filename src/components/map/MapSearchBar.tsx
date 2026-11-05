@@ -46,13 +46,8 @@ interface MapSearchBarProps {
   onOpenAdminCoordTool: (place?: PlaceLocation) => void;
   userCoords?: { lat: number; lng: number } | null;
   onDrawRouteToPlace?: (place: PlaceLocation) => void;
-  onOpenMerchantPortal: (
-    defaultTab?: 'merchant' | 'create_new' | 'admin_approvals' | 'admin_codes'
-  ) => void;
   pendingApprovalCount: number;
   activePresetId?: string;
-  hasClaimedPlaces?: boolean;
-  claimedPlaceName?: string | null;
 }
 
 /**

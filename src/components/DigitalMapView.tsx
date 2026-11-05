@@ -39,13 +39,14 @@ import {
   logMapDebug,
   updatePlaceCoordinates,
   clearPlaceCoordinates,
-  getAllMerchantSubmissions,
-  getClaimedPlacesForUser,
   getAllManagedPlaces,
   getDigitalMapAccessStatus,
   setMapAccessMode,
-  verifyAndClaimPlaceWithCode,
-  getOrGenerateMerchantCode,
+  getAdminState,
+  getAllPlaceChangeProposals,
+  approvePlaceProposal,
+  rejectPlaceProposal,
+  type PlaceChangeProposal,
 } from '@/lib/admin-store';
 import { triggerFeedback } from '@/lib/ui-feedback';
 import { PlaceModal } from '@/components/PlaceModal';
@@ -103,7 +104,6 @@ import { MapControls } from '@/components/map/MapControls';
 import { MapQuickCategoryBar } from '@/components/map/MapQuickCategoryBar';
 import { City3DView } from '@/components/map/city3d/City3DView';
 import { GameAssetLayer } from '@/components/map/GameAssetLayer';
-import { MerchantPortalModal } from '@/components/map/MerchantPortalModal';
 import { LandmarkAdminControls } from '@/components/map/LandmarkAdminControls';
 import type { LandmarkBindingRecord } from '@/lib/map/landmark-bindings';
 import {
@@ -740,6 +740,16 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
   const gameAssetElsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
   const userMarkerElRef = useRef<HTMLDivElement | null>(null);
   const userHomeMarkerElRef = useRef<HTMLDivElement | null>(null);
+  const proposedPinMarkerElRef = useRef<HTMLDivElement | null>(null);
+  const activeProposedPinRef = useRef<{
+    placeId: string;
+    placeName: string;
+    oldLat: number | null;
+    oldLng: number | null;
+    proposedLat: number;
+    proposedLng: number;
+    submittedByName: string;
+  } | null>(null);
   const filteredVerifiedMarkersRef = useRef<PlaceLocation[]>([]);
   const poiClusters2DRef = useRef<PoiClusterItem[]>([]);
   const userCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -990,31 +1000,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
   selectedRoadVertexIdxRef.current = selectedRoadVertexIdx;
   const [roadAuditIssues, setRoadAuditIssues] = useState<RoadAuditIssue[]>([]);
 
-  // Cổng Chủ Quán Tự Ghim Bản Đồ & Admin Duyệt + Tuyến đường chỉ dẫn trên Bản đồ
-  const [isMerchantPortalOpen, setIsMerchantPortalOpen] = useState<boolean>(false);
-  const [merchantPortalTab, setMerchantPortalTab] = useState<
-    'merchant' | 'create_new' | 'admin_approvals' | 'admin_codes'
-  >('merchant');
-  const [merchantPickingForPlace, setMerchantPickingForPlace] = useState<{
-    placeId: string;
-    placeName: string;
-  } | null>(null);
-  const merchantPickingRef = useRef<typeof merchantPickingForPlace>(null);
-  merchantPickingRef.current = merchantPickingForPlace;
-  const liveCoordTopBadgeRef = useRef<HTMLSpanElement | null>(null);
-  const liveCoordBottomBadgeRef = useRef<HTMLDivElement | null>(null);
-  const pinColumnRef = useRef<HTMLDivElement | null>(null);
-
-  const [livePickCoords, setLivePickCoords] = useState<{ lat: number; lng: number }>({
-    lat: XUANHOA_DEFAULT_CENTER.lat,
-    lng: XUANHOA_DEFAULT_CENTER.lng,
-  });
-  const [isPinLifted, setIsPinLifted] = useState<boolean>(false);
-  const [merchantPickedCoords, setMerchantPickedCoords] = useState<{
-    placeId: string;
-    lat: number;
-    lng: number;
-  } | null>(null);
+  // Tuyến đường chỉ dẫn trên Bản đồ
   const [activeRoute, setActiveRoute] = useState<{
     targetPlace: PlaceLocation;
     travelMode: TravelMode;
@@ -1045,95 +1031,83 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     () => getDigitalMapAccessStatus(authUser),
     [authUser, syncTick]
   );
-  const pendingApprovalCount = useMemo(
-    () => getAllMerchantSubmissions().filter((s) => s.status === 'pending').length,
-    [syncTick]
-  );
-  const claimedMerchantList = useMemo(
-    () => (authUser?.email ? getClaimedPlacesForUser(authUser.email) : []),
-    [authUser?.email, syncTick]
-  );
-  const primaryMerchantPlace =
-    claimedMerchantList[0] || mapAccessStatus.claimedPlace || null;
-  const hasClaimedPlaces = Boolean(primaryMerchantPlace);
-  const claimedPlaceName = primaryMerchantPlace?.place.name || null;
-  const claimedPlaceCode = useMemo(() => {
-    if (authUser?.merchantVerifiedCode) return authUser.merchantVerifiedCode;
-    if (primaryMerchantPlace) return getOrGenerateMerchantCode(primaryMerchantPlace.place.id, false);
-    return null;
-  }, [authUser?.merchantVerifiedCode, primaryMerchantPlace, syncTick]);
+  const [isManageSheetOpen, setIsManageSheetOpen] = useState<boolean>(false);
+  const [manageSheetView, setManageSheetView] = useState<'menu' | 'approvals' | 'my_proposals'>('menu');
 
-  const [urlClaimCode, setUrlClaimCode] = useState<string | null>(null);
-  const [gateCodeInput, setGateCodeInput] = useState<string>('');
-  const [gateError, setGateError] = useState<string | null>(null);
-  const [gateSuccess, setGateSuccess] = useState<string | null>(null);
+  const pendingProposals = useMemo(
+    () => getAllPlaceChangeProposals({ status: 'pending' }),
+    [syncTick, adminSyncVersion]
+  );
+  const myProposals = useMemo(
+    () =>
+      authUser?.email
+        ? getAllPlaceChangeProposals({ submittedByEmail: authUser.email })
+        : getAllPlaceChangeProposals(),
+    [authUser?.email, syncTick, adminSyncVersion]
+  );
+  const pendingApprovalCount = useMemo(
+    () => pendingProposals.length,
+    [pendingProposals.length]
+  );
+  const activeProposedPin = useMemo(() => {
+    if (!isAdminUser && !isMapManagerUser) return null;
+    const focusPlaceId = selectedPlace?.id || (embeddedInAdmin ? adminSelectedPlaceId : null);
+    if (!focusPlaceId) return null;
+    const st = getAdminState();
+    const ov = st.places?.[focusPlaceId];
+    const pMap = ov?.pendingMapApproval;
+    if (
+      pMap &&
+      typeof pMap.proposedLat === 'number' &&
+      typeof pMap.proposedLng === 'number' &&
+      Number.isFinite(pMap.proposedLat) &&
+      Number.isFinite(pMap.proposedLng)
+    ) {
+      return {
+        placeId: focusPlaceId,
+        placeName: pMap.proposedName || ov?.name || selectedPlace?.name || focusPlaceId,
+        oldLat: typeof ov?.lat === 'number' ? ov.lat : selectedPlace?.lat ?? null,
+        oldLng: typeof ov?.lng === 'number' ? ov.lng : selectedPlace?.lng ?? null,
+        proposedLat: pMap.proposedLat,
+        proposedLng: pMap.proposedLng,
+        submittedByName: pMap.submittedByName || pMap.submittedByEmail || 'Quản lý',
+      };
+    }
+    const prop = pendingProposals.find(
+      (pr) =>
+        pr.placeId === focusPlaceId &&
+        typeof pr.afterData?.lat === 'number' &&
+        typeof pr.afterData?.lng === 'number'
+    );
+    if (prop) {
+      return {
+        placeId: focusPlaceId,
+        placeName: prop.placeName,
+        oldLat: typeof prop.beforeData?.lat === 'number' ? prop.beforeData.lat : null,
+        oldLng: typeof prop.beforeData?.lng === 'number' ? prop.beforeData.lng : null,
+        proposedLat: Number(prop.afterData.lat),
+        proposedLng: Number(prop.afterData.lng),
+        submittedByName: prop.submittedByName || prop.submittedByEmail || 'Quản lý',
+      };
+    }
+    return null;
+  }, [isAdminUser, isMapManagerUser, selectedPlace, embeddedInAdmin, adminSelectedPlaceId, pendingProposals, syncTick, adminSyncVersion]);
+  activeProposedPinRef.current = activeProposedPin;
+
   const [previewGuestLock, setPreviewGuestLock] = useState<boolean>(false);
 
-  const activateCodeImmediately = (codeToUse: string) => {
-    setGateError(null);
-    setGateSuccess(null);
-
-    const res = verifyAndClaimPlaceWithCode(codeToUse, authUser);
-    if (!res.ok) {
-      triggerFeedback('warn');
-      setGateError(res.message);
-      return;
-    }
-
-    triggerFeedback('approve');
-    setGateSuccess(res.message);
-    setPreviewGuestLock(false);
-    setSyncTick((t) => t + 1);
-    const clean = codeToUse.trim().toUpperCase();
-    setGateCodeInput(clean);
-    setUrlClaimCode(clean);
-    setMerchantPortalTab(res.isMapManager ? 'create_new' : 'merchant');
-    setIsMerchantPortalOpen(true);
-    setLocationNotice(
-      res.isMapManager
-        ? `🗺️ Đã kích hoạt quyền Quản lý Maps (${clean}). Bạn có thể tạo địa điểm mới hoặc cập nhật định vị toàn khu vực.`
-        : `🏪 Đã xác thực quyền quản lý quán "${res.placeItem?.place.name}" (${clean}).`
-    );
-  };
-
-  const handleActivateCodeAtGate = (e: React.FormEvent) => {
-    e.preventDefault();
-    activateCodeImmediately(gateCodeInput);
-  };
-
-  // Tự động mở Cổng Chủ Quán hoặc Chế độ Ghim/Bay tới vị trí nếu chuyển từ Trang Admin hoặc Link Zalo sang
+  // Tự động bay tới vị trí nếu chuyển từ Trang Admin hoặc Link sang
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const checkClaimParam = () => {
+    const checkHashParams = () => {
       const hash = window.location.hash || '';
       const qIdx = hash.indexOf('?');
       if (qIdx !== -1) {
         const params = new URLSearchParams(hash.slice(qIdx + 1));
-        const claim = params.get('claim');
-        if (claim) {
-          const clean = claim.trim().toUpperCase();
-          setUrlClaimCode(clean);
-          setGateCodeInput(clean);
-          setMerchantPortalTab('merchant');
-          setIsMerchantPortalOpen(true);
-          return;
-        }
-
-        const pickId = params.get('pick');
-        if (pickId) {
-          const all = getAllManagedPlaces();
-          const found = all.find((p) => p.place.id === pickId);
-          const pName = params.get('pickName') || found?.place.name || 'Quán của bạn';
-          setIsMerchantPortalOpen(false);
-          setMerchantPickingForPlace({ placeId: pickId, placeName: pName });
-          return;
-        }
-
         const flyLat = parseFloat(params.get('flyLat') || '');
         const flyLng = parseFloat(params.get('flyLng') || '');
         if (!Number.isNaN(flyLat) && !Number.isNaN(flyLng)) {
           const flyLabel = params.get('flyLabel') || '📍 Vị trí Quán trên Bản đồ';
-          setIsMerchantPortalOpen(false);
           setTimeout(() => {
             const map = mapInstanceRef.current;
             if (map) {
@@ -1144,14 +1118,10 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
           return;
         }
       }
-      if (hash.startsWith('#/chu-quan') || hash.startsWith('#/merchant')) {
-        setMerchantPortalTab('merchant');
-        setIsMerchantPortalOpen(true);
-      }
     };
-    checkClaimParam();
-    window.addEventListener('hashchange', checkClaimParam);
-    return () => window.removeEventListener('hashchange', checkClaimParam);
+    checkHashParams();
+    window.addEventListener('hashchange', checkHashParams);
+    return () => window.removeEventListener('hashchange', checkHashParams);
   }, []);
 
   // Lắng nghe thay đổi từ Admin Store & Trạng thái mạng
@@ -2610,6 +2580,32 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         }
       }
 
+      if (proposedPinMarkerElRef.current && activeProposedPinRef.current) {
+        const propPin = activeProposedPinRef.current;
+        const ptProp = projPt(propPin.proposedLng, propPin.proposedLat);
+        if (proposedPinMarkerElRef.current.style.display !== 'block') {
+          proposedPinMarkerElRef.current.style.display = 'block';
+        }
+        proposedPinMarkerElRef.current.style.transform = `translate3d(${ptProp.x.toFixed(1)}px, ${ptProp.y.toFixed(1)}px, 0)`;
+        if (typeof propPin.oldLat === 'number' && typeof propPin.oldLng === 'number') {
+          const ptOld = projPt(propPin.oldLng, propPin.oldLat);
+          ctx.save();
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = '#D97706';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(ptOld.x, ptOld.y);
+          ctx.lineTo(ptProp.x, ptProp.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+      } else if (proposedPinMarkerElRef.current) {
+        if (proposedPinMarkerElRef.current.style.display !== 'none') {
+          proposedPinMarkerElRef.current.style.display = 'none';
+        }
+      }
+
       // 6b. Nhãn phụ ký hiệu tòa nhà nội khu (S1, S2, A1, Giảng đường A...) — chỉ hiện khi zoom thật gần (>= 16.4) và không trùng ghim
       if (!isMoving && zoom >= 16.4 && vis.buildings && geo.landmarkBuildings) {
         ctx.font = `700 9.5px ${CANVAS_FONT_STACK}`;
@@ -3263,19 +3259,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
 
       const handleCameraMove = () => {
         isInteractingRef.current = true;
-        if (merchantPickingRef.current) {
-          const c = map.getCenter();
-          const coordText = `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
-          if (liveCoordTopBadgeRef.current) {
-            liveCoordTopBadgeRef.current.textContent = coordText;
-          }
-          if (liveCoordBottomBadgeRef.current) {
-            liveCoordBottomBadgeRef.current.textContent = coordText;
-          }
-          if (pinColumnRef.current) {
-            pinColumnRef.current.style.transform = 'translateY(-10px) scale(1.12)';
-          }
-        }
         scheduleCanvasRender();
       };
 
@@ -3292,17 +3275,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
 
       const handleCameraSettle = () => {
         isInteractingRef.current = false;
-        if (pinColumnRef.current) {
-          pinColumnRef.current.style.transform = 'translateY(0px) scale(1)';
-        }
-        if (merchantPickingRef.current) {
-          setIsPinLifted(false);
-          const c = map.getCenter();
-          setLivePickCoords({
-            lat: Number(c.lat.toFixed(6)),
-            lng: Number(c.lng.toFixed(6)),
-          });
-        }
         setCurrentZoom(map.getZoom());
         scheduleCanvasRender();
       };
@@ -3318,8 +3290,14 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
 
       mapInstanceRef.current = map;
       handleResize();
+      if (import.meta.env.DEV) {
+        console.debug('[MAP INIT] MapLibre instance initialized');
+      }
 
       return () => {
+        if (import.meta.env.DEV) {
+          console.debug('[MAP DESTROY] MapLibre instance removed');
+        }
         if (rafIdRef.current !== null) {
           window.cancelAnimationFrame(rafIdRef.current);
           rafIdRef.current = null;
@@ -3561,17 +3539,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         return;
       }
 
-      if (merchantPickingForPlace) {
-        triggerFeedback('pin');
-        setLivePickCoords({ lat: pickedLat, lng: pickedLng });
-        map.easeTo({
-          center: [pickedLng, pickedLat],
-          zoom: Math.max(map.getZoom(), 16.8),
-          duration: 320,
-        });
-        return;
-      }
-
       if (homeModalMode === 'picking') {
         triggerFeedback('pin');
         setHomeLatInput(String(pickedLat));
@@ -3630,7 +3597,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     selectedPlace,
     adminLandmarkMode2D,
     showTemporaryMapNotice,
-    merchantPickingForPlace,
     embeddedInAdmin,
     onAdminPickCoordinates,
     scheduleCanvasRender,
@@ -3930,22 +3896,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     activeRoute?.hasArrived,
     scheduleCanvasRender,
   ]);
-
-  const handleOpenMerchantPortal = useCallback(
-    (tab?: 'merchant' | 'create_new' | 'admin_approvals' | 'admin_codes') => {
-      if (tab) {
-        setMerchantPortalTab(tab);
-      } else if (isAdminUser && pendingApprovalCount > 0) {
-        setMerchantPortalTab('admin_approvals');
-      } else if (isMapManagerUser && !isAdminUser) {
-        setMerchantPortalTab('create_new');
-      } else {
-        setMerchantPortalTab('merchant');
-      }
-      setIsMerchantPortalOpen(true);
-    },
-    [isAdminUser, isMapManagerUser, pendingApprovalCount]
-  );
 
   const handleSelectUnverifiedPlace = useCallback(
     (place: PlaceLocation) => {
@@ -4472,12 +4422,16 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
       }
       setIsAdminCreatingNew(false);
       setIsAdminCoordModalOpen(false);
-      const nextNotice = isAdminCreatingNew
-        ? `Đã thêm mới "${adminEditName.trim()}" thành công!`
-        : `Đã cập nhật "${adminEditName.trim()}" thành công!`;
+      const nextNotice = !isAdminUser
+        ? `⏳ Đã gửi đề xuất "${adminEditName.trim()}" chờ Admin phê duyệt! Bản đồ công khai giữ nguyên dữ liệu cũ cho tới khi được duyệt.`
+        : isAdminCreatingNew
+        ? `✅ Đã thêm mới "${adminEditName.trim()}" và đồng bộ máy chủ thành công!`
+        : `✅ Đã cập nhật "${adminEditName.trim()}" và đồng bộ máy chủ thành công!`;
       setAdminFeedback(null);
-      showTemporaryMapNotice(nextNotice, 2300);
-      flyToCoordinates(saved.lat, saved.lng, 16.6, adminEditName.trim(), 0.0042);
+      showTemporaryMapNotice(nextNotice, 2800);
+      if (saved.lat !== null && saved.lng !== null) {
+        flyToCoordinates(saved.lat, saved.lng, 16.6, adminEditName.trim(), 0.0042);
+      }
     } catch (err: any) {
       triggerFeedback('warn');
       setAdminFeedback(err?.message || 'Lỗi lưu thông tin địa điểm.');
@@ -4741,7 +4695,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         className="absolute inset-0 w-full h-full z-[2]"
         style={{
           cursor:
-            embeddedInAdmin || isPickingOnMap || merchantPickingForPlace || homeModalMode === 'picking'
+            embeddedInAdmin || isPickingOnMap || homeModalMode === 'picking'
               ? 'crosshair'
               : 'grab',
           background: 'transparent',
@@ -4806,6 +4760,32 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                 <Home size={14} strokeWidth={1.7} />
               </div>
             </button>
+          </div>
+        )}
+
+        {/* Marker Ghim đề xuất đang chờ Admin phê duyệt (hiển thị song song với Ghim hiện tại) */}
+        {activeProposedPin && (
+          <div
+            ref={(el) => {
+              proposedPinMarkerElRef.current = el;
+            }}
+            data-testid="proposed-pin-marker"
+            style={{
+              transform: 'translate3d(-9999px, -9999px, 0)',
+              zIndex: 55,
+              willChange: 'transform',
+            }}
+            className="absolute top-0 left-0 pointer-events-auto"
+          >
+            <div className="relative -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-0.5 rounded-[8px] bg-[#D97706] text-white border border-white text-[10.5px] leading-snug font-bold whitespace-nowrap shadow-md">
+                Ghim đề xuất: {activeProposedPin.proposedLat.toFixed(5)}, {activeProposedPin.proposedLng.toFixed(5)}
+              </div>
+              <span className="absolute w-9 h-9 rounded-full bg-[#F59E0B]/35 animate-ping" />
+              <div className="w-8 h-8 rounded-full bg-[#D97706] text-white border-2 border-dashed border-white flex items-center justify-center shadow-lg">
+                <MapPin size={15} strokeWidth={2.2} />
+              </div>
+            </div>
           </div>
         )}
 
@@ -5015,11 +4995,8 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
             onOpenAdminCoordTool={openAdminCoordinateModal}
             userCoords={userCoords}
             onDrawRouteToPlace={handleDrawRouteToPlace}
-            onOpenMerchantPortal={(tab) => handleOpenMerchantPortal(tab)}
             pendingApprovalCount={pendingApprovalCount}
             activePresetId={activePresetId}
-            hasClaimedPlaces={hasClaimedPlaces}
-            claimedPlaceName={claimedPlaceName}
           />
 
           {/* Bảng Địa điểm đã lưu theo tài khoản */}
@@ -5102,7 +5079,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         </div>
 
         {/* Thanh Danh Mục Nhanh (Quick Category Bar) — Đặt ngay dưới ô Search, 1 hàng cuộn ngang gọn gàng */}
-        {!embeddedInAdmin && !merchantPickingForPlace && !isPickingOnMap && (
+        {!embeddedInAdmin && !isPickingOnMap && (
           <div className="w-full max-w-xl pointer-events-auto">
             <MapQuickCategoryBar
               activeFilterId={activeQuickFilter}
@@ -5114,37 +5091,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
             />
           </div>
         )}
-
-        {/* Cụm nút điều khiển nổi góc phải (3D, GPS, Lớp bản đồ, Về trung tâm) */}
-        <MapControls
-          onZoomIn={() => mapInstanceRef.current?.zoomIn()}
-          onZoomOut={() => mapInstanceRef.current?.zoomOut()}
-          onResetCenter={() => {
-            highlightedRoadNameRef.current = '';
-            setActivePresetId('dhsp2');
-            flyToCoordinates(
-              XUANHOA_DEFAULT_CENTER.lat,
-              XUANHOA_DEFAULT_CENTER.lng,
-              XUANHOA_DEFAULT_CENTER.zoom,
-              'Khu ĐH Sư Phạm 2',
-              0.0044
-            );
-          }}
-          onLocateUser={() => handleLocateUser(false)}
-          isLocatingUser={isLocatingUser}
-          layerVisibility={layerVisibility}
-          onToggleLayer={(key) =>
-            setLayerVisibility((prev) => ({ ...prev, [key]: !prev[key] }))
-          }
-          onSelectPreset={handleSelectPresetArea}
-          activePresetId={activePresetId}
-          onOpenDataQualityModal={() => setIsDataQualityOpen(true)}
-          is3DMode={is3DMode}
-          onToggle3DMode={handleToggle3DMode}
-          onOpenCity3D={() => setIsCity3DOpen(true)}
-          onClickHomeButton={handleClickHomeButton}
-          hasSavedHome={Boolean(userHome)}
-        />
 
         {/* Banner hướng dẫn khi khách hàng đang chạm chọn vị trí Nhà của bạn trên bản đồ */}
         {homeModalMode === 'picking' && (
@@ -5159,16 +5105,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
             >
               Quay lại
             </button>
-          </div>
-        )}
-
-        {/* Banner hướng dẫn ở trên khi Chủ quán đang ngắm tâm ghim mặt tiền quán */}
-        {merchantPickingForPlace && (
-          <div className="pointer-events-auto self-start px-3.5 py-2 rounded-2xl bg-[#FFFDF9] text-[#1E293B] border-2 border-[#39B980] shadow-lg text-xs leading-snug font-bold flex items-center gap-2">
-            <span>
-              Kéo bản đồ hoặc chạm điểm bất kỳ để đặt tâm ghim vào mặt tiền{' '}
-              <strong className="text-[#1D7A52]">"{merchantPickingForPlace.placeName}"</strong>
-            </span>
           </div>
         )}
 
@@ -5427,6 +5363,37 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         />
       </div>
 
+      {/* Cụm nút điều khiển nổi góc phải (3D/2D, GPS, La bàn, Lớp bản đồ, Về trung tâm) — trực thuộc container chính để luôn căn giữa chiều dọc */}
+      <MapControls
+        onZoomIn={() => mapInstanceRef.current?.zoomIn()}
+        onZoomOut={() => mapInstanceRef.current?.zoomOut()}
+        onResetCenter={() => {
+          highlightedRoadNameRef.current = '';
+          setActivePresetId('dhsp2');
+          flyToCoordinates(
+            XUANHOA_DEFAULT_CENTER.lat,
+            XUANHOA_DEFAULT_CENTER.lng,
+            XUANHOA_DEFAULT_CENTER.zoom,
+            'Khu ĐH Sư Phạm 2',
+            0.0044
+          );
+        }}
+        onLocateUser={() => handleLocateUser(false)}
+        isLocatingUser={isLocatingUser}
+        layerVisibility={layerVisibility}
+        onToggleLayer={(key) =>
+          setLayerVisibility((prev) => ({ ...prev, [key]: !prev[key] }))
+        }
+        onSelectPreset={handleSelectPresetArea}
+        activePresetId={activePresetId}
+        onOpenDataQualityModal={() => setIsDataQualityOpen(true)}
+        is3DMode={is3DMode}
+        onToggle3DMode={handleToggle3DMode}
+        onOpenCity3D={() => setIsCity3DOpen(true)}
+        onClickHomeButton={handleClickHomeButton}
+        hasSavedHome={Boolean(userHome)}
+      />
+
       {/* 3-BOTTOM. THANH DANH MỤC NHANH (QUICK CATEGORY BAR) + ĐIỀU KHIỂN ADMIN Ở ĐÁY BẢN ĐỒ */}
       {embeddedInAdmin && (
         <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
@@ -5436,288 +5403,411 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         </div>
       )}
 
-      {!embeddedInAdmin && !merchantPickingForPlace && !isPickingOnMap && (hasClaimedPlaces || isMapManagerUser || isAdminUser) && (
-        <div className="absolute bottom-2.5 left-2.5 right-2.5 z-30 flex flex-col items-center gap-1.5 pointer-events-none">
+      {!embeddedInAdmin && !isPickingOnMap && (isMapManagerUser || isAdminUser) && (
+        <div
+          className="absolute left-3 right-3 z-30 flex items-center justify-center pointer-events-none"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+        >
           {!selectedPlace && !selectedBuilding && (
-            <div className="flex flex-wrap items-center justify-center gap-1.5 pointer-events-auto max-w-[calc(100vw-20px)]">
-              {hasClaimedPlaces && primaryMerchantPlace && !isMapManagerUser && (
-                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/95 border border-[#E2E8F0] shadow-sm text-[11px] whitespace-nowrap">
-                  <span className="font-semibold text-[#0F172A] truncate max-w-[110px] sm:max-w-[180px]">
-                    {primaryMerchantPlace.place.name}
+            <div className="flex items-center justify-center gap-2 pointer-events-auto max-w-full">
+              {(isAdminUser || isMapManagerUser) && (
+                <button
+                  type="button"
+                  data-testid="mobile-manage-sheet-trigger"
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    setManageSheetView('menu');
+                    setIsManageSheetOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#0F172A]/95 hover:bg-[#1E293B] text-white border border-white/20 shadow-[0_6px_20px_rgba(15,23,42,0.22)] backdrop-blur-md text-[12px] font-semibold cursor-pointer transition active:scale-95 whitespace-nowrap"
+                >
+                  <Settings size={14} className="text-[#10B981] shrink-0" />
+                  <span>Quản lý</span>
+                  <span className="px-1.5 py-0.5 rounded-full bg-[#059669] text-white text-[10px] font-bold">
+                    {isAdminUser ? 'Admin' : 'QL Maps'}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerFeedback('pin');
-                      setMerchantPickingForPlace({
-                        placeId: primaryMerchantPlace.place.id,
-                        placeName: primaryMerchantPlace.place.name,
-                      });
-                    }}
-                    className="px-2 py-0.5 rounded-full bg-[#059669] hover:bg-[#047857] text-white font-medium text-[10.5px] cursor-pointer"
-                  >
-                    Vị trí
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      setMerchantPortalTab('merchant');
-                      setIsMerchantPortalOpen(true);
-                    }}
-                    className="px-2 py-0.5 rounded-full bg-[#0F172A] hover:bg-[#1E293B] text-white font-medium text-[10.5px] cursor-pointer"
-                  >
-                    Thực đơn
-                  </button>
-                </div>
-              )}
-
-              {isMapManagerUser && !isAdminUser && (
-                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/95 border border-[#E2E8F0] shadow-sm text-[11px] whitespace-nowrap">
-                  <span className="font-semibold text-[#059669] pl-1">Quản lý Maps</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerFeedback('pin');
-                      openAdminCreatePlaceModal();
-                      setIsAdminCoordModalOpen(false);
-                      setIsPickingOnMap(true);
-                    }}
-                    className="px-2.5 py-1 rounded-full bg-[#0F172A] hover:bg-[#1E293B] text-white font-medium cursor-pointer transition"
-                  >
-                    Chấm Maps +
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="map-bar-create-btn"
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      openAdminCreatePlaceModal();
-                    }}
-                    className="px-2.5 py-1 rounded-full bg-[#059669] hover:bg-[#047857] text-white font-medium cursor-pointer transition"
-                  >
-                    Thêm mới
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="map-bar-edit-btn"
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      openAdminCoordinateModal(selectedPlace || undefined);
-                    }}
-                    className="px-2.5 py-1 rounded-full bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] font-medium cursor-pointer transition"
-                  >
-                    Sửa vị trí
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="map-bar-road-editor-btn"
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      setIsRoadEditorOpen((prev) => {
-                        const next = !prev;
-                        isRoadEditorOpenRef.current = next;
-                        return next;
-                      });
-                    }}
-                    className={`px-2.5 py-1 rounded-full border font-semibold cursor-pointer transition ${
-                      isRoadEditorOpen
-                        ? 'bg-[#059669] text-white border-[#059669]'
-                        : 'bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border-[#E2E8F0]'
-                    }`}
-                  >
-                    Đường / Ngõ
-                  </button>
-                </div>
-              )}
-
-              {isAdminUser && (
-                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/95 border border-[#E2E8F0] text-[#0F172A] shadow-sm backdrop-blur-md text-[11px] whitespace-nowrap">
-                  <span className="font-semibold text-[#059669] pl-1">Admin</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerFeedback('pin');
-                      openAdminCreatePlaceModal();
-                      setIsAdminCoordModalOpen(false);
-                      setIsPickingOnMap(true);
-                    }}
-                    className="px-2.5 py-1 rounded-full bg-[#0F172A] hover:bg-[#1E293B] text-white font-medium cursor-pointer transition"
-                  >
-                    Chấm Maps +
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="map-bar-create-btn"
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      openAdminCreatePlaceModal();
-                    }}
-                    className="px-2.5 py-1 rounded-full bg-[#059669] hover:bg-[#047857] text-white font-medium cursor-pointer transition"
-                  >
-                    Thêm mới
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="map-bar-edit-btn"
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      openAdminCoordinateModal(selectedPlace || undefined);
-                    }}
-                    className="px-2.5 py-1 rounded-full bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] font-medium cursor-pointer transition"
-                  >
-                    Sửa địa điểm
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="map-bar-road-editor-btn"
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      setIsRoadEditorOpen((prev) => {
-                        const next = !prev;
-                        isRoadEditorOpenRef.current = next;
-                        return next;
-                      });
-                    }}
-                    className={`px-2.5 py-1 rounded-full border font-semibold cursor-pointer transition ${
-                      isRoadEditorOpen
-                        ? 'bg-[#059669] text-white border-[#059669]'
-                        : 'bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border-[#E2E8F0]'
-                    }`}
-                  >
-                    Đường / Ngõ
-                  </button>
-                </div>
+                  {isAdminUser && pendingProposals.length > 0 && (
+                    <span
+                      data-testid="mobile-manage-pending-badge"
+                      className="px-1.5 py-0.5 rounded-full bg-[#F59E0B] text-white text-[10px] font-extrabold"
+                    >
+                      {pendingProposals.length} chờ duyệt
+                    </span>
+                  )}
+                </button>
               )}
             </div>
           )}
         </div>
       )}
 
-      {/* 3A-PIN. TÂM NGẮM GHIM QUÁN 3D GIỮA MÀN HÌNH + THANH CHỐT VỊ TRÍ CHUẨN GRAB / GOOGLE MAPS */}
-      {merchantPickingForPlace && (
-        <>
-          {/* Tâm ngắm ghim mặt tiền quán ngay chính giữa bản đồ */}
-          <div className="absolute inset-0 pointer-events-none z-25 flex items-center justify-center">
-            <div className="relative flex flex-col items-center -translate-y-5">
-              {/* Nhãn tọa độ chạy trực tiếp theo thời gian thực */}
-              <div className="mb-1.5 px-3 py-1 rounded-2xl bg-[#FFFDF9] text-[#1E293B] border-2 border-[#39B980] shadow-xl text-[11px] font-extrabold whitespace-nowrap flex items-center gap-1.5">
-                <span>🏪 {merchantPickingForPlace.placeName}</span>
-                <span
-                  ref={liveCoordTopBadgeRef}
-                  className="px-1.5 py-0.5 rounded-md bg-[#39B980] text-white font-mono text-[10px]"
-                >
-                  {livePickCoords.lat.toFixed(5)}, {livePickCoords.lng.toFixed(5)}
+      {/* 3-SHEET. BOTTOM SHEET QUẢN LÝ GỌN GÀNG CHO ADMIN & QUẢN LÝ TRÊN MOBILE/DESKTOP (PHẦN 7.2 & PHẦN 8) */}
+      {isManageSheetOpen && (isAdminUser || isMapManagerUser) && (
+        <div
+          className="fixed inset-0 z-50 bg-[#0F172A]/40 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setIsManageSheetOpen(false)}
+        >
+          <div
+            data-testid="mobile-manage-bottom-sheet"
+            className="w-full sm:max-w-md max-h-[78dvh] flex flex-col overflow-hidden rounded-t-3xl sm:rounded-2xl bg-white border border-[#CBD5E1] shadow-[0_20px_50px_rgba(15,23,42,0.22)] text-[#0F172A]"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Thanh kéo & Header Bottom Sheet */}
+            <div className="pt-2.5 pb-2 px-4 border-b border-[#E2E8F0] flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="px-2 py-0.5 rounded-md bg-[#ECFDF5] border border-[#10B981]/40 text-[#047857] text-[10.5px] font-bold">
+                  {isAdminUser ? 'QUYỀN ADMIN' : 'QUYỀN QUẢN LÝ'}
                 </span>
+                <h3 className="text-[13.5px] font-bold text-[#0F172A] truncate">
+                  {manageSheetView === 'approvals'
+                    ? `Duyệt yêu cầu (${pendingProposals.length})`
+                    : manageSheetView === 'my_proposals'
+                    ? `Yêu cầu của tôi (${myProposals.length})`
+                    : 'Công cụ Quản lý Bản đồ'}
+                </h3>
               </div>
-
-              {/* Cột ghim nhún lên khi kéo bản đồ và hạ xuống khi dừng */}
-              <div
-                ref={pinColumnRef}
-                className="transition-transform duration-150 flex flex-col items-center"
-                style={{
-                  transform: isPinLifted ? 'translateY(-10px) scale(1.12)' : 'translateY(0px) scale(1)',
-                }}
-              >
-                <div className="w-11 h-11 rounded-2xl bg-[#39B980] border-3 border-[#403064] shadow-[0_8px_20px_rgba(64,48,100,0.35)] flex items-center justify-center text-xl">
-                  🏪
-                </div>
-                <div className="w-1 h-3.5 bg-[#403064] rounded-b-full" />
-              </div>
-
-              {/* Vòng tâm ngắm dưới mặt đất */}
-              <div className="relative flex items-center justify-center -mt-0.5">
-                <span className="absolute w-7 h-7 rounded-full bg-[#39B980]/35 animate-ping" />
-                <span className="w-3 h-3 rounded-full bg-[#403064] border-2 border-[#39B980] shadow-sm" />
-              </div>
-            </div>
-          </div>
-
-          {/* Thanh Chốt Vị Trí Mặt Tiền nổi bật ở đáy màn hình */}
-          <div className="absolute left-3 right-3 bottom-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-full sm:max-w-lg z-40 pointer-events-auto">
-            <div className="p-3 sm:p-3.5 rounded-3xl bg-[#FFFDF9] border-2 border-[#403064] shadow-[0_14px_34px_rgba(45,34,70,0.28)] space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-[11px] font-extrabold text-[#1D7A52] flex items-center gap-1">
-                    <Crosshair size={13} />
-                    <span>TÂM GHIM MẶT TIỀN QUÁN</span>
-                  </div>
-                  <div className="text-xs font-extrabold text-[#2D2246] truncate">
-                    {merchantPickingForPlace.placeName}
-                  </div>
-                </div>
-                <div
-                  ref={liveCoordBottomBadgeRef}
-                  className="px-2.5 py-1 rounded-xl bg-[#F3EFE6] border border-[#D8CFC0] font-mono text-[11px] font-black text-[#403064] shrink-0"
-                >
-                  {livePickCoords.lat.toFixed(5)}, {livePickCoords.lng.toFixed(5)}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 shrink-0">
+                {manageSheetView !== 'menu' && (
+                  <button
+                    type="button"
+                    onClick={() => setManageSheetView('menu')}
+                    className="px-2.5 py-1 rounded-lg bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] text-[11px] font-semibold cursor-pointer"
+                  >
+                    ← Quay lại
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => {
-                    triggerFeedback('tap');
-                    setMerchantPickingForPlace(null);
-                    setIsMerchantPortalOpen(true);
-                  }}
-                  className="px-3.5 py-2.5 rounded-2xl bg-[#F1ECE1] hover:bg-[#E5DEC9] active:scale-95 transition-transform text-[#403064] font-extrabold text-xs whitespace-nowrap cursor-pointer"
+                  onClick={() => setIsManageSheetOpen(false)}
+                  className="w-7 h-7 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#475569] flex items-center justify-center cursor-pointer"
                 >
-                  Quay lại
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerFeedback('approve');
-                    const center = mapInstanceRef.current?.getCenter();
-                    const finalLat = center ? Number(center.lat.toFixed(6)) : livePickCoords.lat;
-                    const finalLng = center ? Number(center.lng.toFixed(6)) : livePickCoords.lng;
-                    const isCreatingNew = merchantPickingForPlace.placeId === '__new_place__';
-
-                    if (!isCreatingNew) {
-                      try {
-                        updatePlaceCoordinates(merchantPickingForPlace.placeId, {
-                          lat: finalLat,
-                          lng: finalLng,
-                          coordinateVerified: true,
-                          coordinateSource: 'admin_verified',
-                          placeName: merchantPickingForPlace.placeName,
-                        });
-                      } catch {
-                        // Ignore if outside bounds
-                      }
-                    }
-
-                    setSyncTick((t) => t + 1);
-                    setMerchantPickedCoords({
-                      placeId: merchantPickingForPlace.placeId,
-                      lat: finalLat,
-                      lng: finalLng,
-                    });
-                    setMerchantPickingForPlace(null);
-                    setMerchantPortalTab(isCreatingNew ? 'create_new' : 'merchant');
-                    setIsMerchantPortalOpen(true);
-                    setLocationNotice(
-                      isCreatingNew
-                        ? `🎯 Đã lấy tọa độ (${finalLat}, ${finalLng}) cho "${merchantPickingForPlace.placeName}". Hãy bấm Lưu để ghim lên bản đồ!`
-                        : `✅ ĐÃ LƯU VỊ TRÍ THÀNH CÔNG: "${merchantPickingForPlace.placeName}" (${finalLat}, ${finalLng}) đã hiển thị trên Bản đồ!`
-                    );
-                  }}
-                  className="flex-1 py-2.5 px-4 rounded-2xl bg-[#39B980] hover:bg-[#2FA36E] active:scale-95 transition-transform text-white border-2 border-[#403064] font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md whitespace-nowrap cursor-pointer"
-                >
-                  <CheckCircle2 size={15} className="shrink-0" />
-                  <span>
-                    {merchantPickingForPlace.placeId === '__new_place__'
-                      ? 'Chốt Tọa Độ Cho Địa Điểm Mới'
-                      : 'Chốt & Lưu Vị Trí Này'}
-                  </span>
+                  <X size={15} />
                 </button>
               </div>
             </div>
+
+            {/* Body của Bottom Sheet */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2.5 text-xs">
+              {manageSheetView === 'menu' && isAdminUser && (
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    data-testid="map-bar-create-btn"
+                    onClick={() => {
+                      setIsManageSheetOpen(false);
+                      openAdminCreatePlaceModal();
+                    }}
+                    className="w-full p-3 rounded-xl bg-[#ECFDF5] hover:bg-[#D1FAE5] border border-[#10B981]/40 text-[#065F46] flex items-center justify-between gap-2 font-bold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Plus size={16} className="text-[#059669]" />
+                      <span>Thêm địa điểm</span>
+                    </span>
+                    <span className="text-[11px] font-medium text-[#047857]">Lưu trực tiếp →</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="map-bar-edit-btn"
+                    onClick={() => {
+                      setIsManageSheetOpen(false);
+                      openAdminCoordinateModal(selectedPlace || undefined);
+                    }}
+                    className="w-full p-3 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-[#0F172A] flex items-center justify-between gap-2 font-semibold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Edit3 size={16} className="text-[#0F172A]" />
+                      <span>Sửa địa điểm</span>
+                    </span>
+                    <span className="text-[11px] text-[#64748B] truncate max-w-[140px]">
+                      {selectedPlace ? selectedPlace.name : 'Chọn quán / trụ sở'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="sheet-action-pin"
+                    onClick={() => {
+                      setIsManageSheetOpen(false);
+                      openAdminCreatePlaceModal();
+                      setIsAdminCoordModalOpen(false);
+                      setIsPickingOnMap(true);
+                    }}
+                    className="w-full p-3 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-[#0F172A] flex items-center justify-between gap-2 font-semibold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <MapPin size={16} className="text-[#059669]" />
+                      <span>Ghim vị trí trực tiếp trên Bản đồ</span>
+                    </span>
+                    <span className="text-[11px] text-[#64748B]">Chạm bản đồ →</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="sheet-action-delete"
+                    onClick={() => {
+                      setIsManageSheetOpen(false);
+                      openAdminCoordinateModal(selectedPlace || undefined);
+                    }}
+                    className="w-full p-3 rounded-xl bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FECACA] text-[#991B1B] flex items-center justify-between gap-2 font-semibold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Trash2 size={16} className="text-[#DC2626]" />
+                      <span>Xóa / Gỡ vị trí địa điểm</span>
+                    </span>
+                    <span className="text-[11px] text-[#DC2626]">Chỉ Admin →</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="sheet-action-approvals"
+                    onClick={() => setManageSheetView('approvals')}
+                    className="w-full p-3 rounded-xl bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#F59E0B]/50 text-[#92400E] flex items-center justify-between gap-2 font-bold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck size={16} className="text-[#D97706]" />
+                      <span>Duyệt yêu cầu từ Quản lý</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-[#D97706] text-white text-[11px] font-extrabold">
+                      {pendingProposals.length} chờ duyệt
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              {manageSheetView === 'menu' && isMapManagerUser && !isAdminUser && (
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="p-2.5 rounded-xl bg-[#FFFBEB] border border-[#FDE68A] text-[#92400E] text-[11px] font-medium">
+                    Tài khoản <strong>Quản lý</strong> chỉ gửi đề xuất thêm/sửa/định vị. Mọi thay đổi sẽ có hiệu lực công khai sau khi <strong>Admin duyệt</strong>.
+                  </div>
+
+                  <button
+                    type="button"
+                    data-testid="map-bar-create-btn"
+                    onClick={() => {
+                      setIsManageSheetOpen(false);
+                      openAdminCreatePlaceModal();
+                    }}
+                    className="w-full p-3 rounded-xl bg-[#ECFDF5] hover:bg-[#D1FAE5] border border-[#10B981]/40 text-[#065F46] flex items-center justify-between gap-2 font-bold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Plus size={16} className="text-[#059669]" />
+                      <span>Đề xuất thêm địa điểm</span>
+                    </span>
+                    <span className="text-[11px] font-medium text-[#047857]">Chờ Admin duyệt →</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="map-bar-edit-btn"
+                    onClick={() => {
+                      setIsManageSheetOpen(false);
+                      openAdminCoordinateModal(selectedPlace || undefined);
+                    }}
+                    className="w-full p-3 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-[#0F172A] flex items-center justify-between gap-2 font-semibold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Edit3 size={16} className="text-[#0F172A]" />
+                      <span>Đề xuất sửa thông tin</span>
+                    </span>
+                    <span className="text-[11px] text-[#64748B] truncate max-w-[140px]">
+                      {selectedPlace ? selectedPlace.name : 'Chọn địa điểm'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="sheet-action-propose-pin"
+                    onClick={() => {
+                      setIsManageSheetOpen(false);
+                      openAdminCoordinateModal(selectedPlace || undefined);
+                      setIsAdminCoordModalOpen(false);
+                      setIsPickingOnMap(true);
+                    }}
+                    className="w-full p-3 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-[#0F172A] flex items-center justify-between gap-2 font-semibold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <MapPin size={16} className="text-[#059669]" />
+                      <span>Đề xuất định vị trên Bản đồ</span>
+                    </span>
+                    <span className="text-[11px] text-[#64748B]">Chạm bản đồ →</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="sheet-action-my-proposals"
+                    onClick={() => setManageSheetView('my_proposals')}
+                    className="w-full p-3 rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] border border-[#BFDBFE] text-[#1E40AF] flex items-center justify-between gap-2 font-bold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Bell size={16} className="text-[#2563EB]" />
+                      <span>Yêu cầu của tôi</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-[#2563EB] text-white text-[11px] font-bold">
+                      {myProposals.length} yêu cầu
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              {manageSheetView === 'approvals' && isAdminUser && (
+                <div className="space-y-2.5">
+                  {pendingProposals.length === 0 ? (
+                    <div className="py-6 text-center text-[#64748B]">
+                      Hiện không có yêu cầu chờ duyệt nào từ Quản lý.
+                    </div>
+                  ) : (
+                    pendingProposals.map((prop) => {
+                      const hasCoordChange =
+                        typeof prop.afterData?.lat === 'number' &&
+                        typeof prop.afterData?.lng === 'number';
+                      return (
+                        <div
+                          key={prop.id}
+                          data-testid={`proposal-card-${prop.placeId}`}
+                          className="p-3 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] space-y-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="px-2 py-0.5 rounded bg-[#FEF3C7] text-[#92400E] font-bold text-[10px] uppercase">
+                                {prop.actionType === 'create'
+                                  ? 'Đề xuất thêm mới'
+                                  : prop.actionType === 'pin'
+                                  ? 'Đề xuất định vị'
+                                  : 'Đề xuất cập nhật'}
+                              </span>
+                              <div className="font-bold text-[13px] text-[#0F172A] mt-1">
+                                {prop.placeName}
+                              </div>
+                              <div className="text-[10.5px] text-[#64748B]">
+                                Gửi bởi: <strong>{prop.submittedByName}</strong> ({prop.submittedByEmail})
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="p-2 rounded-lg bg-white border border-[#E2E8F0] text-[11px] space-y-1">
+                            <div>
+                              <span className="text-[#64748B]">Trước: </span>
+                              <span className="font-mono text-[#475569]">
+                                {typeof prop.beforeData?.lat === 'number' && typeof prop.beforeData?.lng === 'number'
+                                  ? `${prop.beforeData.lat.toFixed(6)}, ${prop.beforeData.lng.toFixed(6)}`
+                                  : 'Chưa có tọa độ'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[#059669] font-bold">Đề xuất mới: </span>
+                              <span className="font-mono font-bold text-[#0F172A]">
+                                {hasCoordChange
+                                  ? `${Number(prop.afterData.lat).toFixed(6)}, ${Number(prop.afterData.lng).toFixed(6)}`
+                                  : prop.afterData?.name || prop.placeName}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 pt-1">
+                            {hasCoordChange && (
+                              <button
+                                type="button"
+                                data-testid={`preview-proposal-map-${prop.placeId}`}
+                                onClick={() => {
+                                  const found =
+                                    verifiedMapMarkers.find((m) => m.id === prop.placeId) ||
+                                    unverifiedCatalogPlaces.find((m) => m.id === prop.placeId) ||
+                                    null;
+                                  if (found) setSelectedPlace(found);
+                                  setIsManageSheetOpen(false);
+                                  flyToCoordinates(
+                                    Number(prop.afterData.lat),
+                                    Number(prop.afterData.lng),
+                                    17.0,
+                                    `So sánh ghim: ${prop.placeName}`
+                                  );
+                                }}
+                                className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] font-bold text-[11px] cursor-pointer"
+                              >
+                                Xem Ghim cũ & mới
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              data-testid={`approve-proposal-btn-${prop.placeId}`}
+                              onClick={() => {
+                                const res = approvePlaceProposal(prop.id);
+                                setSyncTick((t) => t + 1);
+                                showTemporaryMapNotice(res.message || 'Đã duyệt đề xuất', 2800);
+                              }}
+                              className="py-1.5 px-3 rounded-lg bg-[#059669] hover:bg-[#047857] text-white font-bold text-[11px] cursor-pointer"
+                            >
+                              Duyệt
+                            </button>
+                            <button
+                              type="button"
+                              data-testid={`reject-proposal-btn-${prop.placeId}`}
+                              onClick={() => {
+                                const res = rejectPlaceProposal(prop.id, 'Admin từ chối yêu cầu');
+                                setSyncTick((t) => t + 1);
+                                showTemporaryMapNotice(res.message || 'Đã từ chối đề xuất', 2800);
+                              }}
+                              className="py-1.5 px-3 rounded-lg bg-[#FEE2E2] hover:bg-[#FECACA] text-[#991B1B] font-bold text-[11px] cursor-pointer"
+                            >
+                              Từ chối
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {manageSheetView === 'my_proposals' && (
+                <div className="space-y-2">
+                  {myProposals.length === 0 ? (
+                    <div className="py-6 text-center text-[#64748B]">
+                      Bạn chưa gửi đề xuất thay đổi nào.
+                    </div>
+                  ) : (
+                    myProposals.map((prop) => (
+                      <div
+                        key={prop.id}
+                        className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold text-[12.5px] text-[#0F172A] truncate">
+                            {prop.placeName}
+                          </div>
+                          <div className="text-[11px] text-[#64748B]">
+                            {prop.actionType === 'create'
+                              ? 'Đề xuất thêm mới'
+                              : prop.actionType === 'pin'
+                              ? 'Đề xuất định vị'
+                              : 'Đề xuất sửa'}
+                          </div>
+                        </div>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold shrink-0 ${
+                            prop.status === 'approved'
+                              ? 'bg-[#ECFDF5] text-[#047857]'
+                              : prop.status === 'rejected'
+                              ? 'bg-[#FEF2F2] text-[#DC2626]'
+                              : 'bg-[#FEF3C7] text-[#92400E]'
+                          }`}
+                        >
+                          {prop.status === 'approved'
+                            ? 'Đã duyệt'
+                            : prop.status === 'rejected'
+                            ? 'Từ chối'
+                            : 'Chờ duyệt'}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* 3B-PICK. THANH HƯỚNG DẪN + XÁC NHẬN KHI ADMIN ĐANG CHẤM TRỰC TIẾP TỌA ĐỘ TRÊN BẢN ĐỒ 2D (Phần 17) */}
@@ -5817,7 +5907,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         )}
 
         {selectedPlace && !isPickingOnMap && !embeddedInAdmin && !isCity3DOpen && (
-          adminLandmarkMode2D && (isAdminUser || isMapManagerUser) ? (
+          adminLandmarkMode2D && isAdminUser ? (
             <div className="pointer-events-auto w-full max-w-xl">
               <LandmarkAdminControls
                 variant="floating_toolbar"
@@ -5852,6 +5942,44 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                 onOpenFullPlaceModal={(loc) => {
                   if (loc.originalPlace) {
                     setModalPlace(loc.originalPlace);
+                  } else {
+                    const taxMeta = getPlaceTaxonomyMeta(loc);
+                    setModalPlace({
+                      id: loc.id,
+                      name: loc.name,
+                      tagline: loc.metadata?.subType || taxMeta.subMeta.label,
+                      category: 'restaurant',
+                      zone: 'center',
+                      distance: loc.metadata?.distance || 'Trung tâm Xuân Hòa',
+                      address: loc.address || 'Phường Xuân Hòa, Tỉnh Phú Thọ',
+                      priceRange: taxMeta.subMeta.label,
+                      minPrice: 0,
+                      maxPrice: 0,
+                      rating: 5,
+                      reviewCount: 0,
+                      imageUrl: '',
+                      signatureDish: {
+                        id: `${loc.id}_sig`,
+                        name: taxMeta.subMeta.label,
+                        price: 0,
+                      },
+                      menu: [],
+                      tags: [taxMeta.subMeta.label, ...(loc.extraTags || [])],
+                      mapsQuery: `${loc.name} Xuân Hòa`,
+                      lat: loc.lat,
+                      lng: loc.lng,
+                      subcategory: taxMeta.subMeta.label,
+                      parentCategoryId: taxMeta.parentMeta.id,
+                      subcategoryId: taxMeta.subMeta.id,
+                      extraTags: loc.extraTags || [],
+                      contentProfile: loc.contentProfile,
+                      catalogMode: loc.catalogMode,
+                      catalogEnabled: loc.catalogEnabled ?? false,
+                      phone: loc.phone || '',
+                      openHours: loc.openHours || '',
+                      rarity: 3,
+                      quip: `${taxMeta.subMeta.label} trên Bản đồ số Xuân Hòa.`,
+                    });
                   }
                 }}
                 isAdminUser={isAdminUser || isMapManagerUser}
@@ -5865,12 +5993,11 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                   scheduleCanvasRender();
                 }}
                 isRouteActiveForThisPlace={activeRoute?.targetPlace.id === selectedPlace.id}
-                onOpenMerchantPortal={() => handleOpenMerchantPortal('merchant')}
                 isSaved={savedPlaceIds.includes(selectedPlace.id)}
                 onToggleSave={handleToggleSavePlace}
               />
 
-              {(isAdminUser || isMapManagerUser) && (
+              {isAdminUser && (
                 <LandmarkAdminControls
                   variant="card_buttons"
                   place={selectedPlace}
@@ -6036,92 +6163,39 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         </div>
       )}
 
-      {/* 5B. GIAO DIỆN ĐANG PHÁT TRIỂN & CỔNG XÁC THỰC MÃ CHỦ QUÁN — GỌN GÀNG, CHUYÊN NGHIỆP */}
+      {/* 5B. GIAO DIỆN CHẾ ĐỘ BẢO TRÌ / DÀNH CHO QUẢN LÝ & ADMIN */}
       {(!mapAccessStatus.canAccess || previewGuestLock) && (
         <div className="absolute inset-0 z-40 bg-[#F8F5EE]/70 backdrop-blur-[3px] flex items-center justify-center p-4 overflow-y-auto">
           <div className="w-full max-w-[380px] rounded-3xl bg-[#FFFDF9] border border-[#CBD5E1] shadow-[0_20px_50px_rgba(15,23,42,0.12)] p-5 sm:p-6 text-[#1E293B] my-auto space-y-4">
-            {/* Header gọn gàng */}
             <div className="space-y-2 text-center">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E6F7EF] border border-[#39B980]/40 text-[#047857] text-[11px] font-extrabold tracking-wide">
                 <Sparkles size={12} />
-                <span>BẢN ĐỒ SỐ • ĐANG PHÁT TRIỂN</span>
+                <span>BẢN ĐỒ SỐ • ĐANG ĐỒNG BỘ</span>
               </div>
 
               <h2 className="text-lg font-extrabold text-[#0F172A] tracking-tight">
-                Đang đồng bộ vị trí các quán
+                Đang đồng bộ dữ liệu Bản đồ số
               </h2>
               <p className="text-xs text-[#475569] leading-relaxed">
-                Tính năng Bản đồ số đang trong giai đoạn cập nhật dữ liệu thực tế. Nếu bạn là{' '}
-                <strong className="text-[#0F172A]">Chủ quán</strong>, vui lòng nhập mã định danh được cấp để kết nối vị trí và thông tin quán.
+                Tính năng Bản đồ số đang trong chế độ rà soát dành cho <strong className="text-[#0F172A]">Quản lý</strong> và <strong className="text-[#0F172A]">Quản trị viên (Admin)</strong>. Vui lòng đăng nhập tài khoản được phân quyền hoặc quay lại sau.
               </p>
             </div>
 
-            {/* Khung nhập mã Chủ quán */}
-            <form onSubmit={handleActivateCodeAtGate} className="space-y-3 pt-1">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <label className="font-bold text-[#334155]">
-                    Mã định danh quán
-                  </label>
-                  {authUser?.isLoggedIn && authUser?.email ? (
-                    <span className="text-[11px] text-[#047857] font-semibold truncate max-w-[160px]">
-                      {authUser.email}
-                    </span>
-                  ) : (
-                    onOpenLogin && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          triggerFeedback('tap');
-                          onOpenLogin();
-                        }}
-                        className="text-[11px] font-bold text-[#047857] hover:underline cursor-pointer"
-                      >
-                        Liên kết tài khoản
-                      </button>
-                    )
-                  )}
-                </div>
-
-                <div className="relative">
-                  <KeyRound
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nhập mã quán (VD: XH-BUNB-8899)"
-                    value={gateCodeInput}
-                    onChange={(e) => {
-                      setGateCodeInput(e.target.value.toUpperCase());
-                      if (gateError) setGateError(null);
-                    }}
-                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] font-mono text-xs sm:text-sm font-bold tracking-wider uppercase text-[#0F172A] focus:outline-none focus:border-[#39B980] focus:ring-2 focus:ring-[#39B980]/20 transition-all"
-                  />
-                </div>
+            {onOpenLogin && !authUser?.isLoggedIn && (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    onOpenLogin();
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] active:scale-[0.99] transition-all text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <LogIn size={15} />
+                  <span>Đăng nhập Quản lý / Admin</span>
+                </button>
               </div>
-
-              {gateError && (
-                <div className="p-2.5 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-xs font-medium">
-                  {gateError}
-                </div>
-              )}
-
-              {gateSuccess && (
-                <div className="p-2.5 rounded-xl bg-[#E6F7EF] border border-[#A7F3D0] text-[#047857] text-xs font-medium">
-                  {gateSuccess}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="w-full py-2.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] active:scale-[0.99] transition-all text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-              >
-                <Store size={15} />
-                <span>Xác nhận & Kết nối vị trí</span>
-              </button>
-            </form>
+            )}
 
             {/* Khám phá nhanh Sa Bàn 3D (mở tự do cho mọi người trải nghiệm) */}
             <div className="pt-1">
@@ -6645,7 +6719,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                     <input
                       type="number"
                       step="any"
-                      required
                       placeholder="21.289713"
                       value={adminLatInput}
                       onChange={(e) => setAdminLatInput(e.target.value)}
@@ -6659,7 +6732,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                     <input
                       type="number"
                       step="any"
-                      required
                       placeholder="105.711203"
                       value={adminLngInput}
                       onChange={(e) => setAdminLngInput(e.target.value)}
@@ -6792,33 +6864,19 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                   disabled={isSavingPlace}
                   className="h-[35px] px-2.5 sm:px-3.5 rounded-[9px] bg-[#059669] hover:bg-[#047857] disabled:opacity-50 text-white font-semibold text-[11px] sm:text-[11.5px] whitespace-nowrap flex items-center justify-center cursor-pointer transition"
                 >
-                  {isSavingPlace ? 'Đang lưu...' : 'Lưu cập nhật'}
+                  {isSavingPlace
+                    ? 'Đang lưu...'
+                    : !isAdminUser
+                    ? 'Gửi yêu cầu duyệt'
+                    : isAdminCreatingNew
+                    ? 'Tạo địa điểm'
+                    : 'Lưu thay đổi'}
                 </button>
               </div>
             </div>
           </form>
         </div>
       )}
-
-      {/* 8B. CỔNG CHỦ QUÁN TỰ GHIM ĐỊNH VỊ BẢN ĐỒ & TRUNG TÂM ADMIN DUYỆT THAY ĐỔI */}
-      <MerchantPortalModal
-        isOpen={isMerchantPortalOpen}
-        onClose={() => setIsMerchantPortalOpen(false)}
-        authUser={authUser}
-        onOpenLogin={onOpenLogin}
-        isAdminUser={isAdminUser}
-        initialTab={merchantPortalTab}
-        initialClaimCode={urlClaimCode}
-        pickedMapCoords={merchantPickedCoords}
-        onStartPickOnMap={(placeId: string, placeName: string) => {
-          setIsMerchantPortalOpen(false);
-          setMerchantPickingForPlace({ placeId, placeName });
-        }}
-        onFlyToCoordinates={(lat: number, lng: number, zoom?: number, label?: string) => {
-          flyToCoordinates(lat, lng, zoom || 16.6, label, 0.004);
-        }}
-        onDataChanged={() => setSyncTick((t) => t + 1)}
-      />
 
       {/* 9. TÁI SỬ DỤNG PLACE MODAL HIỆN CÓ */}
       <PlaceModal

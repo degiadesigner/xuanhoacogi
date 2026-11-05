@@ -283,8 +283,37 @@ export interface LiveBuildingInput {
   tags: Record<string, string>;
 }
 
+export interface ActiveLandmarkFootprint3D {
+  landmarkId: string;
+  placeId: string;
+  /** Tâm mô hình trong hệ tọa độ Three.js (x hướng Đông, z hướng Nam = -yWorker) */
+  modelWorldX: number;
+  modelWorldZ: number;
+  /** Góc xoay quanh trục Y (radian, chuẩn Three.js Object3D.rotation.y) */
+  rotationY: number;
+  /** Tỷ lệ scale mô hình */
+  scale: number;
+  /** Trạng thái hiển thị hiện tại của landmark */
+  visible: boolean;
+  /** Hộp bao 2D cục bộ (mét) của mô hình trước khi xoay/scale */
+  localMinX: number;
+  localMaxX: number;
+  localMinZ: number;
+  localMaxZ: number;
+  /** Khoảng mở rộng (mét) để dọn cây xanh quanh công trình/cổng chính */
+  treeMarginMeters?: number;
+}
+
 export type WorkerInMessage =
-  | { type: 'init'; baseUrl: string }
+  | {
+      type: 'init';
+      baseUrl: string;
+      landmarkFootprints?: ActiveLandmarkFootprint3D[];
+    }
+  | {
+      type: 'updateLandmarkFootprints';
+      footprints: ActiveLandmarkFootprint3D[];
+    }
   | {
       type: 'live';
       requestId: number;

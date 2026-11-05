@@ -59,7 +59,8 @@ export const MapControls: React.FC<MapControlsProps> = ({
   return (
     <div
       ref={dropdownContainerRef}
-      className="fixed right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-30 flex flex-col items-end gap-2 pointer-events-auto"
+      data-testid="map-right-controls"
+      className="absolute right-2.5 sm:right-3.5 top-28 sm:top-1/2 sm:-translate-y-1/2 z-30 flex flex-col items-end gap-2 pointer-events-auto"
     >
       {/* Popover Tùy chỉnh Lớp Bản đồ */}
       {isLayerMenuOpen && (
@@ -134,29 +135,33 @@ export const MapControls: React.FC<MapControlsProps> = ({
 
       {/* Floating Right Control Pill */}
       <div className="flex flex-col rounded-[14px] bg-white/95 backdrop-blur-md border border-[#E2E8F0] shadow-[0_4px_16px_rgba(15,23,42,0.08)] overflow-hidden">
-        {onOpenCity3D ? (
+        {onOpenCity3D && (
           <button
             type="button"
+            data-testid="map-ctrl-open-3d"
             onClick={onOpenCity3D}
             aria-label="Mở Bản đồ 3D Phường Xuân Hòa"
-            title="Chuyển sang Bản đồ 3D"
-            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-semibold text-[11px] transition-colors border-b border-[#F1F5F9] cursor-pointer bg-[#0F172A] hover:bg-[#1E293B] text-white"
+            title="Chuyển sang Sa bàn 3D"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-bold text-[11px] transition-colors border-b border-[#F1F5F9] cursor-pointer bg-[#0F172A] hover:bg-[#1E293B] text-white"
           >
             3D
           </button>
-        ) : onToggle3DMode ? (
+        )}
+
+        {onToggle3DMode && (
           <button
             type="button"
+            data-testid="map-ctrl-toggle-2d3d"
             onClick={onToggle3DMode}
             aria-label="Chuyển đổi góc nhìn 3D / 2D"
-            title="Chuyển đổi góc nhìn 3D / 2D"
-            className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-semibold text-[11px] transition-colors border-b border-[#F1F5F9] cursor-pointer ${
+            title="Chuyển đổi góc nhìn Nghiêng / Phẳng 2D"
+            className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-semibold text-[10.5px] transition-colors border-b border-[#F1F5F9] cursor-pointer ${
               is3DMode ? 'bg-[#059669] text-white' : 'text-[#0F172A] hover:bg-[#F8FAFC]'
             }`}
           >
-            {is3DMode ? '3D' : '2D'}
+            {is3DMode ? '2.5D' : '2D'}
           </button>
-        ) : null}
+        )}
 
         <button
           type="button"

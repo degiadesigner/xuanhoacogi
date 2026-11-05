@@ -1,4 +1,8 @@
-import { getPlaceStyleGroup, type Place } from '@/lib/places-xuanhoa';
+import {
+  getPlaceStyleGroup,
+  VERIFIED_CATALOG_PLACE_COORDS,
+  type Place,
+} from '@/lib/places-xuanhoa';
 import {
   getAllManagedPlaces,
   getAdminState,
@@ -16,6 +20,7 @@ import {
   logMapDebug,
   clearPlaceCoordinates,
   isAdminAuthenticated,
+  isMapManagerAuthenticated,
   type AdminPlaceItem,
 } from '@/lib/admin-store';
 import type {
@@ -27,7 +32,14 @@ import type {
   PlaceLocationStatus,
   RoadSearchResult,
 } from './map-types';
-import { resolvePlaceTaxonomy } from './map-category-registry';
+import {
+  MAP_CATEGORY_REGISTRY,
+  resolvePlaceTaxonomy,
+  resolvePlaceContentProfile,
+  type MapSubcategoryId,
+  type ContentProfileType,
+  type CatalogModeType,
+} from './map-category-registry';
 
 const OLC_ALPHABET = '23456789CFGHJMPQRVWX';
 const XUANHOA_REF_LAT = 21.285;
@@ -225,6 +237,7 @@ export function parseCoordinatesFromInputOrUrl(
     'https://maps.app.goo.gl/Kk33whBUz27JbsvG6': { lat: 21.27991, lng: 105.721664 },
     'https://maps.app.goo.gl/9FJ9U1JDij8FDgV17': { lat: 21.280625, lng: 105.726015 },
     'https://maps.app.goo.gl/KeefsfcCKvvYCuMZA': { lat: 21.27892, lng: 105.72692 },
+    'https://maps.app.goo.gl/nT1hviRgRibEPUzU9': { lat: 21.28095, lng: 105.72112 },
   };
   if (knownShort[shortCleaned]) {
     return knownShort[shortCleaned];
@@ -471,7 +484,7 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Khu Hiệu bộ A1–A3 (ĐHSP Hà Nội 2)',
     category: 'school',
     address: 'Đường Nguyễn Văn Linh, Khuôn viên ĐHSP Hà Nội 2, Phường Xuân Hòa',
-    lat: 21.281344,
+    lat: 21.281254,
     lng: 105.726226,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
@@ -507,8 +520,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Nhà Thể Chất — ĐHSP Hà Nội 2',
     category: 'public',
     address: 'Phố Võ Thị Sáu, Phường Xuân Hòa',
-    lat: 21.283098,
-    lng: 105.722496,
+    lat: 21.282883,
+    lng: 105.72216,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -543,8 +556,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'ĐH Kiến trúc Hà Nội (CS Xuân Hòa)',
     category: 'school',
     address: 'Số 34 Đường Nguyễn Văn Linh, Phường Xuân Hòa',
-    lat: 21.278760,
-    lng: 105.728520,
+    lat: 21.279656,
+    lng: 105.727547,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -630,7 +643,7 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
   },
   {
     id: 'osm_way_1079368030',
-    name: 'Trường Tiểu học Xuân Hoà',
+    name: 'Trường Tiểu học Xuân Hòa',
     category: 'school',
     address: 'Phố Kim Đồng, Phường Xuân Hòa',
     lat: 21.282057,
@@ -642,8 +655,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     insideWard: true,
     metadata: {
       osmId: 'way/1079368030',
-      subType: 'Trường Tiểu học Xuân Hoà',
-      tags: ['Tiểu học Xuân Hòa', 'Cấp 1 Xuân Hòa'],
+      subType: 'Trường Tiểu học Xuân Hòa',
+      tags: ['Tiểu học Xuân Hòa', 'Trường Tiểu học Xuân Hoà', 'Cấp 1 Xuân Hòa'],
     },
   },
   {
@@ -671,8 +684,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Đảng ủy - HĐND - UBND Phường Xuân Hòa',
     category: 'public',
     address: 'Đường Phạm Văn Đồng, Phường Xuân Hòa (Plus Code: 7PPF+PJR)',
-    lat: 21.286863,
-    lng: 105.724016,
+    lat: 21.286477,
+    lng: 105.724108,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -689,8 +702,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Công an Phường Xuân Hòa',
     category: 'public',
     address: 'Số 10 Đường Phạm Văn Đồng, Tổ dân phố 5, Phường Xuân Hòa',
-    lat: 21.286354,
-    lng: 105.723480,
+    lat: 21.289434,
+    lng: 105.711254,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -707,8 +720,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Trạm Y tế Phường Xuân Hòa',
     category: 'public',
     address: 'Đường Phạm Văn Đồng, Phường Xuân Hòa (Mã BHYT: 26049)',
-    lat: 21.286985,
-    lng: 105.724134,
+    lat: 21.287025,
+    lng: 105.722294,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -725,8 +738,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Trụ sở Hành chính KV Đồng Xuân',
     category: 'public',
     address: 'Đường Trường Chinh / Phố Phạm Hồng Thái, Khu Đồng Xuân, Phường Xuân Hòa',
-    lat: 21.278850,
-    lng: 105.731820,
+    lat: 21.278694,
+    lng: 105.729956,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -779,8 +792,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Bưu điện Xuân Hòa (VNPost)',
     category: 'public',
     address: 'Tổ 1, Đường Nguyễn Văn Linh, Phường Xuân Hòa',
-    lat: 21.278320,
-    lng: 105.728750,
+    lat: 21.278324,
+    lng: 105.72846,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -797,8 +810,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Quảng trường Con Chim Xanh',
     category: 'public',
     address: 'Đối diện Khu Hiệu bộ A1–A3 ĐHSP Hà Nội 2, Đường Nguyễn Văn Linh, Phường Xuân Hòa',
-    lat: 21.280780,
-    lng: 105.725700,
+    lat: 21.2805,
+    lng: 105.725279,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -851,8 +864,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Ngân hàng BIDV Xuân Hòa',
     category: 'service',
     address: 'Ngã tư Lê Xoay — Trường Chinh, Phường Xuân Hòa',
-    lat: 21.278556,
-    lng: 105.729410,
+    lat: 21.278161,
+    lng: 105.729123,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -869,8 +882,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Chợ Xuân Hòa (Phố Lê Xoay)',
     category: 'grocery',
     address: 'Trục thương mại Phố Lê Xoay, Phường Xuân Hòa',
-    lat: 21.279750,
-    lng: 105.730250,
+    lat: 21.278526,
+    lng: 105.731319,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -887,8 +900,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Vòng tròn 1',
     category: 'public',
     address: 'Ngã giao Nguyễn Văn Linh — Lê Xoay — Trường Chinh, Phường Xuân Hòa',
-    lat: 21.277632,
-    lng: 105.729416,
+    lat: 21.277695,
+    lng: 105.729344,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -905,8 +918,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Vòng tròn 2',
     category: 'public',
     address: 'Đường Nguyễn Văn Linh (Giao Võ Thị Sáu — ĐHSP2), Phường Xuân Hòa',
-    lat: 21.281565,
-    lng: 105.725000,
+    lat: 21.281664,
+    lng: 105.725002,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -1259,8 +1272,8 @@ export const VERIFIED_OSM_POIS: PlaceLocation[] = [
     name: 'Bến xe Phúc Yên mới',
     category: 'public',
     address: 'Trục đường Trần Phú, giáp Nam Xuân Hòa',
-    lat: 21.269451,
-    lng: 105.718765,
+    lat: 21.269906,
+    lng: 105.7178,
     coordinateSource: 'openstreetmap',
     coordinateVerified: true,
     dataSource: 'openstreetmap',
@@ -1393,7 +1406,7 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
       continue;
     }
 
-    const isExplicitlyUnpinned = ov?.coordinateVerified === false;
+    const isExplicitlyUnpinned = ov?.adminExplicitlyUnpinned === true;
 
     const hasOvCoords =
       !isExplicitlyUnpinned &&
@@ -1458,12 +1471,29 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
         ? ''
         : rawPhone;
 
+    const osmExtraTags = Array.isArray(ov?.extraTags) ? ov!.extraTags : [];
+    const osmProfileMeta = resolvePlaceContentProfile({
+      subcategoryId: taxonomy.subcategoryId,
+      parentCategoryId: taxonomy.parentCategoryId,
+      explicitProfile: ov?.contentProfile,
+      explicitCatalogMode: ov?.catalogMode,
+      explicitCatalogEnabled: ov?.catalogEnabled,
+      hasCatalogItems: Boolean(ov?.customMenu && ov.customMenu.length > 0),
+    });
+
     result.push({
       ...basePoi,
       name: finalName,
       category: taxonomy.legacyCategory || finalCategory,
       parentCategoryId: taxonomy.parentCategoryId,
       subcategoryId: taxonomy.subcategoryId,
+      extraTags: osmExtraTags,
+      contentProfile: osmProfileMeta.contentProfile,
+      catalogMode: osmProfileMeta.catalogMode,
+      catalogEnabled: osmProfileMeta.catalogEnabled,
+      website: ov?.website || basePoi.metadata?.website,
+      educationLevel: ov?.educationLevel,
+      agencyFunction: ov?.agencyFunction,
       showByDefault: taxonomy.showByDefault,
       address: ov?.address?.trim() ? ov.address.trim() : basePoi.address,
       lat: finalLat,
@@ -1489,6 +1519,13 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
         ...(ov?.tagline ? { subType: ov.tagline } : {}),
         ...(ov?.mapsUrl ? { mapsUrl: ov.mapsUrl } : {}),
         ...(ov?.mapsQuery ? { mapsQuery: ov.mapsQuery } : {}),
+        extraTags: osmExtraTags,
+        contentProfile: osmProfileMeta.contentProfile,
+        catalogMode: osmProfileMeta.catalogMode,
+        catalogEnabled: osmProfileMeta.catalogEnabled,
+        website: ov?.website || basePoi.metadata?.website,
+        educationLevel: ov?.educationLevel,
+        agencyFunction: ov?.agencyFunction,
       },
     });
   }
@@ -1500,108 +1537,12 @@ export function getManagedOsmLandmarks(includeHidden = false): PlaceLocation[] {
  * Bảng tọa độ mặt phố đã đối chiếu thực địa cho các hàng quán trong danh mục Xuân Hòa.
  * Nếu Admin chỉnh sửa hoặc dán Link Google Maps mới, tọa độ của Admin sẽ ghi đè 100% lên bảng này.
  */
-const CATALOG_STREET_MATCHED_COORDS: Record<string, { lat: number; lng: number }> = {
-  // Khu Quảng trường Con Chim Xanh & Phố Kim Ngọc
-  'lau-nuong-1968': { lat: 21.28046, lng: 105.72548 },
-  'oc-2000-xuan-hoa': { lat: 21.27812, lng: 105.72268 },
-  'thi-lan-tea': { lat: 21.28054, lng: 105.72588 },
-  'thanh-hang-gateaux': { lat: 21.27858, lng: 105.72312 },
-  'nhungs-corner': { lat: 21.27972, lng: 105.72434 },
-  'bun-anh-toan': { lat: 21.27838, lng: 105.72288 },
-  'quan-chim-lan-anh': { lat: 21.27825, lng: 105.72272 },
-  'tiem-tra-thanh-thanh': { lat: 21.27992, lng: 105.72468 },
-  'dau-oi-xuan-hoa': { lat: 21.27962, lng: 105.72422 },
-  'chao-long-chi-hong': { lat: 21.28068, lng: 105.72604 },
-
-  // Trục Đường Nguyễn Văn Linh (từ Vòng tròn 1 -> ĐHSP2 -> Vòng tròn 2 -> CĐ Cơ Điện)
-  'nha-hang-binh-nam': { lat: 21.27805, lng: 105.72895 },
-  'ruby-quan': { lat: 21.27835, lng: 105.72855 },
-  'che-xuan-mai': { lat: 21.27895, lng: 105.72775 },
-  'cuon-moc-xuan-hoa': { lat: 21.27942, lng: 105.72715 },
-  'my-cay-seoul': { lat: 21.27958, lng: 105.72695 },
-  'banh-trang-55-nguyen-van-linh': { lat: 21.27978, lng: 105.72672 },
-  'lau-cuong-duong': { lat: 21.27995, lng: 105.72652 },
-  'com-rang-nguyen-van-linh': { lat: 21.28015, lng: 105.72628 },
-  'cat-tien-xuan-hoa': { lat: 21.28035, lng: 105.72605 },
-  'com-tam-xuan-hoa': { lat: 21.28048, lng: 105.72592 },
-  'banh-xeo-co-hien': { lat: 21.28072, lng: 105.72565 },
-  'bun-bo-hue-102-nvl': { lat: 21.28102, lng: 105.72535 },
-  'banh-mi-bo-u': { lat: 21.28122, lng: 105.72512 },
-  'thuy-beo': { lat: 21.28148, lng: 105.72485 },
-  'bm-nuong-muoi-ot-ngoc-quy': { lat: 21.28192, lng: 105.72435 },
-  'xoi-com-185': { lat: 21.28208, lng: 105.72415 },
-  'banh-trang-nha-boom': { lat: 21.28245, lng: 105.72368 },
-  'tiem-tra-sua-tocotoco': { lat: 21.28262, lng: 105.72348 },
-  'tiem-nha-me-beo': { lat: 21.28345, lng: 105.72245 },
-  'zino-cafe': { lat: 21.28378, lng: 105.72202 },
-  'hung-thu-bun-tron-com-rang': { lat: 21.28405, lng: 105.72168 },
-  'quan-win-nguyen-van-linh': { lat: 21.27868, lng: 105.72812 },
-  'tiem-com-nha-le-huyen': { lat: 21.28175, lng: 105.72455 },
-  'canteen-ktx-noi-tru-sp2': { lat: 21.28335, lng: 105.72345 },
-  'tiem-me-soc': { lat: 21.28285, lng: 105.72318 },
-  'sui-cao-tieu-lau-quan': { lat: 21.28225, lng: 105.72392 },
-  'lau-nuong-ba-muoi': { lat: 21.28095, lng: 105.72585 },
-  'tho-coii': { lat: 21.28028, lng: 105.72638 },
-  'soh-tea': { lat: 21.27918, lng: 105.72745 },
-  'gamitra-xuan-hoa': { lat: 21.28062, lng: 105.72615 },
-  'xoai-corner': { lat: 21.28022, lng: 105.72642 },
-  'goky-xuan-hoa': { lat: 21.28312, lng: 105.72285 },
-  'quan-co-loan': { lat: 21.27932, lng: 105.72728 },
-  'bep-nha-cun': { lat: 21.27852, lng: 105.72832 },
-  'nem-nuong-88': { lat: 21.28078, lng: 105.72598 },
-  'hi-tea': { lat: 21.28168, lng: 105.72472 },
-  'an-vat-nha-phuong': { lat: 21.28132, lng: 105.72522 },
-  'nha-hang-khanh-huong': { lat: 21.28112, lng: 105.72555 },
-  'nem-nuong-nha-mo-chou-chou': { lat: 21.28082, lng: 105.72785 },
-
-  // Trục Phố Võ Thị Sáu & Khu KTX Sư phạm 2
-  'quan-ba-thu-xuan-hoa': { lat: 21.28465, lng: 105.72415 },
-  'tao-pho-chi-beo': { lat: 21.28245, lng: 105.72452 },
-  'mr-tea-xuan-hoa': { lat: 21.28285, lng: 105.72432 },
-  'tra-chanh-zian': { lat: 21.28152, lng: 105.72518 },
-
-  // Trục Đường Lê Quang Đạo & Khu Đô Thị Mới Xuân Hòa
-  'vanh-dai-quan': { lat: 21.28025, lng: 105.72082 },
-  'trau-phi-xuyen': { lat: 21.28265, lng: 105.71967 },
-  'lon-ga-xuyen-phi': { lat: 21.27774, lng: 105.72211 },
-  'nha-hang-468': { lat: 21.27815, lng: 105.72195 },
-  'bun-cha-xuan-hoa': { lat: 21.27865, lng: 105.72165 },
-  'beef88-xuan-hoa': { lat: 21.28079, lng: 105.72055 },
-  'zun-food-tea': { lat: 21.28048, lng: 105.72072 },
-  'my-ga-tan-linh-duong': { lat: 21.27925, lng: 105.72135 },
-  'cocokana-tra-trai-cay': { lat: 21.27965, lng: 105.72115 },
-  'quan-bap-1991': { lat: 21.28334, lng: 105.71978 },
-  'trang-hai-san': { lat: 21.28618, lng: 105.72325 },
-  'tram-du-de': { lat: 21.28115, lng: 105.72145 },
-  'le-la-cafe': { lat: 21.28145, lng: 105.72185 },
-
-  // Trục Vòng Tròn 1, Phố Lê Xoay, Phố Đồng Tâm, Phố Kim Đồng & Đường Trường Chinh
-  'tiem-banh-a-salty-name': { lat: 21.27788, lng: 105.72915 },
-  'quan-oc-ngon': { lat: 21.27915, lng: 105.73005 },
-  'nhat-ha': { lat: 21.27773, lng: 105.72826 },
-  'bep-thanh': { lat: 21.27715, lng: 105.72738 },
-  'bep-nha-bong': { lat: 21.28166, lng: 105.72895 },
-  'bia-sai-gon-tuan-hien': { lat: 21.27845, lng: 105.73245 },
-  'san-bia-247': { lat: 21.27858, lng: 105.73125 },
-  'trau-gio-dong': { lat: 21.27795, lng: 105.72995 },
-  'bun-rieu-ba-mai': { lat: 21.27822, lng: 105.73065 },
-  'banh-cuon-ngoc-anh': { lat: 21.27838, lng: 105.73165 },
-  'tiem-lan-phuong': { lat: 21.27868, lng: 105.73285 },
-  'tra-chanh-bao-chau': { lat: 21.27878, lng: 105.73215 },
-
-  // Tuyến mở rộng (Lê Duẩn, Trần Phú, Điện Biên...)
-  'lau-ngua-tay-bac': { lat: 21.30485, lng: 105.72865 },
-  'cafe-1975-xuan-hoa': { lat: 21.27585, lng: 105.72545 },
-  'pho-bo-xuan-hoa': { lat: 21.27625, lng: 105.72585 },
-  'xuho-bistro': { lat: 21.27945, lng: 105.72865 },
-  'vu-quynh-chi': { lat: 21.28525, lng: 105.71985 },
-  'matcha-house-xuan-hoa': { lat: 21.28058, lng: 105.72665 },
-  'quan-dua-kha-do': { lat: 21.27385, lng: 105.72615 },
-  'xien-nuong-trung-hoa': { lat: 21.27892, lng: 105.72692 },
-  'lau-nuong-phong-viet': { lat: 21.27465, lng: 105.72485 },
-  'lau-thai-ha-tinh': { lat: 21.27515, lng: 105.72515 },
-  'umee-tea-food': { lat: 21.28184, lng: 105.73415 },
-};
+/**
+ * Bảng tọa độ mặt phố chuẩn đã được Admin xác minh thực địa (Single Source of Truth từ VERIFIED_CATALOG_PLACE_COORDS).
+ * Các quán chưa được Admin ghim xác minh sẽ không có trong bảng này để tránh hiển thị vị trí ước lượng sai trên bản đồ.
+ */
+const CATALOG_STREET_MATCHED_COORDS: Record<string, { lat: number; lng: number }> =
+  VERIFIED_CATALOG_PLACE_COORDS;
 
 /**
  * Chuyển đổi toàn bộ địa điểm trong `places-xuanhoa.ts` + `admin-store.ts`
@@ -1641,29 +1582,52 @@ export function getCatalogPlaceLocations(includeHidden = false): PlaceLocation[]
       item.sectorTag === 'dia-danh';
 
     // NGUYÊN TẮC TUYỆT ĐỐI (Phần C & L):
-    // Nếu quán có lat/lng hợp lệ và đã được duyệt/ghim (kể cả khi mapsUrl bị lỗi),
-    // quán VẪN LÀ 'located' và VẪN HIỂN THỊ GHIM trên cả 2D và 3D!
-    const isApprovedAndPinned =
-      isValidCoordinatePair(override?.lat, override?.lng) &&
-      override?.coordinateVerified !== false &&
-      !override?.pendingMapApproval &&
-      !override?.pendingWebApproval &&
-      (isCivicOrSchool ||
-        override?.adminPinApproved === true ||
-        override?.coordinateVerified === true ||
-        override?.locationStatus === 'located');
+    // 1. Ưu tiên tọa độ Admin đã chỉnh sửa trong override (nếu hợp lệ).
+    // 2. Dự phòng tọa độ chuẩn đã xác minh thực địa trong VERIFIED_CATALOG_PLACE_COORDS / CATALOG_STREET_MATCHED_COORDS / place.lat,lng
+    //    (trừ khi Admin chủ động bấm Gỡ vị trí: adminExplicitlyUnpinned === true).
+    const isExplicitlyUnpinned = override?.adminExplicitlyUnpinned === true;
+    const fallbackCoord =
+      VERIFIED_CATALOG_PLACE_COORDS[place.id] ||
+      CATALOG_STREET_MATCHED_COORDS[place.id] ||
+      (isValidCoordinatePair(place.lat, place.lng)
+        ? { lat: Number(place.lat), lng: Number(place.lng) }
+        : null);
 
-    const finalLat = isApprovedAndPinned ? Number(override!.lat) : null;
-    const finalLng = isApprovedAndPinned ? Number(override!.lng) : null;
+    const hasOvValidCoords =
+      !isExplicitlyUnpinned && isValidCoordinatePair(override?.lat, override?.lng);
+    const resolvedLatCandidate = hasOvValidCoords
+      ? Number(override!.lat)
+      : !isExplicitlyUnpinned && fallbackCoord
+      ? fallbackCoord.lat
+      : null;
+    const resolvedLngCandidate = hasOvValidCoords
+      ? Number(override!.lng)
+      : !isExplicitlyUnpinned && fallbackCoord
+      ? fallbackCoord.lng
+      : null;
+
+    const isApprovedAndPinned =
+      resolvedLatCandidate !== null &&
+      resolvedLngCandidate !== null &&
+      !isExplicitlyUnpinned &&
+      !override?.pendingMapApproval?.isNewPlace &&
+      !override?.pendingWebApproval?.isNewPlace;
+
+    const finalLat = isApprovedAndPinned ? resolvedLatCandidate : null;
+    const finalLng = isApprovedAndPinned ? resolvedLngCandidate : null;
 
     const hasValidLatLng = finalLat !== null && finalLng !== null;
     const isVerified = Boolean(hasValidLatLng && isApprovedAndPinned);
     const locationStatus: PlaceLocationStatus = isVerified
       ? 'located'
       : computePlaceLocationStatus(override, isCivicOrSchool);
-    const mapsLinkStatus: MapsLinkStatus = computeMapsLinkStatus(override, place.mapsUrl);
+    const mapsLinkStatus: MapsLinkStatus = computeMapsLinkStatus(
+      hasValidLatLng
+        ? { ...override, lat: finalLat, lng: finalLng, coordinateSource: override?.coordinateSource || 'admin_verified' }
+        : override,
+      place.mapsUrl
+    );
     const visibilityStatus = computePlaceVisibilityStatus(override, item.status);
-    const pendingSub = adminState.merchantSubmissions?.[`sub_${place.id}`];
     const dishNames = (place.menu || []).map((m) => m.name);
     const taxonomy = resolvePlaceTaxonomy({
       id: place.id,
@@ -1685,6 +1649,13 @@ export function getCatalogPlaceLocations(includeHidden = false): PlaceLocation[]
       category: taxonomy.legacyCategory || resolvedCategory,
       parentCategoryId: taxonomy.parentCategoryId,
       subcategoryId: taxonomy.subcategoryId,
+      extraTags: item.extraTags || place.extraTags || [],
+      contentProfile: item.contentProfile || place.contentProfile,
+      catalogMode: item.catalogMode || place.catalogMode,
+      catalogEnabled: item.catalogEnabled ?? place.catalogEnabled,
+      website: item.website || place.website,
+      educationLevel: item.educationLevel || place.educationLevel,
+      agencyFunction: item.agencyFunction || place.agencyFunction,
       showByDefault: taxonomy.showByDefault,
       address: place.address || 'Phường Xuân Hòa, Tỉnh Phú Thọ',
       lat: finalLat,
@@ -1716,14 +1687,21 @@ export function getCatalogPlaceLocations(includeHidden = false): PlaceLocation[]
         signatureDishName: place.signatureDish?.name,
         signatureDishPrice: place.signatureDish?.price,
         tags: [...(place.tags || []), ...dishNames],
+        extraTags: item.extraTags || place.extraTags || [],
+        contentProfile: item.contentProfile || place.contentProfile,
+        catalogMode: item.catalogMode || place.catalogMode,
+        catalogEnabled: item.catalogEnabled ?? place.catalogEnabled,
+        website: item.website || place.website,
+        educationLevel: item.educationLevel || place.educationLevel,
+        agencyFunction: item.agencyFunction || place.agencyFunction,
         quip: place.quip,
         mapsQuery: place.mapsQuery,
         mapsUrl: place.mapsUrl,
-        claimedByEmail: override?.claimedByEmail,
-        claimedByName: override?.claimedByName,
         liveStatus: override?.liveStatus,
         liveStatusNote: override?.liveStatusNote,
-        hasPendingSubmission: pendingSub?.status === 'pending',
+        parentCategoryId: taxonomy.parentCategoryId,
+        subcategoryId: taxonomy.subcategoryId,
+        showByDefault: taxonomy.showByDefault,
       },
     };
   });
@@ -2285,7 +2263,7 @@ export function getAllAdminPlaceAndLandmarkItems(): AdminPlaceItem[] {
     const hasPendingApproval = Boolean(ov?.pendingMapApproval || ov?.pendingWebApproval);
     if (status === 'deleted' && !hasPendingApproval) continue;
 
-    const isExplicitlyUnpinned = ov?.coordinateVerified === false;
+    const isExplicitlyUnpinned = ov?.adminExplicitlyUnpinned === true;
 
     const hasOvCoords =
       !isExplicitlyUnpinned &&
@@ -2366,13 +2344,67 @@ export function getAllAdminPlaceAndLandmarkItems(): AdminPlaceItem[] {
       ov?.mapCategory && ov.mapCategory !== 'all' && ov.mapCategory !== 'game_asset'
         ? ov.mapCategory
         : basePoi.category;
-    const normCat = normalizeSearchVn(resolvedLandmarkCat);
+    const landmarkTaxonomy = resolvePlaceTaxonomy({
+      id: basePoi.id,
+      name: finalName,
+      subType: finalTagline,
+      tags: syntheticPlace.tags,
+      sectorTag: ov?.sectorTag || 'dia-danh',
+      mapCategory: resolvedLandmarkCat,
+      category: resolvedLandmarkCat,
+      explicitParentId: ov?.parentCategoryId,
+      explicitSubcategoryId: ov?.subcategoryId || ov?.categoryId,
+      explicitShowByDefault: ov?.showByDefault ?? ov?.defaultMapVisible,
+      dataSource: 'openstreetmap',
+    });
+    const landmarkSubMeta =
+      MAP_CATEGORY_REGISTRY[landmarkTaxonomy.subcategoryId] || MAP_CATEGORY_REGISTRY.uncategorized;
+    const landmarkExtraTags = Array.isArray(ov?.extraTags) ? ov!.extraTags : [];
+    const landmarkProfile = resolvePlaceContentProfile({
+      subcategoryId: landmarkTaxonomy.subcategoryId,
+      parentCategoryId: landmarkTaxonomy.parentCategoryId,
+      explicitProfile: ov?.contentProfile,
+      explicitCatalogMode: ov?.catalogMode,
+      explicitCatalogEnabled: ov?.catalogEnabled,
+      hasCatalogItems: Boolean(ov?.customMenu && ov.customMenu.length > 0),
+    });
+    syntheticPlace.parentCategoryId = landmarkTaxonomy.parentCategoryId;
+    syntheticPlace.subcategoryId = landmarkTaxonomy.subcategoryId;
+    syntheticPlace.subcategory = landmarkSubMeta.label;
+    syntheticPlace.extraTags = landmarkExtraTags;
+    syntheticPlace.contentProfile = landmarkProfile.contentProfile;
+    syntheticPlace.catalogMode = landmarkProfile.catalogMode;
+    syntheticPlace.catalogEnabled = landmarkProfile.catalogEnabled;
+    syntheticPlace.website = ov?.website || basePoi.metadata?.website;
+    syntheticPlace.educationLevel = ov?.educationLevel;
+    syntheticPlace.agencyFunction = ov?.agencyFunction;
+    if (landmarkVerified && finalLat !== null && finalLng !== null) {
+      syntheticPlace.lat = finalLat;
+      syntheticPlace.lng = finalLng;
+    }
+    const normCat = normalizeSearchVn(`${landmarkSubMeta.label} ${landmarkExtraTags.join(' ')} ${resolvedLandmarkCat}`);
 
     landmarkItems.push({
       place: syntheticPlace,
       status,
       sectorTag: ov?.sectorTag || 'dia-danh',
-      mapCategory: resolvedLandmarkCat,
+      mapCategory: landmarkTaxonomy.legacyCategory || resolvedLandmarkCat,
+      parentCategoryId: landmarkTaxonomy.parentCategoryId,
+      subcategoryId: landmarkTaxonomy.subcategoryId,
+      categoryId: landmarkTaxonomy.subcategoryId,
+      extraTags: landmarkExtraTags,
+      contentProfile: landmarkProfile.contentProfile,
+      catalogMode: landmarkProfile.catalogMode,
+      catalogEnabled: landmarkProfile.catalogEnabled,
+      website: syntheticPlace.website,
+      educationLevel: syntheticPlace.educationLevel,
+      agencyFunction: syntheticPlace.agencyFunction,
+      showByDefault: landmarkTaxonomy.showByDefault,
+      defaultMapVisible: landmarkTaxonomy.showByDefault,
+      openingHours: finalHours,
+      lat: landmarkVerified && finalLat !== null && finalLng !== null ? finalLat : null,
+      lng: landmarkVerified && finalLat !== null && finalLng !== null ? finalLng : null,
+      createdAt: ov?.createdAt || ov?.updatedAt,
       locationStatus: landmarkVerified && finalLat !== null && finalLng !== null ? 'located' : 'unlocated',
       mapsLinkStatus: computeMapsLinkStatus(ov, syntheticPlace.mapsUrl),
       visibilityStatus: computePlaceVisibilityStatus(ov, status),
@@ -2392,41 +2424,67 @@ export function getAllAdminPlaceAndLandmarkItems(): AdminPlaceItem[] {
   }
 
   const osmIds = new Set(VERIFIED_OSM_POIS.map((p) => p.id));
+  const resolveItemCoords = (
+    item: AdminPlaceItem
+  ): { lat: number; lng: number } | null => {
+    const ov = adminState.places?.[item.place.id];
+    if (ov?.adminExplicitlyUnpinned === true) return null;
+    if (isValidCoordinatePair(ov?.lat, ov?.lng)) {
+      return { lat: Number(ov!.lat), lng: Number(ov!.lng) };
+    }
+    if (isValidCoordinatePair(item.lat, item.lng)) {
+      return { lat: Number(item.lat), lng: Number(item.lng) };
+    }
+    const catCoord =
+      VERIFIED_CATALOG_PLACE_COORDS[item.place.id] ||
+      CATALOG_STREET_MATCHED_COORDS[item.place.id];
+    if (catCoord && isValidCoordinatePair(catCoord.lat, catCoord.lng)) {
+      return catCoord;
+    }
+    if (isValidCoordinatePair(item.place.lat, item.place.lng)) {
+      return { lat: Number(item.place.lat), lng: Number(item.place.lng) };
+    }
+    return null;
+  };
+
   const isItemPinned = (item: AdminPlaceItem): boolean => {
     const ov = adminState.places?.[item.place.id];
-    if (ov?.coordinateVerified === false) return false;
+    if (ov?.adminExplicitlyUnpinned === true) return false;
     if (osmIds.has(item.place.id)) return true;
-    const isCivic =
-      item.sectorTag === 'dia-danh' ||
-      ov?.sectorTag === 'dia-danh' ||
-      ov?.mapCategory === 'public' ||
-      ov?.mapCategory === 'school' ||
-      ov?.mapCategory === 'medical';
-    return Boolean(
-      isValidCoordinatePair(ov?.lat, ov?.lng) &&
-        !ov?.pendingMapApproval &&
-        (isCivic ||
-          ov?.adminPinApproved === true ||
-          ov?.coordinateVerified === true ||
-          ov?.locationStatus === 'located')
-    );
+    const coords = resolveItemCoords(item);
+    return Boolean(coords && !ov?.pendingMapApproval);
   };
 
   const enrichedBase = baseManaged.map((item) => {
     const ov = adminState.places?.[item.place.id];
-    const resolvedMapCat = resolvePlaceMapCategory(
-      item.place,
-      ov?.sectorTag || item.sectorTag,
-      ov?.mapCategory || item.mapCategory
-    );
-    const pinned = isItemPinned(item);
+    const resolvedMapCat =
+      item.subcategoryId && item.subcategoryId in MAP_CATEGORY_REGISTRY
+        ? MAP_CATEGORY_REGISTRY[item.subcategoryId as MapSubcategoryId].legacyCategory
+        : resolvePlaceMapCategory(
+            item.place,
+            ov?.sectorTag || item.sectorTag,
+            ov?.mapCategory || item.mapCategory
+          );
+    const coords = resolveItemCoords(item);
+    const pinned = isItemPinned(item) && coords !== null;
     const locStatus: PlaceLocationStatus = pinned
       ? 'located'
       : computePlaceLocationStatus(ov, item.sectorTag === 'dia-danh');
-    const linkStatus: MapsLinkStatus = computeMapsLinkStatus(ov, item.place.mapsUrl);
+    const linkStatus: MapsLinkStatus = computeMapsLinkStatus(
+      pinned && coords
+        ? { ...ov, lat: coords.lat, lng: coords.lng, coordinateSource: ov?.coordinateSource || 'admin_verified' }
+        : ov,
+      item.place.mapsUrl
+    );
     const visStatus = computePlaceVisibilityStatus(ov, item.status);
     return {
       ...item,
+      lat: pinned && coords ? coords.lat : item.lat,
+      lng: pinned && coords ? coords.lng : item.lng,
+      place:
+        pinned && coords
+          ? { ...item.place, lat: coords.lat, lng: coords.lng }
+          : item.place,
       mapCategory: resolvedMapCat,
       locationStatus: locStatus,
       mapsLinkStatus: linkStatus,
@@ -2454,6 +2512,14 @@ export function getCommercialAdminPlaceItems(): AdminPlaceItem[] {
   const osmIds = new Set(VERIFIED_OSM_POIS.map((p) => p.id));
   return getAllManagedPlaces().filter((item) => {
     if (osmIds.has(item.place.id)) return false;
+    if (
+      item.parentCategoryId === 'public' ||
+      item.parentCategoryId === 'education' ||
+      item.parentCategoryId === 'health' ||
+      item.parentCategoryId === 'landmark'
+    ) {
+      return false;
+    }
     if (item.sectorTag === 'dia-danh') return false;
     const ov = adminState.places?.[item.place.id];
     if (
@@ -2477,24 +2543,63 @@ export function saveLandmarkOrPlaceFromMap(payload: {
   category: Exclude<MapCategoryKey, 'all' | 'game_asset'>;
   parentCategoryId?: string;
   subcategoryId?: string;
+  categoryId?: string;
+  extraTags?: string[];
+  contentProfile?: ContentProfileType;
+  catalogMode?: CatalogModeType;
+  catalogEnabled?: boolean;
+  website?: string;
+  educationLevel?: string;
+  agencyFunction?: string;
   showByDefault?: boolean;
+  defaultMapVisible?: boolean;
   address: string;
   phone?: string;
   openHours?: string;
+  openingHours?: string;
   tagline?: string;
-  lat: number;
-  lng: number;
+  lat?: number | null;
+  lng?: number | null;
   mapsUrl?: string;
-}): { id: string; lat: number; lng: number } {
+}): { id: string; lat: number | null; lng: number | null } {
   const cleanName = payload.name.trim();
   if (!cleanName) {
     throw new Error('Vui lòng nhập tên địa danh hoặc tên quán.');
   }
-  const lat = Number(Number(payload.lat).toFixed(6));
-  const lng = Number(Number(payload.lng).toFixed(6));
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 20 || lat > 23 || lng < 104 || lng > 107) {
-    throw new Error('Tọa độ định vị chưa hợp lệ (cần nằm trong khu vực Xuân Hòa / miền Bắc).');
+  const rawLat =
+    payload.lat !== undefined && payload.lat !== null && String(payload.lat).trim() !== ''
+      ? Number(payload.lat)
+      : null;
+  const rawLng =
+    payload.lng !== undefined && payload.lng !== null && String(payload.lng).trim() !== ''
+      ? Number(payload.lng)
+      : null;
+  const hasCoordInput = rawLat !== null || rawLng !== null;
+  let lat: number | null = null;
+  let lng: number | null = null;
+  if (hasCoordInput) {
+    if (
+      rawLat === null ||
+      rawLng === null ||
+      !Number.isFinite(rawLat) ||
+      !Number.isFinite(rawLng) ||
+      rawLat < 8 ||
+      rawLat > 24 ||
+      rawLng < 102 ||
+      rawLng > 110.5
+    ) {
+      throw new Error('Tọa độ định vị chưa hợp lệ (cần nằm trong khu vực Xuân Hòa / miền Bắc).');
+    }
+    lat = Number(rawLat.toFixed(6));
+    lng = Number(rawLng.toFixed(6));
   }
+
+  const effSubId = payload.subcategoryId || payload.categoryId;
+  const effShowDefault =
+    typeof payload.showByDefault === 'boolean'
+      ? payload.showByDefault
+      : payload.defaultMapVisible;
+  const effHours = (payload.openHours ?? payload.openingHours ?? '').trim();
 
   const taxonomy = resolvePlaceTaxonomy({
     id: payload.id,
@@ -2502,8 +2607,8 @@ export function saveLandmarkOrPlaceFromMap(payload: {
     subType: payload.tagline,
     category: payload.category,
     explicitParentId: payload.parentCategoryId,
-    explicitSubcategoryId: payload.subcategoryId,
-    explicitShowByDefault: payload.showByDefault,
+    explicitSubcategoryId: effSubId,
+    explicitShowByDefault: effShowDefault,
   });
 
   const effectiveLegacyCategory = taxonomy.legacyCategory || payload.category;
@@ -2511,7 +2616,10 @@ export function saveLandmarkOrPlaceFromMap(payload: {
     effectiveLegacyCategory === 'public' ||
     effectiveLegacyCategory === 'school' ||
     String(effectiveLegacyCategory) === 'medical' ||
-    taxonomy.showByDefault;
+    taxonomy.parentCategoryId === 'public' ||
+    taxonomy.parentCategoryId === 'education' ||
+    taxonomy.parentCategoryId === 'health' ||
+    taxonomy.parentCategoryId === 'landmark';
 
   if (payload.id) {
     const adminState = getAdminState();
@@ -2525,34 +2633,55 @@ export function saveLandmarkOrPlaceFromMap(payload: {
         name: cleanName,
         address: payload.address.trim() || 'Phường Xuân Hòa',
         phone: (payload.phone || '').trim(),
-        openHours: (payload.openHours || '').trim(),
+        openHours: effHours,
+        openingHours: effHours,
         ...(payload.tagline !== undefined ? { tagline: payload.tagline.trim() } : {}),
         ...(payload.mapsUrl !== undefined ? { mapsUrl: payload.mapsUrl.trim() } : {}),
+        ...(payload.extraTags !== undefined ? { extraTags: payload.extraTags } : {}),
+        ...(payload.contentProfile !== undefined ? { contentProfile: payload.contentProfile } : {}),
+        ...(payload.catalogMode !== undefined ? { catalogMode: payload.catalogMode } : {}),
+        ...(payload.catalogEnabled !== undefined ? { catalogEnabled: payload.catalogEnabled } : {}),
+        ...(payload.website !== undefined ? { website: payload.website.trim() } : {}),
+        ...(payload.educationLevel !== undefined ? { educationLevel: payload.educationLevel.trim() } : {}),
+        ...(payload.agencyFunction !== undefined ? { agencyFunction: payload.agencyFunction.trim() } : {}),
         mapCategory: effectiveLegacyCategory,
         parentCategoryId: taxonomy.parentCategoryId,
         subcategoryId: taxonomy.subcategoryId,
+        categoryId: taxonomy.subcategoryId,
         showByDefault: taxonomy.showByDefault,
+        defaultMapVisible: taxonomy.showByDefault,
         ...(isCivicCat || (isOsmSeed && !existingOv?.sectorTag)
           ? {
               sectorTag: 'dia-danh',
               minPrice: 0,
               maxPrice: 0,
-              customMenu: [],
             }
           : {}),
-        lat,
-        lng,
-        coordinateVerified: true,
-        adminPinApproved: true,
-        locationStatus: 'located',
-        coordinateSource: 'admin_verified',
-        lastVerifiedAt: new Date().toISOString().slice(0, 10),
+        ...(lat !== null && lng !== null
+          ? {
+              lat,
+              lng,
+              coordinateVerified: true,
+              adminPinApproved: true,
+              confirmCoordinateOverride: true,
+              locationStatus: 'located',
+              coordinateSource: 'admin_verified',
+              lastVerifiedAt: new Date().toISOString().slice(0, 10),
+            }
+          : {}),
         pendingMapApproval: null,
         pendingWebApproval: null,
       },
-      `Cập nhật địa điểm & định vị "${cleanName}" (${lat}, ${lng})`
+      lat !== null && lng !== null
+        ? `Cập nhật địa điểm & định vị "${cleanName}" (${lat}, ${lng})`
+        : `Cập nhật thông tin địa điểm "${cleanName}"`
     );
-    return { id: payload.id, lat, lng };
+    const updatedOv = getAdminState().places?.[payload.id];
+    return {
+      id: payload.id,
+      lat: lat ?? (typeof updatedOv?.lat === 'number' ? updatedOv.lat : null),
+      lng: lng ?? (typeof updatedOv?.lng === 'number' ? updatedOv.lng : null),
+    };
   }
 
   // Tạo địa danh / quán mới trong 1 giao dịch nguyên tử (atomic write), đồng nhất 1 place.id trên toàn hệ thống
@@ -2561,27 +2690,52 @@ export function saveLandmarkOrPlaceFromMap(payload: {
     mapCategory: effectiveLegacyCategory,
     parentCategoryId: taxonomy.parentCategoryId,
     subcategoryId: taxonomy.subcategoryId,
+    categoryId: taxonomy.subcategoryId,
     showByDefault: taxonomy.showByDefault,
+    defaultMapVisible: taxonomy.showByDefault,
     address: payload.address.trim() || 'Phường Xuân Hòa',
     phone: (payload.phone || '').trim(),
-    openHours: (payload.openHours || '').trim() || (isCivicCat ? '07:30 - 17:30' : '07:00 - 22:00'),
+    openHours: effHours || (isCivicCat ? '07:30 - 17:30' : '07:00 - 22:00'),
+    openingHours: effHours || (isCivicCat ? '07:30 - 17:30' : '07:00 - 22:00'),
     tagline: payload.tagline?.trim(),
     lat,
     lng,
     mapsUrl: payload.mapsUrl?.trim(),
   });
+  if (
+    payload.extraTags ||
+    payload.contentProfile ||
+    payload.catalogMode ||
+    payload.catalogEnabled !== undefined ||
+    payload.website ||
+    payload.educationLevel ||
+    payload.agencyFunction
+  ) {
+    savePlaceAdminOverride(created.place.id, {
+      ...(payload.extraTags ? { extraTags: payload.extraTags } : {}),
+      ...(payload.contentProfile ? { contentProfile: payload.contentProfile } : {}),
+      ...(payload.catalogMode ? { catalogMode: payload.catalogMode } : {}),
+      ...(payload.catalogEnabled !== undefined ? { catalogEnabled: payload.catalogEnabled } : {}),
+      ...(payload.website ? { website: payload.website.trim() } : {}),
+      ...(payload.educationLevel ? { educationLevel: payload.educationLevel.trim() } : {}),
+      ...(payload.agencyFunction ? { agencyFunction: payload.agencyFunction.trim() } : {}),
+    });
+  }
   return { id: created.place.id, lat, lng };
 }
 
-function assertStrictAdminRole(actionDesc: string): void {
+function assertStrictAdminRole(actionDesc: string, allowMapManager = false): void {
   const roleInfo = getEffectiveAdminRoleInfo();
+  if (allowMapManager && (roleInfo.canManageMaps || isMapManagerAuthenticated())) {
+    return;
+  }
   if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
-    throw new Error(`Chỉ Admin mới có quyền ${actionDesc}. Quản lý chỉ được thêm mới và sửa thông tin.`);
+    throw new Error(`Chỉ Admin mới có quyền ${actionDesc}.`);
   }
 }
 
 export function blockLandmarkOrPlaceFromMap(placeId: string, placeName?: string): void {
-  assertStrictAdminRole('Block (tạm khóa) địa điểm');
+  assertStrictAdminRole('Block (tạm khóa) địa điểm', true);
   savePlaceAdminOverride(
     placeId,
     { status: 'locked', visibilityStatus: 'blocked' },
@@ -2590,7 +2744,7 @@ export function blockLandmarkOrPlaceFromMap(placeId: string, placeName?: string)
 }
 
 export function unblockLandmarkOrPlaceFromMap(placeId: string, placeName?: string): void {
-  assertStrictAdminRole('Mở khóa (Unblock) địa điểm');
+  assertStrictAdminRole('Mở khóa (Unblock) địa điểm', true);
   savePlaceAdminOverride(
     placeId,
     { status: 'active', visibilityStatus: 'visible' },
@@ -2599,7 +2753,7 @@ export function unblockLandmarkOrPlaceFromMap(placeId: string, placeName?: strin
 }
 
 export function unpinLandmarkOrPlaceFromMap(placeId: string, placeName?: string): void {
-  assertStrictAdminRole('Gỡ vị trí địa điểm khỏi bản đồ');
+  assertStrictAdminRole('Gỡ vị trí địa điểm khỏi bản đồ', true);
   clearPlaceCoordinates(placeId, placeName);
 }
 
@@ -2770,6 +2924,123 @@ export function auditCivicAndPlacePhoneNumbers(): CivicPhoneAuditReport {
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__XUANHOA_PHONE_AUDIT__ =
     auditCivicAndPlacePhoneNumbers;
+}
+
+/**
+ * KIỂM TOÁN CHẤT LƯỢNG TỌA ĐỘ TOÀN HỆ THỐNG (PHẦN 6 MASTER PROMPT)
+ * Phân biệt rõ:
+ * - 'located': Đã định vị hợp lệ trong khu vực phục vụ Xuân Hòa / lân cận
+ * - 'unlocated': Chưa định vị (không có lat/lng)
+ * - 'suspicious': Tọa độ nghi vấn (bị đảo lat/lng, hoặc trùng khít tọa độ 5 chữ số thập phân với địa điểm không liên quan)
+ * - 'outside_service_area': Nằm ngoài vùng phục vụ Xuân Hòa / Phú Thọ / Vĩnh Phúc mở rộng
+ */
+export function evaluatePlaceCoordinateQuality(
+  lat?: number | null,
+  lng?: number | null
+): 'located' | 'unlocated' | 'suspicious' | 'outside_service_area' {
+  if (lat === null || lat === undefined || lng === null || lng === undefined) {
+    return 'unlocated';
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) {
+    return 'unlocated';
+  }
+  // Kiểm tra đảo ngược lat/lng (VD: lat ~ 105.7, lng ~ 21.28)
+  if ((lat >= 100 && lng <= 30) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return 'suspicious';
+  }
+  // Kiểm tra ngoài khu vực phục vụ Xuân Hòa / Phúc Yên / Đại Lải mở rộng (21.20..21.45, 105.62..105.82)
+  if (lat < 21.2 || lat > 21.45 || lng < 105.62 || lng > 105.82) {
+    return 'outside_service_area';
+  }
+  return 'located';
+}
+
+export function auditAllPlaceCoordinatesQuality() {
+  const allItems = getAllAdminPlaceAndLandmarkItems();
+  const coordBuckets = new Map<string, AdminPlaceItem[]>();
+  let locatedCount = 0;
+  let unlocatedCount = 0;
+  let outsideAreaCount = 0;
+  const suspiciousPlaces: Array<{
+    id: string;
+    name: string;
+    lat: number | null;
+    lng: number | null;
+    reason: 'swapped_or_invalid' | 'outside_service_area' | 'duplicate_coordinates';
+    details: string;
+  }> = [];
+
+  for (const item of allItems) {
+    const q = evaluatePlaceCoordinateQuality(item.lat, item.lng);
+    if (q === 'unlocated') {
+      unlocatedCount++;
+      continue;
+    }
+    if (q === 'suspicious') {
+      suspiciousPlaces.push({
+        id: item.place.id,
+        name: item.place.name,
+        lat: item.lat ?? null,
+        lng: item.lng ?? null,
+        reason: 'swapped_or_invalid',
+        details: `Tọa độ (${item.lat}, ${item.lng}) có dấu hiệu đảo lat/lng hoặc sai định dạng.`,
+      });
+      continue;
+    }
+    if (q === 'outside_service_area') {
+      outsideAreaCount++;
+      suspiciousPlaces.push({
+        id: item.place.id,
+        name: item.place.name,
+        lat: item.lat ?? null,
+        lng: item.lng ?? null,
+        reason: 'outside_service_area',
+        details: `Tọa độ (${item.lat}, ${item.lng}) nằm ngoài khu vực phục vụ Xuân Hòa.`,
+      });
+      continue;
+    }
+    locatedCount++;
+    const key = `${Number(item.lat).toFixed(5)},${Number(item.lng).toFixed(5)}`;
+    const bucket = coordBuckets.get(key) || [];
+    bucket.push(item);
+    coordBuckets.set(key, bucket);
+  }
+
+  for (const [key, bucket] of coordBuckets.entries()) {
+    if (bucket.length > 1) {
+      // Cho phép Happi Kid Coffee & Khu vui chơi Happi Kid cùng 1 tòa nhà
+      const ids = bucket.map((b) => b.place.id).sort().join(',');
+      if (ids === 'happi-kid-coffee,khu-vui-choi-happi-kid') continue;
+      for (const b of bucket) {
+        suspiciousPlaces.push({
+          id: b.place.id,
+          name: b.place.name,
+          lat: b.lat ?? null,
+          lng: b.lng ?? null,
+          reason: 'duplicate_coordinates',
+          details: `Trùng tọa độ (${key}) với: ${bucket
+            .filter((x) => x.place.id !== b.place.id)
+            .map((x) => x.place.name)
+            .join(', ')}`,
+        });
+      }
+    }
+  }
+
+  return {
+    auditedAt: new Date().toISOString(),
+    totalPlaces: allItems.length,
+    locatedCount,
+    unlocatedCount,
+    outsideAreaCount,
+    suspiciousCount: suspiciousPlaces.length,
+    suspiciousPlaces,
+  };
+}
+
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__XUANHOA_COORD_AUDIT__ =
+    auditAllPlaceCoordinatesQuality;
 }
 
 /**
@@ -3103,7 +3374,10 @@ export function migrateExistingPlacesCoordinates(): {
     const id = item.place.id;
     const ov = adminState.places?.[id];
     const effectiveSector = ov?.sectorTag || item.sectorTag;
-    const expectedMapCat = resolvePlaceMapCategory(item.place, effectiveSector, ov?.mapCategory);
+    const expectedMapCat =
+      ov?.subcategoryId && ov.subcategoryId in MAP_CATEGORY_REGISTRY
+        ? MAP_CATEGORY_REGISTRY[ov.subcategoryId as MapSubcategoryId].legacyCategory
+        : resolvePlaceMapCategory(item.place, effectiveSector, ov?.mapCategory);
 
     const hasValidLatLng =
       isValidCoordinatePair(ov?.lat, ov?.lng) &&
@@ -3136,19 +3410,34 @@ export function migrateExistingPlacesCoordinates(): {
       continue;
     }
 
-    // Nếu chưa có lat/lng hợp lệ nhưng có mapsUrl hoặc mapsQuery chứa tọa độ trực tiếp
-    const rawMapsInput = (ov?.mapsUrl ?? item.place.mapsUrl ?? '') || (ov?.mapsQuery ?? '');
-    const parsed = rawMapsInput ? parseCoordinatesFromInputOrUrl(rawMapsInput) : null;
+    // Nếu chưa có lat/lng hợp lệ trong override nhưng có tọa độ chuẩn trong VERIFIED_CATALOG_PLACE_COORDS / CATALOG_STREET_MATCHED_COORDS
+    // (TUYỆT ĐỐI KHÔNG tự trích xuất từ item.place.mapsUrl của 18 quán chưa định vị để tránh tự gắn tọa độ ước lượng)
+    const fallbackCatalogCoord =
+      ov?.adminExplicitlyUnpinned === true
+        ? null
+        : VERIFIED_CATALOG_PLACE_COORDS[id] ||
+          CATALOG_STREET_MATCHED_COORDS[id] ||
+          (isValidCoordinatePair(item.place.lat, item.place.lng)
+            ? { lat: Number(item.place.lat), lng: Number(item.place.lng) }
+            : null);
 
-    if (parsed && isValidCoordinatePair(parsed.lat, parsed.lng)) {
+    if (fallbackCatalogCoord && isValidCoordinatePair(fallbackCatalogCoord.lat, fallbackCatalogCoord.lng)) {
       savePlaceAdminOverride(id, {
-        lat: parsed.lat,
-        lng: parsed.lng,
+        lat: fallbackCatalogCoord.lat,
+        lng: fallbackCatalogCoord.lng,
         coordinateVerified: true,
         adminPinApproved: true,
         locationStatus: 'located',
-        mapsLinkStatus: 'valid',
-        coordinateSource: 'google_maps_resolved',
+        mapsLinkStatus: computeMapsLinkStatus(
+          {
+            ...ov,
+            lat: fallbackCatalogCoord.lat,
+            lng: fallbackCatalogCoord.lng,
+            coordinateSource: 'admin_verified',
+          },
+          ov?.mapsUrl ?? item.place.mapsUrl
+        ),
+        coordinateSource: 'admin_verified',
         mapCategory: expectedMapCat,
         lastVerifiedAt: new Date().toISOString().slice(0, 10),
       });
@@ -3181,6 +3470,17 @@ export function migrateExistingPlacesCoordinates(): {
     categoryFixedCount,
   };
 }
+
+/**
+ * Danh sách 4 ID Tài sản Game mẫu (Entity C — Layer `game_demo`).
+ * Giữ nguyên 100% trong danh mục 165 ID lịch sử (không tự ý xóa); hỗ trợ gắn nhãn `layer: 'game_demo'` để tách layer Game/Demo độc lập khi cần.
+ */
+export const DEMO_GAME_ASSET_IDS = new Set<string>([
+  'xuho_lot_demo_sp2_hub',
+  'xuho_lot_demo_nvl_01',
+  'xuho_lot_demo_ktx_02',
+  'xuho_lot_demo_dailai_villa',
+]);
 
 /**
  * Dữ liệu Tài sản Game mẫu (Entity C — Phần 9)

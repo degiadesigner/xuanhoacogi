@@ -1,9 +1,13 @@
-# Logs
+# Logs & Emulator Debug Outputs
 logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
+firebase-debug.log*
+database-debug.log*
+ui-debug.log*
+emulator-debug.log*
 
 # Node modules
 node_modules/
@@ -12,10 +16,73 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Environment variables
+# Environment variables & Secrets (Never commit credentials or tokens)
 .env
 .env.local
 .env.*.local
+*service-account*.json
+*firebase-adminsdk*.json
+*credentials*.json
+*secret*.json
+.firebaserc.local
+
+# Security & RTDB Backups (Never commit PII or database dumps)
+*backup*.json
+snapshot_*.json
+rtdb_backup_*.json
+backups/
+.firebase/
+
+# Temporary test & scratch files
+scratch/
+tmp/
+temp/
+.tmp/
+tests/firebase-rules-security-v2.test.mjs
+
+# Internal interim audit / review markdown reports (Excluded from public repo release)
+RELEASE_MANIFEST.md
+RELEASE_V2_FINAL_SAFETY_CONFIRMATION.md
+FOUNDER_PRIMARY_BACKUP_SECURITY_RELEASE.md
+FOUNDER_V2_FINAL_UX_SECURITY_REPORT.md
+XUHO_LEGAL_AND_FOUNDER_PRODUCTION_READINESS_V3.md
+FINAL_PRODUCTION_RELEASE_V4.md
+XUHO_FINAL_PRODUCTION_RELEASE_V4.md
+XUHO_PRODUCTION_DEPLOYMENT_HANDOFF.md
+XUHO_DEPLOY_SAFETY_FINAL_VERIFIED.md
+XUHO_PRODUCTION_EXECUTION_CHECKLIST.md
+AUTH_RBAC_MIGRATION_PLAN.md
+COORDINATE_INTEGRITY_REPORT.md
+FINAL_PRODUCTION_RELEASE_APPROVAL_V2.md
+FINAL_SECURITY_DEPLOY_READINESS.md
+FIREBASE_RULES_SECURITY_REVIEW.md
+LANDMARK_MODEL_FIDELITY_AND_COLLISION_FIX.md
+MAP_LICENSE_COMPLIANCE.md
+MAP_SOURCE_AUDIT.md
+MAP_TECHNICAL_SECURITY_AUDIT.md
+MERCHANT_DATA_RETIREMENT_PLAN.md
+MERCHANT_REMOVAL_AUDIT.md
+PLACE_COUNT_RECONCILIATION.md
+POI_DATA_PROVENANCE_AUDIT.md
+PRE_SECURITY_BACKUP_MANIFEST.md
+PRODUCTION_DEPLOY_CHECKLIST.md
+PRODUCTION_RELEASE_2026_11_04_GO_NO_GO.md
+PUBLIC_DATA_EXPOSURE_REVIEW.md
+SECURITY_FINAL_VERIFICATION_V2.md
+SECURITY_PRODUCTION_GO_NO_GO_V3.md
+SECURITY_REMEDIATION_PLAN.md
+SECURITY_TEST_RESULTS.md
+SECURITY_V4_1_FINAL_GO_NO_GO.md
+SECURITY_V4_EMULATOR_TEST_RESULTS.md
+SECURITY_V4_FINAL_AUDIT.md
+SECURITY_V4_PRODUCTION_CHECKLIST.md
+SEVEN_NEW_LANDMARKS_COMPLETION_REPORT.md
+THREE_ROLE_FINAL_DEPLOYMENT_VERIFICATION.md
+THREE_ROLE_PERMISSION_MATRIX.md
+THREE_ROLE_PRODUCTION_GO_NO_GO.md
+THREE_ROLE_SECURITY_TEST_RESULTS.md
+VIETNAM_LEGAL_RISK_REVIEW.md
+XUHO_MAP_COMPLIANCE_AUDIT.md
 
 # Editor directories
 .idea/

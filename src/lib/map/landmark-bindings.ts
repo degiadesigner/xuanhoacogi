@@ -5,7 +5,10 @@ import {
 } from './xuanhoa-master-data';
 import { getElevationAtLngLat } from './xuanhoa-elevation';
 import { haversineDistanceMeters, saveLandmarkOrPlaceFromMap } from './map-data';
+import { isAdminAuthenticated, resolvePlaceOrPendingProposalCoordinates } from '../admin-store';
 import { City3DOrigin, lngLatToLocal } from '../../components/map/city3d/city3d-shared';
+import { getRealtimeDb, ref, onValue } from '../firebase';
+import { set } from 'firebase/database';
 
 /**
  * CHẾ ĐỘ HIỂN THỊ MÔ HÌNH 3D THEO TRẠNG THÁI ĐỊA DANH (Phần 27)
@@ -252,16 +255,108 @@ export const DEFAULT_LANDMARK_BINDINGS: Record<string, LandmarkBindingRecord> = 
     updatedAt: 1730000000000,
     updatedBy: 'system_seed',
   },
-  gate_thpt_xuan_hoa: {
-    landmarkId: 'gate_thpt_xuan_hoa',
-    label: 'Cổng Trường THPT Xuân Hòa',
+  xuanhoa_primary_school: {
+    landmarkId: 'xuanhoa_primary_school',
+    label: 'Trường Tiểu học Xuân Hòa',
+    placeId: 'osm_way_1079368030',
+    buildingId: 'bldg_osm_way_1289786132',
+    anchorType: 'place',
+    offsetX: 1.5,
+    offsetY: 0,
+    offsetZ: -1.0,
+    rotationY: 0,
+    scale: 1,
+    visible: true,
+    modelVisibilityMode: 'follow_place',
+    updatedAt: 1730000000000,
+    updatedBy: 'system_seed',
+  },
+  xuanhoa_secondary_school: {
+    landmarkId: 'xuanhoa_secondary_school',
+    label: 'Trường THCS Xuân Hòa',
+    placeId: 'osm_way_662917176',
+    buildingId: 'bldg_osm_way_1289786126',
+    anchorType: 'place',
+    offsetX: -2.0,
+    offsetY: 0,
+    offsetZ: -3.0,
+    rotationY: -0.065,
+    scale: 1,
+    visible: true,
+    modelVisibilityMode: 'follow_place',
+    updatedAt: 1730000000000,
+    updatedBy: 'system_seed',
+  },
+  xuanhoa_high_school: {
+    landmarkId: 'xuanhoa_high_school',
+    label: 'Trường THPT Xuân Hòa',
     placeId: 'osm_way_662917178',
     buildingId: 'bldg_osm_way_662917178',
     anchorType: 'place',
+    offsetX: 3.0,
+    offsetY: 0,
+    offsetZ: -16.5,
+    rotationY: 0,
+    scale: 1,
+    visible: true,
+    modelVisibilityMode: 'follow_place',
+    updatedAt: 1730000000000,
+    updatedBy: 'system_seed',
+  },
+  chua_hien_luong: {
+    landmarkId: 'chua_hien_luong',
+    label: 'Chùa Hiền Lương',
+    placeId: 'xh_landmark_chua_hien_luong',
+    anchorType: 'place',
     offsetX: 0,
     offsetY: 0,
-    offsetZ: 9.5,
-    rotationY: 0.82,
+    offsetZ: 0,
+    rotationY: 0,
+    scale: 1,
+    visible: true,
+    modelVisibilityMode: 'follow_place',
+    updatedAt: 1730000000000,
+    updatedBy: 'system_seed',
+  },
+  chua_an_hoa: {
+    landmarkId: 'chua_an_hoa',
+    label: 'Chùa An Hòa',
+    placeId: 'xh_landmark_chua_an_hoa',
+    anchorType: 'place',
+    offsetX: 0,
+    offsetY: 0,
+    offsetZ: 0,
+    rotationY: 0,
+    scale: 1,
+    visible: true,
+    modelVisibilityMode: 'follow_place',
+    updatedAt: 1730000000000,
+    updatedBy: 'system_seed',
+  },
+  mam_non_xuan_hoa: {
+    landmarkId: 'mam_non_xuan_hoa',
+    label: 'Trường Mầm non Xuân Hòa',
+    placeId: 'xh_landmark_mam_non_xuan_hoa',
+    anchorType: 'place',
+    offsetX: 0,
+    offsetY: 0,
+    offsetZ: 0,
+    rotationY: 0,
+    scale: 1,
+    visible: true,
+    modelVisibilityMode: 'follow_place',
+    updatedAt: 1730000000000,
+    updatedBy: 'system_seed',
+  },
+  nha_minh_huong: {
+    landmarkId: 'nha_minh_huong',
+    label: 'Nhà Minh Hường',
+    placeId: 'xh_landmark_nha_minh_huong',
+    anchorType: 'place',
+    offsetX: 0,
+    offsetY: 0,
+    offsetZ: 0,
+    rotationY: 0,
     scale: 1,
     visible: true,
     modelVisibilityMode: 'follow_place',
@@ -270,8 +365,208 @@ export const DEFAULT_LANDMARK_BINDINGS: Record<string, LandmarkBindingRecord> = 
   },
 };
 
+const LEGACY_PENDING_PLACE_ID_MIGRATION: Record<string, string> = {
+  pending_place_chua_hien_luong: 'xh_landmark_chua_hien_luong',
+  pending_place_chua_an_hoa: 'xh_landmark_chua_an_hoa',
+  pending_place_mam_non_xuan_hoa: 'xh_landmark_mam_non_xuan_hoa',
+  pending_place_nha_minh_huong: 'xh_landmark_nha_minh_huong',
+};
+
+export interface Twelve3DLandmarkOption {
+  landmarkId: string;
+  placeId: string;
+  label: string;
+  defaultLat: number;
+  defaultLng: number;
+}
+
+/**
+ * DANH SÁCH 12 LANDMARK 3D CHÍNH THỨC TRÊN SA BÀN 3D ĐỂ ADMIN CĂN CHỈNH NHANH
+ */
+export const TWELVE_3D_LANDMARKS_LIST: Twelve3DLandmarkOption[] = [
+  {
+    landmarkId: 'hpu2_a1',
+    placeId: 'osm_building_a1_dhsp2',
+    label: '1. Khu Hiệu bộ A1–A3 (ĐHSP Hà Nội 2)',
+    defaultLat: 21.281344,
+    defaultLng: 105.726226,
+  },
+  {
+    landmarkId: 'vong_tron_2',
+    placeId: 'osm_landmark_vong_tron_2',
+    label: '2. Vòng tròn 2',
+    defaultLat: 21.281565,
+    defaultLng: 105.725,
+  },
+  {
+    landmarkId: 'quang_truong_chim_xanh',
+    placeId: 'osm_landmark_quang_truong_chim_xanh',
+    label: '3. Quảng trường Con Chim Xanh',
+    defaultLat: 21.28078,
+    defaultLng: 105.7257,
+  },
+  {
+    landmarkId: 'nha_trang_xuan_hoa',
+    placeId: 'osm_landmark_nha_trang_xuan_hoa',
+    label: '4. Nhà Trắng Xuân Hòa',
+    defaultLat: 21.278175,
+    defaultLng: 105.729275,
+  },
+  {
+    landmarkId: 'vong_tron_1',
+    placeId: 'osm_landmark_vong_tron_1',
+    label: '5. Vòng tròn 1 Nguyễn Văn Linh',
+    defaultLat: 21.277632,
+    defaultLng: 105.729416,
+  },
+  {
+    landmarkId: 'xuanhoa_primary_school',
+    placeId: 'osm_way_1079368030',
+    label: '6. Trường Tiểu học Xuân Hòa',
+    defaultLat: 21.282057,
+    defaultLng: 105.727521,
+  },
+  {
+    landmarkId: 'xuanhoa_secondary_school',
+    placeId: 'osm_way_662917176',
+    label: '7. Trường THCS Xuân Hòa',
+    defaultLat: 21.282025,
+    defaultLng: 105.72646,
+  },
+  {
+    landmarkId: 'xuanhoa_high_school',
+    placeId: 'osm_way_662917178',
+    label: '8. Trường THPT Xuân Hòa',
+    defaultLat: 21.279711,
+    defaultLng: 105.73068,
+  },
+  {
+    landmarkId: 'chua_hien_luong',
+    placeId: 'xh_landmark_chua_hien_luong',
+    label: '9. Chùa Hiền Lương',
+    defaultLat: 21.285617,
+    defaultLng: 105.717546,
+  },
+  {
+    landmarkId: 'chua_an_hoa',
+    placeId: 'xh_landmark_chua_an_hoa',
+    label: '10. Chùa An Hòa',
+    defaultLat: 21.289193,
+    defaultLng: 105.713308,
+  },
+  {
+    landmarkId: 'mam_non_xuan_hoa',
+    placeId: 'xh_landmark_mam_non_xuan_hoa',
+    label: '11. Trường Mầm non Xuân Hòa',
+    defaultLat: 21.2864,
+    defaultLng: 105.721858,
+  },
+  {
+    landmarkId: 'nha_minh_huong',
+    placeId: 'xh_landmark_nha_minh_huong',
+    label: '12. Nhà Minh Hường',
+    defaultLat: 21.285862,
+    defaultLng: 105.717861,
+  },
+];
+
 let memoryBindingsCache: Record<string, LandmarkBindingRecord> | null = null;
+let cloudBindingsCache: Record<string, Partial<LandmarkBindingRecord>> = {};
+let cloudBindingsLoaded = false;
+let cloudBindingsSubscribed = false;
 const undoSnapshotsByPlaceId = new Map<string, LandmarkUndoSnapshot>();
+
+export const LANDMARK_BINDINGS_RTDB_PATH = 'xuanhoa_admin/global_state/landmarkBindings';
+
+function sanitizeBindingForCloud(record: LandmarkBindingRecord): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    landmarkId: String(record.landmarkId),
+    label: String(record.label || record.landmarkId),
+    placeId: String(record.placeId || record.landmarkId),
+    anchorType: record.anchorType === 'building' ? 'building' : 'place',
+    offsetX: Number(Number(record.offsetX || 0).toFixed(2)),
+    offsetY: Number(Number(record.offsetY || 0).toFixed(2)),
+    offsetZ: Number(Number(record.offsetZ || 0).toFixed(2)),
+    rotationY: Number(Number(record.rotationY || 0).toFixed(4)),
+    scale: Number(Math.max(0.25, Math.min(3.5, Number(record.scale || 1))).toFixed(2)),
+    visible: Boolean(record.visible),
+    modelVisibilityMode:
+      record.modelVisibilityMode === 'always' || record.modelVisibilityMode === 'manual'
+        ? record.modelVisibilityMode
+        : 'follow_place',
+    updatedAt: Number(record.updatedAt || Date.now()),
+  };
+  if (record.buildingId) {
+    payload.buildingId = String(record.buildingId);
+  }
+  if (record.updatedBy) {
+    payload.updatedBy = String(record.updatedBy);
+  }
+  return payload;
+}
+
+export async function syncLandmarkBindingRecordToCloudAsync(
+  record: LandmarkBindingRecord
+): Promise<{ cloudSaved: boolean; error?: string }> {
+  if (typeof window === 'undefined') {
+    return { cloudSaved: false, error: 'Môi trường không hỗ trợ trình duyệt.' };
+  }
+  try {
+    const rtdb = getRealtimeDb();
+    if (!rtdb) {
+      return { cloudSaved: false, error: 'Chưa kết nối được Firebase Realtime Database.' };
+    }
+    const payload = sanitizeBindingForCloud(record);
+    await set(ref(rtdb, `${LANDMARK_BINDINGS_RTDB_PATH}/${record.landmarkId}`), payload);
+    return { cloudSaved: true };
+  } catch (err: any) {
+    const errMsg = String(err?.code || err?.message || 'PERMISSION_DENIED');
+    return { cloudSaved: false, error: errMsg };
+  }
+}
+
+function syncLandmarkBindingRecordToCloud(record: LandmarkBindingRecord): void {
+  void syncLandmarkBindingRecordToCloudAsync(record);
+}
+
+function ensureLandmarkBindingsCloudListener(): void {
+  if (cloudBindingsSubscribed || typeof window === 'undefined') return;
+  const rtdb = getRealtimeDb();
+  if (!rtdb) return;
+  cloudBindingsSubscribed = true;
+  try {
+    onValue(
+      ref(rtdb, LANDMARK_BINDINGS_RTDB_PATH),
+      (snap) => {
+        const val = snap.val();
+        cloudBindingsLoaded = true;
+        cloudBindingsCache =
+          val && typeof val === 'object'
+            ? (val as Record<string, Partial<LandmarkBindingRecord>>)
+            : {};
+        // Đồng bộ ngay cấu hình chuẩn từ Firebase xuống bộ đệm localStorage
+        // để localStorage chỉ là cache đọc nhanh và KHÔNG BAO GIỜ ghi đè cấu hình mới hơn trên Firebase!
+        const authoritative = cloneDefaultBindings();
+        applyBindingOverrideMap(authoritative, cloudBindingsCache, false);
+        memoryBindingsCache = authoritative;
+        if (window.localStorage) {
+          try {
+            window.localStorage.setItem(BINDINGS_STORAGE_KEY, JSON.stringify(authoritative));
+          } catch {
+            // ignore
+          }
+        }
+        window.dispatchEvent(new CustomEvent(LANDMARK_BINDINGS_SYNC_EVENT));
+        window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync'));
+      },
+      () => {
+        // ignore read error if offline
+      }
+    );
+  } catch {
+    // ignore
+  }
+}
 
 function cloneDefaultBindings(): Record<string, LandmarkBindingRecord> {
   const out: Record<string, LandmarkBindingRecord> = {};
@@ -281,71 +576,106 @@ function cloneDefaultBindings(): Record<string, LandmarkBindingRecord> {
   return out;
 }
 
+function applyBindingOverrideMap(
+  merged: Record<string, LandmarkBindingRecord>,
+  sourceMap: Record<string, Partial<LandmarkBindingRecord>>,
+  onlyIfNewer = false
+): void {
+  for (const [id, ov] of Object.entries(sourceMap || {})) {
+    if (!ov || id === 'gate_thpt_xuan_hoa') continue;
+    const base = merged[id] || {
+      landmarkId: id,
+      label: ov.label || id,
+      placeId: ov.placeId || id,
+      anchorType: 'place' as const,
+      offsetX: 0,
+      offsetY: 0,
+      offsetZ: 0,
+      rotationY: 0,
+      scale: 1,
+      visible: true,
+      modelVisibilityMode: 'follow_place' as const,
+      updatedAt: 0,
+    };
+    if (onlyIfNewer && Number(ov.updatedAt || 0) <= Number(base.updatedAt || 0)) {
+      continue;
+    }
+    // Tự động nâng cấp cấu hình Nhà Trắng cũ (offsetX=0, rotationY=-0.18) sang góc căn chuẩn mặt đường mới
+    if (
+      id === 'nha_trang_xuan_hoa' &&
+      Number(ov.offsetX ?? 0) === 0 &&
+      Number(ov.offsetZ ?? 0) === 0 &&
+      Math.abs(Number(ov.rotationY ?? -0.18) - -0.18) < 0.02
+    ) {
+      continue;
+    }
+    const rawPlaceId = ov.placeId || base.placeId;
+    const canonicalPlaceId = LEGACY_PENDING_PLACE_ID_MIGRATION[rawPlaceId] || rawPlaceId;
+    merged[id] = {
+      ...base,
+      ...ov,
+      landmarkId: id,
+      placeId: canonicalPlaceId,
+      offsetX: Number.isFinite(Number(ov.offsetX)) ? Number(ov.offsetX) : base.offsetX,
+      offsetY: Number.isFinite(Number(ov.offsetY)) ? Number(ov.offsetY) : base.offsetY,
+      offsetZ: Number.isFinite(Number(ov.offsetZ)) ? Number(ov.offsetZ) : base.offsetZ,
+      rotationY: Number.isFinite(Number(ov.rotationY)) ? Number(ov.rotationY) : base.rotationY,
+      scale: Number.isFinite(Number(ov.scale)) ? Math.max(0.25, Math.min(3.5, Number(ov.scale))) : base.scale,
+      updatedAt: Number.isFinite(Number(ov.updatedAt)) ? Number(ov.updatedAt) : base.updatedAt,
+    };
+  }
+}
+
 /**
- * Đọc toàn bộ Landmark Bindings hiện tại (hợp nhất Default + Override do Admin lưu trong localStorage)
+ * Đọc toàn bộ Landmark Bindings hiện tại:
+ * - Khi Firebase RTDB đã kết nối (`cloudBindingsLoaded === true`): Firebase là nguồn sự thật duy nhất (Local Storage chỉ là bộ đệm).
+ * - Khi chưa nhận phản hồi đầu tiên từ Firebase hoặc đang ngoại tuyến: đọc từ bộ đệm Local Storage nhưng ưu tiên mọi bản ghi từ `cloudBindingsCache`.
  */
 export function getLandmarkBindings(): Record<string, LandmarkBindingRecord> {
-  if (memoryBindingsCache) {
+  if (typeof window === 'undefined' && memoryBindingsCache) {
     return memoryBindingsCache;
   }
+  ensureLandmarkBindingsCloudListener();
   const merged = cloneDefaultBindings();
-  if (typeof window !== 'undefined' && window.localStorage) {
-    try {
-      const raw = window.localStorage.getItem(BINDINGS_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Record<string, Partial<LandmarkBindingRecord>>;
-        for (const [id, ov] of Object.entries(parsed || {})) {
-          if (!ov) continue;
-          const base = merged[id] || {
-            landmarkId: id,
-            label: ov.label || id,
-            placeId: ov.placeId || id,
-            anchorType: 'place',
-            offsetX: 0,
-            offsetY: 0,
-            offsetZ: 0,
-            rotationY: 0,
-            scale: 1,
-            visible: true,
-            modelVisibilityMode: 'follow_place',
-            updatedAt: Date.now(),
-          };
-          // Tự động nâng cấp cấu hình Nhà Trắng cũ (offsetX=0, rotationY=-0.18) sang góc căn chuẩn mặt đường mới
-          if (
-            id === 'nha_trang_xuan_hoa' &&
-            Number(ov.offsetX ?? 0) === 0 &&
-            Number(ov.offsetZ ?? 0) === 0 &&
-            Math.abs(Number(ov.rotationY ?? -0.18) - -0.18) < 0.02
-          ) {
-            continue;
-          }
-          merged[id] = {
-            ...base,
-            ...ov,
-            landmarkId: id,
-            offsetX: Number.isFinite(Number(ov.offsetX)) ? Number(ov.offsetX) : base.offsetX,
-            offsetY: Number.isFinite(Number(ov.offsetY)) ? Number(ov.offsetY) : base.offsetY,
-            offsetZ: Number.isFinite(Number(ov.offsetZ)) ? Number(ov.offsetZ) : base.offsetZ,
-            rotationY: Number.isFinite(Number(ov.rotationY)) ? Number(ov.rotationY) : base.rotationY,
-            scale: Number.isFinite(Number(ov.scale)) ? Math.max(0.25, Math.min(3.5, Number(ov.scale))) : base.scale,
-          };
+  if (cloudBindingsLoaded) {
+    applyBindingOverrideMap(merged, cloudBindingsCache, false);
+  } else {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const raw = window.localStorage.getItem(BINDINGS_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Record<string, Partial<LandmarkBindingRecord>>;
+          applyBindingOverrideMap(merged, parsed, true);
         }
+      } catch {
+        // ignore storage errors
       }
-    } catch {
-      // ignore storage errors
+    }
+    if (Object.keys(cloudBindingsCache).length > 0) {
+      applyBindingOverrideMap(merged, cloudBindingsCache, false);
     }
   }
   memoryBindingsCache = merged;
   return merged;
 }
 
-function persistLandmarkBindings(next: Record<string, LandmarkBindingRecord>): void {
+function persistLandmarkBindings(
+  next: Record<string, LandmarkBindingRecord>,
+  changedRecord?: LandmarkBindingRecord,
+  syncCloud = true
+): void {
   memoryBindingsCache = next;
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       window.localStorage.setItem(BINDINGS_STORAGE_KEY, JSON.stringify(next));
     } catch {
       // ignore
+    }
+  }
+  if (changedRecord) {
+    cloudBindingsCache[changedRecord.landmarkId] = { ...changedRecord };
+    if (syncCloud) {
+      syncLandmarkBindingRecordToCloud(changedRecord);
     }
   }
   if (typeof window !== 'undefined') {
@@ -361,7 +691,7 @@ export function getLandmarkBindingByPlaceId(placeId?: string | null): LandmarkBi
   if (!placeId) return null;
   const all = getLandmarkBindings();
   for (const record of Object.values(all)) {
-    if (record.placeId === placeId) {
+    if (record.placeId === placeId || record.landmarkId === placeId) {
       return record;
     }
   }
@@ -437,33 +767,19 @@ export function getLandmarkAuditLogs(limit = 30): LandmarkAuditLogEntry[] {
   }
 }
 
-/**
- * Lưu chỉnh sửa Mode B ("Căn mô hình 3D") và tự động lưu Snapshot 1-step Undo (Phần 29)
- */
-export function saveLandmarkBindingOverride(
-  placeId: string,
-  placeName: string,
+export interface LandmarkCloudSaveResult {
+  ok: boolean;
+  cloudSaved: boolean;
+  record: LandmarkBindingRecord;
+  error?: string;
+}
+
+function buildNextLandmarkBindingRecord(
+  current: LandmarkBindingRecord,
   patch: Partial<LandmarkBindingRecord>,
-  updatedBy = 'admin',
-  actionType: LandmarkAuditLogEntry['actionType'] = 'align_model',
-  recordUndo = true
+  updatedBy: string
 ): LandmarkBindingRecord {
-  const all = { ...getLandmarkBindings() };
-  const current =
-    getLandmarkBindingByPlaceId(placeId) ||
-    getOrCreateLandmarkBindingForPlace({ id: placeId, name: placeName, metadata: {} });
-
-  if (recordUndo) {
-    undoSnapshotsByPlaceId.set(placeId, {
-      placeId,
-      landmarkId: current.landmarkId,
-      mode: 'mode_b_model',
-      previousBinding: { ...current },
-      savedAt: Date.now(),
-    });
-  }
-
-  const nextRecord: LandmarkBindingRecord = {
+  return {
     ...current,
     ...patch,
     landmarkId: current.landmarkId,
@@ -483,12 +799,131 @@ export function saveLandmarkBindingOverride(
     scale: Number(
       Math.max(0.25, Math.min(3.5, patch.scale !== undefined ? patch.scale : current.scale)).toFixed(2)
     ),
+    visible: patch.visible !== undefined ? Boolean(patch.visible) : current.visible,
+    modelVisibilityMode:
+      patch.modelVisibilityMode !== undefined
+        ? patch.modelVisibilityMode
+        : current.modelVisibilityMode,
     updatedAt: Date.now(),
     updatedBy,
   };
+}
 
+/**
+ * Lưu chỉnh sửa Mode B ("Căn mô hình 3D") lên Firebase RTDB có xác nhận thật (Không báo thành công giả khi Firebase lỗi!)
+ */
+export async function saveLandmarkBindingOverrideAsync(
+  placeId: string,
+  placeName: string,
+  patch: Partial<LandmarkBindingRecord>,
+  updatedBy = 'admin',
+  actionType: LandmarkAuditLogEntry['actionType'] = 'align_model',
+  recordUndo = true
+): Promise<LandmarkCloudSaveResult> {
+  const current =
+    getLandmarkBindingByPlaceId(placeId) ||
+    getOrCreateLandmarkBindingForPlace({ id: placeId, name: placeName, metadata: {} });
+
+  if (!isAdminAuthenticated()) {
+    return {
+      ok: false,
+      cloudSaved: false,
+      record: current,
+      error: 'PERMISSION_DENIED: Chỉ Admin mới có quyền chỉnh sửa cấu hình mô hình 3D.',
+    };
+  }
+
+  const nextRecord = buildNextLandmarkBindingRecord(current, patch, updatedBy);
+  const cloudRes = await syncLandmarkBindingRecordToCloudAsync(nextRecord);
+  if (!cloudRes.cloudSaved) {
+    // Khôi phục lại cache theo nguồn sự thật Firebase khi ghi thất bại
+    memoryBindingsCache = null;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(LANDMARK_BINDINGS_SYNC_EVENT));
+    }
+    return {
+      ok: false,
+      cloudSaved: false,
+      record: current,
+      error: cloudRes.error || 'Không thể lưu cấu hình lên Firebase RTDB.',
+    };
+  }
+
+  if (recordUndo) {
+    undoSnapshotsByPlaceId.set(placeId, {
+      placeId,
+      landmarkId: current.landmarkId,
+      mode: 'mode_b_model',
+      previousBinding: { ...current },
+      savedAt: Date.now(),
+    });
+  }
+
+  const all = { ...getLandmarkBindings() };
   all[nextRecord.landmarkId] = nextRecord;
-  persistLandmarkBindings(all);
+  persistLandmarkBindings(all, nextRecord, false);
+
+  appendLandmarkAuditLog({
+    placeId,
+    landmarkId: nextRecord.landmarkId,
+    placeName,
+    actionType,
+    oldOffset: {
+      offsetX: current.offsetX,
+      offsetY: current.offsetY,
+      offsetZ: current.offsetZ,
+      rotationY: current.rotationY,
+      scale: current.scale,
+    },
+    newOffset: {
+      offsetX: nextRecord.offsetX,
+      offsetY: nextRecord.offsetY,
+      offsetZ: nextRecord.offsetZ,
+      rotationY: nextRecord.rotationY,
+      scale: nextRecord.scale,
+    },
+    updatedBy,
+  });
+
+  return {
+    ok: true,
+    cloudSaved: true,
+    record: nextRecord,
+  };
+}
+
+/**
+ * Lưu chỉnh sửa Mode B ("Căn mô hình 3D") và tự động lưu Snapshot 1-step Undo (Phần 29)
+ */
+export function saveLandmarkBindingOverride(
+  placeId: string,
+  placeName: string,
+  patch: Partial<LandmarkBindingRecord>,
+  updatedBy = 'admin',
+  actionType: LandmarkAuditLogEntry['actionType'] = 'align_model',
+  recordUndo = true
+): LandmarkBindingRecord {
+  if (!isAdminAuthenticated()) {
+    throw new Error('PERMISSION_DENIED: Chỉ Admin mới có quyền chỉnh sửa cấu hình mô hình 3D.');
+  }
+  const all = { ...getLandmarkBindings() };
+  const current =
+    getLandmarkBindingByPlaceId(placeId) ||
+    getOrCreateLandmarkBindingForPlace({ id: placeId, name: placeName, metadata: {} });
+
+  if (recordUndo) {
+    undoSnapshotsByPlaceId.set(placeId, {
+      placeId,
+      landmarkId: current.landmarkId,
+      mode: 'mode_b_model',
+      previousBinding: { ...current },
+      savedAt: Date.now(),
+    });
+  }
+
+  const nextRecord = buildNextLandmarkBindingRecord(current, patch, updatedBy);
+  all[nextRecord.landmarkId] = nextRecord;
+  persistLandmarkBindings(all, nextRecord, true);
 
   appendLandmarkAuditLog({
     placeId,
@@ -516,6 +951,88 @@ export function saveLandmarkBindingOverride(
 }
 
 /**
+ * Khôi phục cấu hình mô hình 3D về mặc định ban đầu (Mode B) kèm xác nhận ghi Firebase RTDB
+ */
+export async function resetLandmarkBindingToDefaultAsync(
+  placeId: string,
+  placeName: string,
+  updatedBy = 'admin'
+): Promise<LandmarkCloudSaveResult> {
+  const current =
+    getLandmarkBindingByPlaceId(placeId) ||
+    getOrCreateLandmarkBindingForPlace({ id: placeId, name: placeName, metadata: {} });
+
+  if (!isAdminAuthenticated()) {
+    return {
+      ok: false,
+      cloudSaved: false,
+      record: current,
+      error: 'PERMISSION_DENIED: Chỉ Admin mới có quyền khôi phục cấu hình mô hình 3D.',
+    };
+  }
+
+  const defaultBind = DEFAULT_LANDMARK_BINDINGS[current.landmarkId];
+  const resetRec: LandmarkBindingRecord = defaultBind
+    ? {
+        ...defaultBind,
+        updatedAt: Date.now(),
+        updatedBy,
+      }
+    : {
+        ...current,
+        anchorType: 'place',
+        offsetX: 0,
+        offsetY: 0,
+        offsetZ: 0,
+        rotationY: 0,
+        scale: 1,
+        visible: true,
+        modelVisibilityMode: 'follow_place',
+        updatedAt: Date.now(),
+        updatedBy,
+      };
+
+  const cloudRes = await syncLandmarkBindingRecordToCloudAsync(resetRec);
+  if (!cloudRes.cloudSaved) {
+    memoryBindingsCache = null;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(LANDMARK_BINDINGS_SYNC_EVENT));
+    }
+    return {
+      ok: false,
+      cloudSaved: false,
+      record: current,
+      error: cloudRes.error || 'Không thể lưu cấu hình mặc định lên Firebase RTDB.',
+    };
+  }
+
+  undoSnapshotsByPlaceId.set(placeId, {
+    placeId,
+    landmarkId: current.landmarkId,
+    mode: 'mode_b_model',
+    previousBinding: { ...current },
+    savedAt: Date.now(),
+  });
+
+  const all = { ...getLandmarkBindings() };
+  all[current.landmarkId] = resetRec;
+  persistLandmarkBindings(all, resetRec, false);
+  appendLandmarkAuditLog({
+    placeId,
+    landmarkId: current.landmarkId,
+    placeName,
+    actionType: 'reset_default',
+    updatedBy,
+  });
+
+  return {
+    ok: true,
+    cloudSaved: true,
+    record: resetRec,
+  };
+}
+
+/**
  * Khôi phục cấu hình mô hình 3D về mặc định ban đầu (Mode B)
  */
 export function resetLandmarkBindingToDefault(
@@ -523,6 +1040,9 @@ export function resetLandmarkBindingToDefault(
   placeName: string,
   updatedBy = 'admin'
 ): LandmarkBindingRecord | null {
+  if (!isAdminAuthenticated()) {
+    throw new Error('PERMISSION_DENIED: Chỉ Admin mới có quyền khôi phục cấu hình mô hình 3D.');
+  }
   const current = getLandmarkBindingByPlaceId(placeId);
   if (!current) return null;
 
@@ -558,7 +1078,7 @@ export function resetLandmarkBindingToDefault(
     };
   }
 
-  persistLandmarkBindings(all);
+  persistLandmarkBindings(all, all[current.landmarkId], true);
   appendLandmarkAuditLog({
     placeId,
     landmarkId: current.landmarkId,
@@ -630,7 +1150,7 @@ export function executeAdminMovePlaceWithBindingSync(params: {
       updatedAt: Date.now(),
       updatedBy,
     };
-    persistLandmarkBindings(all);
+    persistLandmarkBindings(all, all[existingBinding.landmarkId]);
   }
 
   saveLandmarkOrPlaceFromMap({
@@ -705,7 +1225,7 @@ export function undoLastLandmarkOrPlaceAction(
     if (snap.previousBinding) {
       const all = { ...getLandmarkBindings() };
       all[snap.previousBinding.landmarkId] = { ...snap.previousBinding, updatedAt: Date.now() };
-      persistLandmarkBindings(all);
+      persistLandmarkBindings(all, all[snap.previousBinding.landmarkId]);
     }
     appendLandmarkAuditLog({
       placeId,
@@ -730,7 +1250,7 @@ export function undoLastLandmarkOrPlaceAction(
       updatedAt: Date.now(),
       updatedBy,
     };
-    persistLandmarkBindings(all);
+    persistLandmarkBindings(all, all[snap.previousBinding.landmarkId]);
     appendLandmarkAuditLog({
       placeId,
       landmarkId: snap.previousBinding.landmarkId,
@@ -924,6 +1444,10 @@ export function resolveLandmarkWorldTransform(params: {
     : baseBinding;
 
   const boundPlace = placesById.get(binding.placeId);
+  const pendingOrPlaceCoord =
+    !boundPlace || boundPlace.lng === null || boundPlace.lat === null
+      ? resolvePlaceOrPendingProposalCoordinates(binding.placeId)
+      : null;
 
   let anchorLng = fallbackLngLat[0];
   let anchorLat = fallbackLngLat[1];
@@ -938,10 +1462,16 @@ export function resolveLandmarkWorldTransform(params: {
     } else if (boundPlace && boundPlace.lng !== null && boundPlace.lat !== null) {
       anchorLng = boundPlace.lng;
       anchorLat = boundPlace.lat;
+    } else if (pendingOrPlaceCoord) {
+      anchorLng = pendingOrPlaceCoord.lng;
+      anchorLat = pendingOrPlaceCoord.lat;
     }
   } else if (boundPlace && boundPlace.lng !== null && boundPlace.lat !== null) {
     anchorLng = boundPlace.lng;
     anchorLat = boundPlace.lat;
+  } else if (pendingOrPlaceCoord) {
+    anchorLng = pendingOrPlaceCoord.lng;
+    anchorLat = pendingOrPlaceCoord.lat;
   }
 
   const [ax, ay] = lngLatToLocal(origin, anchorLng, anchorLat);
@@ -974,6 +1504,8 @@ export function resolveLandmarkWorldTransform(params: {
         boundPlace.visibilityStatus !== 'hidden' &&
         boundPlace.visibilityStatus !== 'deleted' &&
         boundPlace.visibilityStatus !== 'blocked'
+      : pendingOrPlaceCoord
+      ? pendingOrPlaceCoord.status !== 'rejected' && pendingOrPlaceCoord.status !== 'cancelled'
       : true;
     isModelVisible = binding.visible && placeVisible;
   }
@@ -1076,6 +1608,83 @@ export const LANDMARK_EDIT_ANCHORS_MAP: Record<string, LandmarkEditAnchors> = {
       { x: 8, z: -15 },
       { x: 8, z: 15 },
       { x: -8, z: 15 },
+    ],
+  },
+  xuanhoa_primary_school: {
+    primaryCorner: { x: 5, z: 34, label: 'Cổng chính Trường Tiểu học Xuân Hòa (Phố Kim Đồng)' },
+    frontageA: { x: 27, z: 34, label: 'Tường rào mặt tiền Đông (Phố Kim Đồng)' },
+    frontageB: { x: -27, z: 34, label: 'Tường rào mặt tiền Tây (Phố Kim Đồng)' },
+    footprintPolygon: [
+      { x: -29, z: -36 },
+      { x: 29, z: -36 },
+      { x: 29, z: 36 },
+      { x: -29, z: 36 },
+    ],
+  },
+  xuanhoa_secondary_school: {
+    primaryCorner: { x: 7, z: 34, label: 'Cổng chính Trường THCS Xuân Hòa (Phố Kim Đồng)' },
+    frontageA: { x: 27, z: 34, label: 'Tường rào mặt tiền Đông (Phố Kim Đồng)' },
+    frontageB: { x: -27, z: 34, label: 'Tường rào mặt tiền Tây (Phố Kim Đồng)' },
+    footprintPolygon: [
+      { x: -29, z: -36 },
+      { x: 29, z: -36 },
+      { x: 29, z: 36 },
+      { x: -29, z: 36 },
+    ],
+  },
+  xuanhoa_high_school: {
+    primaryCorner: { x: 0, z: 66.0, label: 'Cổng chính Trường THPT Xuân Hòa' },
+    frontageA: { x: 58.0, z: 66.0, label: 'Tường rào mặt tiền Đông Nam' },
+    frontageB: { x: -58.0, z: 66.0, label: 'Tường rào mặt tiền Tây Nam' },
+    footprintPolygon: [
+      { x: -59, z: -66 },
+      { x: 59, z: -66 },
+      { x: 59, z: 66 },
+      { x: -59, z: 66 },
+    ],
+  },
+  chua_hien_luong: {
+    primaryCorner: { x: 0, z: 19.0, label: 'Cổng Tam quan Chùa Hiền Lương' },
+    frontageA: { x: 17.0, z: 19.0, label: 'Tường rào mặt tiền Đông' },
+    frontageB: { x: -17.0, z: 19.0, label: 'Tường rào mặt tiền Tây' },
+    footprintPolygon: [
+      { x: -17, z: -19.5 },
+      { x: 17, z: -19.5 },
+      { x: 17, z: 19.5 },
+      { x: -17, z: 19.5 },
+    ],
+  },
+  chua_an_hoa: {
+    primaryCorner: { x: 0, z: 23.4, label: 'Cổng Tam quan Chùa An Hòa' },
+    frontageA: { x: 24.0, z: 23.4, label: 'Tường rào mặt tiền Đông' },
+    frontageB: { x: -24.0, z: 23.4, label: 'Tường rào mặt tiền Tây' },
+    footprintPolygon: [
+      { x: -24, z: -40.5 },
+      { x: 24, z: -40.5 },
+      { x: 24, z: 24 },
+      { x: -24, z: 24 },
+    ],
+  },
+  mam_non_xuan_hoa: {
+    primaryCorner: { x: 0, z: 23.3, label: 'Cổng vòm Trường Mầm non Xuân Hòa' },
+    frontageA: { x: 24.0, z: 23.3, label: 'Hàng rào mặt tiền Đông' },
+    frontageB: { x: -24.0, z: 23.3, label: 'Hàng rào mặt tiền Tây' },
+    footprintPolygon: [
+      { x: -24, z: -33.5 },
+      { x: 24, z: -33.5 },
+      { x: 24, z: 23.5 },
+      { x: -24, z: 23.5 },
+    ],
+  },
+  nha_minh_huong: {
+    primaryCorner: { x: -1.0, z: 15.1, label: 'Cổng hoa giấy Nhà Minh Hường' },
+    frontageA: { x: 12.5, z: 15.1, label: 'Tường rào mặt tiền phải' },
+    frontageB: { x: -10.5, z: 15.1, label: 'Tường rào mặt tiền trái (Cây khế)' },
+    footprintPolygon: [
+      { x: -10.5, z: -25.5 },
+      { x: 12.5, z: -25.5 },
+      { x: 12.5, z: 15.5 },
+      { x: -10.5, z: 15.5 },
     ],
   },
 };

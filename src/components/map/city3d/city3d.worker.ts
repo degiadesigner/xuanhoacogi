@@ -25,6 +25,7 @@ import {
   initXuanHoaDemFromBuffer,
   isInsideLizardHillClearZone,
   localToLngLat,
+  type ActiveLandmarkFootprint3D,
   type BuildingChunk,
   type BuildingLabel,
   type City3DOrigin,
@@ -54,6 +55,7 @@ interface Bld {
   area: number;
   key: string;
   removed?: boolean;
+  removedByLive?: boolean;
   wayId?: number;
   name?: string;
 }
@@ -74,8 +76,12 @@ const ROOF_RGB = ROOF_PALETTE.map(hexToRgb);
 let origin: City3DOrigin = { lng: 105.7262, lat: 21.2818, kx: 0, ky: 110574 };
 const buildings: Bld[] = [];
 const chunkBuildings = new Map<string, number[]>();
+const rawChunkTrees = new Map<string, TreeRec[]>();
 const chunkTrees = new Map<string, TreeRec[]>();
 const wayIndex = new Map<number, number>();
+let activeLandmarkFootprints: ActiveLandmarkFootprint3D[] | null = null;
+let initCompleted = false;
+let cachedRoadLabels: RoadLabel3D[] = [];
 
 /* ------------------------------------------------------------------ tiện ích */
 
@@ -203,7 +209,18 @@ function minAreaRect(r: number[]) {
 function workerTerrainY(x: number, y: number): number {
   const [lng, lat] = localToLngLat(origin, x, y);
   if (isInsideLizardHillClearZone(lng, lat)) return 0;
-  return getElevationAtLocal(x, y);
+  const raw = getElevationAtLocal(x, y);
+  // Làm phẳng mặt nền DEM bên dưới 3 khuôn viên trường học 3D để mặt đất không đâm xuyên sân trường
+  if (x >= 106 && x <= 171 && y >= -8 && y <= 68) {
+    return Math.min(raw, 3.85); // Trường Tiểu học Xuân Hòa
+  }
+  if (x >= -6 && x <= 56 && y >= -10 && y <= 66) {
+    return Math.min(raw, 2.3); // Trường THCS Xuân Hòa
+  }
+  if (x >= -530 && x <= -405 && y >= 242 && y <= 379) {
+    return Math.min(raw, -0.7); // Trường THPT Xuân Hòa
+  }
+  return raw;
 }
 
 function subdividePts(pts: number[], maxSegLen = 36): number[] {
@@ -848,10 +865,22 @@ async function init(baseUrl: string) {
   }
 
   // --- Đường phố: viền vỉa hè trung tâm trước, lòng đường sau (bám theo cao độ địa hình DEM)
+  const suppressedInternalCampusRoadIds = new Set<string>([
+    'way/1086841598',
+    'way/952926913',
+    'way/952926914',
+    'way/952926915',
+    'way/1086841606',
+  ]);
   const roadG = new GeoBuilder();
   const marks = new GeoBuilder();
   const lines = (roads.features || [])
-    .filter((f: any) => f.geometry?.type === 'LineString')
+    .filter((f: any) => {
+      if (f.geometry?.type !== 'LineString') return false;
+      const rid = String(f.properties?.id || f.properties?.osmId || f.id || '');
+      if (suppressedInternalCampusRoadIds.has(rid)) return false;
+      return true;
+    })
     .map((f: any) => ({ pts: lineToLocal(f.geometry.coordinates), st: roadStyleOf(f.properties) }))
     .sort((a: any, b: any) => a.st.order - b.st.order);
   const casingC = hexToRgb(CITY3D_COLORS.roadCasing);
@@ -915,61 +944,10 @@ async function init(baseUrl: string) {
   const zoneCodes: string[] = Array.isArray(meta.zoneCodes) ? meta.zoneCodes : [];
   const buildingLevels: number[] = Array.isArray(meta.buildingLevels) ? meta.buildingLevels : [];
 
-  // Dọn mặt bằng công trình procedural tại đúng phạm vi các landmark 3D riêng (Hiệu bộ ĐHSP2 A1, Quảng trường Con Chim Xanh, ĐH Kiến Trúc, Nhà Trắng)
-  const iconicBuildingClearZones = [
-    { lng: 105.72611, lat: 21.28128, r: 28 }, // Khu Hiệu bộ A1–A3 ĐHSP Hà Nội 2
-    { lng: 105.72562, lat: 21.28071, r: 19 }, // Quảng trường Con Chim Xanh
-    { lng: 105.72852, lat: 21.27876, r: 23 }, // ĐH Kiến Trúc Hà Nội (CS Xuân Hòa)
-    { lng: 105.72932, lat: 21.27828, r: 28 }, // Nhà Trắng Xuân Hòa
-  ].map((z) => ({
-    x: (z.lng - origin.lng) * origin.kx,
-    y: (z.lat - origin.lat) * origin.ky,
-    r2: z.r * z.r,
-  }));
+  if (!activeLandmarkFootprints || activeLandmarkFootprints.length === 0) {
+    activeLandmarkFootprints = buildDefaultLandmarkFootprints(origin);
+  }
 
-  // Dọn cây xanh procedural nằm đè trong footprint của cả 5 landmark mới + ĐH Kiến Trúc + Núi Thằn Lằn
-  const iconicTreeClearZones = [
-    { lng: 105.72611, lat: 21.28128, r: 34 }, // Khu Hiệu bộ A1–A3 ĐHSP Hà Nội 2
-    { lng: 105.72562, lat: 21.28071, r: 25 }, // Quảng trường Con Chim Xanh
-    { lng: 105.72852, lat: 21.27876, r: 23 }, // ĐH Kiến Trúc Hà Nội (CS Xuân Hòa)
-    { lng: 105.72932, lat: 21.27828, r: 29 }, // Nhà Trắng Xuân Hòa
-    { lng: 105.729416, lat: 21.277632, r: 14 }, // Vòng tròn 1
-    { lng: 105.725000, lat: 21.281565, r: 20 }, // Vòng tròn 2
-  ].map((z) => ({
-    x: (z.lng - origin.lng) * origin.kx,
-    y: (z.lat - origin.lat) * origin.ky,
-    r2: z.r * z.r,
-  }));
-
-  const suppressedLandmarkWayIds = new Set<number>([
-    662917177, // Nhà Trắng Xuân Hòa / BIDV
-    1289786112, // Khối phụ Nhà Trắng
-    1230036852, // Tòa A1 ĐHSP Hà Nội 2
-    1080000072, // Tòa A2 ĐHSP Hà Nội 2
-    1289786109, // Tòa A3 ĐHSP Hà Nội 2
-  ]);
-
-  const isInsideIconicBuildingZone = (px: number, py: number) => {
-    for (const z of iconicBuildingClearZones) {
-      const dx = px - z.x;
-      const dy = py - z.y;
-      if (dx * dx + dy * dy <= z.r2) return true;
-    }
-    const [lng, lat] = localToLngLat(origin, px, py);
-    if (isInsideLizardHillClearZone(lng, lat)) return true;
-    return false;
-  };
-
-  const isInsideIconicTreeZone = (px: number, py: number) => {
-    for (const z of iconicTreeClearZones) {
-      const dx = px - z.x;
-      const dy = py - z.y;
-      if (dx * dx + dy * dy <= z.r2) return true;
-    }
-    const [lng, lat] = localToLngLat(origin, px, py);
-    if (isInsideLizardHillClearZone(lng, lat)) return true;
-    return false;
-  };
   for (let i = 0; i < nB; i++) {
     const n = dv.getUint8(o++);
     const hh = dv.getUint8(o++);
@@ -995,8 +973,9 @@ async function init(baseUrl: string) {
       if (ry > bMaxY) bMaxY = ry;
     }
     const [cx, cy] = centroidOf(ring);
+    const [lng, lat] = localToLngLat(origin, cx, cy);
+    if (isInsideLizardHillClearZone(lng, lat)) continue;
     const wayId = osmIds.get(i);
-    if ((wayId !== undefined && suppressedLandmarkWayIds.has(wayId)) || isInsideIconicBuildingZone(cx, cy)) continue;
 
     const lockedH = hh / 2;
     const areaSqm = Math.abs(signedArea(ring));
@@ -1026,7 +1005,7 @@ async function init(baseUrl: string) {
     });
 
     const t = 0.96 + hash2(cx, cy) * 0.07;
-    registerBuilding({
+    const rec: Bld = {
       ring,
       h: lockedH,
       wall: tint(WALL_RGB[resolvedStyle.wallIdx % WALL_RGB.length], t),
@@ -1042,9 +1021,11 @@ async function init(baseUrl: string) {
       key: '',
       wayId,
       name: bName,
-    });
+    };
+    rec.removed = isBuildingSuppressedByLandmarks(rec, activeLandmarkFootprints);
+    registerBuilding(rec);
   }
-  const trees: TreeRec[] = [];
+  const allTrees: TreeRec[] = [];
   for (let i = 0; i < nT; i++) {
     const x = dv.getInt32(o, true) / 10;
     o += 4;
@@ -1052,14 +1033,20 @@ async function init(baseUrl: string) {
     o += 4;
     const s = 0.4 + (dv.getUint8(o++) / 255) * 1.6;
     const kind = dv.getUint8(o++);
-    if (isInsideIconicTreeZone(x, y)) continue;
-    trees.push({ x, y, s, kind });
+    const [lng, lat] = localToLngLat(origin, x, y);
+    if (isInsideLizardHillClearZone(lng, lat)) continue;
+    allTrees.push({ x, y, s, kind });
   }
-  for (const t of trees) {
+  for (const t of allTrees) {
     const k = chunkKeyOf(t.x, t.y);
-    let arr = chunkTrees.get(k);
-    if (!arr) chunkTrees.set(k, (arr = []));
-    arr.push(t);
+    let rawArr = rawChunkTrees.get(k);
+    if (!rawArr) rawChunkTrees.set(k, (rawArr = []));
+    rawArr.push(t);
+    if (!isTreeSuppressedByLandmarks(t.x, t.y, activeLandmarkFootprints)) {
+      let arr = chunkTrees.get(k);
+      if (!arr) chunkTrees.set(k, (arr = []));
+      arr.push(t);
+    }
   }
 
   // Gửi chunk gần tâm trước để người dùng thấy nhà ngay lập tức
@@ -1069,17 +1056,18 @@ async function init(baseUrl: string) {
     return ax * ax + ay * ay - (bx * bx + by * by);
   });
   const batch = 6;
+  const visibleBuildingCount = buildings.reduce((acc, b) => acc + (b.removed ? 0 : 1), 0);
   for (let i = 0; i < keys.length; i += batch) {
     postBuildingChunks(keys.slice(i, i + batch));
     post({
       type: 'progress',
-      label: `Đang dựng ${buildings.length.toLocaleString('vi-VN')} ngôi nhà…`,
+      label: `Đang dựng ${visibleBuildingCount.toLocaleString('vi-VN')} ngôi nhà…`,
       pct: 45 + Math.round((i / keys.length) * 40),
     });
   }
 
   post({ type: 'progress', label: 'Đang trồng cây xanh…', pct: 90 });
-  postTreeChunks(Array.from(chunkTrees.keys()));
+  postTreeChunks(Array.from(rawChunkTrees.keys()));
 
   const labels: BuildingLabel[] = [];
   for (const b of buildings) {
@@ -1162,17 +1150,25 @@ async function init(baseUrl: string) {
     }
   }
   roadLabels.sort((a, b) => (tierOrder[a.tier] || 3) - (tierOrder[b.tier] || 3));
+  cachedRoadLabels = roadLabels;
+  initCompleted = true;
 
   post({ type: 'labels', labels, roadLabels });
   post({
     type: 'ready',
     stats: {
-      buildings: buildings.length,
-      trees: trees.length,
+      buildings: visibleBuildingCount,
+      trees: Array.from(chunkTrees.values()).reduce((acc, arr) => acc + arr.length, 0),
       osmBuildings: meta.stats?.osmBuildings || 0,
       openBuildings: meta.stats?.openBuildings || 0,
     },
   });
+
+  if (pendingFootprintUpdate) {
+    const pending = pendingFootprintUpdate;
+    pendingFootprintUpdate = null;
+    applyLandmarkFootprintsUpdate(pending);
+  }
 }
 
 /* ------------------------------------------------------------------ cập nhật trực tiếp (Overpass) */
@@ -1227,6 +1223,490 @@ function heuristicStyle(area: number, cx: number, cy: number) {
   return { h: floors * 3.4 + (pitched ? 0 : 0.5), wall, roof, roofKind: pitched ? 1 : 0, topBox: floors >= 3 && rnd() < 0.4 };
 }
 
+const WAY_ID_TO_LANDMARK_ID = new Map<number, string>([
+  [662917177, 'nha_trang_xuan_hoa'], // Nhà Trắng Xuân Hòa / BIDV
+  [1289786112, 'nha_trang_xuan_hoa'], // Khối phụ Nhà Trắng
+  [1230036852, 'hpu2_a1'], // Tòa A1 ĐHSP Hà Nội 2
+  [1080000072, 'hpu2_a1'], // Tòa A2 ĐHSP Hà Nội 2
+  [1289786109, 'hpu2_a1'], // Tòa A3 ĐHSP Hà Nội 2
+  [1079368029, 'dh_kien_truc'], // ĐH Kiến trúc Hà Nội (CS Xuân Hòa)
+  [1289786129, 'xuanhoa_primary_school'], // Trường Tiểu học Xuân Hòa (Dãy Tây)
+  [1289786130, 'xuanhoa_primary_school'], // Trường Tiểu học Xuân Hòa (Khối Tây Bắc)
+  [1289786131, 'xuanhoa_primary_school'], // Trường Tiểu học Xuân Hòa (Dãy Bắc)
+  [1289786132, 'xuanhoa_primary_school'], // Trường Tiểu học Xuân Hòa (Dãy Đông 3 tầng)
+  [1289786126, 'xuanhoa_secondary_school'], // Trường THCS Xuân Hòa (Dãy Bắc)
+  [1289786127, 'xuanhoa_secondary_school'], // Trường THCS Xuân Hòa (Dãy Tây)
+  [1289786128, 'xuanhoa_secondary_school'], // Trường THCS Xuân Hòa (Dãy Đông)
+  [800751220, 'xuanhoa_high_school'], // Trường THPT Xuân Hòa (Dãy Tây Nam)
+  [1086841599, 'xuanhoa_high_school'], // Trường THPT Xuân Hòa (Dãy học chính Đông Nam)
+  [1086841600, 'xuanhoa_high_school'], // Trường THPT Xuân Hòa (Dãy học dọc Đông Nam)
+  [1086841601, 'xuanhoa_high_school'], // Trường THPT Xuân Hòa (Khối phụ Đông)
+  [1086841602, 'xuanhoa_high_school'], // Trường THPT Xuân Hòa (Dãy Bắc)
+  [1086841603, 'xuanhoa_high_school'], // Trường THPT Xuân Hòa (Dãy Đông Bắc)
+  [1086841604, 'xuanhoa_high_school'], // Trường THPT Xuân Hòa (Khối phụ Tây Bắc)
+  [1086841605, 'xuanhoa_high_school'], // Trường THPT Xuân Hòa (Nhà đa năng Tây Bắc)
+]);
+
+const SUPPRESSED_LANDMARK_WAY_IDS = new Set<number>(WAY_ID_TO_LANDMARK_ID.keys());
+
+function buildDefaultLandmarkFootprints(o: City3DOrigin): ActiveLandmarkFootprint3D[] {
+  const toWorld = (lng: number, lat: number, ox = 0, oz = 0): [number, number] => [
+    (lng - o.lng) * o.kx + ox,
+    -((lat - o.lat) * o.ky) + oz,
+  ];
+  const defs: Array<{
+    landmarkId: string;
+    placeId: string;
+    lng: number;
+    lat: number;
+    ox: number;
+    oz: number;
+    rotY: number;
+    scale: number;
+    localMinX: number;
+    localMaxX: number;
+    localMinZ: number;
+    localMaxZ: number;
+    treeMarginMeters: number;
+  }> = [
+    {
+      landmarkId: 'hpu2_a1',
+      placeId: 'osm_building_a1_dhsp2',
+      lng: 105.726226,
+      lat: 21.281344,
+      ox: -12.0,
+      oz: 6.5,
+      rotY: -0.7854,
+      scale: 1,
+      localMinX: -26,
+      localMaxX: 26,
+      localMinZ: -20,
+      localMaxZ: 20,
+      treeMarginMeters: 4,
+    },
+    {
+      landmarkId: 'quang_truong_chim_xanh',
+      placeId: 'osm_landmark_quang_truong_chim_xanh',
+      lng: 105.7257,
+      lat: 21.28078,
+      ox: -8.5,
+      oz: 8.5,
+      rotY: 2.3562,
+      scale: 0.48,
+      localMinX: -36,
+      localMaxX: 36,
+      localMinZ: -36,
+      localMaxZ: 36,
+      treeMarginMeters: 4,
+    },
+    {
+      landmarkId: 'dh_kien_truc',
+      placeId: 'osm_way_1079368029',
+      lng: 105.72852,
+      lat: 21.27876,
+      ox: 0,
+      oz: 0,
+      rotY: -0.76,
+      scale: 1,
+      localMinX: -12,
+      localMaxX: 12,
+      localMinZ: -12,
+      localMaxZ: 12,
+      treeMarginMeters: 3,
+    },
+    {
+      landmarkId: 'nha_trang_xuan_hoa',
+      placeId: 'osm_landmark_nha_trang_xuan_hoa',
+      lng: 105.729275,
+      lat: 21.278175,
+      ox: 6.5,
+      oz: -10.5,
+      rotY: 1.0,
+      scale: 0.92,
+      localMinX: -18,
+      localMaxX: 24,
+      localMinZ: -18,
+      localMaxZ: 12,
+      treeMarginMeters: 4,
+    },
+    {
+      landmarkId: 'vong_tron_1',
+      placeId: 'osm_landmark_vong_tron_1',
+      lng: 105.729416,
+      lat: 21.277632,
+      ox: 0,
+      oz: 0,
+      rotY: 0,
+      scale: 1,
+      localMinX: -12,
+      localMaxX: 12,
+      localMinZ: -12,
+      localMaxZ: 12,
+      treeMarginMeters: 2,
+    },
+    {
+      landmarkId: 'vong_tron_2',
+      placeId: 'osm_landmark_vong_tron_2',
+      lng: 105.725,
+      lat: 21.281565,
+      ox: 0,
+      oz: 0,
+      rotY: -0.7854,
+      scale: 1,
+      localMinX: -10,
+      localMaxX: 10,
+      localMinZ: -16,
+      localMaxZ: 16,
+      treeMarginMeters: 2,
+    },
+    {
+      landmarkId: 'xuanhoa_primary_school',
+      placeId: 'osm_way_1079368030',
+      lng: 105.727521,
+      lat: 21.282057,
+      ox: 1.5,
+      oz: -1.0,
+      rotY: 0,
+      scale: 1,
+      localMinX: -29.5,
+      localMaxX: 29.5,
+      localMinZ: -36.5,
+      localMaxZ: 36.5,
+      treeMarginMeters: 5,
+    },
+    {
+      landmarkId: 'xuanhoa_secondary_school',
+      placeId: 'osm_way_662917176',
+      lng: 105.72646,
+      lat: 21.282025,
+      ox: -2.0,
+      oz: -3.0,
+      rotY: -0.065,
+      scale: 1,
+      localMinX: -29.5,
+      localMaxX: 29.5,
+      localMinZ: -36.5,
+      localMaxZ: 36.5,
+      treeMarginMeters: 5,
+    },
+    {
+      landmarkId: 'xuanhoa_high_school',
+      placeId: 'osm_way_662917178',
+      lng: 105.721661,
+      lat: 21.284455,
+      ox: 3.0,
+      oz: -16.5,
+      rotY: 0,
+      scale: 1,
+      localMinX: -59.5,
+      localMaxX: 59.5,
+      localMinZ: -66.5,
+      localMaxZ: 66.5,
+      treeMarginMeters: 6,
+    },
+    {
+      landmarkId: 'chua_hien_luong',
+      placeId: 'xh_landmark_chua_hien_luong',
+      lng: 105.7175459,
+      lat: 21.2856174,
+      ox: 0,
+      oz: 0,
+      rotY: 0,
+      scale: 1,
+      localMinX: -17.5,
+      localMaxX: 17.5,
+      localMinZ: -20.0,
+      localMaxZ: 20.0,
+      treeMarginMeters: 6,
+    },
+    {
+      landmarkId: 'chua_an_hoa',
+      placeId: 'xh_landmark_chua_an_hoa',
+      lng: 105.7133076,
+      lat: 21.2891926,
+      ox: 0,
+      oz: 0,
+      rotY: 0,
+      scale: 1,
+      localMinX: -24.5,
+      localMaxX: 24.5,
+      localMinZ: -41.0,
+      localMaxZ: 24.5,
+      treeMarginMeters: 6,
+    },
+    {
+      landmarkId: 'mam_non_xuan_hoa',
+      placeId: 'xh_landmark_mam_non_xuan_hoa',
+      lng: 105.7218583,
+      lat: 21.2863997,
+      ox: 0,
+      oz: 0,
+      rotY: 0,
+      scale: 1,
+      localMinX: -24.5,
+      localMaxX: 24.5,
+      localMinZ: -34.0,
+      localMaxZ: 24.0,
+      treeMarginMeters: 6,
+    },
+    {
+      landmarkId: 'nha_minh_huong',
+      placeId: 'xh_landmark_nha_minh_huong',
+      lng: 105.717861,
+      lat: 21.285862,
+      ox: 0,
+      oz: 0,
+      rotY: 0,
+      scale: 1,
+      localMinX: -11.0,
+      localMaxX: 13.0,
+      localMinZ: -26.0,
+      localMaxZ: 16.0,
+      treeMarginMeters: 6.5,
+    },
+  ];
+  return defs.map((d) => {
+    const [wx, wz] = toWorld(d.lng, d.lat, d.ox, d.oz);
+    return {
+      landmarkId: d.landmarkId,
+      placeId: d.placeId,
+      modelWorldX: wx,
+      modelWorldZ: wz,
+      rotationY: d.rotY,
+      scale: d.scale,
+      visible: true,
+      localMinX: d.localMinX,
+      localMaxX: d.localMaxX,
+      localMinZ: d.localMinZ,
+      localMaxZ: d.localMaxZ,
+      treeMarginMeters: d.treeMarginMeters,
+    };
+  });
+}
+
+function segmentIntersectsAABB(
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  minX: number,
+  maxX: number,
+  minZ: number,
+  maxZ: number
+): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const clip = (p: number, q: number): boolean => {
+    if (Math.abs(p) < 1e-9) return q >= 0;
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+    return true;
+  };
+  return clip(-dx, x0 - minX) && clip(dx, maxX - x0) && clip(-dz, z0 - minZ) && clip(dz, maxZ - z0);
+}
+
+/**
+ * Kiểm tra đa giác công trình `b` (trong hệ tọa độ worker `x, yBắc`) có giao cắt với
+ * hộp bao định hướng 2D (OBB) của một landmark 3D sau khi đã áp dụng `modelWorldX/Z, rotationY, scale` hay không.
+ */
+function doesBuildingIntersectLandmarkOBB(b: Bld, fp: ActiveLandmarkFootprint3D): boolean {
+  if (!fp.visible) return false;
+  const scale = Math.max(0.1, fp.scale || 1);
+  const invScale = 1 / scale;
+  const cosR = Math.cos(fp.rotationY || 0);
+  const sinR = Math.sin(fp.rotationY || 0);
+
+  const minX = fp.localMinX;
+  const maxX = fp.localMaxX;
+  const minZ = fp.localMinZ;
+  const maxZ = fp.localMaxZ;
+
+  // Kiểm tra nhanh tâm công trình trong hệ tọa độ cục bộ của landmark
+  const cdx = b.cx - fp.modelWorldX;
+  const cdz = -b.cy - fp.modelWorldZ;
+  const clx = (cdx * cosR - cdz * sinR) * invScale;
+  const clz = (cdx * sinR + cdz * cosR) * invScale;
+  if (clx >= minX && clx <= maxX && clz >= minZ && clz <= maxZ) return true;
+
+  // Chuyển các đỉnh đa giác công trình về hệ tọa độ cục bộ của landmark
+  const r = b.ring;
+  const n = r.length / 2;
+  let polyMinX = Infinity;
+  let polyMaxX = -Infinity;
+  let polyMinZ = Infinity;
+  let polyMaxZ = -Infinity;
+  const localRing: number[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const dx = r[i * 2] - fp.modelWorldX;
+    const dz = -r[i * 2 + 1] - fp.modelWorldZ;
+    const lx = (dx * cosR - dz * sinR) * invScale;
+    const lz = (dx * sinR + dz * cosR) * invScale;
+    if (lx >= minX && lx <= maxX && lz >= minZ && lz <= maxZ) return true;
+    if (lx < polyMinX) polyMinX = lx;
+    if (lx > polyMaxX) polyMaxX = lx;
+    if (lz < polyMinZ) polyMinZ = lz;
+    if (lz > polyMaxZ) polyMaxZ = lz;
+    localRing.push(lx, lz);
+  }
+
+  // Tách trục nhanh (AABB của đa giác trong không gian cục bộ của landmark)
+  if (polyMaxX < minX || polyMinX > maxX || polyMaxZ < minZ || polyMinZ > maxZ) {
+    return false;
+  }
+
+  // Kiểm tra cạnh của đa giác cắt hộp bao OBB
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    if (
+      segmentIntersectsAABB(
+        localRing[i * 2],
+        localRing[i * 2 + 1],
+        localRing[j * 2],
+        localRing[j * 2 + 1],
+        minX,
+        maxX,
+        minZ,
+        maxZ
+      )
+    ) {
+      return true;
+    }
+  }
+
+  // Trường hợp đa giác công trình bao trọn hộp bao OBB
+  if (
+    pointInRing(minX, minZ, localRing) ||
+    pointInRing(maxX, minZ, localRing) ||
+    pointInRing(maxX, maxZ, localRing) ||
+    pointInRing(minX, maxZ, localRing)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function isBuildingSuppressedByLandmarks(
+  b: Bld,
+  footprints: ActiveLandmarkFootprint3D[] | null
+): boolean {
+  const list = footprints || [];
+  if (b.wayId !== undefined && WAY_ID_TO_LANDMARK_ID.has(b.wayId)) {
+    const ownerId = WAY_ID_TO_LANDMARK_ID.get(b.wayId)!;
+    const ownerFp = list.find((f) => f.landmarkId === ownerId);
+    return ownerFp ? ownerFp.visible : true;
+  }
+
+  // Đối với building OSM thật không nằm trong danh sách xác minh trùng công trình landmark,
+  // giữ nguyên dữ liệu hiển thị (không tự ý xóa/ẩn hàng loạt nhà OSM thật).
+  if (b.isOsm) return false;
+
+  for (let i = 0; i < list.length; i++) {
+    const fp = list[i];
+    if (!fp.visible) continue;
+    if (doesBuildingIntersectLandmarkOBB(b, fp)) return true;
+  }
+  return false;
+}
+
+function isTreeSuppressedByLandmarks(
+  tx: number,
+  ty: number,
+  footprints: ActiveLandmarkFootprint3D[] | null
+): boolean {
+  const list = footprints || [];
+  const wz = -ty;
+  for (let i = 0; i < list.length; i++) {
+    const fp = list[i];
+    if (!fp.visible) continue;
+    const scale = Math.max(0.1, fp.scale || 1);
+    const invScale = 1 / scale;
+    const cosR = Math.cos(fp.rotationY || 0);
+    const sinR = Math.sin(fp.rotationY || 0);
+    const margin = (fp.treeMarginMeters ?? 3) * invScale;
+    const dx = tx - fp.modelWorldX;
+    const dz = wz - fp.modelWorldZ;
+    const lx = (dx * cosR - dz * sinR) * invScale;
+    const lz = (dx * sinR + dz * cosR) * invScale;
+    if (
+      lx >= fp.localMinX - margin &&
+      lx <= fp.localMaxX + margin &&
+      lz >= fp.localMinZ - margin &&
+      lz <= fp.localMaxZ + margin
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+let pendingFootprintUpdate: ActiveLandmarkFootprint3D[] | null = null;
+
+function applyLandmarkFootprintsUpdate(nextFootprints: ActiveLandmarkFootprint3D[]) {
+  activeLandmarkFootprints = nextFootprints;
+  if (!initCompleted || buildings.length === 0) {
+    pendingFootprintUpdate = nextFootprints;
+    return;
+  }
+
+  const dirtyB = new Set<string>();
+  for (let i = 0; i < buildings.length; i++) {
+    const b = buildings[i];
+    if (b.removedByLive) continue;
+    const nextRemoved = isBuildingSuppressedByLandmarks(b, activeLandmarkFootprints);
+    if (Boolean(b.removed) !== nextRemoved) {
+      b.removed = nextRemoved;
+      dirtyB.add(b.key);
+    }
+  }
+
+  const dirtyT = new Set<string>();
+  for (const [k, rawArr] of rawChunkTrees.entries()) {
+    const prevArr = chunkTrees.get(k) || [];
+    const nextArr = rawArr.filter(
+      (t) => !isTreeSuppressedByLandmarks(t.x, t.y, activeLandmarkFootprints)
+    );
+    let changed = prevArr.length !== nextArr.length;
+    if (!changed) {
+      for (let idx = 0; idx < nextArr.length; idx++) {
+        if (prevArr[idx] !== nextArr[idx]) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) {
+      chunkTrees.set(k, nextArr);
+      dirtyT.add(k);
+    }
+  }
+
+  if (dirtyB.size > 0) {
+    postBuildingChunks(Array.from(dirtyB), true);
+    const labels: BuildingLabel[] = [];
+    for (const b of buildings) {
+      if (b.name && !b.removed) {
+        const by = workerTerrainY(b.cx, b.cy);
+        labels.push({ x: b.cx, z: -b.cy, y: by + b.h + (b.roofKind ? 3 : 1.5), name: b.name });
+      }
+    }
+    post({ type: 'labels', labels, roadLabels: cachedRoadLabels });
+  }
+
+  if (dirtyT.size > 0) {
+    postTreeChunks(Array.from(dirtyT));
+  }
+}
+
 function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [number, number][]) {
   const dirtyB = new Set<string>();
   const dirtyT = new Set<string>();
@@ -1279,6 +1759,7 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
 
     // Nhà mới trên OSM chưa có trong dữ liệu dựng sẵn (giữ nguyên footprint thật `ring`)
     const [cx, cy] = centroidOf(ring);
+    if (lb.wayId && SUPPRESSED_LANDMARK_WAY_IDS.has(lb.wayId)) continue;
     const key = chunkKeyOf(cx, cy);
     const [kx, ky] = key.split(',').map(Number);
     for (let dx = -1; dx <= 1; dx++) {
@@ -1288,6 +1769,7 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
           if (o.removed || o.isOsm) continue;
           if (pointInRing(o.cx, o.cy, ring) || pointInRing(cx, cy, o.ring)) {
             o.removed = true;
+            o.removedByLive = true;
             dirtyB.add(o.key);
           }
         }
@@ -1299,7 +1781,7 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
       const rect = minAreaRect(ring);
       if (!rect || area / rect.area <= 0.8) style.roofKind = 0;
     }
-    registerBuilding({
+    const rec: Bld = {
       ring,
       h: Number.isFinite(realH) ? realH : style.h,
       wall: wallC || style.wall,
@@ -1313,7 +1795,9 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
       key: '',
       wayId: lb.wayId,
       name: tags.name,
-    });
+    };
+    rec.removed = isBuildingSuppressedByLandmarks(rec, activeLandmarkFootprints);
+    registerBuilding(rec);
     dirtyB.add(key);
     added++;
   }
@@ -1321,11 +1805,16 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
   for (const [lng, lat] of liveTrees) {
     const x = (lng - origin.lng) * origin.kx;
     const y = (lat - origin.lat) * origin.ky;
+    if (isTreeSuppressedByLandmarks(x, y, activeLandmarkFootprints)) continue;
     const k = chunkKeyOf(x, y);
+    let rawArr = rawChunkTrees.get(k);
+    if (!rawArr) rawChunkTrees.set(k, (rawArr = []));
+    if (rawArr.some((t) => Math.abs(t.x - x) < 2.5 && Math.abs(t.y - y) < 2.5)) continue;
+    const newTree = { x, y, s: 0.9 + hash2(x, y) * 0.5, kind: 0 };
+    rawArr.push(newTree);
     let arr = chunkTrees.get(k);
     if (!arr) chunkTrees.set(k, (arr = []));
-    if (arr.some((t) => Math.abs(t.x - x) < 2.5 && Math.abs(t.y - y) < 2.5)) continue;
-    arr.push({ x, y, s: 0.9 + hash2(x, y) * 0.5, kind: 0 });
+    arr.push(newTree);
     dirtyT.add(k);
     treeCount++;
   }
@@ -1338,7 +1827,16 @@ function applyLive(requestId: number, list: LiveBuildingInput[], liveTrees: [num
 self.onmessage = (e: MessageEvent<WorkerInMessage>) => {
   const msg = e.data;
   if (msg.type === 'init') {
+    if (msg.landmarkFootprints && msg.landmarkFootprints.length > 0) {
+      activeLandmarkFootprints = msg.landmarkFootprints;
+    }
     init(msg.baseUrl).catch((err) => post({ type: 'error', message: String(err?.message || err) }));
+  } else if (msg.type === 'updateLandmarkFootprints') {
+    try {
+      applyLandmarkFootprintsUpdate(msg.footprints);
+    } catch (err: any) {
+      post({ type: 'error', message: String(err?.message || err) });
+    }
   } else if (msg.type === 'live') {
     try {
       applyLive(msg.requestId, msg.buildings, msg.trees);

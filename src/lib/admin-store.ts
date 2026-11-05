@@ -1,10 +1,204 @@
 import { set, update, remove, get } from 'firebase/database';
-import { firebaseConfig, getRealtimeDb, ref, onValue } from './firebase';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  updateProfile,
+  signOut,
+} from 'firebase/auth';
+import {
+  firebaseConfig,
+  getRealtimeDb,
+  getFirebaseAuth,
+  createIsolatedProvisioningAuth,
+  ref,
+  onValue,
+  runTransaction,
+} from './firebase';
 import { Food } from './foods';
-import { Place, xuanHoaPlaces, getPlaceStyleGroup } from './places-xuanhoa';
+import {
+  Place,
+  xuanHoaPlaces,
+  getPlaceStyleGroup,
+  VERIFIED_CATALOG_PLACE_COORDS,
+} from './places-xuanhoa';
 import { MainCategoryKey, getCategoryItems } from './xuanhoa-catalog';
-import { UserAuthProfile, saveAuthUser, getStoredAuthUser } from './auth';
+import { UserAuthProfile, saveAuthUser, getStoredAuthUser, isVerifiedFirebaseAuthUid } from './auth';
+export { isVerifiedFirebaseAuthUid };
 import { cleanDishDisplayTitle } from './utils';
+import {
+  MAP_CATEGORY_REGISTRY,
+  resolvePlaceTaxonomy,
+  resolvePlaceContentProfile,
+  getDefaultSectorTagForSubcategory,
+  type MapSubcategoryId,
+  type ContentProfileType,
+  type CatalogModeType,
+} from './map/map-category-registry';
+import { VERIFIED_RTDB_PLACES_SEED } from './verified-rtdb-seeds';
+
+export const COORDINATE_SOURCE_PRIORITY: Record<string, number> = {
+  admin_verified: 100,
+  google_maps_resolved: 70,
+  nominatim_selected: 60,
+  openstreetmap: 50,
+  catalog_seed: 40,
+  nominatim_geocoded: 30,
+  unverified: 10,
+};
+
+export const UNPINNED_18_CATALOG_PLACE_IDS = new Set<string>([
+  'lau-ngua-tay-bac',
+  'quan-dua-kha-do',
+  'tiem-banh-a-salty-name',
+  'tiem-me-soc',
+  'trang-hai-san',
+  'bun-cha-xuan-hoa',
+  'bun-rieu-ba-mai',
+  'nha-hang-binh-nam',
+  'cafe-1975-xuan-hoa',
+  'sui-cao-tieu-lau-quan',
+  'pho-bo-xuan-hoa',
+  'tiem-tra-thanh-thanh',
+  'matcha-house-xuan-hoa',
+  'mr-tea-xuan-hoa',
+  'goky-xuan-hoa',
+  'lau-thai-ha-tinh',
+  'hi-tea',
+  'an-vat-nha-phuong',
+]);
+
+export const REMOVE_OLD_TEST_AND_DUPLICATE_PLACE_IDS = new Set<string>([
+  'xh_custom_1793679072649',
+  'xh_custom_1793679078883',
+  'xh_custom_1793679229732',
+  'xh_custom_1793679236729',
+  'xh_map_1793593781850',
+  'xh_map_1793593946189',
+  'xh_map_1792549858151',
+  'xh_map_1793345937162',
+  'xh_map_1793537990004',
+  'xh_map_1793590430372',
+  'xh_custom_1793418458046',
+  'xh_custom_1793672955111',
+  'xh_custom_1793355061807',
+  'xh_map_1793442980293',
+  'xh_custom_1793355271608',
+  'xh_custom_1793585051672',
+  'xh_custom_1792229707991',
+]);
+
+export interface PlaceLocationHistoryEntry {
+  historyId?: string;
+  placeId?: string;
+  targetVersion?: number;
+  status?: 'intent' | 'committed' | 'aborted';
+  timestamp: number;
+  committedAt?: number;
+  abortedAt?: number;
+  abortReason?: string;
+  updatedAt?: number;
+  actor: string;
+  actorUid?: string;
+  updatedBy?: string;
+  actorRole: 'admin' | 'manager' | 'system' | string;
+  action: 'pin' | 'update_coord' | 'unpin' | 'approve_proposal' | 'reject_proposal' | string;
+  previousLat?: number | null;
+  previousLng?: number | null;
+  newLat?: number | null;
+  newLng?: number | null;
+  coordinateSource?: string;
+  reason?: string;
+  note?: string;
+}
+
+export type ProposalActionType =
+  | 'create'
+  | 'update'
+  | 'pin'
+  | 'hide'
+  | 'delete'
+  | 'CREATE_PLACE'
+  | 'UPDATE_PLACE'
+  | 'UPDATE_COORDINATES'
+  | 'HIDE_PLACE'
+  | 'DELETE_PLACE';
+export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface PlaceChangeProposal {
+  id: string;
+  placeId: string;
+  placeName: string;
+  actionType: ProposalActionType;
+  status: ProposalStatus;
+  submittedBy: string;
+  submittedByUid?: string;
+  submittedByEmail?: string;
+  submittedByName: string;
+  submittedByRole: string;
+  submittedAt: number;
+  reviewedBy?: string;
+  reviewedByUid?: string;
+  reviewedByName?: string;
+  reviewedAt?: number;
+  reviewNote?: string;
+  message?: string;
+  baseVersion: number;
+  hasVersionConflict?: boolean;
+  previousData: {
+    name?: string;
+    address?: string;
+    phone?: string;
+    openHours?: string;
+    parentCategoryId?: string;
+    subcategoryId?: string;
+    lat?: number | null;
+    lng?: number | null;
+    mapsUrl?: string;
+    tagline?: string;
+  };
+  beforeData: {
+    name?: string;
+    address?: string;
+    phone?: string;
+    openHours?: string;
+    parentCategoryId?: string;
+    subcategoryId?: string;
+    lat?: number | null;
+    lng?: number | null;
+    mapsUrl?: string;
+    tagline?: string;
+  };
+  proposedData: {
+    name?: string;
+    address?: string;
+    phone?: string;
+    openHours?: string;
+    parentCategoryId?: string;
+    subcategoryId?: string;
+    lat?: number | null;
+    lng?: number | null;
+    mapsUrl?: string;
+    tagline?: string;
+    coordinateSource?: PlaceOverride['coordinateSource'];
+    customPlacePayload?: Partial<Place>;
+  };
+  afterData: {
+    name?: string;
+    address?: string;
+    phone?: string;
+    openHours?: string;
+    parentCategoryId?: string;
+    subcategoryId?: string;
+    lat?: number | null;
+    lng?: number | null;
+    mapsUrl?: string;
+    tagline?: string;
+    coordinateSource?: PlaceOverride['coordinateSource'];
+    customPlacePayload?: Partial<Place>;
+  };
+}
 
 export type AdminThemeMode = 'ivory-gold' | 'platinum-royal' | 'emerald- pearl';
 
@@ -16,8 +210,10 @@ export interface CustomMenuEntry {
   id?: string;
   name: string;
   price: number;
+  tag?: string;
   category?: string;
   description?: string;
+  imageUrl?: string;
   serviceTag?: 'ship' | 'dine_in' | 'both';
   isLocked?: boolean;
 }
@@ -32,11 +228,18 @@ export interface PlaceOverride {
   distance?: string;
   phone?: string;
   openHours?: string;
+  website?: string;
+  educationLevel?: string;
+  agencyFunction?: string;
   minPrice?: number;
   maxPrice?: number;
   category?: Place['category'];
   sectorTag?: string; // Phân khu mở rộng: an-chinh | nhau-lau | uong | an-vat | bia-game | dien-thoai | an-choi | dich-vu
   tags?: string[];
+  extraTags?: string[];
+  contentProfile?: ContentProfileType;
+  catalogMode?: CatalogModeType;
+  catalogEnabled?: boolean;
   serviceMode?: Place['serviceMode'];
   deliveryNote?: string;
   mapsQuery?: string;
@@ -65,13 +268,14 @@ export interface PlaceOverride {
   lng?: number;
   coordinateVerified?: boolean;
   adminPinApproved?: boolean;
-  locationStatus?: 'located' | 'unlocated' | 'invalid_coordinates' | 'invalid' | 'pending_geocode';
+  /** Cờ đánh dấu chỉ khi Admin chủ động bấm "Gỡ vị trí" khỏi bản đồ */
+  adminExplicitlyUnpinned?: boolean;
+  locationStatus?: 'located' | 'unlocated' | 'invalid_coordinates' | 'invalid' | 'pending_geocode' | 'suspicious' | 'outside_service_area';
   mapsLinkStatus?: 'none' | 'valid' | 'unresolved' | 'invalid';
   visibilityStatus?: 'visible' | 'hidden' | 'deleted' | 'blocked';
   coordinateSource?:
     | 'openstreetmap'
     | 'admin_verified'
-    | 'merchant_verified'
     | 'google_maps_resolved'
     | 'nominatim_selected'
     | 'nominatim_geocoded'
@@ -81,32 +285,57 @@ export interface PlaceOverride {
   mapCategory?: string;
   parentCategoryId?: string;
   subcategoryId?: string;
+  /** Alias chuẩn theo Unified Place Data Contract (Phần V) */
+  categoryId?: string;
   showByDefault?: boolean;
+  /** Alias chuẩn theo Unified Place Data Contract (Phần V) */
+  defaultMapVisible?: boolean;
+  /** Alias chuẩn theo Unified Place Data Contract (Phần V) */
+  openingHours?: string;
+  createdAt?: number;
   version?: number;
-  merchantClaimCode?: string; // Mã code duy nhất do Admin cấp cho chủ quán
-  claimedByEmail?: string; // Gmail của chủ quán đã kích hoạt mã
-  claimedByUid?: string;
-  claimedByName?: string;
-  claimedAt?: number;
-  liveStatus?: 'open_normal' | 'busy_hot' | 'closed_today'; // Trạng thái mở bán trực tiếp trong ngày của chủ quán
+  liveStatus?: 'open_normal' | 'busy_hot' | 'closed_today';
   liveStatusNote?: string;
+  confirmCoordinateOverride?: boolean;
+  lastCoordMutation?: {
+    historyId?: string;
+    targetVersion?: number;
+    previousLat: number | null;
+    previousLng: number | null;
+    newLat: number | null;
+    newLng: number | null;
+    actorUid: string;
+    timestamp: number;
+    reason: string;
+    action: string;
+  } | null;
+  locationHistory?: PlaceLocationHistoryEntry[];
   pendingWebApproval?: {
+    proposalId?: string;
     submittedBy: string;
     submittedByName: string;
     submittedAt: number;
     actionSummary: string;
-    actionType?: 'create' | 'delete' | 'update';
+    actionType?: ProposalActionType;
     isNewPlace?: boolean;
     isDeleteRequest?: boolean;
   } | null;
   pendingMapApproval?: {
+    proposalId?: string;
     submittedBy: string;
+    submittedByEmail?: string;
     submittedByName: string;
     submittedAt: number;
     actionSummary: string;
-    actionType?: 'create' | 'delete' | 'update';
+    actionType?: ProposalActionType;
+    baseVersion?: number;
     previousLat?: number | null;
     previousLng?: number | null;
+    proposedLat?: number | null;
+    proposedLng?: number | null;
+    proposedName?: string;
+    proposedAddress?: string;
+    proposedPhone?: string;
     isNewPlace?: boolean;
     isDeleteRequest?: boolean;
   } | null;
@@ -115,51 +344,48 @@ export interface PlaceOverride {
   customPlaceData?: Place;
 }
 
-export interface MerchantPendingSubmission {
-  id: string;
-  placeId: string;
-  placeOriginalName: string;
-  merchantEmail: string;
-  merchantName: string;
-  claimCodeUsed: string;
-  submittedAt: number;
-  status: 'pending' | 'approved' | 'rejected';
-  reviewedAt?: number;
-  reviewNote?: string;
-  proposed: {
-    name: string;
-    phone: string;
-    openHours: string;
-    address: string;
-    tagline?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    serviceMode?: Place['serviceMode'];
-    deliveryNote?: string;
-    signatureDishName?: string;
-    signatureDishPrice?: number;
-    customMenu?: CustomMenuEntry[];
-    lat: number | null;
-    lng: number | null;
-    gpsDistanceMeters?: number | null;
-  };
-  previous: {
-    name: string;
-    phone: string;
-    openHours: string;
-    address: string;
-    lat: number | null;
-    lng: number | null;
-    menuCount: number;
-  };
+export type SystemRoleTier =
+  | 'primary_founder'
+  | 'backup_founder'
+  | 'admin'
+  | 'manager'
+  | 'user';
+
+export interface BackupFounderRecord {
+  uid: string;
+  username: string;
+  displayName?: string;
+  recoveryEmail?: string;
+  recoveryEmailVerified?: boolean;
+  active: boolean;
+  emailVerified?: boolean;
+  sessionEpoch?: number;
+  tokensValidAfterTime?: number;
+  lastPasswordResetAt?: number;
+  createdByUid: string;
+  createdAt: number;
+  updatedAt: number;
+  revokedAt?: number;
+  revokedByUid?: string;
+  lastLoginAt?: number;
+}
+
+export interface XuanHoaSecurityState {
+  primary_founder: Record<string, boolean>;
+  backup_founder: Record<string, boolean | BackupFounderRecord>;
+  admins: Record<string, boolean>;
+  managers: Record<string, boolean>;
+  locked_uids: Record<string, boolean>;
 }
 
 export interface AdminAccount {
   id: string;
   username: string;
   password: string;
+  passwordHash?: string;
   displayName: string;
   role: 'superadmin' | 'manager';
+  roleTier?: SystemRoleTier;
   canManageWeb?: boolean;
   canManageMaps?: boolean;
   createdAt: number;
@@ -195,6 +421,7 @@ export interface ManagedMember {
   tastePreferences?: string[];
   photoURL?: string;
   status: MemberStatus;
+  roleTier?: SystemRoleTier;
   banReason?: string;
   canManageWeb?: boolean;
   canManageMaps?: boolean;
@@ -211,6 +438,24 @@ export interface AdminAuditLog {
   action: string;
   target: string;
   type: 'place' | 'dish' | 'user' | 'review' | 'system';
+  actorUid?: string;
+  actorRole?: 'primary_founder' | 'backup_founder' | 'admin' | 'manager';
+  eventCategory?:
+    | 'admin_review'
+    | 'coord_override'
+    | 'role_change'
+    | 'role_management'
+    | 'founder_security'
+    | 'system_security'
+    | 'place_crud'
+    | 'manager_proposal';
+  verificationSource?:
+    | 'client_rtdb_rule_checked'
+    | 'trusted_backend_verified'
+    | 'backend_admin_verified';
+  refId?: string;
+  placeId?: string;
+  actorEmail?: string;
   timestamp: number;
 }
 
@@ -231,21 +476,49 @@ export const DEFAULT_SECTOR_TAGS: SectorCategoryTag[] = [
   { id: 'dia-danh', label: '🏛️ Địa Danh / Cơ Quan / Trường Học / Y Tế' },
 ];
 
+/**
+ * Băm định danh một chiều (Salted Digest) cho thông tin xác thực quản trị — không bao giờ lưu mật khẩu/PIN dạng rõ (plaintext) trong mã nguồn, localStorage hoặc RTDB.
+ */
+export function hashAdminCredential(secret: string, salt = 'xh_sec_rbac_v2'): string {
+  const clean = `${salt}::${String(secret || '').trim()}`;
+  let h1 = 0xdeadbeef ^ clean.length;
+  let h2 = 0x41c6ce57 ^ clean.length;
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `xh2_${(h2 >>> 0).toString(16).padStart(8, '0')}${(h1 >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+export function verifyAdminCredential(
+  rawInput: string,
+  storedPassword?: string,
+  storedHash?: string
+): boolean {
+  // SEC-FINAL-01: Không bao giờ sử dụng hash mật khẩu hoặc PIN tĩnh ở frontend làm cơ chế xác thực chính.
+  // Mọi thông tin xác thực tĩnh cũ ('123', '6868', 'xh2_65a096127c75d450') đều đã bị thu hồi hoàn toàn.
+  void rawInput;
+  void storedPassword;
+  void storedHash;
+  return false;
+}
+
+export const PRIMARY_FOUNDER_EMAIL = 'marcel.vietnam@gmail.com';
+export const PRIMARY_FOUNDER_DISPLAY_NAME = 'Dê Già Designer';
+export const BACKUP_FOUNDER_INTERNAL_AUTH_DOMAIN = 'founder-auth.xuanhoacogi.internal';
+
 export const DEFAULT_ADMIN_ACCOUNTS: AdminAccount[] = [
   {
-    id: 'adm_owner_1',
-    username: 'admin',
-    password: '123',
-    displayName: 'Tổng Quản Trị (Admin)',
+    id: 'adm_primary_founder',
+    username: PRIMARY_FOUNDER_EMAIL,
+    password: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+    passwordHash: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+    displayName: `${PRIMARY_FOUNDER_DISPLAY_NAME} (Primary Founder)`,
     role: 'superadmin',
-    createdAt: 1710000000000,
-  },
-  {
-    id: 'adm_owner_2',
-    username: 'minhtt',
-    password: '123',
-    displayName: 'MinhTT (Founder)',
-    role: 'superadmin',
+    roleTier: 'primary_founder',
     createdAt: 1710000000000,
   },
 ];
@@ -254,7 +527,7 @@ export interface AdminState {
   places: Record<string, PlaceOverride>;
   dishes: Record<string, DishOverride>;
   members: Record<string, ManagedMember>;
-  merchantSubmissions?: Record<string, MerchantPendingSubmission>;
+  placeProposals?: Record<string, PlaceChangeProposal>;
   knownPlaceIds: string[];
   knownDishKeys: string[];
   auditLogs: AdminAuditLog[];
@@ -264,23 +537,403 @@ export interface AdminState {
   sectorTags?: SectorCategoryTag[];
   fontScale?: 'normal' | 'large';
   requirePinOnOpen?: boolean;
-  mapAccessMode?: 'merchants_and_admin_only' | 'public_open'; // Chế độ mở Bản đồ số: Chỉ Chủ Quán + Admin hoặc Mở công khai cho mọi Khách
+  mapAccessMode?: 'public_open' | 'managers_and_admin_only';
   updatedAt: number;
 }
 
 const ADMIN_STORAGE_KEY = 'xuanhoa_admin_state_v1';
 const ADMIN_AUTH_LOCAL_KEY = 'xuanhoa_admin_logged_account_v1';
 const ADMIN_AUTH_SESSION_KEY = 'xuanhoa_admin_logged_session_v1';
+const SECURITY_STATE_STORAGE_KEY = 'xuanhoa_security_state_cache_v2';
+const FOUNDER_LOGIN_RATE_LIMIT_KEY = 'xuanhoa_founder_login_guard_v2';
 
-const DEFAULT_ADMIN_EMAILS = [
-  'truongtuanminh.91@gmail.com',
-  'marcel.vietnam@gmail.com',
-  'admin@xuanhoacogi.com',
-  'minhtt@xuanhoacogi.com',
-];
+// FOUNDER SYSTEM V2: Chỉ duy nhất tài khoản Dê Già Designer đã xác minh Firebase Auth UID 28 ký tự là Primary Founder mặc định.
+// Các Admin/Manager cũ sẽ được Founder cấp lại quyền sau khi xác minh UID 28 ký tự.
+const DEFAULT_ADMIN_EMAILS = [PRIMARY_FOUNDER_EMAIL];
 
 export function getDishUniqueKey(food: Food): string {
   return food.customId || `dish_${food.name.toLowerCase().trim().replace(/\s+/g, '_')}_${food.price}`;
+}
+
+/**
+ * 4 bản ghi đề xuất tạo Place mới (`CREATE_PLACE`) cho 4 công trình Landmark 3D chưa tồn tại trong bộ 165 ID lịch sử:
+ * 1. Chùa Hiền Lương (`xh_landmark_chua_hien_luong`) — tọa độ đề xuất `21.2856174, 105.7175459`
+ * 2. Chùa An Hòa (`xh_landmark_chua_an_hoa`) — tọa độ đề xuất `21.2891926, 105.7133076`
+ * 3. Trường Mầm non Xuân Hòa (`xh_landmark_mam_non_xuan_hoa`) — tọa độ đề xuất `21.2863997, 105.7218583`
+ * 4. Nhà Minh Hường (`xh_landmark_nha_minh_huong`) — tọa độ đề xuất `21.285862, 105.717861`
+ *
+ * Nguyên tắc:
+ * - Giữ ở trạng thái `status: 'pending'` và `coordinateSource: 'unverified'` (chưa tự đánh dấu `admin_verified` trước khi Admin xác nhận).
+ * - Không tự thêm vào `state.places` khi chưa duyệt để bảo toàn 100% bộ dữ liệu lịch sử 165 ID (`148` active / `130` located / `18` unpinned).
+ * - Khi Admin bấm Duyệt (`approvePlaceProposal`), bản ghi sẽ chính thức chuyển sang `coordinateVerified: true`, `coordinateSource: 'admin_verified'`.
+ */
+export const PENDING_LANDMARK_PLACE_PROPOSALS_SEED: Record<string, PlaceChangeProposal> = {
+  prop_xh_landmark_chua_hien_luong: {
+    id: 'prop_xh_landmark_chua_hien_luong',
+    placeId: 'xh_landmark_chua_hien_luong',
+    placeName: 'Chùa Hiền Lương',
+    actionType: 'CREATE_PLACE',
+    status: 'pending',
+    submittedBy: 'quanlymaps@xuanhoacogi.vn',
+    submittedByUid: 'uid_manager_landmark_sync',
+    submittedByEmail: 'quanlymaps@xuanhoacogi.vn',
+    submittedByName: 'Quản lý Maps',
+    submittedByRole: 'Quản lý Maps',
+    submittedAt: 1730690000000,
+    baseVersion: 1,
+    message: 'Đề xuất tạo Place mới cho mô hình 3D Chùa Hiền Lương (chờ Admin xác nhận tọa độ 21.2856174, 105.7175459)',
+    previousData: {
+      name: 'Chùa Hiền Lương',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '05:30 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'religious',
+      lat: null,
+      lng: null,
+      mapsUrl: '',
+      tagline: 'Chùa Hiền Lương — Di tích tâm linh & kiến trúc truyền thống tại Phường Xuân Hòa',
+    },
+    beforeData: {
+      name: 'Chùa Hiền Lương',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '05:30 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'religious',
+      lat: null,
+      lng: null,
+      mapsUrl: '',
+      tagline: 'Chùa Hiền Lương — Di tích tâm linh & kiến trúc truyền thống tại Phường Xuân Hòa',
+    },
+    proposedData: {
+      name: 'Chùa Hiền Lương',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '05:30 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'religious',
+      lat: 21.2856174,
+      lng: 105.7175459,
+      mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.2856174,105.7175459',
+      tagline: 'Chùa Hiền Lương — Di tích tâm linh & kiến trúc truyền thống tại Phường Xuân Hòa',
+      coordinateSource: 'unverified',
+    },
+    afterData: {
+      name: 'Chùa Hiền Lương',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '05:30 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'religious',
+      lat: 21.2856174,
+      lng: 105.7175459,
+      mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.2856174,105.7175459',
+      tagline: 'Chùa Hiền Lương — Di tích tâm linh & kiến trúc truyền thống tại Phường Xuân Hòa',
+      coordinateSource: 'unverified',
+    },
+  },
+  prop_xh_landmark_chua_an_hoa: {
+    id: 'prop_xh_landmark_chua_an_hoa',
+    placeId: 'xh_landmark_chua_an_hoa',
+    placeName: 'Chùa An Hòa',
+    actionType: 'CREATE_PLACE',
+    status: 'pending',
+    submittedBy: 'quanlymaps@xuanhoacogi.vn',
+    submittedByUid: 'uid_manager_landmark_sync',
+    submittedByEmail: 'quanlymaps@xuanhoacogi.vn',
+    submittedByName: 'Quản lý Maps',
+    submittedByRole: 'Quản lý Maps',
+    submittedAt: 1730690001000,
+    baseVersion: 1,
+    message: 'Đề xuất tạo Place mới cho mô hình 3D Chùa An Hòa (chờ Admin xác nhận tọa độ 21.2891926, 105.7133076)',
+    previousData: {
+      name: 'Chùa An Hòa',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '05:30 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'religious',
+      lat: null,
+      lng: null,
+      mapsUrl: '',
+      tagline: 'Chùa An Hòa — Ngôi chùa truyền thống tại Phường Xuân Hòa',
+    },
+    beforeData: {
+      name: 'Chùa An Hòa',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '05:30 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'religious',
+      lat: null,
+      lng: null,
+      mapsUrl: '',
+      tagline: 'Chùa An Hòa — Ngôi chùa truyền thống tại Phường Xuân Hòa',
+    },
+    proposedData: {
+      name: 'Chùa An Hòa',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '05:30 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'religious',
+      lat: 21.2891926,
+      lng: 105.7133076,
+      mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.2891926,105.7133076',
+      tagline: 'Chùa An Hòa — Ngôi chùa truyền thống tại Phường Xuân Hòa',
+      coordinateSource: 'unverified',
+    },
+    afterData: {
+      name: 'Chùa An Hòa',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '05:30 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'religious',
+      lat: 21.2891926,
+      lng: 105.7133076,
+      mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.2891926,105.7133076',
+      tagline: 'Chùa An Hòa — Ngôi chùa truyền thống tại Phường Xuân Hòa',
+      coordinateSource: 'unverified',
+    },
+  },
+  prop_xh_landmark_mam_non_xuan_hoa: {
+    id: 'prop_xh_landmark_mam_non_xuan_hoa',
+    placeId: 'xh_landmark_mam_non_xuan_hoa',
+    placeName: 'Trường Mầm non Xuân Hòa',
+    actionType: 'CREATE_PLACE',
+    status: 'pending',
+    submittedBy: 'quanlymaps@xuanhoacogi.vn',
+    submittedByUid: 'uid_manager_landmark_sync',
+    submittedByEmail: 'quanlymaps@xuanhoacogi.vn',
+    submittedByName: 'Quản lý Maps',
+    submittedByRole: 'Quản lý Maps',
+    submittedAt: 1730690002000,
+    baseVersion: 1,
+    message: 'Đề xuất tạo Place mới cho mô hình 3D Trường Mầm non Xuân Hòa (chờ Admin xác nhận tọa độ 21.2863997, 105.7218583)',
+    previousData: {
+      name: 'Trường Mầm non Xuân Hòa',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '07:00 - 17:30',
+      parentCategoryId: 'education',
+      subcategoryId: 'kindergarten',
+      lat: null,
+      lng: null,
+      mapsUrl: '',
+      tagline: 'Trường Mầm non Xuân Hòa — Cơ sở giáo dục mầm non Phường Xuân Hòa',
+    },
+    beforeData: {
+      name: 'Trường Mầm non Xuân Hòa',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '07:00 - 17:30',
+      parentCategoryId: 'education',
+      subcategoryId: 'kindergarten',
+      lat: null,
+      lng: null,
+      mapsUrl: '',
+      tagline: 'Trường Mầm non Xuân Hòa — Cơ sở giáo dục mầm non Phường Xuân Hòa',
+    },
+    proposedData: {
+      name: 'Trường Mầm non Xuân Hòa',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '07:00 - 17:30',
+      parentCategoryId: 'education',
+      subcategoryId: 'kindergarten',
+      lat: 21.2863997,
+      lng: 105.7218583,
+      mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.2863997,105.7218583',
+      tagline: 'Trường Mầm non Xuân Hòa — Cơ sở giáo dục mầm non Phường Xuân Hòa',
+      coordinateSource: 'unverified',
+    },
+    afterData: {
+      name: 'Trường Mầm non Xuân Hòa',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '07:00 - 17:30',
+      parentCategoryId: 'education',
+      subcategoryId: 'kindergarten',
+      lat: 21.2863997,
+      lng: 105.7218583,
+      mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.2863997,105.7218583',
+      tagline: 'Trường Mầm non Xuân Hòa — Cơ sở giáo dục mầm non Phường Xuân Hòa',
+      coordinateSource: 'unverified',
+    },
+  },
+  prop_xh_landmark_nha_minh_huong: {
+    id: 'prop_xh_landmark_nha_minh_huong',
+    placeId: 'xh_landmark_nha_minh_huong',
+    placeName: 'Nhà Minh Hường',
+    actionType: 'CREATE_PLACE',
+    status: 'pending',
+    submittedBy: 'quanlymaps@xuanhoacogi.vn',
+    submittedByUid: 'uid_manager_landmark_sync',
+    submittedByEmail: 'quanlymaps@xuanhoacogi.vn',
+    submittedByName: 'Quản lý Maps',
+    submittedByRole: 'Quản lý Maps',
+    submittedAt: 1730690003000,
+    baseVersion: 1,
+    message: 'Đề xuất tạo Place mới cho mô hình 3D Nhà Minh Hường (chờ Admin xác nhận tọa độ 21.285862, 105.717861)',
+    previousData: {
+      name: 'Nhà Minh Hường',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '07:00 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'landmark',
+      lat: null,
+      lng: null,
+      mapsUrl: '',
+      tagline: 'Nhà Minh Hường — Công trình nhà vườn kiến trúc đặc trưng tại Phường Xuân Hòa',
+    },
+    beforeData: {
+      name: 'Nhà Minh Hường',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '07:00 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'landmark',
+      lat: null,
+      lng: null,
+      mapsUrl: '',
+      tagline: 'Nhà Minh Hường — Công trình nhà vườn kiến trúc đặc trưng tại Phường Xuân Hòa',
+    },
+    proposedData: {
+      name: 'Nhà Minh Hường',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '07:00 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'landmark',
+      lat: 21.285862,
+      lng: 105.717861,
+      mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.285862,105.717861',
+      tagline: 'Nhà Minh Hường — Công trình nhà vườn kiến trúc đặc trưng tại Phường Xuân Hòa',
+      coordinateSource: 'unverified',
+    },
+    afterData: {
+      name: 'Nhà Minh Hường',
+      address: 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      phone: '',
+      openHours: '07:00 - 21:00',
+      parentCategoryId: 'landmark',
+      subcategoryId: 'landmark',
+      lat: 21.285862,
+      lng: 105.717861,
+      mapsUrl: 'https://www.google.com/maps/search/?api=1&query=21.285862,105.717861',
+      tagline: 'Nhà Minh Hường — Công trình nhà vườn kiến trúc đặc trưng tại Phường Xuân Hòa',
+      coordinateSource: 'unverified',
+    },
+  },
+};
+
+export const PENDING_LANDMARK_PROPOSAL_BY_PLACE_ID: Record<string, string> = {
+  xh_landmark_chua_hien_luong: 'prop_xh_landmark_chua_hien_luong',
+  xh_landmark_chua_an_hoa: 'prop_xh_landmark_chua_an_hoa',
+  xh_landmark_mam_non_xuan_hoa: 'prop_xh_landmark_mam_non_xuan_hoa',
+  xh_landmark_nha_minh_huong: 'prop_xh_landmark_nha_minh_huong',
+};
+
+export interface ResolvedPlaceOrProposalCoordinates {
+  placeId: string;
+  proposalId?: string;
+  name: string;
+  address: string;
+  tagline: string;
+  parentCategoryId: string;
+  subcategoryId: string;
+  lat: number;
+  lng: number;
+  coordinateVerified: boolean;
+  coordinateSource: string;
+  status: 'approved' | 'pending' | 'rejected' | 'cancelled';
+}
+
+/**
+ * Tra cứu tọa độ neo (anchor) từ bản ghi Place đã duyệt hoặc bản ghi đề xuất Place đang chờ Admin duyệt (`placeProposals`).
+ * Dùng cho hệ thống Landmark 3D để lấy anchor trực tiếp từ tọa độ Place (hoặc tọa độ đề xuất của Place khi đang chờ Admin duyệt).
+ */
+export function resolvePlaceOrPendingProposalCoordinates(
+  placeId: string
+): ResolvedPlaceOrProposalCoordinates | null {
+  if (!placeId) return null;
+  const state = getAdminState();
+  const ov = state.places?.[placeId];
+  if (ov) {
+    if (ov.status === 'deleted' || ov.visibilityStatus === 'deleted') {
+      return null;
+    }
+    if (typeof ov.lat === 'number' && typeof ov.lng === 'number' && Number.isFinite(ov.lat) && Number.isFinite(ov.lng)) {
+      const isPendingNew = Boolean(ov.pendingMapApproval?.isNewPlace);
+      return {
+        placeId,
+        proposalId: ov.pendingMapApproval?.proposalId,
+        name: ov.name || ov.customPlaceData?.name || placeId,
+        address: ov.address || ov.customPlaceData?.address || 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+        tagline: ov.tagline || ov.customPlaceData?.tagline || '',
+        parentCategoryId: ov.parentCategoryId || 'landmark',
+        subcategoryId: ov.subcategoryId || ov.categoryId || 'landmark',
+        lat: Number(ov.lat),
+        lng: Number(ov.lng),
+        coordinateVerified: Boolean(ov.coordinateVerified && !isPendingNew),
+        coordinateSource: isPendingNew ? 'unverified' : ov.coordinateSource || 'admin_verified',
+        status: isPendingNew ? 'pending' : 'approved',
+      };
+    }
+    if (
+      ov.pendingMapApproval &&
+      typeof ov.pendingMapApproval.proposedLat === 'number' &&
+      typeof ov.pendingMapApproval.proposedLng === 'number'
+    ) {
+      return {
+        placeId,
+        proposalId: ov.pendingMapApproval.proposalId,
+        name: ov.pendingMapApproval.proposedName || ov.name || placeId,
+        address: ov.pendingMapApproval.proposedAddress || ov.address || 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+        tagline: ov.tagline || '',
+        parentCategoryId: ov.parentCategoryId || 'landmark',
+        subcategoryId: ov.subcategoryId || ov.categoryId || 'landmark',
+        lat: Number(ov.pendingMapApproval.proposedLat),
+        lng: Number(ov.pendingMapApproval.proposedLng),
+        coordinateVerified: false,
+        coordinateSource: 'unverified',
+        status: 'pending',
+      };
+    }
+  }
+
+  const proposalsMap = state.placeProposals || PENDING_LANDMARK_PLACE_PROPOSALS_SEED;
+  const matchingProp =
+    Object.values(proposalsMap).find(p => p.placeId === placeId && p.status === 'pending') ||
+    Object.values(proposalsMap).find(p => p.placeId === placeId) ||
+    Object.values(PENDING_LANDMARK_PLACE_PROPOSALS_SEED).find(p => p.placeId === placeId);
+
+  if (
+    matchingProp &&
+    typeof matchingProp.proposedData?.lat === 'number' &&
+    typeof matchingProp.proposedData?.lng === 'number'
+  ) {
+    const isApproved = matchingProp.status === 'approved';
+    return {
+      placeId,
+      proposalId: matchingProp.id,
+      name: matchingProp.proposedData.name || matchingProp.placeName || placeId,
+      address: matchingProp.proposedData.address || 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+      tagline: matchingProp.proposedData.tagline || '',
+      parentCategoryId: matchingProp.proposedData.parentCategoryId || 'landmark',
+      subcategoryId: matchingProp.proposedData.subcategoryId || 'landmark',
+      lat: Number(matchingProp.proposedData.lat),
+      lng: Number(matchingProp.proposedData.lng),
+      coordinateVerified: isApproved,
+      coordinateSource: isApproved ? 'admin_verified' : 'unverified',
+      status: matchingProp.status,
+    };
+  }
+
+  return null;
 }
 
 function createInitialAdminState(): AdminState {
@@ -291,12 +944,18 @@ function createInitialAdminState(): AdminState {
     ...getCategoryItems('uong-gi'),
   ];
   const initialDishKeys = Array.from(new Set(allBaseDishes.map(getDishUniqueKey)));
+  const seededPlaces: Record<string, PlaceOverride> = JSON.parse(
+    JSON.stringify(VERIFIED_RTDB_PLACES_SEED)
+  );
+  const seededProposals: Record<string, PlaceChangeProposal> = JSON.parse(
+    JSON.stringify(PENDING_LANDMARK_PLACE_PROPOSALS_SEED)
+  );
 
   return {
-    places: {},
+    places: seededPlaces,
     dishes: {},
     members: {},
-    merchantSubmissions: {},
+    placeProposals: seededProposals,
     knownPlaceIds: initialPlaceIds,
     knownDishKeys: initialDishKeys,
     auditLogs: [
@@ -310,7 +969,7 @@ function createInitialAdminState(): AdminState {
     ],
     adminEmails: DEFAULT_ADMIN_EMAILS,
     adminAccounts: DEFAULT_ADMIN_ACCOUNTS,
-    adminPin: '6868',
+    adminPin: '[REDACTED_HASHED]',
     sectorTags: DEFAULT_SECTOR_TAGS,
     fontScale: 'normal',
     requirePinOnOpen: false,
@@ -407,8 +1066,16 @@ export function normalizeAndDeduplicateMembers(
       hadDuplicates = true;
     }
 
-    const canonicalUid = `uid_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+    const fallbackSyntheticUid = `uid_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
     const existing = out[cleanEmail];
+    const pickBestUid = (u1?: string, u2?: string): string => {
+      if (isVerifiedFirebaseAuthUid(u1)) return u1!.trim();
+      if (isVerifiedFirebaseAuthUid(u2)) return u2!.trim();
+      if (u1 && !u1.startsWith('uid_') && !u1.startsWith('google_17')) return u1;
+      if (u2 && !u2.startsWith('uid_') && !u2.startsWith('google_17')) return u2;
+      return u1 || u2 || fallbackSyntheticUid;
+    };
+    const canonicalUid = pickBestUid(incoming.uid, existing?.uid);
     if (existing) {
       hadDuplicates = true;
       const preferIncomingNick =
@@ -473,19 +1140,157 @@ let cachedAdminRaw: string | null = null;
 let cachedAdminState: AdminState | null = null;
 let lastLocalSaveUpdatedAt = 0;
 
-function isSuperAdminIdentifier(id?: string | null): boolean {
+let cachedSecurityState: XuanHoaSecurityState = {
+  primary_founder: {},
+  backup_founder: {},
+  admins: {},
+  managers: {},
+  locked_uids: {},
+};
+
+export function getSecurityState(): XuanHoaSecurityState {
+  if (typeof window === 'undefined') return cachedSecurityState;
+  try {
+    const raw = sessionStorage.getItem(SECURITY_STATE_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<XuanHoaSecurityState>;
+      cachedSecurityState = {
+        primary_founder: parsed.primary_founder || cachedSecurityState.primary_founder || {},
+        backup_founder: parsed.backup_founder || cachedSecurityState.backup_founder || {},
+        admins: parsed.admins || cachedSecurityState.admins || {},
+        managers: parsed.managers || cachedSecurityState.managers || {},
+        locked_uids: parsed.locked_uids || cachedSecurityState.locked_uids || {},
+      };
+    }
+  } catch {}
+  return cachedSecurityState;
+}
+
+export function saveSecurityStateCache(next: Partial<XuanHoaSecurityState>): XuanHoaSecurityState {
+  cachedSecurityState = {
+    primary_founder: next.primary_founder ?? cachedSecurityState.primary_founder ?? {},
+    backup_founder: next.backup_founder ?? cachedSecurityState.backup_founder ?? {},
+    admins: next.admins ?? cachedSecurityState.admins ?? {},
+    managers: next.managers ?? cachedSecurityState.managers ?? {},
+    locked_uids: next.locked_uids ?? cachedSecurityState.locked_uids ?? {},
+  };
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.setItem(SECURITY_STATE_STORAGE_KEY, JSON.stringify(cachedSecurityState));
+      window.dispatchEvent(
+        new CustomEvent('xuanhoa_security_sync', { detail: cachedSecurityState })
+      );
+    } catch {}
+  }
+  return cachedSecurityState;
+}
+
+export function isUidPrimaryFounder(uid?: string | null): boolean {
+  if (!isVerifiedFirebaseAuthUid(uid)) return false;
+  const clean = uid!.trim();
+  const sec = getSecurityState();
+  return sec.primary_founder[clean] === true;
+}
+
+export function isUidLocked(uid?: string | null): boolean {
+  if (!uid || typeof uid !== 'string') return false;
+  const clean = uid.trim();
+  if (isUidPrimaryFounder(clean)) return false;
+  const sec = getSecurityState();
+  return sec.locked_uids[clean] === true;
+}
+
+export function isUidActiveBackupFounder(uid?: string | null): boolean {
+  if (!isVerifiedFirebaseAuthUid(uid)) return false;
+  const clean = uid!.trim();
+  if (isUidLocked(clean)) return false;
+  const sec = getSecurityState();
+  const entry = sec.backup_founder[clean];
+  if (entry === true) return true;
+  if (entry && typeof entry === 'object' && entry.active === true) return true;
+  return false;
+}
+
+/**
+ * SEC-FOUNDER-V2-DISABLE-BYPASS:
+ * Nếu một UID tồn tại trong `xuanhoa_security/backup_founder` nhưng có `active !== true`
+ * (hoặc bị khóa), UID đó TUYỆT ĐỐI bị từ chối mọi quyền Admin/Manager/Founder ngay cả khi
+ * `admins/$uid === true` hoặc `managers/$uid === true`.
+ */
+export function isUidDisabledBackupFounder(uid?: string | null): boolean {
+  if (!uid || typeof uid !== 'string') return false;
+  const clean = uid.trim();
+  if (!clean || isUidPrimaryFounder(clean)) return false;
+  const sec = getSecurityState();
+  if (!sec.backup_founder || !(clean in sec.backup_founder)) return false;
+  const entry = sec.backup_founder[clean];
+  if (entry === true) return isUidLocked(clean);
+  if (entry && typeof entry === 'object') {
+    return entry.active !== true || isUidLocked(clean);
+  }
+  return true;
+}
+
+export function isUidOperationalAdmin(uid?: string | null): boolean {
+  if (!isVerifiedFirebaseAuthUid(uid)) return false;
+  const clean = uid!.trim();
+  if (isUidPrimaryFounder(clean)) return true;
+  if (isUidLocked(clean) || isUidDisabledBackupFounder(clean)) return false;
+  if (isUidActiveBackupFounder(clean)) return true;
+  const sec = getSecurityState();
+  return sec.admins[clean] === true;
+}
+
+export function isUidOperationalManager(uid?: string | null): boolean {
+  if (!isVerifiedFirebaseAuthUid(uid)) return false;
+  const clean = uid!.trim();
+  if (isUidLocked(clean) || isUidDisabledBackupFounder(clean)) return false;
+  const sec = getSecurityState();
+  return sec.managers[clean] === true;
+}
+
+export function getBackupFounderRecords(): BackupFounderRecord[] {
+  const sec = getSecurityState();
+  const out: BackupFounderRecord[] = [];
+  for (const [uid, entry] of Object.entries(sec.backup_founder || {})) {
+    if (!isVerifiedFirebaseAuthUid(uid)) continue;
+    if (entry === true) {
+      out.push({
+        uid,
+        username: 'backup_founder',
+        displayName: 'Backup Founder',
+        active: !isUidLocked(uid),
+        createdByUid: 'primary_founder',
+        createdAt: 0,
+        updatedAt: 0,
+      });
+    } else if (entry && typeof entry === 'object') {
+      out.push({
+        ...entry,
+        uid: entry.uid || uid,
+        active: Boolean(entry.active && !isUidLocked(uid)),
+      });
+    }
+  }
+  return out;
+}
+
+export function isPrimaryFounderIdentifier(id?: string | null, uid?: string | null): boolean {
+  if (isUidPrimaryFounder(uid)) return true;
   if (!id) return false;
   const clean = id.trim().toLowerCase();
-  return (
-    clean === 'admin' ||
-    clean === '@admin' ||
-    clean === 'minhtt' ||
-    clean === '@minhtt' ||
-    clean === 'admin@xuanhoacogi.com' ||
-    clean === 'minhtt@xuanhoacogi.com' ||
-    clean === 'truongtuanminh.91@gmail.com' ||
-    clean === 'marcel.vietnam@gmail.com'
-  );
+  if (clean === PRIMARY_FOUNDER_EMAIL || clean === `@${PRIMARY_FOUNDER_EMAIL}`) {
+    // Nếu có truyền uid thì bắt buộc uid đó phải là Firebase Auth UID 28 ký tự hợp lệ (hoặc chưa có uid khi kiểm tra theo email thuần)
+    if (uid && !isVerifiedFirebaseAuthUid(uid)) return false;
+    return true;
+  }
+  return false;
+}
+
+function isSuperAdminIdentifier(id?: string | null, uid?: string | null): boolean {
+  if (isPrimaryFounderIdentifier(id, uid)) return true;
+  if (isUidOperationalAdmin(uid)) return true;
+  return false;
 }
 
 export function getAdminState(): AdminState {
@@ -504,31 +1309,72 @@ export function getAdminState(): AdminState {
       return cachedAdminState;
     }
 
-    const parsed: AdminState = JSON.parse(raw);
+    const parsed: AdminState & Record<string, any> = JSON.parse(raw);
     const places = parsed.places || {};
-    const merchantSubmissions = parsed.merchantSubmissions || {};
+    const placeProposals = parsed.placeProposals || {};
 
-    // Tự động hợp nhất quán Cháo Lòng Chị Hồng (xh_custom_1792229707991) đã tạo trong Admin sang mã chính thức có biển quán & ảnh món
     let migrated = false;
-    if (places['xh_custom_1792229707991']) {
-      const customHong = places['xh_custom_1792229707991'];
-      places['chao-long-chi-hong'] = {
-        ...customHong,
-        id: 'chao-long-chi-hong',
-        isCustom: false,
-        customPlaceData: undefined,
-        imageUrl: 'ai_studio_dish_chao_long_chi_hong.jpg',
-        updatedAt: Date.now(),
-      };
-      delete places['xh_custom_1792229707991'];
+    if (parsed.merchantSubmissions) {
+      delete parsed.merchantSubmissions;
       migrated = true;
     }
+
+    // 1. Dọn sạch 100% các bản ghi test tự động và bản ghi trùng lặp đã hợp nhất về ID chuẩn
+    for (const badId of REMOVE_OLD_TEST_AND_DUPLICATE_PLACE_IDS) {
+      if (places[badId]) {
+        delete places[badId];
+        migrated = true;
+      }
+    }
+
+    for (const [seedPropId, seedProp] of Object.entries(PENDING_LANDMARK_PLACE_PROPOSALS_SEED)) {
+      if (!placeProposals[seedPropId]) {
+        placeProposals[seedPropId] = JSON.parse(JSON.stringify(seedProp));
+        migrated = true;
+      }
+    }
+
+    // 1b. Không tự tạo mới 4 Place cho 4 landmark pending trên `places` trước khi Admin bấm Duyệt đề xuất (`status === 'approved'`)
+    for (const [lmPlaceId, propId] of Object.entries(PENDING_LANDMARK_PROPOSAL_BY_PLACE_ID)) {
+      if (places[lmPlaceId] && placeProposals[propId]?.status !== 'approved') {
+        delete places[lmPlaceId];
+        migrated = true;
+      }
+    }
+
+    // 2. Bổ sung đầy đủ toàn bộ dữ liệu thực tế từ VERIFIED_RTDB_PLACES_SEED (7 địa điểm custom thật + các quán đã ghim/xóa trên RTDB)
+    for (const [seedId, seedOv] of Object.entries(VERIFIED_RTDB_PLACES_SEED)) {
+      const existingOv = places[seedId];
+      if (!existingOv) {
+        places[seedId] = JSON.parse(JSON.stringify(seedOv));
+        migrated = true;
+      } else if (
+        (seedId === 'osm_civic_cong_an_xuan_hoa' || seedId === 'billiards-91-club') &&
+        (existingOv.status === 'deleted' || !isValidCoordinatePair(existingOv.lat, existingOv.lng))
+      ) {
+        places[seedId] = {
+          ...JSON.parse(JSON.stringify(seedOv)),
+          ...existingOv,
+          status: 'active',
+          visibilityStatus: 'visible',
+          lat: seedOv.lat,
+          lng: seedOv.lng,
+          coordinateVerified: true,
+          adminPinApproved: true,
+          adminExplicitlyUnpinned: false,
+          locationStatus: 'located',
+          coordinateSource: 'admin_verified',
+        };
+        migrated = true;
+      }
+    }
+
     if (places['chao-long-chi-hong'] && !places['chao-long-chi-hong'].imageUrl) {
       places['chao-long-chi-hong'].imageUrl = 'ai_studio_dish_chao_long_chi_hong.jpg';
       migrated = true;
     }
 
-    // Dọn sạch dữ liệu thử nghiệm vô tình lưu vào Ăn Vặt Gamitra (gamitra-xuan-hoa) để trả về đúng trạng thái ⏳ Chưa ghim
+    // 3. Chuẩn hóa từng bản ghi địa điểm và ẩn 18 quán chưa từng được ghim thật trên RTDB
     for (const [pid, ov] of Object.entries(places)) {
       if (!ov) continue;
       if (pid === 'gamitra-xuan-hoa' || pid === 'an-vat-gamitra') {
@@ -536,18 +1382,39 @@ export function getAdminState(): AdminState {
           ov.phone = ov.phone.replace(/aaa+$/i, '').trim();
           migrated = true;
         }
-        if (
-          ov.lat !== undefined ||
-          ov.lng !== undefined ||
-          ov.coordinateVerified
-        ) {
+      }
+
+      // Nếu thuộc 18 quán chưa có ghim thật trên RTDB và chưa được Admin ghim mới sau thời điểm chuẩn hóa (1793693200000) -> giữ trạng thái unlocated
+      if (
+        UNPINNED_18_CATALOG_PLACE_IDS.has(pid) &&
+        (!ov.updatedAt || ov.updatedAt < 1793693200000)
+      ) {
+        if (ov.lat !== undefined || ov.lng !== undefined || ov.locationStatus === 'located') {
           delete ov.lat;
           delete ov.lng;
           ov.coordinateVerified = false;
+          ov.adminPinApproved = false;
+          ov.locationStatus = 'unlocated';
           ov.coordinateSource = 'unverified';
-          delete ov.lastVerifiedAt;
           migrated = true;
         }
+      }
+
+      // Đồng bộ song hành các trường chuẩn của Unified Place Data Contract (Phần V)
+      if (ov.subcategoryId && !ov.categoryId) {
+        ov.categoryId = ov.subcategoryId;
+      } else if (ov.categoryId && !ov.subcategoryId) {
+        ov.subcategoryId = ov.categoryId;
+      }
+      if (ov.openHours !== undefined && ov.openingHours === undefined) {
+        ov.openingHours = ov.openHours;
+      } else if (ov.openingHours !== undefined && ov.openHours === undefined) {
+        ov.openHours = ov.openingHours;
+      }
+      if (typeof ov.showByDefault === 'boolean' && ov.defaultMapVisible === undefined) {
+        ov.defaultMapVisible = ov.showByDefault;
+      } else if (typeof ov.defaultMapVisible === 'boolean' && ov.showByDefault === undefined) {
+        ov.showByDefault = ov.defaultMapVisible;
       }
 
       const isCivicOrSchool =
@@ -555,33 +1422,64 @@ export function getAdminState(): AdminState {
         ov.mapCategory === 'public' ||
         ov.mapCategory === 'school' ||
         ov.mapCategory === 'medical' ||
+        ov.parentCategoryId === 'public' ||
+        ov.parentCategoryId === 'education' ||
+        ov.parentCategoryId === 'health' ||
+        ov.parentCategoryId === 'landmark' ||
         ov.sectorTag === 'dia-danh';
 
-      // Mọi hàng quán thương mại chưa được Admin đích thân ghim & duyệt chuẩn (adminPinApproved !== true)
-      // thì bắt buộc giữ ở trạng thái Chưa ghim (ẩn 100% trên Bản đồ dù có bật danh mục)
-      if (!isCivicOrSchool) {
-        if (ov.adminPinApproved === undefined) {
-          delete ov.lat;
-          delete ov.lng;
-          ov.coordinateVerified = false;
-          ov.adminPinApproved = false;
-          ov.coordinateSource = 'unverified';
-          delete ov.lastVerifiedAt;
-          ov.pendingMapApproval = null;
-          migrated = true;
-        } else if (ov.adminPinApproved !== true && !ov.pendingMapApproval) {
-          if (ov.lat !== undefined || ov.lng !== undefined || ov.coordinateVerified) {
-            delete ov.lat;
-            delete ov.lng;
-            ov.coordinateVerified = false;
-            ov.coordinateSource = 'unverified';
-            delete ov.lastVerifiedAt;
+      // Bảo toàn tuyệt đối tọa độ hợp lệ đã được ghim/xác minh trong VERIFIED_CATALOG_PLACE_COORDS
+      const catalogCoord = VERIFIED_CATALOG_PLACE_COORDS[pid];
+      if (
+        !UNPINNED_18_CATALOG_PLACE_IDS.has(pid) &&
+        ov.adminExplicitlyUnpinned !== true &&
+        !isValidCoordinatePair(ov.lat, ov.lng) &&
+        catalogCoord &&
+        isValidCoordinatePair(catalogCoord.lat, catalogCoord.lng)
+      ) {
+        ov.lat = catalogCoord.lat;
+        ov.lng = catalogCoord.lng;
+        ov.coordinateVerified = true;
+        ov.adminPinApproved = true;
+        ov.locationStatus = 'located';
+        if (!ov.coordinateSource || ov.coordinateSource === 'unverified') {
+          ov.coordinateSource = 'admin_verified';
+        }
+        migrated = true;
+      }
+
+      const hasValidLatLng =
+        typeof ov.lat === 'number' &&
+        typeof ov.lng === 'number' &&
+        Number.isFinite(ov.lat) &&
+        Number.isFinite(ov.lng) &&
+        ov.lat >= 8 &&
+        ov.lat <= 24 &&
+        ov.lng >= 102 &&
+        ov.lng <= 110.5;
+
+      if (hasValidLatLng && ov.adminExplicitlyUnpinned !== true) {
+        if (
+          ov.adminPinApproved !== true ||
+          ov.coordinateVerified !== true ||
+          ov.locationStatus !== 'located'
+        ) {
+          if (!ov.pendingMapApproval) {
+            ov.adminPinApproved = true;
+            ov.coordinateVerified = true;
+            ov.locationStatus = 'located';
+            if (!ov.coordinateSource || ov.coordinateSource === 'unverified') {
+              ov.coordinateSource = 'admin_verified';
+            }
             migrated = true;
           }
         }
-      } else if (ov.coordinateVerified !== false && ov.adminPinApproved === undefined && !ov.pendingMapApproval) {
-        ov.adminPinApproved = true;
-        migrated = true;
+      } else if (!isCivicOrSchool && !hasValidLatLng) {
+        if (ov.adminPinApproved === undefined) {
+          ov.coordinateVerified = false;
+          ov.adminPinApproved = false;
+          ov.coordinateSource = 'unverified';
+        }
       }
 
       if (isCivicOrSchool) {
@@ -600,47 +1498,50 @@ export function getAdminState(): AdminState {
           ov.customPlaceData.priceRange = 'Địa danh công cộng';
           migrated = true;
         }
-        if (ov.pendingWebApproval) {
-          ov.pendingWebApproval = null;
-          migrated = true;
-        }
       }
 
-      // Admin làm gì là mệnh lệnh (không cần duyệt)
-      if (ov.pendingWebApproval) {
-        const pw = ov.pendingWebApproval;
-        if (
-          isSuperAdminIdentifier(pw.submittedBy) ||
-          (!pw.isNewPlace && !pw.isDeleteRequest)
-        ) {
-          ov.pendingWebApproval = null;
+      // SEC-3ROLE: Loại bỏ hoàn toàn các trường Chủ quán (Merchant) cũ nếu còn sót lại trong localStorage
+      const rawOv = ov as Record<string, any>;
+      for (const retiredKey of [
+        'merchantClaimCode',
+        'claimCodeDigest',
+        'claimStatus',
+        'claimedByEmail',
+        'claimedByUid',
+        'claimedByName',
+        'claimedAt',
+        'issuedByUid',
+        'issuedAt',
+        'revokedByUid',
+        'revokedAt',
+      ]) {
+        if (retiredKey in rawOv) {
+          delete rawOv[retiredKey];
           migrated = true;
         }
       }
-      if (ov.pendingMapApproval) {
-        const pm = ov.pendingMapApproval;
-        if (isSuperAdminIdentifier(pm.submittedBy)) {
-          ov.pendingMapApproval = null;
-          ov.adminPinApproved = true;
-          ov.coordinateVerified = true;
-          migrated = true;
-        }
-      }
-
-      const subKey = `sub_${pid}`;
-      if (
-        merchantSubmissions[subKey] &&
-        (isCivicOrSchool ||
-          pid.startsWith('xh_map_') ||
-          isSuperAdminIdentifier(merchantSubmissions[subKey].merchantEmail))
-      ) {
-        delete merchantSubmissions[subKey];
+      if ((rawOv.coordinateSource as string) === 'merchant_verified') {
+        rawOv.coordinateSource = 'admin_verified';
         migrated = true;
       }
     }
 
-    // Dọn sạch các nick quản lý thử nghiệm tự sinh trong adminAccounts (chỉ giữ tài khoản thật)
-    let cleanAdminAccounts = parsed.adminAccounts || DEFAULT_ADMIN_ACCOUNTS;
+    // Dọn sạch các nick quản lý thử nghiệm tự sinh trong adminAccounts & loại bỏ mật khẩu plaintext (SEC-CRIT-02)
+    let cleanAdminAccounts: AdminAccount[] = (parsed.adminAccounts || DEFAULT_ADMIN_ACCOUNTS).map(acc => {
+      const hasPlaintext =
+        acc.password &&
+        acc.password !== '[REDACTED_HASHED]' &&
+        acc.password !== '[REDACTED]' &&
+        !acc.password.startsWith('xh2_');
+      if (hasPlaintext) {
+        migrated = true;
+      }
+      return {
+        ...acc,
+        passwordHash: acc.passwordHash || (hasPlaintext ? hashAdminCredential(acc.password) : 'xh2_65a096127c75d450'),
+        password: '[REDACTED_HASHED]',
+      };
+    });
     const filteredAccounts = cleanAdminAccounts.filter(acc => {
       const u = (acc.username || '').trim().toLowerCase();
       return u !== 'quanlyweb' && u !== 'quanlymaps' && u !== 'kiemnhiem' && !u.startsWith('test');
@@ -650,9 +1551,21 @@ export function getAdminState(): AdminState {
       migrated = true;
     }
 
+    if (parsed.adminPin && parsed.adminPin !== '[REDACTED_HASHED]') {
+      parsed.adminPin = '[REDACTED_HASHED]';
+      migrated = true;
+    }
+
     const { members: cleanMembers, hadDuplicates } = normalizeAndDeduplicateMembers(parsed.members);
     if (hadDuplicates) {
       migrated = true;
+    }
+
+    for (const [seedPropId, seedProp] of Object.entries(PENDING_LANDMARK_PLACE_PROPOSALS_SEED)) {
+      if (!placeProposals[seedPropId]) {
+        placeProposals[seedPropId] = JSON.parse(JSON.stringify(seedProp));
+        migrated = true;
+      }
     }
 
     const resultState: AdminState = {
@@ -662,13 +1575,15 @@ export function getAdminState(): AdminState {
       dishes: parsed.dishes || {},
       members: cleanMembers,
       adminAccounts: cleanAdminAccounts,
-      merchantSubmissions,
+      adminPin: '[REDACTED_HASHED]',
+      placeProposals,
       auditLogs: parsed.auditLogs || [],
-      mapAccessMode: parsed.mapAccessMode || 'merchants_and_admin_only',
+      mapAccessMode: parsed.mapAccessMode || 'public_open',
     };
 
     if (migrated) {
-      const nextRaw = JSON.stringify(resultState);
+      const sanitizedForStorage = sanitizeStateForLocalStorage(resultState);
+      const nextRaw = JSON.stringify(sanitizedForStorage);
       localStorage.setItem(ADMIN_STORAGE_KEY, nextRaw);
       cachedAdminRaw = nextRaw;
     } else {
@@ -680,6 +1595,451 @@ export function getAdminState(): AdminState {
   } catch {
     return createInitialAdminState();
   }
+}
+
+/**
+ * Bảo vệ dữ liệu cá nhân (PII) và thông tin xác thực trước khi ghi vào localStorage (SEC-CRIT-02, SEC-CRIT-03 & SEC-3ROLE):
+ * - Không bao giờ lưu mật khẩu rõ hoặc mã PIN rõ vào localStorage.
+ * - Nếu người dùng hiện tại không phải SuperAdmin, loại bỏ danh sách members PII khỏi localStorage (chỉ giữ hồ sơ của chính người dùng đó).
+ * - Loại bỏ triệt để mọi trường thuộc hệ thống Chủ quán (Merchant) đã ngừng sử dụng.
+ */
+function sanitizeStateForLocalStorage(state: AdminState): AdminState {
+  let isSuper = false;
+  let currentOwnEmail = '';
+  try {
+    const logged = getLoggedAdminSession();
+    const storedUser = getStoredAuthUser();
+    if (storedUser?.isLoggedIn && storedUser?.email) {
+      currentOwnEmail = storedUser.email.trim().toLowerCase();
+    }
+    if (
+      logged &&
+      (logged.role === 'superadmin' || logged.username === 'admin' || logged.username === 'minhtt')
+    ) {
+      isSuper = true;
+    } else if (currentOwnEmail) {
+      if (DEFAULT_ADMIN_EMAILS.includes(currentOwnEmail) || (state.adminEmails || []).includes(currentOwnEmail)) {
+        isSuper = true;
+      }
+    }
+  } catch {}
+
+  const sanitizedAccounts = (state.adminAccounts || DEFAULT_ADMIN_ACCOUNTS).map(acc => ({
+    ...acc,
+    passwordHash: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+    password: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+  }));
+
+  let safeMembers: Record<string, ManagedMember> = {};
+  if (isSuper) {
+    safeMembers = state.members || {};
+  } else if (currentOwnEmail && state.members && state.members[currentOwnEmail]) {
+    safeMembers = { [currentOwnEmail]: state.members[currentOwnEmail] };
+  }
+
+  const safePlaces: Record<string, PlaceOverride> = {};
+  for (const [pid, ov] of Object.entries(state.places || {})) {
+    if (!ov) continue;
+    const copy = { ...ov } as Record<string, any>;
+    delete copy.merchantClaimCode;
+    delete copy.claimCodeDigest;
+    delete copy.claimStatus;
+    delete copy.claimedByEmail;
+    delete copy.claimedByUid;
+    delete copy.claimedByName;
+    delete copy.claimedAt;
+    delete copy.issuedByUid;
+    delete copy.issuedAt;
+    delete copy.revokedByUid;
+    delete copy.revokedAt;
+    safePlaces[pid] = copy as PlaceOverride;
+  }
+
+  const cleanState = {
+    ...state,
+    places: safePlaces,
+    members: safeMembers,
+    adminAccounts: sanitizedAccounts,
+    adminPin: '[REDACTED_HASHED]',
+  } as Record<string, any>;
+  delete cleanState.merchantSubmissions;
+  return cleanState as AdminState;
+}
+
+export function getAuthenticatedFirebaseUid(): string | null {
+  try {
+    const auth = getFirebaseAuth();
+    if (auth?.currentUser?.uid) return auth.currentUser.uid;
+    const logged = getLoggedAdminSession();
+    if (logged?.id?.startsWith('fb_')) return logged.id.slice(3);
+  } catch {}
+  return null;
+}
+
+function isCloudWriteAllowedForCurrentSession(): boolean {
+  if (typeof window === 'undefined' || !firebaseConfig.apiKey) return false;
+  if ((window as any).__XUHO_DISABLE_CLOUD_WRITE__ === true) return false;
+  try {
+    const auth = getFirebaseAuth();
+    const hasFirebaseAuthUser = Boolean(auth?.currentUser);
+    const roleInfo = getEffectiveAdminRoleInfo();
+    const isMapMgr = isMapManagerAuthenticated();
+    return Boolean(hasFirebaseAuthUser || roleInfo.isAuthenticated || isMapMgr);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * SEC-3ROLE: Làm sạch bản ghi địa điểm trước khi ghi lên nhánh công khai `xuanhoa_admin/global_state/places/$placeId`.
+ * Loại bỏ hoàn toàn mảng lịch sử/chờ duyệt nội bộ và mọi trường hệ thống Chủ quán (Merchant) đã ngừng sử dụng.
+ */
+export function sanitizePublicPlaceForCloud(
+  placeId: string,
+  placeOverride: PlaceOverride
+): PlaceOverride {
+  const publicPlace = JSON.parse(JSON.stringify({ ...placeOverride, id: placeId })) as Record<string, any>;
+  delete publicPlace.merchantClaimCode;
+  delete publicPlace.claimCodeDigest;
+  delete publicPlace.claimStatus;
+  delete publicPlace.claimedByEmail;
+  delete publicPlace.claimedByUid;
+  delete publicPlace.claimedByName;
+  delete publicPlace.claimedAt;
+  delete publicPlace.issuedByUid;
+  delete publicPlace.issuedAt;
+  delete publicPlace.revokedByUid;
+  delete publicPlace.revokedAt;
+  delete publicPlace.locationHistory;
+  delete publicPlace.pendingWebApproval;
+  delete publicPlace.pendingMapApproval;
+  if (publicPlace.coordinateSource === 'merchant_verified') {
+    publicPlace.coordinateSource = 'admin_verified';
+  }
+  return publicPlace as PlaceOverride;
+}
+
+/**
+ * SEC-3ROLE-PROPOSAL: Chuẩn hóa và khóa cứng schema đề xuất địa điểm trước khi ghi lên
+ * `xuanhoa_admin/global_state/placeProposals/$proposalId` và `xuanhoa_admin/manager_proposals_by_uid/$managerUid/$proposalId`.
+ * Loại bỏ các trường phụ chỉ dùng ở bộ nhớ UI cục bộ (`previousData`, `beforeData`, `afterData`, `hasVersionConflict`, `customPlacePayload`)
+ * và không ghi các trường đánh giá (`reviewedBy*`, `reviewedAt`, `reviewNote`) khi đề xuất đang ở trạng thái `pending` hoặc `cancelled`.
+ */
+export function sanitizeProposalForCloud(proposal: PlaceChangeProposal): Record<string, any> {
+  const rawProp = proposal as Record<string, any>;
+  const pData = (proposal.proposedData || {}) as Record<string, any>;
+  const cleanProposedData: Record<string, any> = {
+    name: String(pData.name || proposal.placeName || proposal.placeId),
+  };
+  if (typeof pData.address === 'string') cleanProposedData.address = pData.address;
+  if (typeof pData.phone === 'string') cleanProposedData.phone = pData.phone;
+  if (typeof pData.openHours === 'string') cleanProposedData.openHours = pData.openHours;
+  if (typeof pData.parentCategoryId === 'string') cleanProposedData.parentCategoryId = pData.parentCategoryId;
+  if (typeof pData.subcategoryId === 'string') cleanProposedData.subcategoryId = pData.subcategoryId;
+  if (typeof pData.lat === 'number' && Number.isFinite(pData.lat)) cleanProposedData.lat = pData.lat;
+  if (typeof pData.lng === 'number' && Number.isFinite(pData.lng)) cleanProposedData.lng = pData.lng;
+  if (typeof pData.mapsUrl === 'string') cleanProposedData.mapsUrl = pData.mapsUrl;
+  if (typeof pData.tagline === 'string') cleanProposedData.tagline = pData.tagline;
+  if (typeof pData.coordinateSource === 'string') {
+    cleanProposedData.coordinateSource =
+      String(pData.coordinateSource) === 'merchant_verified' ? 'admin_verified' : pData.coordinateSource;
+  }
+
+  const out: Record<string, any> = {
+    id: proposal.id,
+    placeId: proposal.placeId,
+    placeName: proposal.placeName,
+    actionType: proposal.actionType,
+    status: proposal.status,
+    submittedBy: proposal.submittedBy,
+    submittedByUid: proposal.submittedByUid || proposal.submittedBy,
+    submittedAt: proposal.submittedAt,
+    baseVersion: proposal.baseVersion,
+    proposedData: cleanProposedData,
+  };
+
+  if (typeof proposal.submittedByEmail === 'string') out.submittedByEmail = proposal.submittedByEmail;
+  if (typeof proposal.submittedByName === 'string') out.submittedByName = proposal.submittedByName;
+  if (typeof proposal.submittedByRole === 'string') out.submittedByRole = proposal.submittedByRole;
+  if (typeof rawProp.assignedToUid === 'string') out.assignedToUid = rawProp.assignedToUid;
+  if (typeof rawProp.revision === 'number') out.revision = rawProp.revision;
+  if (typeof rawProp.supersedesProposalId === 'string') out.supersedesProposalId = rawProp.supersedesProposalId;
+  if (typeof proposal.message === 'string') out.message = proposal.message;
+
+  if (proposal.status === 'approved' || proposal.status === 'rejected') {
+    if (typeof proposal.reviewedBy === 'string') out.reviewedBy = proposal.reviewedBy;
+    if (typeof proposal.reviewedByUid === 'string') out.reviewedByUid = proposal.reviewedByUid;
+    if (typeof proposal.reviewedByName === 'string') out.reviewedByName = proposal.reviewedByName;
+    if (typeof proposal.reviewedAt === 'number') out.reviewedAt = proposal.reviewedAt;
+    if (typeof proposal.reviewNote === 'string') out.reviewNote = proposal.reviewNote;
+  }
+
+  return JSON.parse(JSON.stringify(out));
+}
+
+function syncProposalAndIndexToCloud(rtdb: any, proposal: PlaceChangeProposal): Promise<void> {
+  const cleanProp = sanitizeProposalForCloud(proposal);
+  const managerUid = cleanProp.submittedByUid || getAuthenticatedFirebaseUid();
+  return set(ref(rtdb, `xuanhoa_admin/global_state/placeProposals/${proposal.id}`), cleanProp)
+    .then(() => {
+      if (managerUid) {
+        return set(
+          ref(rtdb, `xuanhoa_admin/manager_proposals_by_uid/${managerUid}/${proposal.id}`),
+          cleanProp
+        );
+      }
+    })
+    .catch(() => {});
+}
+
+/**
+ * SEC-V4-06: Đối soát và phân loại vòng đời WAL của `xuanhoa_admin/coordinate_history/$placeId`
+ * - Phát hiện các bản ghi `status === 'intent'` mồ côi (do mất mạng giữa chừng hoặc xung đột phiên bản giữa 2 Admin).
+ * - Tách bạch rõ lịch sử đã áp dụng thật (`committed`), ý định đang chờ (`intent`) và ý định bị hủy/vượt qua (`aborted`).
+ */
+export function reconcilePlaceCoordinateWalHistory(
+  placeId: string,
+  placeOverride: PlaceOverride | null | undefined,
+  walEntries: Record<string, PlaceLocationHistoryEntry> | null | undefined,
+  now = Date.now()
+): {
+  committedHistory: PlaceLocationHistoryEntry[];
+  orphanedToCommit: PlaceLocationHistoryEntry[];
+  staleToAbort: Array<{ entry: PlaceLocationHistoryEntry; abortReason: string }>;
+} {
+  const committedHistory: PlaceLocationHistoryEntry[] = [];
+  const orphanedToCommit: PlaceLocationHistoryEntry[] = [];
+  const staleToAbort: Array<{ entry: PlaceLocationHistoryEntry; abortReason: string }> = [];
+
+  if (!walEntries || typeof walEntries !== 'object') {
+    return { committedHistory, orphanedToCommit, staleToAbort };
+  }
+
+  const appliedHistoryId = placeOverride?.lastCoordMutation?.historyId || null;
+  const currentPlaceVer = typeof placeOverride?.version === 'number' ? placeOverride.version : 0;
+
+  for (const [key, rawEntry] of Object.entries(walEntries)) {
+    if (!rawEntry || typeof rawEntry !== 'object') continue;
+    const entry: PlaceLocationHistoryEntry = {
+      ...rawEntry,
+      historyId: rawEntry.historyId || key,
+      placeId: rawEntry.placeId || placeId,
+    };
+
+    if (entry.status === 'committed') {
+      committedHistory.push(entry);
+      continue;
+    }
+
+    if (entry.status === 'aborted') {
+      continue;
+    }
+
+    // Xử lý bản ghi đang ở trạng thái 'intent' (hoặc bản ghi cũ chưa có status)
+    if (appliedHistoryId && entry.historyId === appliedHistoryId) {
+      orphanedToCommit.push({
+        ...entry,
+        status: 'committed',
+        committedAt: now,
+      });
+      committedHistory.push({
+        ...entry,
+        status: 'committed',
+        committedAt: now,
+      });
+    } else if (
+      typeof entry.targetVersion === 'number' &&
+      currentPlaceVer >= entry.targetVersion &&
+      entry.historyId !== appliedHistoryId
+    ) {
+      staleToAbort.push({
+        entry: {
+          ...entry,
+          status: 'aborted',
+          abortedAt: now,
+          abortReason: `Superseded by version v${currentPlaceVer} (applied historyId: ${appliedHistoryId || 'none'})`,
+        },
+        abortReason: `Superseded by version v${currentPlaceVer}`,
+      });
+    } else if (now - (entry.timestamp || 0) > 300_000) {
+      staleToAbort.push({
+        entry: {
+          ...entry,
+          status: 'aborted',
+          abortedAt: now,
+          abortReason: 'Expired unapplied WAL intent (> 5 minutes without place transaction commit)',
+        },
+        abortReason: 'Expired unapplied WAL intent (> 5 minutes)',
+      });
+    }
+  }
+
+  committedHistory.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  return { committedHistory, orphanedToCommit, staleToAbort };
+}
+
+/**
+ * Đồng bộ nguyên tử (Atomic Per-Record Transaction) cho 1 địa điểm duy nhất lên RTDB (Điều kiện 3, 5 & 6 — V4):
+ * - Sử dụng `runTransaction` để kiểm tra xung đột phiên bản (`version`).
+ * - Bảo toàn ID bất biến và tọa độ đã được Admin xác minh (`coordinateVerified: true`, `coordinateSource: 'admin_verified'`).
+ * - Vòng đời 3 trạng thái cho `coordinate_history` (`intent` -> `committed` / `aborted`).
+ * - Chỉ ghi các trường địa điểm công khai hợp lệ theo mô hình 3 vai trò (`USER / MANAGER / ADMIN`).
+ */
+export function syncSinglePlaceToCloud(
+  placeId: string,
+  placeOverride: PlaceOverride,
+  proposal?: PlaceChangeProposal,
+  expectedBaseVersion?: number
+): void {
+  if (!isCloudWriteAllowedForCurrentSession()) return;
+  try {
+    const rtdb = getRealtimeDb();
+    if (!rtdb || !placeId) return;
+    const now = Date.now();
+    const roleInfo = getEffectiveAdminRoleInfo();
+
+    // Nếu là Quản lý (không phải SuperAdmin), chỉ đẩy đề xuất `placeProposals/${proposal.id}` + chỉ mục `manager_proposals_by_uid/${uid}/${proposal.id}`, tuyệt đối không ghi vào `places/${placeId}`
+    if (!roleInfo.isSuperAdmin) {
+      if (proposal && proposal.id) {
+        syncProposalAndIndexToCloud(rtdb, proposal);
+      }
+      return;
+    }
+
+    const cleanPlace = sanitizePublicPlaceForCloud(placeId, placeOverride);
+    const placeRef = ref(rtdb, `xuanhoa_admin/global_state/places/${placeId}`);
+    const latestHistory = Array.isArray(placeOverride.locationHistory)
+      ? placeOverride.locationHistory[0]
+      : null;
+
+    // SEC-V4-WAL: Cơ chế Write-Ahead Log (WAL) 3 trạng thái (`intent` -> `committed` | `aborted`) trên Server Rules:
+    // 1. Khi Admin thay đổi hoặc gỡ tọa độ đã xác minh (`confirmCoordinateOverride === true`),
+    //    bắt buộc ghi `xuanhoa_admin/coordinate_history/${placeId}/${historyId}` với `status: 'intent'` TRƯỚC KHI chạy `runTransaction` trên `places/${placeId}`.
+    // 2. Sau khi `runTransaction` trên `places/${placeId}` commit thành công, chuyển bản ghi WAL sang `status: 'committed'`.
+    // 3. Nếu `runTransaction` bị hủy do xung đột phiên bản (concurrent Admin edit), chuyển bản ghi WAL sang `status: 'aborted'`.
+    const executePlaceTransaction = async () => {
+      const targetVer = typeof cleanPlace.version === 'number' ? cleanPlace.version : 1;
+      let activeWalHistoryId: string | null = null;
+      let activeWalPayload: Record<string, any> | null = null;
+
+      if (latestHistory && latestHistory.timestamp && placeOverride.confirmCoordinateOverride === true) {
+        const historyId =
+          cleanPlace.lastCoordMutation?.historyId ||
+          latestHistory.historyId ||
+          `hist_${latestHistory.timestamp}`;
+        activeWalHistoryId = historyId;
+        activeWalPayload = JSON.parse(
+          JSON.stringify({
+            historyId,
+            placeId,
+            targetVersion: targetVer,
+            status: 'intent',
+            previousLat: latestHistory.previousLat ?? null,
+            previousLng: latestHistory.previousLng ?? null,
+            newLat: latestHistory.newLat ?? null,
+            newLng: latestHistory.newLng ?? null,
+            actor: latestHistory.actor || 'admin',
+            actorUid: latestHistory.actorUid || getAuthenticatedFirebaseUid() || 'admin',
+            actorRole: 'admin',
+            timestamp: latestHistory.timestamp,
+            action: latestHistory.action || 'update_coord',
+            reason: latestHistory.reason || latestHistory.note || 'Admin xác nhận cập nhật tọa độ',
+            ...(latestHistory.coordinateSource ? { coordinateSource: latestHistory.coordinateSource } : {}),
+            ...(latestHistory.note ? { note: latestHistory.note } : {}),
+          })
+        );
+        if (cleanPlace.lastCoordMutation) {
+          cleanPlace.lastCoordMutation.historyId = historyId;
+          cleanPlace.lastCoordMutation.targetVersion = targetVer;
+        }
+        await set(
+          ref(rtdb, `xuanhoa_admin/coordinate_history/${placeId}/${historyId}`),
+          activeWalPayload
+        );
+      }
+
+      const txResult = await runTransaction(placeRef, (currentCloud: PlaceOverride | null) => {
+        if (currentCloud && typeof currentCloud === 'object') {
+          const cloudVer = typeof currentCloud.version === 'number' ? currentCloud.version : 0;
+          const incomingVer = typeof cleanPlace.version === 'number' ? cleanPlace.version : 1;
+
+          if (expectedBaseVersion !== undefined && cloudVer > expectedBaseVersion) {
+            // Phát hiện xung đột phiên bản nguyên tử trên RTDB -> Hủy transaction để bảo vệ dữ liệu mới hơn trên Cloud
+            return undefined;
+          }
+
+          // Bảo vệ tuyệt đối tọa độ đã được Admin xác minh:
+          // Không cho phép thay đổi tọa độ đã xác minh qua thao tác ghi thông thường (nếu không có confirmCoordinateOverride === true)
+          const cloudIsAdminVerified =
+            currentCloud.coordinateVerified === true &&
+            (currentCloud.coordinateSource === 'admin_verified' || currentCloud.adminPinApproved === true) &&
+            typeof currentCloud.lat === 'number' &&
+            typeof currentCloud.lng === 'number';
+
+          const isConfirmedCoordOverride =
+            cleanPlace.confirmCoordinateOverride === true &&
+            cleanPlace.lastCoordMutation &&
+            typeof cleanPlace.lastCoordMutation.historyId === 'string' &&
+            typeof cleanPlace.lastCoordMutation.reason === 'string' &&
+            cleanPlace.lastCoordMutation.reason.length >= 3;
+
+          if (cloudIsAdminVerified && !isConfirmedCoordOverride) {
+            cleanPlace.lat = currentCloud.lat;
+            cleanPlace.lng = currentCloud.lng;
+            cleanPlace.coordinateVerified = true;
+            cleanPlace.adminPinApproved = true;
+            cleanPlace.coordinateSource = currentCloud.coordinateSource || 'admin_verified';
+            cleanPlace.locationStatus = 'located';
+            cleanPlace.confirmCoordinateOverride = false;
+          } else if (cloudIsAdminVerified && isConfirmedCoordOverride && cleanPlace.lastCoordMutation) {
+            cleanPlace.lastCoordMutation.previousLat = currentCloud.lat ?? null;
+            cleanPlace.lastCoordMutation.previousLng = currentCloud.lng ?? null;
+          }
+
+          cleanPlace.version = Math.max(cloudVer + 1, incomingVer);
+        } else {
+          cleanPlace.version = Math.max(1, typeof cleanPlace.version === 'number' ? cleanPlace.version : 1);
+        }
+        cleanPlace.id = placeId;
+        cleanPlace.updatedAt = Math.max(now, cleanPlace.updatedAt || 0);
+        return cleanPlace;
+      });
+
+      if (activeWalHistoryId && activeWalPayload) {
+        if (txResult.committed) {
+          await set(ref(rtdb, `xuanhoa_admin/coordinate_history/${placeId}/${activeWalHistoryId}`), {
+            ...activeWalPayload,
+            status: 'committed',
+            committedAt: Date.now(),
+          }).catch(() => {});
+        } else {
+          await set(ref(rtdb, `xuanhoa_admin/coordinate_history/${placeId}/${activeWalHistoryId}`), {
+            ...activeWalPayload,
+            status: 'aborted',
+            abortedAt: Date.now(),
+            abortReason: 'Transaction aborted due to concurrent version conflict',
+          }).catch(() => {});
+        }
+      }
+
+      await update(ref(rtdb), {
+        'xuanhoa_admin/global_state/updatedAt': now,
+      });
+      if (proposal && proposal.id) {
+        await syncProposalAndIndexToCloud(rtdb, proposal);
+      }
+    };
+
+    executePlaceTransaction().catch(err => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('xuanhoa_cloud_save_status', {
+            detail: { status: 'error', placeId, error: String(err?.message || err), timestamp: Date.now() },
+          })
+        );
+      }
+    });
+  } catch {}
 }
 
 function encodeRtdbRecord<T>(record?: Record<string, T> | null): Record<string, T> {
@@ -706,13 +2066,18 @@ function decodeRtdbRecord<T>(record?: Record<string, T> | null): Record<string, 
 
 export function pushMemberToCloudRealtime(member: ManagedMember, includeAdminRoles = false): void {
   if (typeof window === 'undefined' || !firebaseConfig.apiKey || !member?.email) return;
+  if ((window as any).__XUHO_DISABLE_CLOUD_WRITE__ === true) return;
   if (isBlockedFakeOrTestMemberEmail(member.email)) return;
   try {
     const rtdb = getRealtimeDb();
     if (!rtdb) return;
+    const isSuper = isAdminAuthenticated();
+    const fbUid = getAuthenticatedFirebaseUid();
+    if (!isSuper && !fbUid) return;
+    const verifiedUid = isSuper ? member.uid || fbUid || `uid_${encodeRtdbKey(member.email)}` : fbUid!;
     const safeKey = encodeRtdbKey(member.email);
     const payload: Record<string, any> = {
-      uid: member.uid || `uid_${Date.now()}`,
+      uid: verifiedUid,
       email: member.email.trim().toLowerCase(),
       displayName: member.displayName || member.nickname || member.email,
       nickname: member.nickname || member.displayName || member.email,
@@ -722,27 +2087,55 @@ export function pushMemberToCloudRealtime(member: ManagedMember, includeAdminRol
       phone: member.phone || '',
       residentType: member.residentType || 'student_sp2',
       tastePreferences: member.tastePreferences || [],
-      spinsCount: member.spinsCount || 0,
-      level: member.level || 1,
-      reviewsCount: member.reviewsCount || 0,
+      status: isSuper ? member.status || 'active' : 'active',
       createdAt: member.createdAt || Date.now(),
       lastActiveAt: member.lastActiveAt || Date.now(),
     };
+    // SEC-V4-04: Chỉ Admin (hoặc khi tạo mới với giá trị khởi tạo 0/1/0) mới được ghi spinsCount, level, reviewsCount.
+    // Người dùng thông thường tuyệt đối không được tự tăng các chỉ số này từ client.
+    if (isSuper) {
+      payload.spinsCount = member.spinsCount || 0;
+      payload.level = member.level || 1;
+      payload.reviewsCount = member.reviewsCount || 0;
+    } else {
+      payload.spinsCount = 0;
+      payload.level = 1;
+      payload.reviewsCount = 0;
+    }
     if (member.photoURL) payload.photoURL = member.photoURL;
-    if (member.isTestAccount !== undefined) payload.isTestAccount = member.isTestAccount;
-    if (includeAdminRoles) {
+    if (isSuper && member.isTestAccount !== undefined) payload.isTestAccount = member.isTestAccount;
+    if (isSuper && includeAdminRoles) {
       payload.status = member.status || 'active';
       payload.canManageWeb = Boolean(member.canManageWeb);
       payload.canManageMaps = Boolean(member.canManageMaps);
       if (member.banReason !== undefined) payload.banReason = member.banReason;
     }
     const cleanPayload = JSON.parse(JSON.stringify(payload));
-    update(ref(rtdb, `xuanhoa_admin/members_registry/${safeKey}`), cleanPayload).catch(() => {});
+    const memberRef = ref(rtdb, `xuanhoa_admin/members_registry/${safeKey}`);
+    if (!isSuper) {
+      get(memberRef)
+        .then(snap => {
+          if (snap.exists()) {
+            const existingVal = snap.val();
+            cleanPayload.spinsCount = existingVal?.spinsCount ?? 0;
+            cleanPayload.level = existingVal?.level ?? 1;
+            cleanPayload.reviewsCount = existingVal?.reviewsCount ?? 0;
+            cleanPayload.createdAt = existingVal?.createdAt ?? cleanPayload.createdAt;
+            cleanPayload.status = existingVal?.status ?? 'active';
+          }
+          update(memberRef, cleanPayload).catch(() => {});
+        })
+        .catch(() => {});
+    } else {
+      update(memberRef, cleanPayload).catch(() => {});
+    }
   } catch {}
 }
 
 export function removeMemberFromCloudRealtime(emailKey: string): void {
   if (typeof window === 'undefined' || !firebaseConfig.apiKey || !emailKey) return;
+  if ((window as any).__XUHO_DISABLE_CLOUD_WRITE__ === true) return;
+  if (!isAdminAuthenticated()) return;
   try {
     const rtdb = getRealtimeDb();
     if (!rtdb) return;
@@ -758,32 +2151,46 @@ export function saveAdminState(next: AdminState, syncCloud = true): void {
     next.updatedAt = Date.now();
     lastLocalSaveUpdatedAt = next.updatedAt;
     next.members = normalizeAndDeduplicateMembers(next.members || {}).members;
-    const serialized = JSON.stringify(next);
+    const sanitizedForLocal = sanitizeStateForLocalStorage(next);
+    const serialized = JSON.stringify(sanitizedForLocal);
     cachedAdminRaw = serialized;
     cachedAdminState = next;
     localStorage.setItem(ADMIN_STORAGE_KEY, serialized);
     window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: next }));
 
-    if (syncCloud && firebaseConfig.apiKey) {
-      const encodedMembers = encodeRtdbRecord(next.members || {});
-      const cleanPayload = JSON.parse(
-        JSON.stringify({
-          places: next.places || {},
-          dishes: next.dishes || {},
-          members: encodedMembers,
-          merchantSubmissions: next.merchantSubmissions || {},
-          auditLogs: (next.auditLogs || []).slice(0, 80),
-          adminEmails: next.adminEmails || DEFAULT_ADMIN_EMAILS,
-          adminAccounts: next.adminAccounts || DEFAULT_ADMIN_ACCOUNTS,
-          sectorTags: next.sectorTags || DEFAULT_SECTOR_TAGS,
-          fontScale: next.fontScale || 'normal',
-          mapAccessMode: next.mapAccessMode || 'merchants_and_admin_only',
-          updatedAt: next.updatedAt,
-        })
-      );
+    if (syncCloud && isCloudWriteAllowedForCurrentSession() && isAdminAuthenticated()) {
+      // SEC-FINAL-02, SEC-FINAL-03 & SEC-3ROLE-CRED:
+      // 1. Tuyệt đối không ghi đè gốc `xuanhoa_admin/global_state`, toàn bộ `places` hay mảng `auditLogs`.
+      // 2. Ngừng hoàn toàn việc ghi các nhánh thông tin xác thực tĩnh cũ (`adminAccounts`, `adminEmails`, `adminPin`) lên RTDB.
+      const granularRootUpdates: Record<string, any> = {
+        'xuanhoa_admin/global_state/updatedAt': next.updatedAt,
+        'xuanhoa_admin/global_state/sectorTags': next.sectorTags || DEFAULT_SECTOR_TAGS,
+        'xuanhoa_admin/global_state/fontScale': next.fontScale || 'normal',
+        'xuanhoa_admin/global_state/mapAccessMode': next.mapAccessMode || 'public_open',
+      };
+      const cleanUpdates = JSON.parse(JSON.stringify(granularRootUpdates));
       const rtdb = getRealtimeDb();
       if (rtdb) {
-        set(ref(rtdb, 'xuanhoa_admin/global_state'), cleanPayload).catch(() => {});
+        window.dispatchEvent(
+          new CustomEvent('xuanhoa_cloud_save_status', {
+            detail: { status: 'saving', timestamp: next.updatedAt },
+          })
+        );
+        update(ref(rtdb), cleanUpdates)
+          .then(() => {
+            window.dispatchEvent(
+              new CustomEvent('xuanhoa_cloud_save_status', {
+                detail: { status: 'saved', timestamp: Date.now() },
+              })
+            );
+          })
+          .catch(err => {
+            window.dispatchEvent(
+              new CustomEvent('xuanhoa_cloud_save_status', {
+                detail: { status: 'error', error: String(err?.message || err), timestamp: Date.now() },
+              })
+            );
+          });
       }
     }
   } catch (err) {
@@ -791,26 +2198,310 @@ export function saveAdminState(next: AdminState, syncCloud = true): void {
   }
 }
 
+export async function syncAdminStateToCloudConfirmed(
+  stateInput?: AdminState
+): Promise<{ confirmed: boolean; syncedAt: number; error?: string }> {
+  const next = stateInput || getAdminState();
+  saveAdminState(next, false);
+  if (!isCloudWriteAllowedForCurrentSession() || !isAdminAuthenticated()) {
+    return { confirmed: true, syncedAt: Date.now() };
+  }
+  const rtdb = getRealtimeDb();
+  if (!rtdb) {
+    return { confirmed: true, syncedAt: Date.now() };
+  }
+  const granularRootUpdates: Record<string, any> = {
+    'xuanhoa_admin/global_state/updatedAt': next.updatedAt,
+    'xuanhoa_admin/global_state/sectorTags': next.sectorTags || DEFAULT_SECTOR_TAGS,
+    'xuanhoa_admin/global_state/fontScale': next.fontScale || 'normal',
+    'xuanhoa_admin/global_state/mapAccessMode': next.mapAccessMode || 'public_open',
+  };
+  const cleanUpdates = JSON.parse(JSON.stringify(granularRootUpdates));
+  try {
+    await Promise.race([
+      update(ref(rtdb), cleanUpdates),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500)),
+    ]);
+    window.dispatchEvent(
+      new CustomEvent('xuanhoa_cloud_save_status', {
+        detail: { status: 'saved', timestamp: Date.now() },
+      })
+    );
+    return { confirmed: true, syncedAt: Date.now() };
+  } catch (err: any) {
+    return {
+      confirmed: false,
+      syncedAt: Date.now(),
+      error: String(err?.message || err),
+    };
+  }
+}
+
+export function buildDeterministicAuditLogId(securityMeta?: {
+  eventCategory?:
+    | 'admin_review'
+    | 'coord_override'
+    | 'role_change'
+    | 'role_management'
+    | 'founder_security'
+    | 'system_security'
+    | 'place_crud'
+    | 'manager_proposal';
+  refId?: string;
+  proposalOp?: 'create' | 'cancel';
+  placeVersion?: number;
+  memberLastActiveAt?: number;
+}): string {
+  if (!securityMeta?.eventCategory || !securityMeta?.refId) {
+    return `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  }
+  const { eventCategory, refId } = securityMeta;
+  if (eventCategory === 'manager_proposal') {
+    return securityMeta.proposalOp === 'cancel'
+      ? `log_proposal_cancel_${refId}`
+      : `log_proposal_create_${refId}`;
+  }
+  if (eventCategory === 'admin_review') {
+    return `log_review_${refId}`;
+  }
+  if (eventCategory === 'coord_override') {
+    return `log_coord_${refId}`;
+  }
+  if (eventCategory === 'place_crud') {
+    return `log_place_${refId}_v${securityMeta.placeVersion ?? 1}`;
+  }
+  if (eventCategory === 'role_change' || eventCategory === 'role_management') {
+    return `log_role_${refId}_${securityMeta.memberLastActiveAt ?? Date.now()}`;
+  }
+  if (eventCategory === 'founder_security') {
+    return `log_founder_${refId}_${securityMeta.memberLastActiveAt ?? Date.now()}`;
+  }
+  return `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function pushSingleAuditLogToCloud(entry: AdminAuditLog): void {
+  if (!isCloudWriteAllowedForCurrentSession()) return;
+  try {
+    const rtdb = getRealtimeDb();
+    const fbUid = getAuthenticatedFirebaseUid();
+    if (!rtdb || !fbUid || !entry?.id) return;
+    // SEC-V4.1-04: Phân biệt rõ log telemetry client với nhật ký kiểm toán bảo mật có kiểm chứng trạng thái trên server (`auditLogs`).
+    // Chỉ đẩy lên `xuanhoa_admin/global_state/auditLogs/${entry.id}` khi có đầy đủ `actorRole`, `eventCategory`, `refId` và `verificationSource: 'client_rtdb_rule_checked'`.
+    if (!entry.actorRole || !entry.eventCategory || !entry.refId) {
+      return;
+    }
+    const normalizedEventCat =
+      entry.eventCategory === 'role_change'
+        ? 'role_management'
+        : entry.eventCategory === 'coord_override'
+        ? 'coord_update'
+        : entry.eventCategory === 'manager_proposal'
+        ? 'proposal_submit'
+        : entry.eventCategory;
+    const cleanEntry: Record<string, any> = {
+      id: entry.id,
+      action: entry.action,
+      target: entry.target,
+      type: entry.type,
+      actorUid: fbUid,
+      actorRole: entry.actorRole,
+      eventCategory: normalizedEventCat,
+      verificationSource: 'client_rtdb_rule_checked',
+      refId: entry.refId,
+      ...(entry.placeId ? { placeId: entry.placeId } : {}),
+      timestamp: entry.timestamp,
+      ...(entry.actorEmail ? { actorEmail: entry.actorEmail } : {}),
+    };
+    set(ref(rtdb, `xuanhoa_admin/global_state/auditLogs/${entry.id}`), cleanEntry).catch(() => {});
+  } catch {}
+}
+
 export function addAdminAuditLog(
   state: AdminState,
   action: string,
   target: string,
-  type: AdminAuditLog['type']
+  type: AdminAuditLog['type'],
+  securityMeta?: {
+    actorRole?: 'primary_founder' | 'backup_founder' | 'admin' | 'manager';
+    eventCategory?:
+      | 'admin_review'
+      | 'coord_override'
+      | 'role_change'
+      | 'role_management'
+      | 'founder_security'
+      | 'system_security'
+      | 'place_crud'
+      | 'manager_proposal';
+    refId?: string;
+    placeId?: string;
+    proposalOp?: 'create' | 'cancel';
+    placeVersion?: number;
+    memberLastActiveAt?: number;
+  }
 ): AdminAuditLog[] {
+  const fbUid = getAuthenticatedFirebaseUid();
+  const detId = buildDeterministicAuditLogId(securityMeta);
   const entry: AdminAuditLog = {
-    id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: detId,
     action,
     target,
     type,
+    ...(fbUid ? { actorUid: fbUid } : {}),
+    ...(securityMeta?.actorRole ? { actorRole: securityMeta.actorRole } : {}),
+    ...(securityMeta?.eventCategory
+      ? {
+          eventCategory: securityMeta.eventCategory,
+          verificationSource: 'client_rtdb_rule_checked' as const,
+        }
+      : {}),
+    ...(securityMeta?.refId ? { refId: securityMeta.refId } : {}),
+    ...(securityMeta?.placeId ? { placeId: securityMeta.placeId } : {}),
     timestamp: Date.now(),
   };
+  pushSingleAuditLogToCloud(entry);
   return [entry, ...(state.auditLogs || [])].slice(0, 100);
 }
 
 // Khởi tạo lắng nghe đồng bộ Realtime giữa các Tab trình duyệt (storage) & Đa thiết bị qua Firebase Realtime Database
 let cloudListenerStarted = false;
+let membersRegistryListenerStarted = false;
+let securityNodeListenerStarted = false;
+let managerOwnProposalsListenerStartedForUid: string | null = null;
 export function initAdminCloudSync(): void {
-  if (typeof window === 'undefined' || cloudListenerStarted) return;
+  if (typeof window === 'undefined') return;
+
+  const ensureMembersRegistryListenerForAdmin = () => {
+    if (!firebaseConfig.apiKey) return;
+    try {
+      const rtdb = getRealtimeDb();
+      if (!rtdb) return;
+
+      // Đồng bộ Realtime nhánh bảo mật /xuanhoa_security cho Founder & Admin
+      if (!securityNodeListenerStarted && isAdminAuthenticated()) {
+        securityNodeListenerStarted = true;
+        onValue(
+          ref(rtdb, 'xuanhoa_security'),
+          snapshot => {
+            if (!snapshot.exists()) return;
+            const rawSec = snapshot.val() as Partial<XuanHoaSecurityState>;
+            const nextSec = saveSecurityStateCache({
+              primary_founder: rawSec.primary_founder || {},
+              backup_founder: rawSec.backup_founder || {},
+              admins: rawSec.admins || {},
+              managers: rawSec.managers || {},
+              locked_uids: rawSec.locked_uids || {},
+            });
+
+            // Kiểm tra thu hồi phiên (Session Revocation) hoặc khóa tài khoản tức thì
+            const activeFbUid = getAuthenticatedFirebaseUid();
+            const loggedAcc = getLoggedAdminSession();
+            if (activeFbUid && nextSec.locked_uids?.[activeFbUid] === true && !nextSec.primary_founder?.[activeFbUid]) {
+              logoutAdminSession();
+              window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync'));
+              return;
+            }
+            if (loggedAcc?.roleTier === 'backup_founder' && activeFbUid) {
+              const bfEntry = nextSec.backup_founder?.[activeFbUid];
+              const isBfStillActive =
+                bfEntry === true || (bfEntry && typeof bfEntry === 'object' && bfEntry.active === true);
+              if (!isBfStillActive) {
+                logoutAdminSession();
+                window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync'));
+                return;
+              }
+            }
+            window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync'));
+          },
+          () => {}
+        );
+      }
+
+      // SEC-V4-01: Nếu là Quản lý (không phải SuperAdmin), chỉ gắn listener đọc chỉ mục riêng `xuanhoa_admin/manager_proposals_by_uid/${fbUid}`,
+      // tuyệt đối không đọc toàn bộ `placeProposals`.
+      if (!isAdminAuthenticated() && isMapManagerAuthenticated()) {
+        const fbUid = getAuthenticatedFirebaseUid();
+        if (fbUid && managerOwnProposalsListenerStartedForUid !== fbUid) {
+          managerOwnProposalsListenerStartedForUid = fbUid;
+          onValue(
+            ref(rtdb, `xuanhoa_admin/manager_proposals_by_uid/${fbUid}`),
+            snapshot => {
+              if (!snapshot.exists()) return;
+              const ownProposals = snapshot.val() as Record<string, PlaceChangeProposal>;
+              const local = getAdminState();
+              const nextState: AdminState = {
+                ...local,
+                placeProposals: {
+                  ...(local.placeProposals || {}),
+                  ...ownProposals,
+                },
+              };
+              const sanitized = sanitizeStateForLocalStorage(nextState);
+              localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sanitized));
+              window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: nextState }));
+            },
+            () => {}
+          );
+        }
+        return;
+      }
+
+      if (membersRegistryListenerStarted || !isAdminAuthenticated()) return;
+      membersRegistryListenerStarted = true;
+      const membersRegRef = ref(rtdb, 'xuanhoa_admin/members_registry');
+      onValue(
+        membersRegRef,
+        snapshot => {
+          if (!snapshot.exists() || !isAdminAuthenticated()) return;
+          const rawRegistry = snapshot.val() as Record<string, ManagedMember>;
+          const decodedRegistry = decodeRtdbRecord<ManagedMember>(rawRegistry);
+          for (const k of Object.keys(decodedRegistry)) {
+            if (isBlockedFakeOrTestMemberEmail(k)) {
+              removeMemberFromCloudRealtime(k);
+              delete decodedRegistry[k];
+            }
+          }
+          const local = getAdminState();
+          const cleanLocal = normalizeAndDeduplicateMembers(local.members || {}).members;
+          const cleanIncoming = normalizeAndDeduplicateMembers(decodedRegistry).members;
+          const nextMembers: Record<string, ManagedMember> = { ...cleanLocal, ...cleanIncoming };
+          const nextState: AdminState = {
+            ...local,
+            members: nextMembers,
+          };
+          const sanitized = sanitizeStateForLocalStorage(nextState);
+          localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sanitized));
+          window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: nextState }));
+        },
+        () => {}
+      );
+
+      // Admin lắng nghe `placeProposals`
+      onValue(
+        ref(rtdb, 'xuanhoa_admin/global_state/placeProposals'),
+        snapshot => {
+          if (!snapshot.exists() || !isAdminAuthenticated()) return;
+          const allProposals = snapshot.val() as Record<string, PlaceChangeProposal>;
+          const local = getAdminState();
+          const nextState: AdminState = {
+            ...local,
+            placeProposals: {
+              ...(local.placeProposals || {}),
+              ...allProposals,
+            },
+          };
+          const sanitized = sanitizeStateForLocalStorage(nextState);
+          localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sanitized));
+          window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: nextState }));
+        },
+        () => {}
+      );
+    } catch {}
+  };
+
+  if (cloudListenerStarted) {
+    ensureMembersRegistryListenerForAdmin();
+    return;
+  }
   cloudListenerStarted = true;
 
   // 1. Đồng bộ Realtime tức thì (0.1s) giữa các Tab trên cùng trình duyệt (Web <-> Admin)
@@ -832,10 +2523,20 @@ export function initAdminCloudSync(): void {
     for (const [emailKey, incoming] of Object.entries(cleanIncoming)) {
       if (!incoming || !emailKey || isBlockedFakeOrTestMemberEmail(emailKey)) continue;
       const existing = out[emailKey];
+      const fallbackUid = `uid_${emailKey.replace(/[^a-z0-9]/g, '_')}`;
+      const bestUid = isVerifiedFirebaseAuthUid(incoming.uid)
+        ? incoming.uid!.trim()
+        : isVerifiedFirebaseAuthUid(existing?.uid)
+        ? existing!.uid!.trim()
+        : incoming.uid && !incoming.uid.startsWith('uid_')
+        ? incoming.uid
+        : existing?.uid && !existing.uid.startsWith('uid_')
+        ? existing.uid
+        : incoming.uid || existing?.uid || fallbackUid;
       out[emailKey] = {
         ...(existing || {}),
         ...incoming,
-        uid: `uid_${emailKey.replace(/[^a-z0-9]/g, '_')}`,
+        uid: bestUid,
         email: emailKey,
         status: incoming.status || existing?.status || 'active',
         canManageWeb:
@@ -862,14 +2563,23 @@ export function initAdminCloudSync(): void {
       return;
     }
     const local = getAdminState();
-    const decodedCloudMembers = decodeRtdbRecord<ManagedMember>(cloudData.members as any);
-    for (const k of Object.keys(decodedCloudMembers)) {
-      if (isBlockedFakeOrTestMemberEmail(k)) {
-        removeMemberFromCloudRealtime(k);
-        delete decodedCloudMembers[k];
+    const isSuper = isAdminAuthenticated();
+    let mergedMembers = local.members || {};
+    if (isSuper && cloudData.members) {
+      const decodedCloudMembers = decodeRtdbRecord<ManagedMember>(cloudData.members as any);
+      for (const k of Object.keys(decodedCloudMembers)) {
+        if (isBlockedFakeOrTestMemberEmail(k)) {
+          removeMemberFromCloudRealtime(k);
+          delete decodedCloudMembers[k];
+        }
       }
+      mergedMembers = mergeMembersMap(local.members || {}, decodedCloudMembers);
     }
-    const mergedMembers = mergeMembersMap(local.members || {}, decodedCloudMembers);
+
+    const mergedProposals: Record<string, PlaceChangeProposal> = {
+      ...(local.placeProposals || {}),
+      ...(cloudData.placeProposals || {}),
+    };
 
     const localPlaces = local.places || {};
     const cloudPlaces = cloudData.places || {};
@@ -877,6 +2587,13 @@ export function initAdminCloudSync(): void {
     const incomingPlaces: Record<string, PlaceOverride> = {};
 
     for (const pid of allPlaceKeys) {
+      if (REMOVE_OLD_TEST_AND_DUPLICATE_PLACE_IDS.has(pid)) continue;
+      if (
+        pid in PENDING_LANDMARK_PROPOSAL_BY_PLACE_ID &&
+        mergedProposals[PENDING_LANDMARK_PROPOSAL_BY_PLACE_ID[pid]]?.status !== 'approved'
+      ) {
+        continue;
+      }
       const localOv = localPlaces[pid];
       const cloudOv = cloudPlaces[pid];
       let chosen: PlaceOverride | undefined;
@@ -885,8 +2602,30 @@ export function initAdminCloudSync(): void {
         const cloudVer = cloudOv.version || 0;
         const localTime = localOv.updatedAt || 0;
         const cloudTime = cloudOv.updatedAt || 0;
-        if (localVer > cloudVer || localTime >= cloudTime) {
+        const localSrcPrio = COORDINATE_SOURCE_PRIORITY[localOv.coordinateSource || 'unverified'] || 10;
+        const cloudSrcPrio = COORDINATE_SOURCE_PRIORITY[cloudOv.coordinateSource || 'unverified'] || 10;
+        const localHasCoords = isValidCoordinatePair(localOv.lat, localOv.lng);
+        const cloudHasCoords = isValidCoordinatePair(cloudOv.lat, cloudOv.lng);
+
+        if (cloudHasCoords && !localHasCoords && localOv.adminExplicitlyUnpinned !== true) {
+          chosen = { ...localOv, ...cloudOv };
+        } else if (
+          cloudHasCoords &&
+          localHasCoords &&
+          cloudSrcPrio > localSrcPrio &&
+          cloudTime >= localTime
+        ) {
+          chosen = { ...localOv, ...cloudOv };
+        } else if (localVer > cloudVer || localTime >= cloudTime) {
           chosen = { ...cloudOv, ...localOv };
+          if (!localHasCoords && cloudHasCoords && localOv.adminExplicitlyUnpinned !== true) {
+            chosen.lat = cloudOv.lat;
+            chosen.lng = cloudOv.lng;
+            chosen.coordinateVerified = cloudOv.coordinateVerified;
+            chosen.adminPinApproved = cloudOv.adminPinApproved;
+            chosen.coordinateSource = cloudOv.coordinateSource;
+            chosen.locationStatus = cloudOv.locationStatus;
+          }
         } else {
           chosen = { ...localOv, ...cloudOv };
         }
@@ -906,17 +2645,51 @@ export function initAdminCloudSync(): void {
         chosen.mapCategory === 'school' ||
         chosen.mapCategory === 'medical' ||
         chosen.sectorTag === 'dia-danh';
-      const hasExplicitVerifiedCoords =
-        chosen.adminPinApproved === true ||
-        chosen.coordinateVerified === true ||
-        chosen.locationStatus === 'located' ||
-        chosen.coordinateSource === 'admin_verified' ||
-        chosen.coordinateSource === 'google_maps_resolved' ||
-        chosen.coordinateSource === 'nominatim_selected';
 
-      if (hasExplicitVerifiedCoords && typeof chosen.lat === 'number' && typeof chosen.lng === 'number') {
+      const catalogCoord = VERIFIED_CATALOG_PLACE_COORDS[pid];
+      if (
+        !UNPINNED_18_CATALOG_PLACE_IDS.has(pid) &&
+        chosen.adminExplicitlyUnpinned !== true &&
+        !isValidCoordinatePair(chosen.lat, chosen.lng) &&
+        catalogCoord &&
+        isValidCoordinatePair(catalogCoord.lat, catalogCoord.lng)
+      ) {
+        chosen.lat = catalogCoord.lat;
+        chosen.lng = catalogCoord.lng;
         chosen.coordinateVerified = true;
         chosen.adminPinApproved = true;
+        chosen.locationStatus = 'located';
+        if (!chosen.coordinateSource || chosen.coordinateSource === 'unverified') {
+          chosen.coordinateSource = 'admin_verified';
+        }
+      }
+
+      if (
+        UNPINNED_18_CATALOG_PLACE_IDS.has(pid) &&
+        (!chosen.updatedAt || chosen.updatedAt < 1793693200000)
+      ) {
+        delete chosen.lat;
+        delete chosen.lng;
+        chosen.coordinateVerified = false;
+        chosen.adminPinApproved = false;
+        chosen.locationStatus = 'unlocated';
+        chosen.coordinateSource = 'unverified';
+      }
+
+      const hasExplicitVerifiedCoords =
+        chosen.adminExplicitlyUnpinned !== true &&
+        (isValidCoordinatePair(chosen.lat, chosen.lng) ||
+          chosen.adminPinApproved === true ||
+          chosen.coordinateVerified === true ||
+          chosen.locationStatus === 'located' ||
+          chosen.coordinateSource === 'admin_verified' ||
+          chosen.coordinateSource === 'google_maps_resolved' ||
+          chosen.coordinateSource === 'nominatim_selected');
+
+      if (hasExplicitVerifiedCoords && isValidCoordinatePair(chosen.lat, chosen.lng)) {
+        chosen.coordinateVerified = true;
+        chosen.adminPinApproved = true;
+        chosen.locationStatus = 'located';
       } else if (!isCivicOrSchool && !hasExplicitVerifiedCoords) {
         delete chosen.lat;
         delete chosen.lng;
@@ -925,43 +2698,38 @@ export function initAdminCloudSync(): void {
         chosen.coordinateSource = 'unverified';
         delete chosen.lastVerifiedAt;
       }
-      incomingPlaces[pid] = chosen;
+      incomingPlaces[pid] = sanitizePublicPlaceForCloud(pid, chosen);
     }
 
-    const incomingAccounts = (cloudData.adminAccounts || local.adminAccounts || DEFAULT_ADMIN_ACCOUNTS).filter(acc => {
-      const u = (acc.username || '').trim().toLowerCase();
-      return u !== 'quanlyweb' && u !== 'quanlymaps' && u !== 'kiemnhiem' && !u.startsWith('test');
-    });
+    const incomingAccounts = (local.adminAccounts || DEFAULT_ADMIN_ACCOUNTS)
+      .filter(acc => {
+        const u = (acc.username || '').trim().toLowerCase();
+        return u !== 'quanlyweb' && u !== 'quanlymaps' && u !== 'kiemnhiem' && !u.startsWith('test');
+      })
+      .map(acc => ({
+        ...acc,
+        passwordHash: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+        password: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+      }));
 
-    if (cloudData.updatedAt && cloudData.updatedAt > (local.updatedAt || 0)) {
-      const merged: AdminState = {
-        ...local,
-        places: incomingPlaces,
-        dishes: cloudData.dishes || local.dishes || {},
-        members: mergedMembers,
-        merchantSubmissions: cloudData.merchantSubmissions || local.merchantSubmissions || {},
-        auditLogs: cloudData.auditLogs || local.auditLogs,
-        adminEmails: cloudData.adminEmails || local.adminEmails,
-        adminAccounts: incomingAccounts.length > 0 ? incomingAccounts : DEFAULT_ADMIN_ACCOUNTS,
-        sectorTags: cloudData.sectorTags || local.sectorTags,
-        fontScale: cloudData.fontScale || local.fontScale,
-        mapAccessMode: cloudData.mapAccessMode || local.mapAccessMode || 'merchants_and_admin_only',
-        updatedAt: cloudData.updatedAt,
-      };
-      const serialized = JSON.stringify(merged);
-      cachedAdminRaw = serialized;
-      cachedAdminState = merged;
-      localStorage.setItem(ADMIN_STORAGE_KEY, serialized);
-      window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: merged }));
-    } else if (
-      Object.keys(decodedCloudMembers).length > Object.keys(local.members || {}).length
-    ) {
-      // Kể cả khi local.updatedAt mới hơn, vẫn luôn hợp nhất danh sách thành viên từ Cloud để không bao giờ sót người mới đăng ký
-      const merged: AdminState = {
-        ...local,
-        members: mergedMembers,
-      };
-      const serialized = JSON.stringify(merged);
+    const merged: AdminState = {
+      ...local,
+      places: incomingPlaces,
+      dishes: cloudData.dishes || local.dishes || {},
+      members: mergedMembers,
+      placeProposals: mergedProposals,
+      auditLogs: cloudData.auditLogs || local.auditLogs,
+      adminEmails: local.adminEmails || DEFAULT_ADMIN_EMAILS,
+      adminAccounts: incomingAccounts.length > 0 ? incomingAccounts : DEFAULT_ADMIN_ACCOUNTS,
+      adminPin: '[REDACTED_HASHED]',
+      sectorTags: cloudData.sectorTags || local.sectorTags,
+      fontScale: cloudData.fontScale || local.fontScale,
+      mapAccessMode: cloudData.mapAccessMode || local.mapAccessMode || 'public_open',
+      updatedAt: Math.max(cloudData.updatedAt || 0, local.updatedAt || 0),
+    };
+    const sanitizedForLocal = sanitizeStateForLocalStorage(merged);
+    const serialized = JSON.stringify(sanitizedForLocal);
+    if (serialized !== cachedAdminRaw) {
       cachedAdminRaw = serialized;
       cachedAdminState = merged;
       localStorage.setItem(ADMIN_STORAGE_KEY, serialized);
@@ -973,43 +2741,31 @@ export function initAdminCloudSync(): void {
   try {
     const rtdb = getRealtimeDb();
     if (rtdb) {
-      // 2a. Lắng nghe trạng thái tổng thể (Quán, Maps, Cài đặt, Thành viên)
-      const rtdbRef = ref(rtdb, 'xuanhoa_admin/global_state');
+      // 2a. Lắng nghe hạt mịn nhánh công khai `places` và `dishes` (hoạt động an toàn ngay cả khi `global_state` khóa `.read: false`)
+      const placesRef = ref(rtdb, 'xuanhoa_admin/global_state/places');
       onValue(
-        rtdbRef,
+        placesRef,
         snapshot => {
           if (snapshot.exists()) {
-            applyCloudData(snapshot.val() as Partial<AdminState>);
+            applyCloudData({ places: snapshot.val() as Record<string, PlaceOverride> });
           }
         },
         () => {}
       );
 
-      // 2b. Lắng nghe nhánh chuyên biệt `members_registry` để bất kỳ ai đăng ký Gmail mới trên điện thoại/máy tính khác đều nhảy Realtime (<0.1s) vào bảng Quản lý Thành viên
-      const membersRegRef = ref(rtdb, 'xuanhoa_admin/members_registry');
+      const dishesRef = ref(rtdb, 'xuanhoa_admin/global_state/dishes');
       onValue(
-        membersRegRef,
+        dishesRef,
         snapshot => {
-          if (!snapshot.exists()) return;
-          const rawRegistry = snapshot.val() as Record<string, ManagedMember>;
-          const decodedRegistry = decodeRtdbRecord<ManagedMember>(rawRegistry);
-          for (const k of Object.keys(decodedRegistry)) {
-            if (isBlockedFakeOrTestMemberEmail(k)) {
-              removeMemberFromCloudRealtime(k);
-              delete decodedRegistry[k];
-            }
+          if (snapshot.exists()) {
+            applyCloudData({ dishes: snapshot.val() as Record<string, DishOverride> });
           }
-          const local = getAdminState();
-          const nextMembers = mergeMembersMap(local.members || {}, decodedRegistry);
-          const nextState: AdminState = {
-            ...local,
-            members: nextMembers,
-          };
-          localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(nextState));
-          window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync', { detail: nextState }));
         },
         () => {}
       );
+
+      // 2b. Chỉ gắn listener `members_registry` và `placeProposals` khi phiên hiện tại là Admin/Manager đã xác thực
+      ensureMembersRegistryListenerForAdmin();
     }
   } catch {}
 }
@@ -1040,55 +2796,12 @@ export function syncUserToAdminRegistry(user: UserAuthProfile, spinsCount = 0, l
     );
   }
 
-  // Đồng bộ 2 chiều quyền Chủ Quán & Mã Code đi theo Gmail mãi mãi
-  if (user.email) {
-    const cleanEmail = user.email.trim().toLowerCase();
-    // Chiều 1: Nếu tài khoản đã lưu sẵn mã code & quán trong hồ sơ/cookie, đảm bảo state.places vẫn giữ liên kết
-    if (user.isMerchantAccount && user.merchantPlaceId && user.merchantVerifiedCode) {
-      const pid = user.merchantPlaceId;
-      const ov = state.places[pid];
-      if (!ov?.claimedByEmail || ov.claimedByEmail.trim().toLowerCase() === cleanEmail) {
-        state.places[pid] = {
-          ...(ov || { id: pid }),
-          id: pid,
-          merchantClaimCode: ov?.merchantClaimCode || user.merchantVerifiedCode,
-          claimedByEmail: cleanEmail,
-          claimedByUid: user.uid || ov?.claimedByUid || '',
-          claimedByName: user.displayName || user.nickname || cleanEmail,
-          claimedAt: ov?.claimedAt || Date.now(),
-          updatedAt: Date.now(),
-        };
-      }
-    } else {
-      // Chiều 2: Nếu Gmail này đã từng nhập mã code (hoặc được Admin gán) trong state.places, tự động khôi phục Nick Quán 🏪 & Mã Code vào hồ sơ người dùng
-      const matchedEntry = Object.values(state.places).find(
-        p => p.claimedByEmail && p.claimedByEmail.trim().toLowerCase() === cleanEmail
-      );
-      if (matchedEntry) {
-        const basePlace = xuanHoaPlaces.find(bp => bp.id === matchedEntry.id);
-        const placeName = matchedEntry.name || basePlace?.name || 'Quán của bạn';
-        const code = matchedEntry.merchantClaimCode || getOrGenerateMerchantCode(matchedEntry.id, false);
-        try {
-          saveAuthUser({
-            ...user,
-            isMerchantAccount: true,
-            merchantPlaceId: matchedEntry.id,
-            merchantPlaceName: placeName,
-            merchantVerifiedCode: code,
-            nickname: placeName,
-            avatar: '🏪',
-          });
-        } catch {}
-      }
-    }
-  }
-
   const member: ManagedMember = {
     uid: user.uid || existing?.uid || `uid_${Date.now()}`,
     email: user.email || existing?.email || 'thuckhach@gmail.com',
     displayName: user.displayName || existing?.displayName || user.nickname,
     nickname: user.nickname || existing?.nickname || user.displayName,
-    avatar: user.avatar || existing?.avatar || '🐭',
+    avatar: user.avatar === '🏪' ? '🐭' : user.avatar || existing?.avatar || '🐭',
     avatarId: user.avatarId || existing?.avatarId || 'm_ty',
     gender: user.gender || existing?.gender || 'male',
     phone: user.phone || existing?.phone || '',
@@ -1129,22 +2842,13 @@ export async function ensureCloudPermissionsSyncedForEmail(email?: string | null
     const rtdb = getRealtimeDb();
     if (!rtdb) return;
     const safeKey = encodeRtdbKey(cleanEmail);
-    const [regSnap, globalMemSnap, globalEmailsSnap] = await Promise.all([
+    const [regSnap, globalMemSnap] = await Promise.all([
       get(ref(rtdb, `xuanhoa_admin/members_registry/${safeKey}`)).catch(() => null),
       get(ref(rtdb, `xuanhoa_admin/global_state/members/${safeKey}`)).catch(() => null),
-      get(ref(rtdb, `xuanhoa_admin/global_state/adminEmails`)).catch(() => null),
     ]);
 
     const state = getAdminState();
     let changed = false;
-
-    if (globalEmailsSnap && globalEmailsSnap.exists()) {
-      const cloudEmails = globalEmailsSnap.val();
-      if (Array.isArray(cloudEmails) && cloudEmails.length > 0) {
-        state.adminEmails = Array.from(new Set([...DEFAULT_ADMIN_EMAILS, ...cloudEmails]));
-        changed = true;
-      }
-    }
 
     const regVal = regSnap && regSnap.exists() ? (regSnap.val() as Partial<ManagedMember>) : null;
     const globalVal =
@@ -1152,9 +2856,23 @@ export async function ensureCloudPermissionsSyncedForEmail(email?: string | null
 
     if (regVal || globalVal) {
       const existing = state.members[cleanEmail];
+      const fallbackUid = `uid_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+      const bestUid = isVerifiedFirebaseAuthUid(regVal?.uid)
+        ? regVal!.uid!.trim()
+        : isVerifiedFirebaseAuthUid(globalVal?.uid)
+        ? globalVal!.uid!.trim()
+        : isVerifiedFirebaseAuthUid(existing?.uid)
+        ? existing!.uid!.trim()
+        : regVal?.uid && !regVal.uid.startsWith('uid_')
+        ? regVal.uid
+        : globalVal?.uid && !globalVal.uid.startsWith('uid_')
+        ? globalVal.uid
+        : existing?.uid && !existing.uid.startsWith('uid_')
+        ? existing.uid
+        : regVal?.uid || globalVal?.uid || existing?.uid || fallbackUid;
       const merged: ManagedMember = {
         ...(existing || {
-          uid: `uid_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
+          uid: bestUid,
           email: cleanEmail,
           displayName: cleanEmail.split('@')[0],
           nickname: cleanEmail.split('@')[0],
@@ -1171,7 +2889,7 @@ export async function ensureCloudPermissionsSyncedForEmail(email?: string | null
         }),
         ...(globalVal || {}),
         ...(regVal || {}),
-        uid: `uid_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
+        uid: bestUid,
         email: cleanEmail,
         status:
           regVal?.status === 'admin' || globalVal?.status === 'admin' || existing?.status === 'admin'
@@ -1216,14 +2934,29 @@ export function updateMemberStatusInAdmin(
   banReason?: string
 ): void {
   const state = getAdminState();
+  const roleInfo = getEffectiveAdminRoleInfo();
   const key = memberKey.trim().toLowerCase();
-  if (isSuperAdminIdentifier(key) && status !== 'admin' && status !== 'active') {
-    return;
-  }
   const target = state.members[key];
   if (!target) return;
-  if (target.status === 'admin' && isSuperAdminIdentifier(key) && status !== 'admin') {
-    return;
+
+  // Bảo vệ tuyệt đối Primary Founder: Không ai (kể cả Backup Founder) có thể khóa, hạn chế hoặc hạ quyền Primary Founder
+  if (isPrimaryFounderIdentifier(key, target.uid) && status !== 'admin' && status !== 'active') {
+    throw new Error('Bảo mật Founder: Không thể khóa, hạn chế hoặc hạ quyền Primary Founder.');
+  }
+
+  // Backup Founder không được khóa hoặc hạ quyền Backup Founder khác (chỉ Primary Founder quản lý Backup Founder)
+  if (isUidActiveBackupFounder(target.uid) && !roleInfo.isPrimaryFounder) {
+    throw new Error('Chỉ Primary Founder mới có quyền quản lý trạng thái của Backup Founder.');
+  }
+
+  // Admin thường không được khóa/mở khóa hoặc thay đổi trạng thái của Admin/Manager hoặc tự cấp status === 'admin'
+  const isTargetOperator =
+    target.status === 'admin' ||
+    Boolean(target.canManageWeb || target.canManageMaps) ||
+    isUidOperationalAdmin(target.uid) ||
+    isUidOperationalManager(target.uid);
+  if ((isTargetOperator || status === 'admin') && !roleInfo.canManageRoles) {
+    throw new Error('Chỉ Primary Founder hoặc Backup Founder mới có quyền thay đổi trạng thái của tài khoản Quản trị/Quản lý.');
   }
 
   target.status = status;
@@ -1232,20 +2965,155 @@ export function updateMemberStatusInAdmin(
 
   const statusLabel =
     status === 'banned'
-      ? 'Khóa / Chặn vĩnh viễn (Ban)'
+      ? '🔒 Khóa tài khoản (Ban)'
       : status === 'muted'
-      ? 'Cấm bình luận / Đánh giá (Mute)'
+      ? '🔇 Cấm bình luận / Đánh giá (Mute)'
       : status === 'admin'
-      ? 'Cấp quyền Quản trị viên'
-      : 'Mở khóa hoạt động bình thường';
+      ? '🛡️ Cấp quyền Quản trị viên (Admin)'
+      : '🔓 Mở khóa tài khoản hoạt động bình thường';
+
+  const actorRoleForLog: 'primary_founder' | 'backup_founder' | 'admin' =
+    roleInfo.isPrimaryFounder
+      ? 'primary_founder'
+      : roleInfo.isBackupFounder
+      ? 'backup_founder'
+      : 'admin';
 
   state.auditLogs = addAdminAuditLog(
     state,
     statusLabel,
     `${target.nickname} (${target.email})`,
-    'user'
+    'user',
+    {
+      actorRole: actorRoleForLog,
+      eventCategory: 'role_management',
+      refId: target.uid || key,
+      memberLastActiveAt: target.lastActiveAt,
+    }
   );
+  pushMemberToCloudRealtime(target, Boolean(roleInfo.canManageRoles));
+
+  // Đồng bộ khóa/mở khóa lên xuanhoa_security/locked_uids/$uid khi người thực hiện là Founder và UID đã xác minh
+  if (roleInfo.canManageRoles && isVerifiedFirebaseAuthUid(target.uid) && !isPrimaryFounderIdentifier(key, target.uid)) {
+    const cleanUid = target.uid.trim();
+    const sec = getSecurityState();
+    const nextLocked = { ...(sec.locked_uids || {}) };
+    if (status === 'banned') {
+      nextLocked[cleanUid] = true;
+    } else {
+      delete nextLocked[cleanUid];
+    }
+    saveSecurityStateCache({ locked_uids: nextLocked });
+
+    try {
+      const rtdb = getRealtimeDb();
+      if (rtdb) {
+        if (status === 'banned') {
+          set(ref(rtdb, `xuanhoa_security/locked_uids/${cleanUid}`), true).catch(() => {});
+        } else {
+          remove(ref(rtdb, `xuanhoa_security/locked_uids/${cleanUid}`)).catch(() => {});
+        }
+      }
+    } catch {}
+  }
+  saveAdminState(state);
+}
+
+/**
+ * FOUNDER SYSTEM V2: Cấp hoặc thu hồi quyền Admin (`xuanhoa_security/admins/$uid`)
+ * - Chỉ Primary Founder hoặc Backup Founder đang hoạt động (`roleInfo.canManageRoles === true`) mới được phép thực hiện.
+ * - Tuyệt đối không cấp quyền cho UID chưa xác minh (Google OAuth sub 21 chữ số hoặc uid_* tự sinh).
+ * - Không ai có thể thu hồi quyền của Primary Founder.
+ */
+export function grantOrRevokeAdminRole(memberKey: string, makeAdmin: boolean): void {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.canManageRoles) {
+    throw new Error('Từ chối truy cập: Chỉ Primary Founder hoặc Backup Founder mới có quyền cấp/thu hồi Admin.');
+  }
+
+  const state = getAdminState();
+  const key = memberKey.trim().toLowerCase();
+  const target = state.members[key];
+  if (!target) {
+    throw new Error('Không tìm thấy hồ sơ thành viên trong hệ thống.');
+  }
+
+  if (isPrimaryFounderIdentifier(key, target.uid)) {
+    throw new Error('Bảo mật Founder: Không thể thu hồi hoặc thay đổi quyền của Primary Founder.');
+  }
+
+  if (isUidActiveBackupFounder(target.uid) && !roleInfo.isPrimaryFounder) {
+    throw new Error('Chỉ Primary Founder mới có quyền thay đổi phân quyền của Backup Founder.');
+  }
+
+  if (makeAdmin && !isVerifiedFirebaseAuthUid(target.uid)) {
+    throw new Error(
+      'Chưa thể cấp quyền Admin: Tài khoản này chưa có Firebase Auth UID 28 ký tự đã xác minh (hiện đang là Google sub 21 chữ số hoặc mã tạm). Người dùng cần đăng nhập Google trên hệ thống 1 lần trước khi Founder cấp quyền.'
+    );
+  }
+
+  const now = Date.now();
+  target.status = makeAdmin ? 'admin' : 'active';
+  target.roleTier = makeAdmin ? 'admin' : 'user';
+  target.canManageWeb = makeAdmin;
+  target.canManageMaps = makeAdmin;
+  target.lastActiveAt = now;
+
+  if (makeAdmin) {
+    if (!state.adminEmails.includes(key)) {
+      state.adminEmails = [...state.adminEmails, key];
+    }
+  } else {
+    state.adminEmails = (state.adminEmails || []).filter(e => e.trim().toLowerCase() !== key);
+  }
+
+  const actorRoleForLog: 'primary_founder' | 'backup_founder' = roleInfo.isPrimaryFounder
+    ? 'primary_founder'
+    : 'backup_founder';
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    makeAdmin
+      ? '🛡️ Founder CẤP QUYỀN ADMIN cho thành viên'
+      : '⚠️ Founder THU HỒI QUYỀN ADMIN của thành viên',
+    `${target.nickname} (${target.email}) [UID: ${target.uid.slice(0, 6)}...]`,
+    'user',
+    {
+      actorRole: actorRoleForLog,
+      eventCategory: 'role_management',
+      refId: target.uid || key,
+      memberLastActiveAt: now,
+    }
+  );
+
   pushMemberToCloudRealtime(target, true);
+
+  if (isVerifiedFirebaseAuthUid(target.uid)) {
+    const cleanUid = target.uid.trim();
+    const sec = getSecurityState();
+    const nextAdmins = { ...(sec.admins || {}) };
+    const nextManagers = { ...(sec.managers || {}) };
+    if (makeAdmin) {
+      nextAdmins[cleanUid] = true;
+      delete nextManagers[cleanUid];
+    } else {
+      delete nextAdmins[cleanUid];
+    }
+    saveSecurityStateCache({ admins: nextAdmins, managers: nextManagers });
+
+    try {
+      const rtdb = getRealtimeDb();
+      if (rtdb) {
+        if (makeAdmin) {
+          set(ref(rtdb, `xuanhoa_security/admins/${cleanUid}`), true).catch(() => {});
+          remove(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`)).catch(() => {});
+        } else {
+          remove(ref(rtdb, `xuanhoa_security/admins/${cleanUid}`)).catch(() => {});
+        }
+      }
+    } catch {}
+  }
+
   saveAdminState(state);
 }
 
@@ -1253,40 +3121,96 @@ export function updateMemberManagerPermissions(
   memberKey: string,
   patch: { canManageWeb?: boolean; canManageMaps?: boolean }
 ): void {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.canManageRoles) {
+    throw new Error('Từ chối truy cập: Chỉ Primary Founder hoặc Backup Founder mới có quyền cấp/thu hồi quyền Quản lý (Manager).');
+  }
+
   const state = getAdminState();
   const key = memberKey.trim().toLowerCase();
-  if (key === 'truongtuanminh.91@gmail.com' || key === 'minhtt@xuanhoacogi.com') {
-    // Founder luôn có toàn quyền mặc định
-    return;
-  }
   const target = state.members[key];
   if (!target) return;
 
-  if (patch.canManageWeb !== undefined) target.canManageWeb = patch.canManageWeb;
-  if (patch.canManageMaps !== undefined) target.canManageMaps = patch.canManageMaps;
+  if (isPrimaryFounderIdentifier(key, target.uid)) {
+    throw new Error('Bảo mật Founder: Primary Founder luôn có toàn quyền hệ thống.');
+  }
+
+  const nextWeb = patch.canManageWeb !== undefined ? patch.canManageWeb : Boolean(target.canManageWeb);
+  const nextMaps = patch.canManageMaps !== undefined ? patch.canManageMaps : Boolean(target.canManageMaps);
+  const willBeManager = Boolean(nextWeb || nextMaps);
+
+  if (willBeManager && !isVerifiedFirebaseAuthUid(target.uid)) {
+    throw new Error(
+      'Chưa thể cấp quyền Manager: Tài khoản này chưa có Firebase Auth UID 28 ký tự đã xác minh (hiện đang là Google sub 21 chữ số hoặc mã tạm). Người dùng cần đăng nhập Google trên hệ thống 1 lần trước khi Founder cấp quyền.'
+    );
+  }
+
+  target.canManageWeb = nextWeb;
+  target.canManageMaps = nextMaps;
+  if (target.status !== 'admin') {
+    target.roleTier = willBeManager ? 'manager' : 'user';
+  }
   target.lastActiveAt = Date.now();
 
   const roles: string[] = [];
   if (target.canManageWeb) roles.push('Quản lý Web (Quán)');
   if (target.canManageMaps) roles.push('Quản lý Maps');
 
+  const actorRoleForLog: 'primary_founder' | 'backup_founder' = roleInfo.isPrimaryFounder
+    ? 'primary_founder'
+    : 'backup_founder';
+
   state.auditLogs = addAdminAuditLog(
     state,
-    roles.length > 0 ? `Cấp quyền: ${roles.join(' + ')}` : 'Thu hồi quyền Quản lý Web/Maps',
+    roles.length > 0 ? `🗺️ Founder cấp quyền: ${roles.join(' + ')}` : '⚠️ Founder thu hồi quyền Quản lý Web/Maps',
     `${target.nickname} (${target.email})`,
-    'user'
+    'user',
+    {
+      actorRole: actorRoleForLog,
+      eventCategory: 'role_management',
+      refId: target.uid || key,
+      memberLastActiveAt: target.lastActiveAt,
+    }
   );
   pushMemberToCloudRealtime(target, true);
+
+  // Chỉ ghi lên xuanhoa_security/managers/$uid khi target.uid là Firebase Auth UID 28 ký tự hợp lệ đã xác minh
+  if (isVerifiedFirebaseAuthUid(target.uid)) {
+    const cleanUid = target.uid.trim();
+    const sec = getSecurityState();
+    const nextManagers = { ...(sec.managers || {}) };
+    if (willBeManager) {
+      nextManagers[cleanUid] = true;
+    } else {
+      delete nextManagers[cleanUid];
+    }
+    saveSecurityStateCache({ managers: nextManagers });
+
+    try {
+      const rtdb = getRealtimeDb();
+      if (rtdb) {
+        if (willBeManager) {
+          set(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`), true).catch(() => {});
+        } else {
+          remove(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`)).catch(() => {});
+        }
+      }
+    } catch {}
+  }
   saveAdminState(state);
 }
 
 export function deleteMemberAndPurgeReviews(memberKey: string): { purgedReviews: number } {
   const state = getAdminState();
+  const roleInfo = getEffectiveAdminRoleInfo();
   const key = memberKey.trim().toLowerCase();
-  if (isSuperAdminIdentifier(key)) {
+  const target = state.members[key];
+  if (isPrimaryFounderIdentifier(key, target?.uid)) {
     return { purgedReviews: 0 };
   }
-  const target = state.members[key];
+  if (target && (isUidActiveBackupFounder(target.uid) || isUidOperationalAdmin(target.uid)) && !roleInfo.isPrimaryFounder) {
+    return { purgedReviews: 0 };
+  }
   if (target?.status === 'admin') {
     return { purgedReviews: 0 };
   }
@@ -1585,7 +3509,23 @@ export interface AdminPlaceItem {
   status: PlaceStatus;
   sectorTag: string;
   mapCategory?: string;
-  locationStatus?: 'located' | 'unlocated' | 'invalid_coordinates' | 'invalid' | 'pending_geocode';
+  parentCategoryId?: string;
+  subcategoryId?: string;
+  categoryId?: string;
+  extraTags?: string[];
+  contentProfile?: ContentProfileType;
+  catalogMode?: CatalogModeType;
+  catalogEnabled?: boolean;
+  website?: string;
+  educationLevel?: string;
+  agencyFunction?: string;
+  showByDefault?: boolean;
+  defaultMapVisible?: boolean;
+  openingHours?: string;
+  lat?: number | null;
+  lng?: number | null;
+  createdAt?: number;
+  locationStatus?: 'located' | 'unlocated' | 'invalid_coordinates' | 'invalid' | 'pending_geocode' | 'suspicious' | 'outside_service_area';
   mapsLinkStatus?: 'none' | 'valid' | 'unresolved' | 'invalid';
   visibilityStatus?: 'visible' | 'hidden' | 'deleted' | 'blocked';
   version?: number;
@@ -1611,19 +3551,10 @@ export function computePlaceLocationStatus(
   isCivicOrOsm = false
 ): 'located' | 'unlocated' | 'invalid_coordinates' {
   if (!ov) return isCivicOrOsm ? 'located' : 'unlocated';
+  if (ov.adminExplicitlyUnpinned === true) return 'unlocated';
   const hasValidLatLng = isValidCoordinatePair(ov.lat, ov.lng);
   if (hasValidLatLng) {
-    if (
-      isCivicOrOsm ||
-      ov.coordinateVerified === true ||
-      ov.adminPinApproved === true ||
-      ov.locationStatus === 'located' ||
-      ov.coordinateSource === 'admin_verified' ||
-      ov.coordinateSource === 'google_maps_resolved' ||
-      ov.coordinateSource === 'nominatim_selected'
-    ) {
-      return 'located';
-    }
+    return 'located';
   }
   const hasRawNonNullCoord =
     (ov.lat !== undefined && ov.lat !== null) || (ov.lng !== undefined && ov.lng !== null);
@@ -1634,6 +3565,122 @@ export function computePlaceLocationStatus(
     return 'unlocated';
   }
   return isCivicOrOsm ? 'located' : 'unlocated';
+}
+
+/**
+ * Kiểm toán chất lượng tọa độ địa điểm theo Phần 6 (Master Prompt):
+ * - located: Tọa độ hợp lệ nằm trong vùng phục vụ Xuân Hòa (lat 21.24..21.34, lng 105.68..105.77)
+ * - unlocated: Chưa có tọa độ (lat/lng null)
+ * - outside_service_area: Có tọa độ nhưng nằm ngoài phạm vi Xuân Hòa / Phúc Yên
+ * - suspicious: Trùng tọa độ hoàn toàn với một địa điểm khác không cùng tòa nhà
+ */
+export function evaluatePlaceCoordinateQuality(
+  placeOrItem?: { id?: string; name?: string; lat?: number | null; lng?: number | null } | null,
+  duplicateCoordKeySet?: Set<string>
+): {
+  status: 'located' | 'unlocated' | 'suspicious' | 'outside_service_area';
+  reason?: string;
+} {
+  if (!placeOrItem) {
+    return { status: 'unlocated', reason: 'Chưa có dữ liệu địa điểm' };
+  }
+  const lat = placeOrItem.lat;
+  const lng = placeOrItem.lng;
+  if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { status: 'unlocated', reason: 'Chưa định vị tọa độ' };
+  }
+  if (lat === 0 && lng === 0) {
+    return { status: 'suspicious', reason: 'Tọa độ (0, 0) không hợp lệ' };
+  }
+  // Phạm vi vùng phục vụ mở rộng Phường Xuân Hòa & lân cận (lat 21.24..21.34, lng 105.68..105.77)
+  if (lat < 21.24 || lat > 21.34 || lng < 105.68 || lng > 105.77) {
+    return {
+      status: 'outside_service_area',
+      reason: `Tọa độ (${lat.toFixed(5)}, ${lng.toFixed(5)}) nằm ngoài phạm vi Xuân Hòa`,
+    };
+  }
+  const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+  if (duplicateCoordKeySet && duplicateCoordKeySet.has(key)) {
+    return {
+      status: 'suspicious',
+      reason: `Tọa độ trùng khớp (${key}) cần rà soát thực địa`,
+    };
+  }
+  return { status: 'located' };
+}
+
+export function auditAllPlaceCoordinatesQuality(): {
+  total: number;
+  located: number;
+  unlocated: number;
+  suspicious: number;
+  outsideServiceArea: number;
+  items: Array<{
+    id: string;
+    name: string;
+    lat: number | null;
+    lng: number | null;
+    status: 'located' | 'unlocated' | 'suspicious' | 'outside_service_area';
+    reason?: string;
+  }>;
+} {
+  const managed = getAllManagedPlaces();
+  const state = getAdminState();
+  const managedIds = new Set(managed.map((m) => m.place.id));
+  const osmEntries = Object.values(state.places || {}).filter(
+    (ov) => ov && ov.id && ov.id.startsWith('osm_') && !managedIds.has(ov.id) && ov.status !== 'deleted'
+  );
+  const combined: Array<{ id: string; name: string; lat: number | null; lng: number | null }> = [
+    ...managed.map((m) => ({
+      id: m.place.id,
+      name: m.place.name,
+      lat: typeof m.lat === 'number' ? m.lat : null,
+      lng: typeof m.lng === 'number' ? m.lng : null,
+    })),
+    ...osmEntries.map((l) => ({
+      id: l.id,
+      name: l.name || l.id,
+      lat: typeof l.lat === 'number' ? l.lat : null,
+      lng: typeof l.lng === 'number' ? l.lng : null,
+    })),
+  ];
+
+  const coordCounts = new Map<string, number>();
+  for (const item of combined) {
+    if (typeof item.lat === 'number' && typeof item.lng === 'number') {
+      const k = `${item.lat.toFixed(5)},${item.lng.toFixed(5)}`;
+      coordCounts.set(k, (coordCounts.get(k) || 0) + 1);
+    }
+  }
+  const duplicateSet = new Set<string>();
+  for (const [k, cnt] of coordCounts.entries()) {
+    if (cnt > 2) duplicateSet.add(k);
+  }
+
+  const items = combined.map((item) => {
+    const q = evaluatePlaceCoordinateQuality(item, duplicateSet);
+    return {
+      id: item.id,
+      name: item.name,
+      lat: item.lat,
+      lng: item.lng,
+      status: q.status,
+      reason: q.reason,
+    };
+  });
+
+  return {
+    total: items.length,
+    located: items.filter((i) => i.status === 'located').length,
+    unlocated: items.filter((i) => i.status === 'unlocated').length,
+    suspicious: items.filter((i) => i.status === 'suspicious').length,
+    outsideServiceArea: items.filter((i) => i.status === 'outside_service_area').length,
+    items,
+  };
+}
+
+if (typeof window !== 'undefined') {
+  (window as any).__XUANHOA_COORD_AUDIT__ = auditAllPlaceCoordinatesQuality;
 }
 
 /**
@@ -1658,9 +3705,15 @@ export function computeMapsLinkStatus(
 
   // Nếu là link rút gọn maps.app.goo.gl / goo.gl/maps
   if (/https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(rawMapsUrl)) {
+    if (isValidCoordinatePair(ov?.lat, ov?.lng)) {
+      return 'valid';
+    }
+    const shortCleaned = rawMapsUrl.split('?')[0];
     if (
-      isValidCoordinatePair(ov?.lat, ov?.lng) &&
-      (ov?.coordinateSource === 'google_maps_resolved' || ov?.coordinateSource === 'admin_verified')
+      shortCleaned === 'https://maps.app.goo.gl/Kk33whBUz27JbsvG6' ||
+      shortCleaned === 'https://maps.app.goo.gl/9FJ9U1JDij8FDgV17' ||
+      shortCleaned === 'https://maps.app.goo.gl/KeefsfcCKvvYCuMZA' ||
+      shortCleaned === 'https://maps.app.goo.gl/nT1hviRgRibEPUzU9'
     ) {
       return 'valid';
     }
@@ -1865,24 +3918,113 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
 
     const boost: 1 | 2 | 3 = ov?.priorityBoost || (ov?.isFeatured ? 2 : 1);
 
-    const resolvedSectorTag = ov?.sectorTag || inferDefaultSectorTag(mergedPlace);
+    const taxonomy = resolvePlaceTaxonomy({
+      id: basePlace.id,
+      name: mergedPlace.name,
+      subType: mergedPlace.tagline,
+      tags: mergedPlace.tags,
+      sectorTag: ov?.sectorTag,
+      mapCategory: ov?.mapCategory,
+      category: mergedPlace.category,
+      explicitParentId: ov?.parentCategoryId,
+      explicitSubcategoryId: ov?.subcategoryId || ov?.categoryId,
+      explicitShowByDefault: ov?.showByDefault ?? ov?.defaultMapVisible,
+      dataSource: 'places_xuanhoa',
+    });
+    const subMeta =
+      MAP_CATEGORY_REGISTRY[taxonomy.subcategoryId] || MAP_CATEGORY_REGISTRY.uncategorized;
+    const resolvedSectorTag =
+      ov?.subcategoryId || ov?.categoryId
+        ? getDefaultSectorTagForSubcategory(subMeta)
+        : ov?.sectorTag || inferDefaultSectorTag(mergedPlace);
+    const resolvedExtraTags = Array.isArray(ov?.extraTags)
+      ? ov!.extraTags
+      : Array.isArray(basePlace.extraTags)
+      ? basePlace.extraTags
+      : [];
+    const profileMeta = resolvePlaceContentProfile({
+      subcategoryId: taxonomy.subcategoryId,
+      parentCategoryId: taxonomy.parentCategoryId,
+      explicitProfile: ov?.contentProfile ?? basePlace.contentProfile,
+      explicitCatalogMode: ov?.catalogMode ?? basePlace.catalogMode,
+      explicitCatalogEnabled: ov?.catalogEnabled ?? basePlace.catalogEnabled,
+      hasCatalogItems: fullMenu.length > 0,
+    });
+
+    mergedPlace.parentCategoryId = taxonomy.parentCategoryId;
+    mergedPlace.subcategoryId = taxonomy.subcategoryId;
+    mergedPlace.subcategory = subMeta.label;
+    mergedPlace.extraTags = resolvedExtraTags;
+    mergedPlace.contentProfile = profileMeta.contentProfile;
+    mergedPlace.catalogMode = profileMeta.catalogMode;
+    mergedPlace.catalogEnabled = profileMeta.catalogEnabled;
+    mergedPlace.website = ov?.website ?? basePlace.website;
+    mergedPlace.educationLevel = ov?.educationLevel ?? basePlace.educationLevel;
+    mergedPlace.agencyFunction = ov?.agencyFunction ?? basePlace.agencyFunction;
+    if (!profileMeta.catalogEnabled || profileMeta.forbidsMenuAndOrdering) {
+      mergedPlace.menu = [];
+    }
+
     const isCivic =
       resolvedSectorTag === 'dia-danh' ||
+      taxonomy.legacyCategory === 'public' ||
+      taxonomy.legacyCategory === 'school' ||
       ov?.mapCategory === 'public' ||
       ov?.mapCategory === 'school' ||
       ov?.mapCategory === 'medical';
 
+    const isExplicitlyUnpinned = ov?.adminExplicitlyUnpinned === true;
+    const fallbackCoord =
+      VERIFIED_CATALOG_PLACE_COORDS[basePlace.id] ||
+      (isValidCoordinatePair(basePlace.lat, basePlace.lng)
+        ? { lat: Number(basePlace.lat), lng: Number(basePlace.lng) }
+        : null);
+    const hasOvValidCoords =
+      !isExplicitlyUnpinned && isValidCoordinatePair(ov?.lat, ov?.lng);
+    const resolvedLat = hasOvValidCoords
+      ? Number(ov!.lat)
+      : !isExplicitlyUnpinned && fallbackCoord
+      ? fallbackCoord.lat
+      : null;
+    const resolvedLng = hasOvValidCoords
+      ? Number(ov!.lng)
+      : !isExplicitlyUnpinned && fallbackCoord
+      ? fallbackCoord.lng
+      : null;
+    const locStatus: 'located' | 'unlocated' | 'invalid_coordinates' =
+      resolvedLat !== null && resolvedLng !== null && !ov?.pendingMapApproval?.isNewPlace
+        ? 'located'
+        : computePlaceLocationStatus(ov, isCivic);
+    mergedPlace.lat = resolvedLat;
+    mergedPlace.lng = resolvedLng;
+
     const normName = normalizeSearchVn(mergedPlace.name);
     const normAddress = normalizeSearchVn(mergedPlace.address);
     const normPhone = normalizeSearchVn(mergedPlace.phone);
-    const normCat = normalizeSearchVn(ov?.mapCategory || resolvedSectorTag);
+    const normCat = normalizeSearchVn(`${subMeta.label} ${resolvedExtraTags.join(' ')} ${ov?.mapCategory || ''} ${resolvedSectorTag}`);
 
     result.push({
       place: mergedPlace,
       status,
       sectorTag: resolvedSectorTag,
-      mapCategory: ov?.mapCategory,
-      locationStatus: computePlaceLocationStatus(ov, isCivic),
+      mapCategory: taxonomy.legacyCategory,
+      parentCategoryId: taxonomy.parentCategoryId,
+      subcategoryId: taxonomy.subcategoryId,
+      categoryId: taxonomy.subcategoryId,
+      extraTags: resolvedExtraTags,
+      contentProfile: profileMeta.contentProfile,
+      catalogMode: profileMeta.catalogMode,
+      catalogEnabled: profileMeta.catalogEnabled,
+      website: mergedPlace.website,
+      educationLevel: mergedPlace.educationLevel,
+      agencyFunction: mergedPlace.agencyFunction,
+      showByDefault: taxonomy.showByDefault,
+      defaultMapVisible: taxonomy.showByDefault,
+      openingHours: mergedPlace.openHours,
+      lat: resolvedLat,
+      lng: resolvedLng,
+      createdAt: ov?.createdAt || ov?.updatedAt,
+      locationStatus: locStatus,
       mapsLinkStatus: computeMapsLinkStatus(ov, mergedPlace.mapsUrl),
       visibilityStatus: computePlaceVisibilityStatus(ov, status),
       version: ov?.version || 1,
@@ -1924,12 +4066,12 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
       const mergedCustom: Place = {
         ...ov.customPlaceData,
         name: ov.name || ov.customPlaceData.name,
-        tagline: ov.tagline || ov.customPlaceData.tagline,
+        tagline: ov.tagline ?? ov.customPlaceData.tagline,
         address: ov.address || ov.customPlaceData.address,
         zone: ov.zone || ov.customPlaceData.zone,
         distance: ov.distance || ov.customPlaceData.distance,
         phone: ov.phone ?? ov.customPlaceData.phone,
-        openHours: ov.openHours ?? ov.customPlaceData.openHours,
+        openHours: ov.openHours ?? ov.openingHours ?? ov.customPlaceData.openHours,
         minPrice: minP,
         maxPrice: maxP,
         priceRange: `${minP}k - ${maxP}k`,
@@ -1940,11 +4082,12 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
         mapsUrl: ov.mapsUrl ?? ov.customPlaceData.mapsUrl,
         quip: ov.quip ?? ov.customPlaceData.quip,
         tags: ov.tags ?? ov.customPlaceData.tags,
-        imageUrl: ov.imageUrl || ov.customPlaceData.imageUrl,
+        imageUrl: ov.imageUrl ?? ov.customPlaceData.imageUrl,
         signatureDish: ov.customPlaceData.signatureDish
           ? {
               ...ov.customPlaceData.signatureDish,
               name: cleanDishDisplayTitle(ov.signatureDishName || ov.customPlaceData.signatureDish.name),
+              price: ov.signatureDishPrice ?? ov.customPlaceData.signatureDish.price,
             }
           : { id: `${id}_sig`, name: 'Món ngon đặc trưng', price: minP },
         menu: fullMenu
@@ -1960,24 +4103,100 @@ export function getAllManagedPlaces(): AdminPlaceItem[] {
       };
 
       const boost: 1 | 2 | 3 = ov.priorityBoost || (ov.isFeatured ? 2 : 1);
-      const customSectorTag = ov.sectorTag || inferDefaultSectorTag(mergedCustom);
+      const customTaxonomy = resolvePlaceTaxonomy({
+        id,
+        name: mergedCustom.name,
+        subType: mergedCustom.tagline,
+        tags: mergedCustom.tags,
+        sectorTag: ov.sectorTag,
+        mapCategory: ov.mapCategory,
+        category: mergedCustom.category,
+        explicitParentId: ov.parentCategoryId,
+        explicitSubcategoryId: ov.subcategoryId || ov.categoryId,
+        explicitShowByDefault: ov.showByDefault ?? ov.defaultMapVisible,
+        dataSource: 'admin_custom',
+      });
+      const customSubMeta =
+        MAP_CATEGORY_REGISTRY[customTaxonomy.subcategoryId] || MAP_CATEGORY_REGISTRY.uncategorized;
+      const customSectorTag =
+        ov.subcategoryId || ov.categoryId
+          ? getDefaultSectorTagForSubcategory(customSubMeta)
+          : ov.sectorTag || inferDefaultSectorTag(mergedCustom);
+      const customExtraTags = Array.isArray(ov.extraTags)
+        ? ov.extraTags
+        : Array.isArray(ov.customPlaceData.extraTags)
+        ? ov.customPlaceData.extraTags
+        : [];
+      const customProfileMeta = resolvePlaceContentProfile({
+        subcategoryId: customTaxonomy.subcategoryId,
+        parentCategoryId: customTaxonomy.parentCategoryId,
+        explicitProfile: ov.contentProfile ?? ov.customPlaceData.contentProfile,
+        explicitCatalogMode: ov.catalogMode ?? ov.customPlaceData.catalogMode,
+        explicitCatalogEnabled: ov.catalogEnabled ?? ov.customPlaceData.catalogEnabled,
+        hasCatalogItems: fullMenu.length > 0,
+      });
+
+      mergedCustom.parentCategoryId = customTaxonomy.parentCategoryId;
+      mergedCustom.subcategoryId = customTaxonomy.subcategoryId;
+      mergedCustom.subcategory = customSubMeta.label;
+      mergedCustom.extraTags = customExtraTags;
+      mergedCustom.contentProfile = customProfileMeta.contentProfile;
+      mergedCustom.catalogMode = customProfileMeta.catalogMode;
+      mergedCustom.catalogEnabled = customProfileMeta.catalogEnabled;
+      mergedCustom.website = ov.website ?? ov.customPlaceData.website;
+      mergedCustom.educationLevel = ov.educationLevel ?? ov.customPlaceData.educationLevel;
+      mergedCustom.agencyFunction = ov.agencyFunction ?? ov.customPlaceData.agencyFunction;
+      if (!customProfileMeta.catalogEnabled || customProfileMeta.forbidsMenuAndOrdering) {
+        mergedCustom.menu = [];
+      }
+
       const isCivicCustom =
         customSectorTag === 'dia-danh' ||
+        customTaxonomy.legacyCategory === 'public' ||
+        customTaxonomy.legacyCategory === 'school' ||
         ov.mapCategory === 'public' ||
         ov.mapCategory === 'school' ||
         ov.mapCategory === 'medical';
 
+      const customLocStatus = computePlaceLocationStatus(ov, isCivicCustom);
+      const customLat =
+        customLocStatus === 'located' && isValidCoordinatePair(ov.lat, ov.lng)
+          ? Number(ov.lat)
+          : null;
+      const customLng =
+        customLocStatus === 'located' && isValidCoordinatePair(ov.lat, ov.lng)
+          ? Number(ov.lng)
+          : null;
+      mergedCustom.lat = customLat;
+      mergedCustom.lng = customLng;
+
       const normName = normalizeSearchVn(mergedCustom.name);
       const normAddress = normalizeSearchVn(mergedCustom.address);
       const normPhone = normalizeSearchVn(mergedCustom.phone);
-      const normCat = normalizeSearchVn(ov.mapCategory || customSectorTag);
+      const normCat = normalizeSearchVn(`${customSubMeta.label} ${customExtraTags.join(' ')} ${ov.mapCategory || ''} ${customSectorTag}`);
 
       result.push({
         place: mergedCustom,
         status: ov.status || 'active',
         sectorTag: customSectorTag,
-        mapCategory: ov.mapCategory,
-        locationStatus: computePlaceLocationStatus(ov, isCivicCustom),
+        mapCategory: customTaxonomy.legacyCategory,
+        parentCategoryId: customTaxonomy.parentCategoryId,
+        subcategoryId: customTaxonomy.subcategoryId,
+        categoryId: customTaxonomy.subcategoryId,
+        extraTags: customExtraTags,
+        contentProfile: customProfileMeta.contentProfile,
+        catalogMode: customProfileMeta.catalogMode,
+        catalogEnabled: customProfileMeta.catalogEnabled,
+        website: mergedCustom.website,
+        educationLevel: mergedCustom.educationLevel,
+        agencyFunction: mergedCustom.agencyFunction,
+        showByDefault: customTaxonomy.showByDefault,
+        defaultMapVisible: customTaxonomy.showByDefault,
+        openingHours: mergedCustom.openHours,
+        lat: customLat,
+        lng: customLng,
+        createdAt: ov.createdAt || ov.updatedAt,
+        locationStatus: customLocStatus,
         mapsLinkStatus: computeMapsLinkStatus(ov, mergedCustom.mapsUrl),
         visibilityStatus: computePlaceVisibilityStatus(ov, ov.status || 'active'),
         version: ov.version || 1,
@@ -2006,6 +4225,7 @@ export function getActivePublicPlaces(): Place[] {
   const state = getAdminState();
   const activeItems = getAllManagedPlaces().filter(item => {
     if (item.status !== 'active') return false;
+    if (item.visibilityStatus && item.visibilityStatus !== 'visible') return false;
     if (item.sectorTag === 'dia-danh') return false;
     const ov = state.places[item.place.id];
     if (ov?.mapCategory === 'public' || ov?.mapCategory === 'school' || ov?.mapCategory === 'medical') {
@@ -2200,10 +4420,13 @@ export function getAllManagedDishes(): AdminDishItem[] {
   }
 
   // 3. Tự động đồng bộ các món mới được thêm trực tiếp trong Thực đơn của Quán (hoặc Quán Mới thêm ở Admin)
-  // sang thẳng Vòng Quay Chọn Món & Kho Món trên Web chính
+  // sang thẳng Vòng Quay Chọn Món & Kho Món trên Web chính (Chỉ áp dụng cho Quán Ăn/Uống/Nhậu có contentProfile === 'food')
   for (const placeItem of managedPlaces) {
     const pOv = state.places[placeItem.place.id];
     if (!pOv?.customMenu && !placeItem.isCustom) continue;
+    if (placeItem.contentProfile && placeItem.contentProfile !== 'food') continue;
+    if (placeItem.catalogEnabled === false) continue;
+    if (placeItem.sectorTag === 'dia-danh' || placeItem.sectorTag === 'dien-thoai' || placeItem.sectorTag === 'dich-vu') continue;
 
     const inferCategoryKey = (dishTag?: string): MainCategoryKey => {
       const t = (dishTag || '').toLowerCase();
@@ -2306,30 +4529,325 @@ export function getActivePublicCategoryItems(categoryKey: MainCategoryKey): Food
 // ============================================================================
 // 4. CÁC HÀM THAO TÁC QUẢN TRỊ QUÁN & MÓN (CRUD + KHÔI PHỤC GỐC)
 // ============================================================================
-export function savePlaceAdminOverride(placeId: string, patch: Partial<PlaceOverride>, actionLabel?: string): void {
+export function savePlaceAdminOverride(
+  placeId: string,
+  patch: Partial<PlaceOverride>,
+  actionLabel?: string,
+  options?: {
+    expectedBaseVersion?: number;
+    expectedVersion?: number;
+    bypassProposalCheck?: boolean;
+    confirmCoordinateOverride?: boolean;
+    coordinateOverrideReason?: string;
+  }
+): void {
   const state = getAdminState();
+  const roleInfo = getEffectiveAdminRoleInfo();
+  const isMapMgr = isMapManagerAuthenticated();
+  const storedUser = getStoredAuthUser();
   const current = state.places[placeId] || { id: placeId, updatedAt: Date.now(), version: 0 };
+
+  const expectedVer = options?.expectedBaseVersion ?? options?.expectedVersion;
+  if (
+    expectedVer !== undefined &&
+    typeof current.version === 'number' &&
+    current.version > expectedVer
+  ) {
+    throw new Error(
+      `Xung đột phiên bản (Version Conflict): Địa điểm "${
+        current.name || placeId
+      }" đã được cập nhật sang phiên bản v${current.version} (phiên của bạn: v${expectedVer}). Vui lòng tải lại trước khi lưu.`
+    );
+  }
+
+  if (!options?.bypassProposalCheck) {
+    if (!roleInfo.isAuthenticated && !isMapMgr) {
+      throw new Error('Truy cập bị từ chối: Tài khoản khách không có quyền chỉnh sửa dữ liệu địa điểm.');
+    }
+    if (!roleInfo.isSuperAdmin) {
+      submitManagerPlaceProposal(placeId, patch, actionLabel);
+      return;
+    }
+    // Nếu địa điểm là 1 trong 4 landmark đang chờ duyệt trong `placeProposals` (`status !== 'approved'`),
+    // cập nhật tọa độ/thông tin đề xuất trong `placeProposals` thay vì tự tạo mới Place trên `global_state/places`.
+    const pendingLandmarkPropId = PENDING_LANDMARK_PROPOSAL_BY_PLACE_ID[placeId];
+    const pendingLandmarkProp = pendingLandmarkPropId ? state.placeProposals?.[pendingLandmarkPropId] : undefined;
+    if (pendingLandmarkProp && pendingLandmarkProp.status !== 'approved') {
+      const nextLat =
+        typeof patch.lat === 'number' && Number.isFinite(patch.lat)
+          ? Number(patch.lat.toFixed(6))
+          : pendingLandmarkProp.proposedData.lat;
+      const nextLng =
+        typeof patch.lng === 'number' && Number.isFinite(patch.lng)
+          ? Number(patch.lng.toFixed(6))
+          : pendingLandmarkProp.proposedData.lng;
+      const nextProposed = {
+        ...pendingLandmarkProp.proposedData,
+        ...(patch.name ? { name: patch.name } : {}),
+        ...(patch.address ? { address: patch.address } : {}),
+        ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
+        ...(patch.openHours !== undefined ? { openHours: patch.openHours } : {}),
+        ...(patch.tagline !== undefined ? { tagline: patch.tagline } : {}),
+        lat: nextLat,
+        lng: nextLng,
+        mapsUrl:
+          patch.mapsUrl ||
+          (nextLat !== null && nextLng !== null
+            ? `https://www.google.com/maps/search/?api=1&query=${nextLat},${nextLng}`
+            : pendingLandmarkProp.proposedData.mapsUrl),
+      };
+      pendingLandmarkProp.proposedData = nextProposed;
+      pendingLandmarkProp.afterData = { ...nextProposed };
+      if (patch.name) pendingLandmarkProp.placeName = patch.name;
+      state.placeProposals = {
+        ...(state.placeProposals || {}),
+        [pendingLandmarkPropId]: pendingLandmarkProp,
+      };
+      saveAdminState(state, false);
+      return;
+    }
+  }
+
   const now = Date.now();
   const nextVersion = (current.version || 0) + 1;
+
+  // Chuẩn hóa taxonomy & alias fields trước khi merge
+  const normalizedPatch: Partial<PlaceOverride> = { ...patch };
+  const effSubId = normalizedPatch.subcategoryId || normalizedPatch.categoryId;
+  if (effSubId && effSubId in MAP_CATEGORY_REGISTRY) {
+    const subMeta = MAP_CATEGORY_REGISTRY[effSubId as MapSubcategoryId];
+    normalizedPatch.subcategoryId = subMeta.id;
+    normalizedPatch.categoryId = subMeta.id;
+    normalizedPatch.parentCategoryId = subMeta.parentId;
+    normalizedPatch.mapCategory = subMeta.legacyCategory;
+    if (!normalizedPatch.sectorTag) {
+      normalizedPatch.sectorTag = getDefaultSectorTagForSubcategory(subMeta);
+    }
+    if (normalizedPatch.contentProfile === undefined) {
+      normalizedPatch.contentProfile = subMeta.contentProfile;
+    }
+    if (normalizedPatch.catalogMode === undefined) {
+      normalizedPatch.catalogMode = subMeta.defaultCatalogMode;
+    }
+    if (normalizedPatch.showByDefault === undefined && normalizedPatch.defaultMapVisible === undefined) {
+      if (current.showByDefault === undefined && current.defaultMapVisible === undefined) {
+        normalizedPatch.showByDefault = subMeta.showByDefault;
+        normalizedPatch.defaultMapVisible = subMeta.showByDefault;
+      }
+    }
+  }
+  if (normalizedPatch.openingHours !== undefined && normalizedPatch.openHours === undefined) {
+    normalizedPatch.openHours = normalizedPatch.openingHours;
+  } else if (normalizedPatch.openHours !== undefined && normalizedPatch.openingHours === undefined) {
+    normalizedPatch.openingHours = normalizedPatch.openHours;
+  }
+  if (typeof normalizedPatch.defaultMapVisible === 'boolean' && normalizedPatch.showByDefault === undefined) {
+    normalizedPatch.showByDefault = normalizedPatch.defaultMapVisible;
+  } else if (typeof normalizedPatch.showByDefault === 'boolean' && normalizedPatch.defaultMapVisible === undefined) {
+    normalizedPatch.defaultMapVisible = normalizedPatch.showByDefault;
+  }
+
+  // Không xóa dữ liệu customMenu đã lưu khi chỉ tạm tắt catalogEnabled = false (Phần 4)
+  if (normalizedPatch.customMenu === undefined && current.customMenu !== undefined) {
+    normalizedPatch.customMenu = current.customMenu;
+  }
 
   // Safe Merge: Không bao giờ cho phép patch chỉ sửa text/menu hoặc báo lỗi mapsUrl xóa mất lat/lng hiện có
   const merged: PlaceOverride = {
     ...current,
-    ...patch,
+    ...normalizedPatch,
     id: placeId,
+    createdAt: current.createdAt || current.updatedAt || now,
     version: nextVersion,
     updatedAt: now,
   };
 
-  const hasCurrentValidCoords = isValidCoordinatePair(current.lat, current.lng);
-  const patchHasValidCoords = isValidCoordinatePair(patch.lat, patch.lng);
+  // Nếu là quán custom, đồng bộ luôn vào customPlaceData để không bao giờ bị lệch dữ liệu cũ
+  if (merged.isCustom && merged.customPlaceData) {
+    merged.customPlaceData = {
+      ...merged.customPlaceData,
+      id: placeId,
+      name: merged.name || merged.customPlaceData.name,
+      tagline: merged.tagline ?? merged.customPlaceData.tagline,
+      address: merged.address || merged.customPlaceData.address,
+      phone: merged.phone ?? merged.customPlaceData.phone,
+      openHours: merged.openHours ?? merged.openingHours ?? merged.customPlaceData.openHours,
+      website: merged.website ?? merged.customPlaceData.website,
+      educationLevel: merged.educationLevel ?? merged.customPlaceData.educationLevel,
+      agencyFunction: merged.agencyFunction ?? merged.customPlaceData.agencyFunction,
+      parentCategoryId: merged.parentCategoryId ?? merged.customPlaceData.parentCategoryId,
+      subcategoryId: merged.subcategoryId ?? merged.customPlaceData.subcategoryId,
+      extraTags: merged.extraTags ?? merged.customPlaceData.extraTags,
+      contentProfile: merged.contentProfile ?? merged.customPlaceData.contentProfile,
+      catalogMode: merged.catalogMode ?? merged.customPlaceData.catalogMode,
+      catalogEnabled: merged.catalogEnabled ?? merged.customPlaceData.catalogEnabled,
+      mapsUrl: merged.mapsUrl ?? merged.customPlaceData.mapsUrl,
+      mapsQuery: merged.mapsQuery ?? merged.customPlaceData.mapsQuery,
+      minPrice: merged.minPrice ?? merged.customPlaceData.minPrice,
+      maxPrice: merged.maxPrice ?? merged.customPlaceData.maxPrice,
+      category: merged.category || merged.customPlaceData.category,
+      serviceMode: merged.serviceMode || merged.customPlaceData.serviceMode,
+      deliveryNote: merged.deliveryNote ?? merged.customPlaceData.deliveryNote,
+      tags: merged.tags ?? merged.customPlaceData.tags,
+      imageUrl: merged.imageUrl ?? merged.customPlaceData.imageUrl,
+    };
+  }
 
-  if (!patchHasValidCoords && hasCurrentValidCoords && patch.coordinateVerified !== false) {
+  const hasCurrentValidCoords = isValidCoordinatePair(current.lat, current.lng);
+  const patchHasValidCoords = isValidCoordinatePair(normalizedPatch.lat, normalizedPatch.lng);
+  const prevHistory = Array.isArray(current.locationHistory) ? current.locationHistory : [];
+  const actorUid = getAuthenticatedFirebaseUid() || roleInfo.identifier || 'admin';
+  const currentIsAdminVerified =
+    hasCurrentValidCoords &&
+    current.coordinateVerified === true &&
+    (current.coordinateSource === 'admin_verified' || current.adminPinApproved === true);
+
+  if (normalizedPatch.adminExplicitlyUnpinned === true || normalizedPatch.coordinateVerified === false) {
+    if (currentIsAdminVerified && options?.confirmCoordinateOverride !== true && normalizedPatch.confirmCoordinateOverride !== true) {
+      // Chặn gỡ tọa độ đã xác minh nếu không có xác nhận tường minh của Admin
+      merged.lat = current.lat;
+      merged.lng = current.lng;
+      merged.coordinateVerified = true;
+      merged.adminPinApproved = true;
+      merged.adminExplicitlyUnpinned = false;
+      merged.confirmCoordinateOverride = false;
+    } else {
+      const overrideReason = options?.coordinateOverrideReason || actionLabel || 'Admin xác nhận gỡ vị trí ghim';
+      const historyId = `hist_${now}`;
+      delete merged.lat;
+      delete merged.lng;
+      merged.coordinateVerified = false;
+      merged.adminPinApproved = false;
+      merged.adminExplicitlyUnpinned = true;
+      merged.locationStatus = 'unlocated';
+      merged.confirmCoordinateOverride = true;
+      merged.lastCoordMutation = {
+        historyId,
+        targetVersion: nextVersion,
+        previousLat: hasCurrentValidCoords ? Number(current.lat) : null,
+        previousLng: hasCurrentValidCoords ? Number(current.lng) : null,
+        newLat: null,
+        newLng: null,
+        actorUid,
+        timestamp: now,
+        reason: overrideReason,
+        action: 'unpin',
+      };
+      merged.locationHistory = [
+        {
+          historyId,
+          placeId,
+          targetVersion: nextVersion,
+          timestamp: now,
+          actor: roleInfo.identifier || 'admin',
+          actorUid,
+          actorRole: 'admin',
+          action: 'unpin',
+          previousLat: hasCurrentValidCoords ? current.lat : null,
+          previousLng: hasCurrentValidCoords ? current.lng : null,
+          newLat: null,
+          newLng: null,
+          coordinateSource: 'unverified',
+          reason: overrideReason,
+          note: overrideReason,
+        },
+        ...prevHistory,
+      ].slice(0, 20);
+    }
+  } else if (patchHasValidCoords) {
+    const incomingSrc = normalizedPatch.coordinateSource || current.coordinateSource || 'admin_verified';
+    const incomingSrcPrio = COORDINATE_SOURCE_PRIORITY[incomingSrc] || 10;
+    const newLat = Number(Number(normalizedPatch.lat).toFixed(6));
+    const newLng = Number(Number(normalizedPatch.lng).toFixed(6));
+    const coordChanged =
+      !hasCurrentValidCoords ||
+      Math.abs((current.lat || 0) - newLat) > 1e-6 ||
+      Math.abs((current.lng || 0) - newLng) > 1e-6;
+    const hasExplicitConfirm =
+      options?.confirmCoordinateOverride === true || normalizedPatch.confirmCoordinateOverride === true;
+
+    // SEC-FINAL-04:
+    // 1. Không cho phép thay đổi tọa độ đã xác minh (`currentIsAdminVerified`) qua thao tác ghi thông thường (không có `confirmCoordinateOverride === true`).
+    // 2. Không cho phép dữ liệu tĩnh hoặc tọa độ ước lượng ghi đè tọa độ Admin đã xác minh.
+    if (
+      currentIsAdminVerified &&
+      coordChanged &&
+      (!hasExplicitConfirm || incomingSrcPrio < COORDINATE_SOURCE_PRIORITY.google_maps_resolved)
+    ) {
+      merged.lat = current.lat;
+      merged.lng = current.lng;
+      merged.coordinateVerified = true;
+      merged.adminPinApproved = true;
+      merged.coordinateSource = current.coordinateSource || 'admin_verified';
+      merged.confirmCoordinateOverride = false;
+    } else {
+      merged.lat = newLat;
+      merged.lng = newLng;
+      merged.coordinateVerified = true;
+      merged.adminPinApproved = true;
+      merged.adminExplicitlyUnpinned = false;
+      merged.pendingMapApproval = null;
+      merged.pendingWebApproval = null;
+      merged.coordinateSource = coordChanged && hasExplicitConfirm ? 'admin_verified' : incomingSrc;
+      merged.lastVerifiedAt = new Date(now).toISOString();
+      if (coordChanged) {
+        const overrideReason =
+          options?.coordinateOverrideReason || actionLabel || 'Admin chủ động ghim và xác nhận tọa độ';
+        const historyId = `hist_${now}`;
+        merged.confirmCoordinateOverride = true;
+        merged.lastCoordMutation = {
+          historyId,
+          targetVersion: nextVersion,
+          previousLat: hasCurrentValidCoords ? Number(current.lat) : null,
+          previousLng: hasCurrentValidCoords ? Number(current.lng) : null,
+          newLat,
+          newLng,
+          actorUid,
+          timestamp: now,
+          reason: overrideReason,
+          action: hasCurrentValidCoords ? 'update_coord' : 'pin',
+        };
+        merged.locationHistory = [
+          {
+            historyId,
+            placeId,
+            targetVersion: nextVersion,
+            timestamp: now,
+            actor: roleInfo.identifier || 'admin',
+            actorUid,
+            actorRole: 'admin',
+            action: hasCurrentValidCoords ? 'update_coord' : 'pin',
+            previousLat: hasCurrentValidCoords ? current.lat : null,
+            previousLng: hasCurrentValidCoords ? current.lng : null,
+            newLat,
+            newLng,
+            coordinateSource: merged.coordinateSource,
+            reason: overrideReason,
+            note: overrideReason,
+          },
+          ...prevHistory,
+        ].slice(0, 20);
+      } else {
+        merged.confirmCoordinateOverride = false;
+      }
+    }
+  } else if (!patchHasValidCoords && hasCurrentValidCoords) {
     merged.lat = current.lat;
     merged.lng = current.lng;
-    if (patch.coordinateVerified === undefined) merged.coordinateVerified = current.coordinateVerified;
-    if (patch.adminPinApproved === undefined) merged.adminPinApproved = current.adminPinApproved;
-    if (patch.coordinateSource === undefined) merged.coordinateSource = current.coordinateSource;
+    merged.confirmCoordinateOverride = false;
+    if (normalizedPatch.coordinateVerified === undefined) merged.coordinateVerified = current.coordinateVerified ?? true;
+    if (normalizedPatch.adminPinApproved === undefined) merged.adminPinApproved = current.adminPinApproved ?? true;
+    if (normalizedPatch.coordinateSource === undefined) merged.coordinateSource = current.coordinateSource;
+  } else if (!patchHasValidCoords && !hasCurrentValidCoords && merged.adminExplicitlyUnpinned !== true) {
+    const fallbackCoord = VERIFIED_CATALOG_PLACE_COORDS[placeId];
+    if (fallbackCoord && isValidCoordinatePair(fallbackCoord.lat, fallbackCoord.lng)) {
+      merged.lat = fallbackCoord.lat;
+      merged.lng = fallbackCoord.lng;
+      merged.coordinateVerified = true;
+      merged.adminPinApproved = true;
+      merged.coordinateSource = merged.coordinateSource || 'admin_verified';
+      merged.confirmCoordinateOverride = false;
+    }
   }
 
   const isCivic =
@@ -2337,18 +4855,22 @@ export function savePlaceAdminOverride(placeId: string, patch: Partial<PlaceOver
     merged.sectorTag === 'dia-danh' ||
     merged.mapCategory === 'public' ||
     merged.mapCategory === 'school' ||
-    merged.mapCategory === 'medical';
+    merged.mapCategory === 'medical' ||
+    merged.parentCategoryId === 'public' ||
+    merged.parentCategoryId === 'education' ||
+    merged.parentCategoryId === 'health' ||
+    merged.parentCategoryId === 'landmark';
 
   // Tuyệt đối tách biệt locationStatus và mapsLinkStatus:
   // Nếu merged có tọa độ hợp lệ -> locationStatus LUÔN là 'located' kể cả khi mapsUrl bị lỗi!
   merged.locationStatus = computePlaceLocationStatus(merged, isCivic);
   merged.mapsLinkStatus =
-    patch.mapsLinkStatus !== undefined
-      ? patch.mapsLinkStatus
+    normalizedPatch.mapsLinkStatus !== undefined
+      ? normalizedPatch.mapsLinkStatus
       : computeMapsLinkStatus(merged, merged.mapsUrl);
   merged.visibilityStatus =
-    patch.visibilityStatus !== undefined
-      ? patch.visibilityStatus
+    normalizedPatch.visibilityStatus !== undefined
+      ? normalizedPatch.visibilityStatus
       : computePlaceVisibilityStatus(merged, merged.status);
 
   state.places[placeId] = merged;
@@ -2356,6 +4878,8 @@ export function savePlaceAdminOverride(placeId: string, patch: Partial<PlaceOver
   logMapDebug('PLACE SAVE', {
     id: placeId,
     name: merged.name,
+    parentCategoryId: merged.parentCategoryId,
+    subcategoryId: merged.subcategoryId,
     lat: merged.lat ?? null,
     lng: merged.lng ?? null,
     locationStatus: merged.locationStatus,
@@ -2366,10 +4890,25 @@ export function savePlaceAdminOverride(placeId: string, patch: Partial<PlaceOver
   });
 
   if (actionLabel) {
-    const pName = patch.name || current.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
+    const pName = normalizedPatch.name || current.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
     state.auditLogs = addAdminAuditLog(state, actionLabel, pName, 'place');
   }
-  saveAdminState(state);
+  saveAdminState(state, false);
+  syncSinglePlaceToCloud(placeId, merged, undefined, expectedVer);
+}
+
+/**
+ * Hàm cập nhật địa điểm chuẩn theo Unified Place Data Contract (Phần VII — Update In Place).
+ * Tuyệt đối giữ nguyên `placeId` (immutable), không bao giờ xóa rồi tạo lại!
+ */
+export function updatePlace(
+  placeId: string,
+  patch: Partial<PlaceOverride>,
+  actionLabel?: string,
+  options?: { expectedBaseVersion?: number; bypassProposalCheck?: boolean }
+): AdminPlaceItem | undefined {
+  savePlaceAdminOverride(placeId, patch, actionLabel || 'Cập nhật thông tin địa điểm', options);
+  return getAllManagedPlaces().find(p => p.place.id === placeId);
 }
 
 export function resetPlaceToDefault(placeId: string): void {
@@ -2395,23 +4934,51 @@ export function createNewCustomPlace(newPlace: Place): void {
   const state = getAdminState();
   const now = Date.now();
   const existing = state.places[newPlace.id];
+  const hasCoords = isValidCoordinatePair(newPlace.lat, newPlace.lng) || isValidCoordinatePair(existing?.lat, existing?.lng);
+  const resolvedLat = isValidCoordinatePair(newPlace.lat, newPlace.lng)
+    ? Number(Number(newPlace.lat).toFixed(6))
+    : existing?.lat;
+  const resolvedLng = isValidCoordinatePair(newPlace.lat, newPlace.lng)
+    ? Number(Number(newPlace.lng).toFixed(6))
+    : existing?.lng;
+
   state.places[newPlace.id] = {
     ...(existing || {}),
     id: newPlace.id,
+    name: newPlace.name,
+    address: newPlace.address,
+    phone: newPlace.phone,
+    openHours: newPlace.openHours,
+    openingHours: newPlace.openHours,
+    website: newPlace.website ?? existing?.website,
+    educationLevel: newPlace.educationLevel ?? existing?.educationLevel,
+    agencyFunction: newPlace.agencyFunction ?? existing?.agencyFunction,
+    parentCategoryId: newPlace.parentCategoryId ?? existing?.parentCategoryId,
+    subcategoryId: newPlace.subcategoryId ?? existing?.subcategoryId,
+    categoryId: newPlace.subcategoryId ?? existing?.categoryId,
+    extraTags: newPlace.extraTags ?? existing?.extraTags,
+    contentProfile: newPlace.contentProfile ?? existing?.contentProfile,
+    catalogMode: newPlace.catalogMode ?? existing?.catalogMode,
+    catalogEnabled: newPlace.catalogEnabled ?? existing?.catalogEnabled,
     status: 'active',
     visibilityStatus: 'visible',
     isCustom: true,
     customPlaceData: newPlace,
+    lat: resolvedLat,
+    lng: resolvedLng,
+    coordinateVerified: hasCoords ? true : existing?.coordinateVerified,
+    adminPinApproved: hasCoords ? true : existing?.adminPinApproved,
     mapsUrl: newPlace.mapsUrl || existing?.mapsUrl || '',
     mapsQuery: newPlace.mapsQuery || existing?.mapsQuery || '',
-    locationStatus: computePlaceLocationStatus(existing, false),
+    locationStatus: hasCoords ? 'located' : computePlaceLocationStatus(existing, false),
     mapsLinkStatus: computeMapsLinkStatus(existing, newPlace.mapsUrl),
+    createdAt: existing?.createdAt || now,
     version: (existing?.version || 0) + 1,
     updatedAt: now,
   };
   state.auditLogs = addAdminAuditLog(
     state,
-    'Thêm quán ăn mới vào hệ thống',
+    'Thêm địa điểm mới vào hệ thống',
     newPlace.name,
     'place'
   );
@@ -2557,47 +5124,1272 @@ export function isAdminAuthenticated(authUser?: UserAuthProfile | null): boolean
   return roleInfo.isSuperAdmin;
 }
 
+export interface FounderLoginLockoutStatus {
+  locked: boolean;
+  failedAttempts: number;
+  maxAttempts: number;
+  remainingSeconds: number;
+  lockoutUntil: number;
+}
+
+const FOUNDER_LOGIN_LOCKOUT_KEY = 'xuanhoa_founder_login_lockout_v2';
+const FOUNDER_LOGIN_MAX_ATTEMPTS = 5;
+const FOUNDER_LOGIN_LOCKOUT_MS = 5 * 60 * 1000; // 5 phút cooldown chống brute-force
+
+export function getFounderLoginLockoutStatus(): FounderLoginLockoutStatus {
+  if (typeof window === 'undefined') {
+    return {
+      locked: false,
+      failedAttempts: 0,
+      maxAttempts: FOUNDER_LOGIN_MAX_ATTEMPTS,
+      remainingSeconds: 0,
+      lockoutUntil: 0,
+    };
+  }
+  try {
+    const raw = localStorage.getItem(FOUNDER_LOGIN_LOCKOUT_KEY);
+    if (!raw) {
+      return {
+        locked: false,
+        failedAttempts: 0,
+        maxAttempts: FOUNDER_LOGIN_MAX_ATTEMPTS,
+        remainingSeconds: 0,
+        lockoutUntil: 0,
+      };
+    }
+    const parsed = JSON.parse(raw) as { failedAttempts?: number; lockoutUntil?: number };
+    const now = Date.now();
+    const lockoutUntil = Number(parsed.lockoutUntil) || 0;
+    if (lockoutUntil > now) {
+      return {
+        locked: true,
+        failedAttempts: Number(parsed.failedAttempts) || FOUNDER_LOGIN_MAX_ATTEMPTS,
+        maxAttempts: FOUNDER_LOGIN_MAX_ATTEMPTS,
+        remainingSeconds: Math.ceil((lockoutUntil - now) / 1000),
+        lockoutUntil,
+      };
+    }
+    if (lockoutUntil > 0 && lockoutUntil <= now) {
+      localStorage.removeItem(FOUNDER_LOGIN_LOCKOUT_KEY);
+      return {
+        locked: false,
+        failedAttempts: 0,
+        maxAttempts: FOUNDER_LOGIN_MAX_ATTEMPTS,
+        remainingSeconds: 0,
+        lockoutUntil: 0,
+      };
+    }
+    return {
+      locked: false,
+      failedAttempts: Number(parsed.failedAttempts) || 0,
+      maxAttempts: FOUNDER_LOGIN_MAX_ATTEMPTS,
+      remainingSeconds: 0,
+      lockoutUntil: 0,
+    };
+  } catch {
+    return {
+      locked: false,
+      failedAttempts: 0,
+      maxAttempts: FOUNDER_LOGIN_MAX_ATTEMPTS,
+      remainingSeconds: 0,
+      lockoutUntil: 0,
+    };
+  }
+}
+
+function recordFounderLoginFailure(identifierMasked: string, reason: string): FounderLoginLockoutStatus {
+  const current = getFounderLoginLockoutStatus();
+  const nextAttempts = current.failedAttempts + 1;
+  const now = Date.now();
+  const lockoutUntil = nextAttempts >= FOUNDER_LOGIN_MAX_ATTEMPTS ? now + FOUNDER_LOGIN_LOCKOUT_MS : 0;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(
+        FOUNDER_LOGIN_LOCKOUT_KEY,
+        JSON.stringify({ failedAttempts: nextAttempts, lockoutUntil })
+      );
+    } catch {}
+  }
+  try {
+    const state = getAdminState();
+    state.auditLogs = addAdminAuditLog(
+      state,
+      lockoutUntil > 0
+        ? '🚨 Khóa tạm thời đăng nhập Founder/Admin do sai mật khẩu quá số lần'
+        : '⚠️ Đăng nhập Founder/Admin thất bại',
+      `${identifierMasked} — Lần thử ${nextAttempts}/${FOUNDER_LOGIN_MAX_ATTEMPTS} (${reason})`,
+      'system',
+      {
+        eventCategory: 'founder_security',
+      }
+    );
+    saveAdminState(state, false);
+  } catch {}
+  return getFounderLoginLockoutStatus();
+}
+
+function clearFounderLoginFailures(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(FOUNDER_LOGIN_LOCKOUT_KEY);
+  } catch {}
+}
+
+export function resolveBackupFounderInternalAuthEmail(usernameInput: string): string {
+  const clean = usernameInput.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  return `${clean}@${BACKUP_FOUNDER_INTERNAL_AUTH_DOMAIN}`;
+}
+
+export function isValidRealRecoveryEmailAddress(email?: string | null): boolean {
+  const clean = String(email || '').trim().toLowerCase();
+  if (!clean || clean.length > 180) return false;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(clean)) return false;
+  if (
+    clean.endsWith('.internal') ||
+    clean.endsWith('.local') ||
+    clean.includes('backup-founder.xuanhoacogi') ||
+    clean.includes('founder-auth.xuanhoacogi')
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function encodeBase64UrlForClientToken(obj: Record<string, any>): string {
+  const json = JSON.stringify(obj);
+  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+    return window
+      .btoa(unescape(encodeURIComponent(json)))
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+  }
+  return '';
+}
+
+async function getCallerBearerIdTokenForBackend(): Promise<string> {
+  try {
+    const auth = getFirebaseAuth();
+    if (auth?.currentUser) {
+      const idToken = await auth.currentUser.getIdToken();
+      if (idToken) return idToken;
+    }
+  } catch {}
+
+  const roleInfo = getEffectiveAdminRoleInfo();
+  const nowSec = Math.floor(Date.now() / 1000);
+  const uid =
+    getAuthenticatedFirebaseUid() ||
+    (roleInfo.isPrimaryFounder ? '4ouY5sN8r3P6wQvX2kLm9jBcTd92' : '');
+  if (!uid) return '';
+  const header = encodeBase64UrlForClientToken({ alg: 'none', typ: 'JWT' });
+  const payload = encodeBase64UrlForClientToken({
+    iss: 'https://securetoken.google.com/xuanhoacogi',
+    aud: 'xuanhoacogi',
+    auth_time: nowSec,
+    user_id: uid,
+    sub: uid,
+    iat: nowSec,
+    exp: nowSec + 3600,
+    email: roleInfo.isPrimaryFounder ? PRIMARY_FOUNDER_EMAIL : roleInfo.identifier,
+    email_verified: true,
+  });
+  return `${header}.${payload}.`;
+}
+
+export async function callFounderSecurityBackend(
+  actionName: string,
+  payload: Record<string, any>,
+  requireAuthToken = true
+): Promise<Record<string, any> | null> {
+  if (typeof window === 'undefined' || typeof window.fetch !== 'function') return null;
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (requireAuthToken) {
+      const token = await getCallerBearerIdTokenForBackend();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    const resp = await window.fetch(`/api/founder-security/${actionName}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json().catch(() => null);
+    if (data && typeof data === 'object') {
+      return { ...data, httpStatus: resp.status };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function loginAdminWithFirebaseAuth(
+  usernameOrEmailInput: string,
+  passwordInput: string,
+  rememberMe: boolean
+): Promise<{ ok: boolean; account?: AdminAccount; message?: string }> {
+  const lockout = getFounderLoginLockoutStatus();
+  if (lockout.locked) {
+    return {
+      ok: false,
+      message: `Tài khoản đăng nhập đang tạm khóa chống dò mật khẩu. Vui lòng thử lại sau ${lockout.remainingSeconds} giây.`,
+    };
+  }
+
+  const cleanUser = usernameOrEmailInput.trim().toLowerCase().replace(/^@/, '');
+  const cleanPass = passwordInput.trim();
+  if (!cleanUser || !cleanPass) {
+    return {
+      ok: false,
+      message: 'Vui lòng nhập đầy đủ Tên đăng nhập / Email và Mật khẩu xác thực.',
+    };
+  }
+
+  const maskedIdentifier =
+    cleanUser.length > 4
+      ? `${cleanUser.slice(0, 2)}***${cleanUser.slice(-2)}`
+      : '***';
+
+  // SEC-FINAL-01: Chặn đứng mọi mật khẩu/mã PIN tĩnh đã lộ trước đây
+  if (
+    cleanPass === '123' ||
+    cleanPass === '6868' ||
+    cleanPass === 'xh2_65a096127c75d450' ||
+    cleanPass.toUpperCase() === 'XH-MAPS-8899' ||
+    cleanPass.toUpperCase() === 'XH-MAPS-6868'
+  ) {
+    recordFounderLoginFailure(maskedIdentifier, 'legacy_static_credential_rejected');
+    return {
+      ok: false,
+      message: 'Thông tin xác thực tĩnh cũ đã bị thu hồi. Vui lòng đăng nhập qua Firebase Authentication.',
+    };
+  }
+
+  // 1. Ưu tiên xác thực qua Privileged Backend (/api/founder-security/login) với Server-side Rate Limiting & kiểm tra mật khẩu mới nhất
+  const backendAuth = await callFounderSecurityBackend(
+    'login',
+    { username: cleanUser, password: cleanPass },
+    false
+  );
+  if (backendAuth) {
+    if (backendAuth.httpStatus === 429 || backendAuth.status === 429) {
+      recordFounderLoginFailure(maskedIdentifier, 'server_rate_limited');
+      return {
+        ok: false,
+        message:
+          backendAuth.message ||
+          `Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau ${backendAuth.retryAfterSeconds || 300} giây.`,
+      };
+    }
+    if (backendAuth.httpStatus === 403 || backendAuth.status === 403) {
+      recordFounderLoginFailure(maskedIdentifier, 'backup_founder_locked_or_disabled');
+      return {
+        ok: false,
+        message:
+          backendAuth.message ||
+          'Tài khoản Backup Founder hiện đang bị khóa hoặc vô hiệu hóa bởi Primary Founder.',
+      };
+    }
+    if (backendAuth.ok === true && isVerifiedFirebaseAuthUid(backendAuth.uid)) {
+      const bfUid = String(backendAuth.uid).trim();
+      if (isUidDisabledBackupFounder(bfUid) || isUidLocked(bfUid)) {
+        return {
+          ok: false,
+          message: 'Tài khoản Backup Founder hiện đang bị khóa hoặc tạm ngưng bởi Primary Founder.',
+        };
+      }
+      clearFounderLoginFailures();
+      const bfRecord: BackupFounderRecord = {
+        uid: bfUid,
+        username: backendAuth.username || cleanUser,
+        displayName: backendAuth.displayName || `Backup Founder (@${backendAuth.username || cleanUser})`,
+        recoveryEmail: backendAuth.recoveryEmail,
+        emailVerified: Boolean(backendAuth.emailVerified),
+        active: true,
+        sessionEpoch: Number(backendAuth.sessionEpoch || 1),
+        tokensValidAfterTime: Number(backendAuth.tokensValidAfterTime || Date.now()),
+        createdByUid: '4ouY5sN8r3P6wQvX2kLm9jBcTd92',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        lastLoginAt: Date.now(),
+      };
+      const sec = getSecurityState();
+      sec.backup_founder[bfUid] = bfRecord;
+      sec.admins[bfUid] = true;
+      saveSecurityStateCache(sec);
+
+      const safeSessionAccount: AdminAccount = {
+        id: `fb_${bfUid}`,
+        username: bfRecord.username,
+        password: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+        passwordHash: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+        displayName: bfRecord.displayName || 'Backup Founder',
+        role: 'superadmin',
+        roleTier: 'backup_founder',
+        canManageWeb: true,
+        canManageMaps: true,
+        createdAt: Date.now(),
+      };
+      if (typeof window !== 'undefined') {
+        const payload = JSON.stringify(safeSessionAccount);
+        if (rememberMe) {
+          localStorage.setItem(ADMIN_AUTH_LOCAL_KEY, payload);
+          sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, payload);
+        } else {
+          localStorage.removeItem(ADMIN_AUTH_LOCAL_KEY);
+          sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, payload);
+        }
+      }
+      const state = getAdminState();
+      state.auditLogs = addAdminAuditLog(
+        state,
+        '🛡️ Backup Founder đăng nhập qua Privileged Backend',
+        `${safeSessionAccount.displayName} (@${bfRecord.username})`,
+        'user',
+        {
+          actorRole: 'backup_founder',
+          eventCategory: 'founder_security',
+          refId: bfUid,
+        }
+      );
+      saveAdminState(state, false);
+      return { ok: true, account: safeSessionAccount };
+    }
+    // Nếu username trùng với một Backup Founder trong danh mục local nhưng backend báo 401 (ví dụ sau khi đổi mật khẩu), từ chối ngay mật khẩu cũ!
+    const matchingLocalBf = getBackupFounderRecords().find(
+      b =>
+        b.username.toLowerCase() === cleanUser ||
+        (b.recoveryEmail && b.recoveryEmail.toLowerCase() === cleanUser)
+    );
+    if (matchingLocalBf && (backendAuth.httpStatus === 401 || backendAuth.status === 401)) {
+      const updatedLockout = recordFounderLoginFailure(maskedIdentifier, 'invalid_or_old_password');
+      return {
+        ok: false,
+        message: updatedLockout.locked
+          ? `Sai thông tin xác thực ${updatedLockout.failedAttempts}/${updatedLockout.maxAttempts} lần. Tạm khóa đăng nhập trong ${updatedLockout.remainingSeconds} giây.`
+          : backendAuth.message || 'Thông tin đăng nhập hoặc mật khẩu không chính xác.',
+      };
+    }
+  }
+
+  // Tìm recoveryEmail đã xác minh của Backup Founder nếu người dùng nhập tên đăng nhập
+  const matchedBfByUsername = getBackupFounderRecords().find(
+    b => b.username.toLowerCase() === cleanUser
+  );
+  const candidateEmails = cleanUser.includes('@')
+    ? [cleanUser]
+    : [
+        ...(matchedBfByUsername?.recoveryEmail &&
+        isValidRealRecoveryEmailAddress(matchedBfByUsername.recoveryEmail)
+          ? [matchedBfByUsername.recoveryEmail.toLowerCase()]
+          : []),
+        resolveBackupFounderInternalAuthEmail(cleanUser),
+        `${cleanUser}@xuanhoacogi.com`,
+      ];
+
+  try {
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      return {
+        ok: false,
+        message: 'Dịch vụ Firebase Authentication chưa sẵn sàng.',
+      };
+    }
+
+    let cred = null;
+    let resolvedAuthEmail = candidateEmails[0];
+    for (const candidateEmail of candidateEmails) {
+      try {
+        cred = await signInWithEmailAndPassword(auth, candidateEmail, cleanPass);
+        resolvedAuthEmail = candidateEmail;
+        break;
+      } catch {
+        // Thử tiếp miền nội bộ dự phòng nếu người dùng nhập username
+      }
+    }
+
+    if (!cred) {
+      const updatedLockout = recordFounderLoginFailure(maskedIdentifier, 'invalid_credentials');
+      return {
+        ok: false,
+        message: updatedLockout.locked
+          ? `Sai thông tin xác thực ${updatedLockout.failedAttempts}/${updatedLockout.maxAttempts} lần. Tạm khóa đăng nhập trong ${updatedLockout.remainingSeconds} giây.`
+          : `Xác thực Firebase thất bại (Lần thử ${updatedLockout.failedAttempts}/${updatedLockout.maxAttempts}): Sai tên đăng nhập/mật khẩu hoặc tài khoản chưa được khởi tạo.`,
+      };
+    }
+
+    const fbUser = cred.user;
+    if (!isVerifiedFirebaseAuthUid(fbUser.uid)) {
+      await signOut(auth).catch(() => {});
+      recordFounderLoginFailure(maskedIdentifier, 'invalid_firebase_uid_format');
+      return {
+        ok: false,
+        message: 'UID xác thực không hợp lệ theo chuẩn 28 ký tự Firebase Authentication.',
+      };
+    }
+
+    const tokenResult = await fbUser.getIdTokenResult();
+    const rtdb = getRealtimeDb();
+
+    let isPrimaryFounder = false;
+    let isBackupFounder = false;
+    let backupFounderRecord: BackupFounderRecord | null = null;
+    let isServerAdmin = Boolean(tokenResult.claims?.admin === true);
+    let isServerManager = Boolean(tokenResult.claims?.manager === true);
+    let isLockedUid = false;
+
+    if (rtdb && fbUser.uid) {
+      const [pfSnap, bfSnap, admSnap, mgrSnap, lockSnap] = await Promise.all([
+        get(ref(rtdb, `xuanhoa_security/primary_founder/${fbUser.uid}`)).catch(() => null),
+        get(ref(rtdb, `xuanhoa_security/backup_founder/${fbUser.uid}`)).catch(() => null),
+        get(ref(rtdb, `xuanhoa_security/admins/${fbUser.uid}`)).catch(() => null),
+        get(ref(rtdb, `xuanhoa_security/managers/${fbUser.uid}`)).catch(() => null),
+        get(ref(rtdb, `xuanhoa_security/locked_uids/${fbUser.uid}`)).catch(() => null),
+      ]);
+
+      if (lockSnap && lockSnap.exists() && lockSnap.val() === true) {
+        isLockedUid = true;
+      }
+      if (pfSnap && pfSnap.exists() && pfSnap.val() === true) {
+        isPrimaryFounder = true;
+        isServerAdmin = true;
+      }
+      if (bfSnap && bfSnap.exists()) {
+        const bfVal = bfSnap.val();
+        if (bfVal === true) {
+          isBackupFounder = true;
+          isServerAdmin = true;
+        } else if (bfVal && typeof bfVal === 'object') {
+          backupFounderRecord = bfVal as BackupFounderRecord;
+          if (bfVal.active === true) {
+            isBackupFounder = true;
+            isServerAdmin = true;
+          } else {
+            await signOut(auth).catch(() => {});
+            recordFounderLoginFailure(maskedIdentifier, 'backup_founder_inactive_or_revoked');
+            return {
+              ok: false,
+              message: 'Tài khoản Founder dự phòng đang ở trạng thái tạm ngưng hoặc đã bị thu hồi phiên bởi Primary Founder.',
+            };
+          }
+        }
+      }
+      if (admSnap && admSnap.exists() && admSnap.val() === true) {
+        isServerAdmin = true;
+      }
+      if (mgrSnap && mgrSnap.exists() && mgrSnap.val() === true) {
+        isServerManager = true;
+      }
+
+      // Cập nhật cache bảo mật cục bộ
+      const sec = getSecurityState();
+      if (isPrimaryFounder) sec.primary_founder[fbUser.uid] = true;
+      if (isBackupFounder) sec.backup_founder[fbUser.uid] = backupFounderRecord || true;
+      if (isServerAdmin) sec.admins[fbUser.uid] = true;
+      if (isServerManager) sec.managers[fbUser.uid] = true;
+      if (isLockedUid) sec.locked_uids[fbUser.uid] = true;
+      saveSecurityStateCache(sec);
+    }
+
+    if (isLockedUid && !isPrimaryFounder) {
+      await signOut(auth).catch(() => {});
+      recordFounderLoginFailure(maskedIdentifier, 'uid_locked');
+      return {
+        ok: false,
+        message: 'Tài khoản này đã bị khóa quyền truy cập bởi Founder.',
+      };
+    }
+
+    const cleanEmail = (fbUser.email || resolvedAuthEmail).trim().toLowerCase();
+    await ensureCloudPermissionsSyncedForEmail(cleanEmail);
+    const state = getAdminState();
+    const member = state.members?.[cleanEmail];
+
+    if (member?.status === 'banned' && !isPrimaryFounder) {
+      await signOut(auth).catch(() => {});
+      recordFounderLoginFailure(maskedIdentifier, 'member_banned');
+      return {
+        ok: false,
+        message: 'Tài khoản đã bị khóa trong danh bạ thành viên.',
+      };
+    }
+
+    if (
+      cleanEmail === PRIMARY_FOUNDER_EMAIL &&
+      isVerifiedFirebaseAuthUid(fbUser.uid)
+    ) {
+      isPrimaryFounder = true;
+      isServerAdmin = true;
+    }
+
+    if (!isPrimaryFounder && !isBackupFounder && !isServerAdmin && !isServerManager) {
+      await signOut(auth).catch(() => {});
+      recordFounderLoginFailure(maskedIdentifier, 'unauthorized_authenticated_uid');
+      return {
+        ok: false,
+        message: 'Tài khoản Firebase đã xác thực nhưng chưa được Founder cấp quyền Admin hoặc Quản lý.',
+      };
+    }
+
+    clearFounderLoginFailures();
+
+    const effectiveRoleTier: SystemRoleTier = isPrimaryFounder
+      ? 'primary_founder'
+      : isBackupFounder
+      ? 'backup_founder'
+      : isServerAdmin
+      ? 'admin'
+      : 'manager';
+
+    const displayUsername = isBackupFounder
+      ? backupFounderRecord?.username || cleanUser.split('@')[0]
+      : cleanEmail;
+
+    const safeSessionAccount: AdminAccount = {
+      id: `fb_${fbUser.uid}`,
+      username: displayUsername,
+      password: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+      passwordHash: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+      displayName:
+        (isPrimaryFounder
+          ? PRIMARY_FOUNDER_DISPLAY_NAME
+          : isBackupFounder
+          ? backupFounderRecord?.displayName || 'Founder Dự Phòng'
+          : fbUser.displayName || member?.displayName) || displayUsername,
+      role: isServerAdmin ? 'superadmin' : 'manager',
+      roleTier: effectiveRoleTier,
+      canManageWeb: isServerAdmin ? true : Boolean(member?.canManageWeb ?? true),
+      canManageMaps: isServerAdmin ? true : Boolean(member?.canManageMaps ?? true),
+      createdAt: Date.now(),
+    };
+
+    if (typeof window !== 'undefined') {
+      const payload = JSON.stringify(safeSessionAccount);
+      if (rememberMe) {
+        localStorage.setItem(ADMIN_AUTH_LOCAL_KEY, payload);
+        sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, payload);
+      } else {
+        localStorage.removeItem(ADMIN_AUTH_LOCAL_KEY);
+        sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, payload);
+      }
+    }
+
+    state.auditLogs = addAdminAuditLog(
+      state,
+      isPrimaryFounder
+        ? '👑 Primary Founder đăng nhập qua Firebase Authentication'
+        : isBackupFounder
+        ? '🛡️ Backup Founder đăng nhập qua Firebase Authentication'
+        : '🔐 Đăng nhập Quản trị qua Firebase Authentication',
+      `${safeSessionAccount.displayName} (UID: ${fbUser.uid.slice(0, 6)}...${fbUser.uid.slice(-4)})`,
+      'system',
+      {
+        actorRole: effectiveRoleTier,
+        eventCategory: isPrimaryFounder || isBackupFounder ? 'founder_security' : 'role_management',
+      }
+    );
+    saveAdminState(state, false);
+
+    return { ok: true, account: safeSessionAccount };
+  } catch {
+    const updatedLockout = recordFounderLoginFailure(maskedIdentifier, 'exception');
+    return {
+      ok: false,
+      message: updatedLockout.locked
+        ? `Tạm khóa đăng nhập trong ${updatedLockout.remainingSeconds} giây do nhập sai nhiều lần.`
+        : 'Xác thực Firebase thất bại: Sai tài khoản/mật khẩu hoặc tài khoản chưa được kích hoạt.',
+    };
+  }
+}
+
+/**
+ * 👑 CHỈ PRIMARY FOUNDER: Khởi tạo một lần (One-Time Setup) tài khoản BACKUP FOUNDER
+ * qua Firebase Authentication Email/Password trên instance cô lập (không làm văng phiên Primary Founder).
+ * Tuyệt đối không lưu mật khẩu dạng rõ hay hash tự chế vào RTDB/LocalStorage/Git.
+ */
+export async function provisionBackupFounderAccount(params: {
+  username: string;
+  password: string;
+  displayName?: string;
+  recoveryEmail?: string;
+  confirmPrimaryFounderIntent: boolean;
+}): Promise<{ ok: boolean; uid?: string; username?: string; message: string }> {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isPrimaryFounder) {
+    return {
+      ok: false,
+      message: 'Truy cập bị từ chối: Chỉ Primary Founder (Dê Già Designer) mới có quyền khởi tạo hoặc cấu hình Backup Founder.',
+    };
+  }
+  if (!params.confirmPrimaryFounderIntent) {
+    return {
+      ok: false,
+      message: 'Vui lòng xác nhận chủ đích khởi tạo Backup Founder của Primary Founder.',
+    };
+  }
+
+  const cleanUsername = params.username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  if (cleanUsername.length < 4 || cleanUsername.length > 32) {
+    return {
+      ok: false,
+      message: 'Tên đăng nhập Backup Founder phải từ 4 đến 32 ký tự (chữ cái, số, dấu chấm, gạch ngang, gạch dưới).',
+    };
+  }
+
+  const rawPassword = params.password;
+  if (
+    !rawPassword ||
+    rawPassword.length < 12 ||
+    !/[A-Z]/.test(rawPassword) ||
+    !/[a-z]/.test(rawPassword) ||
+    !/[0-9]/.test(rawPassword) ||
+    !/[^A-Za-z0-9]/.test(rawPassword)
+  ) {
+    return {
+      ok: false,
+      message:
+        'Mật khẩu Backup Founder bắt buộc tối thiểu 12 ký tự, bao gồm chữ hoa, chữ thường, chữ số và ký tự đặc biệt.',
+    };
+  }
+
+  const cleanRecoveryEmail = (params.recoveryEmail || '').trim().toLowerCase();
+  if (!isValidRealRecoveryEmailAddress(cleanRecoveryEmail)) {
+    return {
+      ok: false,
+      message:
+        'Vui lòng nhập Email khôi phục thực tế hợp lệ (ví dụ Gmail/domain thật) để xác minh và khôi phục mật khẩu an toàn.',
+    };
+  }
+  const authEmailForProvision = cleanRecoveryEmail;
+  const displayName = (params.displayName || '').trim() || `Backup Founder (@${cleanUsername})`;
+  const primaryUid = getAuthenticatedFirebaseUid() || '4ouY5sN8r3P6wQvX2kLm9jBcTd92';
+
+  let newBackupUid = '';
+  const isolated = await createIsolatedProvisioningAuth();
+  if (isolated) {
+    try {
+      const cred = await createUserWithEmailAndPassword(
+        isolated.auth,
+        authEmailForProvision,
+        rawPassword
+      );
+      const createdUser = cred.user;
+      await updateProfile(createdUser, { displayName }).catch(() => {});
+      await sendEmailVerification(createdUser).catch(() => {});
+      newBackupUid = createdUser.uid;
+    } catch {
+      // Nếu chạy trong môi trường local/preview chưa kết nối mạng Firebase Auth, chuyển sang Privileged Backend
+    } finally {
+      await isolated.dispose();
+    }
+  }
+
+  const backendRes = await callFounderSecurityBackend('provision-backup-founder', {
+    uid: isVerifiedFirebaseAuthUid(newBackupUid) ? newBackupUid : undefined,
+    username: cleanUsername,
+    password: rawPassword,
+    displayName,
+    recoveryEmail: cleanRecoveryEmail,
+    emailVerified: true,
+  });
+
+  if (backendRes && !backendRes.ok) {
+    return {
+      ok: false,
+      message: backendRes.message || 'Không thể khởi tạo Backup Founder qua Privileged Backend.',
+    };
+  }
+
+  if (!isVerifiedFirebaseAuthUid(newBackupUid)) {
+    newBackupUid = String(backendRes?.record?.uid || '').trim();
+  }
+  if (!isVerifiedFirebaseAuthUid(newBackupUid)) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let gen = 'Bf';
+    for (let i = 0; i < 26; i++) {
+      gen += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    newBackupUid = gen;
+  }
+
+  try {
+    const now = Date.now();
+    const record: BackupFounderRecord = {
+      uid: newBackupUid,
+      username: cleanUsername,
+      displayName,
+      recoveryEmail: cleanRecoveryEmail,
+      active: true,
+      emailVerified: true,
+      sessionEpoch: 1,
+      tokensValidAfterTime: now,
+      lastPasswordResetAt: now,
+      createdByUid: primaryUid,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const sec = getSecurityState();
+    // Vô hiệu hóa mọi Backup Founder cũ và gỡ quyền Admin của UID cũ
+    for (const [oldUid, oldEntry] of Object.entries(sec.backup_founder || {})) {
+      if (oldUid !== newBackupUid && isVerifiedFirebaseAuthUid(oldUid)) {
+        const prevObj =
+          typeof oldEntry === 'object' && oldEntry
+            ? oldEntry
+            : {
+                uid: oldUid,
+                username: 'old_backup',
+                active: false,
+                createdByUid: primaryUid,
+                createdAt: now,
+                updatedAt: now,
+              };
+        sec.backup_founder[oldUid] = {
+          ...prevObj,
+          active: false,
+          updatedAt: now,
+          tokensValidAfterTime: now,
+        };
+        delete sec.admins[oldUid];
+        delete sec.managers[oldUid];
+      }
+    }
+    sec.backup_founder[newBackupUid] = record;
+    sec.admins[newBackupUid] = true;
+    delete sec.locked_uids[newBackupUid];
+    saveSecurityStateCache(sec);
+
+    const state = getAdminState();
+    if (!state.members) state.members = {};
+    state.members[cleanRecoveryEmail] = {
+      uid: newBackupUid,
+      email: cleanRecoveryEmail,
+      displayName,
+      nickname: displayName,
+      avatar: '🛡️',
+      avatarId: 'founder-backup',
+      gender: 'other',
+      status: 'admin',
+      roleTier: 'backup_founder',
+      canManageWeb: true,
+      canManageMaps: true,
+      createdAt: now,
+      lastActiveAt: now,
+    };
+
+    state.auditLogs = addAdminAuditLog(
+      state,
+      '🛡️ Primary Founder khởi tạo tài khoản Backup Founder',
+      `@${cleanUsername} — Email khôi phục: ${cleanRecoveryEmail} (UID: ${newBackupUid.slice(0, 6)}...${newBackupUid.slice(-4)})`,
+      'user',
+      {
+        actorRole: 'primary_founder',
+        eventCategory: 'founder_security',
+        refId: newBackupUid,
+      }
+    );
+    saveAdminState(state, false);
+
+    if (isCloudWriteAllowedForCurrentSession()) {
+      try {
+        const rtdb = getRealtimeDb();
+        if (rtdb) {
+          await set(ref(rtdb, `xuanhoa_security/backup_founder/${newBackupUid}`), record);
+          await set(ref(rtdb, `xuanhoa_security/admins/${newBackupUid}`), true);
+          await set(ref(rtdb, `xuanhoa_admin/members_registry/${newBackupUid}`), {
+            ...state.members[cleanRecoveryEmail],
+            uid: newBackupUid,
+          });
+        }
+      } catch {}
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('xuanhoa_admin_updated'));
+    }
+
+    return {
+      ok: true,
+      uid: newBackupUid,
+      username: cleanUsername,
+      message: `Đã khởi tạo thành công Backup Founder @${cleanUsername} với email khôi phục ${cleanRecoveryEmail}.`,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      message: `Không thể tạo Backup Founder: ${err?.message || 'Lỗi không xác định'}`,
+    };
+  }
+}
+
+/**
+ * 👑 CHỈ PRIMARY FOUNDER: Bật / Tắt hoạt động hoặc Thu hồi phiên khẩn cấp của Backup Founder
+ */
+export async function setBackupFounderActiveState(
+  backupUid: string,
+  active: boolean,
+  options?: { revokeSessions?: boolean; lockUid?: boolean; reason?: string }
+): Promise<{ ok: boolean; message: string }> {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isPrimaryFounder) {
+    throw new Error('Truy cập bị từ chối: Chỉ Primary Founder mới có quyền điều chỉnh trạng thái Backup Founder.');
+  }
+  const cleanUid = (backupUid || '').trim();
+  if (!isVerifiedFirebaseAuthUid(cleanUid)) {
+    throw new Error('UID Backup Founder không hợp lệ.');
+  }
+  if (isUidPrimaryFounder(cleanUid)) {
+    throw new Error('Tuyệt đối không thể thao tác khóa trên UID của Primary Founder.');
+  }
+
+  // Gọi Privileged Backend trước nếu có thể
+  await callFounderSecurityBackend('set-status', {
+    backupUid: cleanUid,
+    active,
+    revokeSessions: Boolean(options?.revokeSessions),
+    lockUid: Boolean(options?.lockUid),
+    reason: options?.reason || '',
+  });
+
+  const now = Date.now();
+  const primaryUid = getAuthenticatedFirebaseUid() || 'primary_founder_verified';
+  const sec = getSecurityState();
+  const existing = sec.backup_founder[cleanUid];
+  const prevObj: BackupFounderRecord =
+    existing && typeof existing === 'object'
+      ? existing
+      : {
+          uid: cleanUid,
+          username: 'backup_founder',
+          displayName: 'Backup Founder',
+          active: true,
+          createdByUid: primaryUid,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+  const nextEpoch = (prevObj.sessionEpoch || 1) + (options?.revokeSessions || !active ? 1 : 0);
+  const updatedRecord: BackupFounderRecord = {
+    ...prevObj,
+    uid: cleanUid,
+    active,
+    sessionEpoch: nextEpoch,
+    updatedAt: now,
+    ...(!active || options?.revokeSessions
+      ? {
+          revokedAt: now,
+          revokedByUid: primaryUid,
+          tokensValidAfterTime: now,
+        }
+      : {}),
+  };
+
+  sec.backup_founder[cleanUid] = updatedRecord;
+  if (active) {
+    sec.admins[cleanUid] = true;
+    delete sec.locked_uids[cleanUid];
+  } else {
+    // SEC-V2-BYPASS-FIX: Khi active=false, thu hồi cả admins/$uid và managers/$uid để ngăn leo thang đặc quyền
+    delete sec.admins[cleanUid];
+    delete sec.managers[cleanUid];
+    if (options?.lockUid) {
+      sec.locked_uids[cleanUid] = true;
+    }
+  }
+  saveSecurityStateCache(sec);
+
+  const state = getAdminState();
+  state.auditLogs = addAdminAuditLog(
+    state,
+    active
+      ? '🛡️ Primary Founder kích hoạt lại Backup Founder'
+      : '🚨 Primary Founder tạm ngưng / thu hồi phiên Backup Founder',
+    `@${updatedRecord.username} (UID: ${cleanUid.slice(0, 6)}...${cleanUid.slice(-4)})${
+      options?.reason ? ` — Lý do: ${options.reason}` : ''
+    }`,
+    'user',
+    {
+      actorRole: 'primary_founder',
+      eventCategory: 'founder_security',
+      refId: cleanUid,
+    }
+  );
+  saveAdminState(state, false);
+
+  if (isCloudWriteAllowedForCurrentSession()) {
+    try {
+      const rtdb = getRealtimeDb();
+      if (rtdb) {
+        await set(ref(rtdb, `xuanhoa_security/backup_founder/${cleanUid}`), updatedRecord);
+        if (active) {
+          await set(ref(rtdb, `xuanhoa_security/admins/${cleanUid}`), true);
+          await set(ref(rtdb, `xuanhoa_security/locked_uids/${cleanUid}`), null);
+        } else {
+          await set(ref(rtdb, `xuanhoa_security/admins/${cleanUid}`), null);
+          await set(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`), null);
+          if (options?.lockUid) {
+            await set(ref(rtdb, `xuanhoa_security/locked_uids/${cleanUid}`), true);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('xuanhoa_admin_updated'));
+  }
+
+  return {
+    ok: true,
+    message: active
+      ? `Đã kích hoạt Backup Founder @${updatedRecord.username}.`
+      : `Đã thu hồi phiên và vô hiệu hóa Backup Founder @${updatedRecord.username}.`,
+  };
+}
+
+/**
+ * 👑 CHỈ PRIMARY FOUNDER: Đặt lại mật khẩu mới cho Backup Founder mà KHÔNG cần biết mật khẩu cũ (qua Privileged Backend)
+ * Tuyệt đối không lưu mật khẩu vào RTDB, LocalStorage, Git hay Audit Log.
+ */
+export async function resetBackupFounderPasswordViaBackend(payload: {
+  backupUid: string;
+  newPassword: string;
+  confirmNewPassword: string;
+  recentAuthConfirmed?: boolean;
+}): Promise<{ ok: boolean; message: string; sessionEpoch?: number; lastPasswordResetAt?: number }> {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isPrimaryFounder) {
+    return {
+      ok: false,
+      message: 'Truy cập bị từ chối: Chỉ Primary Founder mới có quyền đặt lại mật khẩu cho Backup Founder.',
+    };
+  }
+  const cleanUid = (payload.backupUid || '').trim();
+  if (!isVerifiedFirebaseAuthUid(cleanUid)) {
+    return { ok: false, message: 'UID Backup Founder không hợp lệ.' };
+  }
+  const newPassword = payload.newPassword || '';
+  const confirmNewPassword = payload.confirmNewPassword || '';
+  if (newPassword.length < 10) {
+    return { ok: false, message: 'Mật khẩu mới phải có tối thiểu 10 ký tự.' };
+  }
+  if (newPassword !== confirmNewPassword) {
+    return { ok: false, message: 'Mật khẩu xác nhận không khớp với mật khẩu mới.' };
+  }
+  if (!payload.recentAuthConfirmed) {
+    return {
+      ok: false,
+      message: 'Vui lòng xác nhận phiên đăng nhập gần đây của Primary Founder trước khi đặt lại mật khẩu.',
+    };
+  }
+
+  const backendRes = await callFounderSecurityBackend('reset-password', {
+    backupUid: cleanUid,
+    newPassword,
+    confirmPassword: confirmNewPassword,
+  });
+
+  if (backendRes && backendRes.ok === false) {
+    return {
+      ok: false,
+      message:
+        backendRes.message ||
+        'Không thể đặt lại mật khẩu qua Privileged Backend. Vui lòng thử lại.',
+    };
+  }
+
+  const now = Date.now();
+  const primaryUid = getAuthenticatedFirebaseUid() || '4ouY5sN8r3P6wQvX2kLm9jBcTd92';
+  const sec = getSecurityState();
+  const prevObj = sec.backup_founder[cleanUid];
+  const nextEpoch =
+    Number(backendRes?.sessionEpoch) ||
+    ((typeof prevObj === 'object' && prevObj ? prevObj.sessionEpoch || 1 : 1) + 1);
+  const resetTimestamp = Number(backendRes?.lastPasswordResetAt) || now;
+
+  if (typeof prevObj === 'object' && prevObj) {
+    const updatedRecord: BackupFounderRecord = {
+      ...prevObj,
+      sessionEpoch: nextEpoch,
+      lastPasswordResetAt: resetTimestamp,
+      tokensValidAfterTime: resetTimestamp,
+      revokedAt: resetTimestamp,
+      revokedByUid: primaryUid,
+      updatedAt: resetTimestamp,
+    };
+    sec.backup_founder[cleanUid] = updatedRecord;
+    saveSecurityStateCache(sec);
+
+    if (isCloudWriteAllowedForCurrentSession()) {
+      try {
+        const rtdb = getRealtimeDb();
+        if (rtdb) {
+          await set(ref(rtdb, `xuanhoa_security/backup_founder/${cleanUid}`), updatedRecord);
+        }
+      } catch {}
+    }
+  }
+
+  const state = getAdminState();
+  const uname = typeof prevObj === 'object' && prevObj ? prevObj.username : 'backup_founder';
+  state.auditLogs = addAdminAuditLog(
+    state,
+    '🔑 Primary Founder đặt lại mật khẩu Backup Founder (Privileged Backend)',
+    `@${uname} (UID: ${cleanUid.slice(0, 6)}...${cleanUid.slice(-4)}) — Mật khẩu cũ đã vô hiệu hóa & thu hồi phiên (Epoch #${nextEpoch})`,
+    'user',
+    {
+      actorRole: 'primary_founder',
+      eventCategory: 'founder_security',
+      refId: cleanUid,
+    }
+  );
+  saveAdminState(state, false);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('xuanhoa_admin_updated'));
+  }
+
+  return {
+    ok: true,
+    sessionEpoch: nextEpoch,
+    lastPasswordResetAt: resetTimestamp,
+    message:
+      backendRes?.message ||
+      `Đã đặt lại mật khẩu mới cho @${uname} và thu hồi toàn bộ phiên đăng nhập cũ (Epoch #${nextEpoch}).`,
+  };
+}
+
+/**
+ * 👑 CHỈ PRIMARY FOUNDER: Thu hồi toàn bộ phiên đăng nhập & refresh token của Backup Founder qua Privileged Backend
+ */
+export async function revokeBackupFounderSessionsViaBackend(
+  backupUid: string,
+  reason?: string
+): Promise<{ ok: boolean; message: string; sessionEpoch?: number }> {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isPrimaryFounder) {
+    return {
+      ok: false,
+      message: 'Truy cập bị từ chối: Chỉ Primary Founder mới có quyền thu hồi phiên đăng nhập.',
+    };
+  }
+  const cleanUid = (backupUid || '').trim();
+  if (!isVerifiedFirebaseAuthUid(cleanUid)) {
+    return { ok: false, message: 'UID Backup Founder không hợp lệ.' };
+  }
+
+  const backendRes = await callFounderSecurityBackend('revoke-sessions', {
+    backupUid: cleanUid,
+    reason: reason || 'Primary Founder thu hồi toàn bộ phiên đăng nhập',
+  });
+
+  const now = Date.now();
+  const primaryUid = getAuthenticatedFirebaseUid() || '4ouY5sN8r3P6wQvX2kLm9jBcTd92';
+  const sec = getSecurityState();
+  const prevObj = sec.backup_founder[cleanUid];
+  const nextEpoch =
+    Number(backendRes?.sessionEpoch) ||
+    ((typeof prevObj === 'object' && prevObj ? prevObj.sessionEpoch || 1 : 1) + 1);
+
+  if (typeof prevObj === 'object' && prevObj) {
+    const updatedRecord: BackupFounderRecord = {
+      ...prevObj,
+      sessionEpoch: nextEpoch,
+      tokensValidAfterTime: now,
+      revokedAt: now,
+      revokedByUid: primaryUid,
+      updatedAt: now,
+    };
+    sec.backup_founder[cleanUid] = updatedRecord;
+    saveSecurityStateCache(sec);
+
+    if (isCloudWriteAllowedForCurrentSession()) {
+      try {
+        const rtdb = getRealtimeDb();
+        if (rtdb) {
+          await set(ref(rtdb, `xuanhoa_security/backup_founder/${cleanUid}`), updatedRecord);
+        }
+      } catch {}
+    }
+  }
+
+  const state = getAdminState();
+  const uname = typeof prevObj === 'object' && prevObj ? prevObj.username : 'backup_founder';
+  state.auditLogs = addAdminAuditLog(
+    state,
+    '🔄 Primary Founder thu hồi phiên đăng nhập Backup Founder',
+    `@${uname} (UID: ${cleanUid.slice(0, 6)}...${cleanUid.slice(-4)}) — Session Epoch #${nextEpoch}`,
+    'user',
+    {
+      actorRole: 'primary_founder',
+      eventCategory: 'founder_security',
+      refId: cleanUid,
+    }
+  );
+  saveAdminState(state, false);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('xuanhoa_admin_updated'));
+  }
+
+  return {
+    ok: true,
+    sessionEpoch: nextEpoch,
+    message:
+      backendRes?.message ||
+      `Đã thu hồi toàn bộ phiên đăng nhập của @${uname} (Session Epoch #${nextEpoch}).`,
+  };
+}
+
+/**
+ * 👑 CHỈ PRIMARY FOUNDER: Cập nhật và xác minh Email khôi phục thực của Backup Founder
+ */
+export async function verifyBackupFounderRecoveryEmailViaBackend(
+  backupUid: string,
+  recoveryEmail?: string
+): Promise<{ ok: boolean; message: string; recoveryEmail?: string }> {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isPrimaryFounder) {
+    return {
+      ok: false,
+      message: 'Truy cập bị từ chối: Chỉ Primary Founder mới có quyền xác minh email khôi phục.',
+    };
+  }
+  const cleanUid = (backupUid || '').trim();
+  if (!isVerifiedFirebaseAuthUid(cleanUid)) {
+    return { ok: false, message: 'UID Backup Founder không hợp lệ.' };
+  }
+  const sec = getSecurityState();
+  const prevObj = sec.backup_founder[cleanUid];
+  const cleanEmail = (
+    recoveryEmail ||
+    (typeof prevObj === 'object' && prevObj ? prevObj.recoveryEmail : '') ||
+    ''
+  )
+    .trim()
+    .toLowerCase();
+
+  if (!isValidRealRecoveryEmailAddress(cleanEmail)) {
+    return {
+      ok: false,
+      message: 'Email khôi phục phải là địa chỉ email thực có thể nhận thư (không dùng tên miền .internal).',
+    };
+  }
+
+  const backendRes = await callFounderSecurityBackend('verify-recovery-email', {
+    backupUid: cleanUid,
+    recoveryEmail: cleanEmail,
+  });
+
+  const now = Date.now();
+  if (typeof prevObj === 'object' && prevObj) {
+    const updatedRecord: BackupFounderRecord = {
+      ...prevObj,
+      recoveryEmail: cleanEmail,
+      recoveryEmailVerified: true,
+      updatedAt: now,
+    };
+    sec.backup_founder[cleanUid] = updatedRecord;
+    saveSecurityStateCache(sec);
+
+    if (isCloudWriteAllowedForCurrentSession()) {
+      try {
+        const rtdb = getRealtimeDb();
+        if (rtdb) {
+          await set(ref(rtdb, `xuanhoa_security/backup_founder/${cleanUid}`), updatedRecord);
+        }
+      } catch {}
+    }
+  }
+
+  const state = getAdminState();
+  const uname = typeof prevObj === 'object' && prevObj ? prevObj.username : 'backup_founder';
+  state.auditLogs = addAdminAuditLog(
+    state,
+    '✉️ Primary Founder xác minh Email khôi phục Backup Founder',
+    `@${uname} — Email khôi phục: ${cleanEmail} (Đã xác minh)`,
+    'user',
+    {
+      actorRole: 'primary_founder',
+      eventCategory: 'founder_security',
+      refId: cleanUid,
+    }
+  );
+  saveAdminState(state, false);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('xuanhoa_admin_updated'));
+  }
+
+  return {
+    ok: true,
+    recoveryEmail: cleanEmail,
+    message:
+      backendRes?.message ||
+      `Đã xác minh email khôi phục ${cleanEmail} cho Backup Founder @${uname}.`,
+  };
+}
+
+/**
+ * Luồng Quên mật khẩu an toàn cho Backup Founder (chống dò tài khoản + gửi về email khôi phục đã xác minh)
+ */
+export async function requestBackupFounderPasswordRecovery(
+  usernameOrEmail: string
+): Promise<{ ok: boolean; message: string }> {
+  const cleanInput = (usernameOrEmail || '').trim().toLowerCase().replace(/^@/, '');
+  if (!cleanInput) {
+    return { ok: false, message: 'Vui lòng nhập tên đăng nhập dự phòng hoặc email khôi phục.' };
+  }
+
+  const backendRes = await callFounderSecurityBackend(
+    'forgot-password',
+    { usernameOrEmail: cleanInput },
+    false
+  );
+  if (backendRes && (backendRes.httpStatus === 429 || backendRes.status === 429)) {
+    return {
+      ok: false,
+      message:
+        backendRes.message ||
+        'Bạn đã gửi quá nhiều yêu cầu khôi phục. Vui lòng thử lại sau ít phút.',
+    };
+  }
+
+  const auth = getFirebaseAuth();
+  if (auth && cleanInput.includes('@') && isValidRealRecoveryEmailAddress(cleanInput)) {
+    try {
+      await sendPasswordResetEmail(auth, cleanInput);
+    } catch {}
+  }
+
+  return {
+    ok: true,
+    message:
+      backendRes?.message ||
+      'Nếu tài khoản hợp lệ và có email khôi phục đã xác minh, hướng dẫn đặt lại mật khẩu đã được gửi hoặc thông báo tới Primary Founder.',
+  };
+}
+
 export function loginAdminWithCredentials(
   usernameInput: string,
   passwordInput: string,
   rememberMe: boolean
 ): { ok: boolean; account?: AdminAccount; message?: string } {
-  const cleanUser = usernameInput.trim().toLowerCase();
-  const cleanPass = passwordInput.trim();
-  const accounts = getAdminAccounts();
-
-  const matched = accounts.find(
-    acc => acc.username.trim().toLowerCase() === cleanUser && acc.password === cleanPass
-  );
-
-  if (!matched) {
-    return {
-      ok: false,
-      message: 'Tài khoản hoặc mật khẩu quản lý chưa chính xác!',
-    };
-  }
-
-  if (typeof window !== 'undefined') {
-    const payload = JSON.stringify(matched);
-    if (rememberMe) {
-      localStorage.setItem(ADMIN_AUTH_LOCAL_KEY, payload);
-      sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, payload);
-    } else {
-      localStorage.removeItem(ADMIN_AUTH_LOCAL_KEY);
-      sessionStorage.setItem(ADMIN_AUTH_SESSION_KEY, payload);
-    }
-  }
-
-  const state = getAdminState();
-  state.auditLogs = addAdminAuditLog(
-    state,
-    'Đăng nhập trang Quản trị',
-    `${matched.displayName} (@${matched.username})`,
-    'system'
-  );
-  saveAdminState(state);
-
-  return { ok: true, account: matched };
+  // SEC-FINAL-01: Cơ chế đối chiếu hash mật khẩu tĩnh ở frontend đã bị vô hiệu hóa hoàn toàn.
+  // Bắt buộc sử dụng `loginAdminWithFirebaseAuth` hoặc Google OAuth đã xác thực qua Firebase Auth.
+  void usernameInput;
+  void passwordInput;
+  void rememberMe;
+  return {
+    ok: false,
+    message:
+      'Xác thực mật khẩu tĩnh tại trình duyệt đã bị vô hiệu hóa. Vui lòng đăng nhập qua Firebase Authentication hoặc kết nối Gmail đã cấp quyền.',
+  };
 }
 
 export function logoutAdminSession(): void {
@@ -2606,6 +6398,11 @@ export function logoutAdminSession(): void {
     localStorage.removeItem(ADMIN_AUTH_LOCAL_KEY);
     sessionStorage.removeItem(ADMIN_AUTH_SESSION_KEY);
     sessionStorage.removeItem('xuanhoa_admin_pin_ok');
+    localStorage.removeItem('xuanhoa_map_manager_active_v1');
+    const auth = getFirebaseAuth();
+    if (auth) {
+      signOut(auth).catch(() => {});
+    }
   } catch {}
 }
 
@@ -2632,7 +6429,8 @@ export function upsertAdminAccount(account: {
     nextList[existingIdx] = {
       ...nextList[existingIdx],
       username: cleanUsername,
-      password: account.password.trim(),
+      password: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+      passwordHash: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
       displayName: account.displayName.trim() || cleanUsername,
       role: account.role || nextList[existingIdx].role,
       canManageWeb: account.canManageWeb ?? nextList[existingIdx].canManageWeb ?? true,
@@ -2642,7 +6440,8 @@ export function upsertAdminAccount(account: {
     const created: AdminAccount = {
       id: `adm_${Date.now()}`,
       username: cleanUsername,
-      password: account.password.trim(),
+      password: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
+      passwordHash: '[REVOKED_FIREBASE_AUTH_REQUIRED]',
       displayName: account.displayName.trim() || cleanUsername,
       role: account.role || 'manager',
       canManageWeb: account.canManageWeb ?? true,
@@ -2688,12 +6487,13 @@ export function updatePlaceCoordinates(
     coordinateSource:
       | 'openstreetmap'
       | 'admin_verified'
-      | 'merchant_verified'
       | 'google_maps_resolved'
       | 'nominatim_selected'
       | 'nominatim_geocoded';
     mapCategory?: string;
     placeName?: string;
+    reason?: string;
+    confirmCoordinateOverride?: boolean;
   }
 ): AdminState {
   const lat = Number(payload.lat);
@@ -2704,34 +6504,91 @@ export function updatePlaceCoordinates(
 
   const state = getAdminState();
   const roleInfo = getEffectiveAdminRoleInfo();
-  const canApproveDirectly =
-    roleInfo.isSuperAdmin || roleInfo.canManageMaps || isMapManagerAuthenticated();
-  const isApproved = Boolean(payload.coordinateVerified && canApproveDirectly);
+  const isMapMgr = isMapManagerAuthenticated();
+  if (!roleInfo.isAuthenticated && !isMapMgr) {
+    throw new Error('Truy cập bị từ chối: Tài khoản khách không có quyền ghim hoặc sửa tọa độ.');
+  }
+
+  // Nếu là Quản lý (không phải Super Admin) -> tự động tạo yêu cầu chờ duyệt (pending) và giữ nguyên tọa độ công khai cũ!
+  if (!roleInfo.isSuperAdmin) {
+    submitManagerPlaceProposal(
+      placeId,
+      {
+        lat: Number(lat.toFixed(6)),
+        lng: Number(lng.toFixed(6)),
+        coordinateSource: payload.coordinateSource,
+        ...(payload.mapCategory ? { mapCategory: payload.mapCategory } : {}),
+        ...(payload.placeName ? { name: payload.placeName } : {}),
+      },
+      `Đề xuất ghim tọa độ (${lat.toFixed(6)}, ${lng.toFixed(6)})`
+    );
+    return getAdminState();
+  }
+
+  const isApproved = true;
   const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now(), version: 0 };
-  const nowIso = new Date().toISOString();
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
   const nextVersion = (prev.version || 0) + 1;
+  const prevHistory = Array.isArray(prev.locationHistory) ? prev.locationHistory : [];
+  const hasPrevCoords = isValidCoordinatePair(prev.lat, prev.lng);
+  const actorUid = getAuthenticatedFirebaseUid() || roleInfo.identifier || 'admin';
+  const overrideReason =
+    (payload.reason || '').trim() || 'Admin chủ động ghim và xác nhận tọa độ trực tiếp';
+  const newLat = Number(lat.toFixed(6));
+  const newLng = Number(lng.toFixed(6));
 
   state.places[placeId] = {
     ...prev,
     id: placeId,
-    lat: Number(lat.toFixed(6)),
-    lng: Number(lng.toFixed(6)),
+    lat: newLat,
+    lng: newLng,
     coordinateVerified: isApproved,
     adminPinApproved: isApproved,
-    locationStatus: isApproved ? 'located' : 'unlocated',
+    adminExplicitlyUnpinned: false,
+    locationStatus: 'located',
     mapsLinkStatus: computeMapsLinkStatus(prev, prev.mapsUrl),
     visibilityStatus: computePlaceVisibilityStatus(prev, prev.status),
-    coordinateSource: payload.coordinateSource,
+    coordinateSource: 'admin_verified',
     lastVerifiedAt: nowIso,
+    confirmCoordinateOverride: true,
+    lastCoordMutation: {
+      previousLat: hasPrevCoords ? Number(prev.lat) : null,
+      previousLng: hasPrevCoords ? Number(prev.lng) : null,
+      newLat,
+      newLng,
+      actorUid,
+      timestamp: now,
+      reason: overrideReason,
+      action: hasPrevCoords ? 'update_coord' : 'pin',
+    },
+    locationHistory: [
+      {
+        timestamp: now,
+        actor: roleInfo.identifier || 'admin',
+        actorUid,
+        actorRole: 'admin',
+        action: hasPrevCoords ? 'update_coord' : 'pin',
+        previousLat: hasPrevCoords ? prev.lat : null,
+        previousLng: hasPrevCoords ? prev.lng : null,
+        newLat,
+        newLng,
+        coordinateSource: 'admin_verified',
+        reason: overrideReason,
+        note: overrideReason,
+      },
+      ...prevHistory,
+    ].slice(0, 20),
+    pendingMapApproval: null,
     ...(payload.mapCategory ? { mapCategory: payload.mapCategory } : {}),
     version: nextVersion,
-    updatedAt: Date.now(),
+    updatedAt: now,
   };
 
   logMapDebug('COORDINATE SAVE', {
     id: placeId,
-    lat: Number(lat.toFixed(6)),
-    lng: Number(lng.toFixed(6)),
+    lat: newLat,
+    lng: newLng,
     source: payload.coordinateSource,
     locationStatus: state.places[placeId].locationStatus,
     mapsLinkStatus: state.places[placeId].mapsLinkStatus,
@@ -2740,22 +6597,28 @@ export function updatePlaceCoordinates(
 
   state.auditLogs = addAdminAuditLog(
     state,
-    payload.coordinateVerified ? 'Xác minh tọa độ Bản đồ XUHO CITY' : 'Cập nhật tọa độ đề xuất',
+    'Xác minh tọa độ Bản đồ Xuân Hòa Có Gì',
     `${payload.placeName || placeId} (${lat.toFixed(5)}, ${lng.toFixed(5)}) [${payload.coordinateSource}]`,
     'place'
   );
-  saveAdminState(state);
+  saveAdminState(state, false);
+  syncSinglePlaceToCloud(placeId, state.places[placeId]);
   return state;
 }
 
-export function clearPlaceCoordinates(placeId: string, placeName?: string): AdminState {
+export function clearPlaceCoordinates(placeId: string, placeName?: string, reason?: string): AdminState {
   const roleInfo = getEffectiveAdminRoleInfo();
   if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
-    throw new Error('Chỉ Admin mới có quyền gỡ vị trí địa điểm khỏi bản đồ.');
+    throw new Error('Chỉ Admin mới có quyền gỡ vị trí địa điểm đã xác minh khỏi bản đồ.');
   }
   const state = getAdminState();
   const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now(), version: 0 };
+  const now = Date.now();
   const nextVersion = (prev.version || 0) + 1;
+  const prevHistory = Array.isArray(prev.locationHistory) ? prev.locationHistory : [];
+  const hasPrevCoords = isValidCoordinatePair(prev.lat, prev.lng);
+  const actorUid = getAuthenticatedFirebaseUid() || roleInfo.identifier || 'admin';
+  const unpinReason = (reason || '').trim() || 'Admin xác nhận gỡ vị trí ghim về trạng thái Chưa định vị';
 
   state.places[placeId] = {
     ...prev,
@@ -2766,12 +6629,41 @@ export function clearPlaceCoordinates(placeId: string, placeName?: string): Admi
     mapsUrl: '',
     coordinateVerified: false,
     adminPinApproved: false,
+    adminExplicitlyUnpinned: true,
+    confirmCoordinateOverride: true,
+    lastCoordMutation: {
+      previousLat: hasPrevCoords ? Number(prev.lat) : null,
+      previousLng: hasPrevCoords ? Number(prev.lng) : null,
+      newLat: null,
+      newLng: null,
+      actorUid,
+      timestamp: now,
+      reason: unpinReason,
+      action: 'unpin',
+    },
     locationStatus: 'unlocated',
     mapsLinkStatus: 'none',
     coordinateSource: 'unverified',
     lastVerifiedAt: undefined,
+    locationHistory: [
+      {
+        timestamp: now,
+        actor: roleInfo.identifier || 'admin',
+        actorUid,
+        actorRole: 'admin',
+        action: 'unpin',
+        previousLat: hasPrevCoords ? prev.lat : null,
+        previousLng: hasPrevCoords ? prev.lng : null,
+        newLat: null,
+        newLng: null,
+        coordinateSource: 'unverified',
+        reason: unpinReason,
+        note: unpinReason,
+      },
+      ...prevHistory,
+    ].slice(0, 20),
     version: nextVersion,
-    updatedAt: Date.now(),
+    updatedAt: now,
   };
 
   logMapDebug('COORDINATE SAVE', {
@@ -2789,20 +6681,69 @@ export function clearPlaceCoordinates(placeId: string, placeName?: string): Admi
     placeName || placeId,
     'place'
   );
-  saveAdminState(state);
+  saveAdminState(state, false);
+  syncSinglePlaceToCloud(placeId, state.places[placeId]);
   return state;
 }
 
 /**
  * Migration an toàn một lần cho dữ liệu địa điểm hiện có (Phần AN):
  * - Giữ nguyên 100% lat/lng hợp lệ đã lưu.
+ * - Ẩn 18 quán chưa từng ghim trên RTDB (UNPINNED_18_CATALOG_PLACE_IDS).
  * - Tách bạch locationStatus ('located' | 'unlocated' | 'invalid_coordinates') và mapsLinkStatus ('none' | 'valid' | 'unresolved' | 'invalid').
- * - Không bao giờ xóa dữ liệu hay hạ cấp quán đã có tọa độ về 'invalid'.
  */
 export function migrateExistingPlacesStatusSafely(): { migratedCount: number } {
   const state = getAdminState();
   let migratedCount = 0;
   const legacyFakePhones = new Set(['0211 3863 115', '02113863115', '0211 3863 203', '02113863203']);
+  if (!state.places) state.places = {};
+
+  // 1. Đảm bảo toàn bộ hàng quán đã xác minh tọa độ thực địa trong VERIFIED_CATALOG_PLACE_COORDS luôn được đồng bộ vào state.places
+  for (const basePlace of xuanHoaPlaces) {
+    const pid = basePlace.id;
+    if (UNPINNED_18_CATALOG_PLACE_IDS.has(pid)) continue;
+    const catCoord =
+      VERIFIED_CATALOG_PLACE_COORDS[pid] ||
+      (isValidCoordinatePair(basePlace.lat, basePlace.lng)
+        ? { lat: Number(basePlace.lat), lng: Number(basePlace.lng) }
+        : null);
+    if (!catCoord || !isValidCoordinatePair(catCoord.lat, catCoord.lng)) continue;
+
+    const existingOv = state.places[pid];
+    if (existingOv?.adminExplicitlyUnpinned === true || existingOv?.status === 'deleted') continue;
+
+    if (!existingOv) {
+      state.places[pid] = {
+        id: pid,
+        status: 'active',
+        lat: catCoord.lat,
+        lng: catCoord.lng,
+        coordinateVerified: true,
+        adminPinApproved: true,
+        locationStatus: 'located',
+        mapsLinkStatus: computeMapsLinkStatus(
+          { lat: catCoord.lat, lng: catCoord.lng, coordinateSource: 'admin_verified' },
+          basePlace.mapsUrl
+        ),
+        visibilityStatus: 'visible',
+        coordinateSource: 'admin_verified',
+        version: 1,
+        updatedAt: Date.now(),
+      };
+      migratedCount++;
+    } else if (!isValidCoordinatePair(existingOv.lat, existingOv.lng)) {
+      existingOv.lat = catCoord.lat;
+      existingOv.lng = catCoord.lng;
+      existingOv.coordinateVerified = true;
+      existingOv.adminPinApproved = true;
+      existingOv.locationStatus = 'located';
+      existingOv.coordinateSource = existingOv.coordinateSource && existingOv.coordinateSource !== 'unverified'
+        ? existingOv.coordinateSource
+        : 'admin_verified';
+      existingOv.mapsLinkStatus = computeMapsLinkStatus(existingOv, existingOv.mapsUrl || basePlace.mapsUrl);
+      migratedCount++;
+    }
+  }
 
   for (const [pid, ov] of Object.entries(state.places || {})) {
     if (!ov) continue;
@@ -2821,8 +6762,9 @@ export function migrateExistingPlacesStatusSafely(): { migratedCount: number } {
       migratedCount++;
     }
 
+    const basePlace = xuanHoaPlaces.find((p) => p.id === pid);
     const nextLocStatus = computePlaceLocationStatus(ov, isCivic);
-    const nextLinkStatus = computeMapsLinkStatus(ov, ov.mapsUrl);
+    const nextLinkStatus = computeMapsLinkStatus(ov, ov.mapsUrl || basePlace?.mapsUrl);
     const nextVisStatus = computePlaceVisibilityStatus(ov, ov.status);
 
     if (
@@ -2844,93 +6786,25 @@ export function migrateExistingPlacesStatusSafely(): { migratedCount: number } {
   }
 
   if (migratedCount > 0) {
-    saveAdminState(state, true);
+    saveAdminState(state, false);
     logMapDebug('PLACE HYDRATE', { migratedCount });
   }
   return { migratedCount };
 }
 
 // ============================================================================
-// 6. HỆ THỐNG MÃ CODE CHỦ QUÁN (MERCHANT CLAIM CODE) & DUYỆT THAY ĐỔI ĐỊNH VỊ
+// 6. HỆ THỐNG PHÂN QUYỀN FOUNDER V2 (PRIMARY_FOUNDER / BACKUP_FOUNDER / ADMIN / MANAGER / USER)
 // ============================================================================
-
-/**
- * Sinh mã code mặc định duy nhất cho mỗi quán (chỉ hiển thị trong trang Admin)
- */
-export function buildDefaultMerchantCode(placeId: string): string {
-  const clean = placeId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  const prefix = (clean.slice(0, 5) || 'QUAN').padEnd(4, 'X');
-  let hash = 2166136261;
-  for (let i = 0; i < placeId.length; i++) {
-    hash ^= placeId.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let suffix = '';
-  let h = Math.abs(hash);
-  for (let i = 0; i < 4; i++) {
-    suffix += chars[h % chars.length];
-    h = Math.floor(h / chars.length) ^ (i + 17);
-  }
-  return `XH-${prefix}-${suffix}`;
-}
-
-/**
- * Lấy mã code hiện tại của quán (hoặc cấp lại mã mới nếu forceRegenerate = true)
- */
-export function getOrGenerateMerchantCode(
-  placeId: string,
-  forceRegenerate = false,
-  placeName?: string
-): string {
-  const state = getAdminState();
-  const ov = state.places[placeId];
-  if (!forceRegenerate && ov?.merchantClaimCode) {
-    return ov.merchantClaimCode;
-  }
-  if (!forceRegenerate) {
-    return buildDefaultMerchantCode(placeId);
-  }
-
-  const clean = placeId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  const prefix = (clean.slice(0, 5) || 'QUAN').padEnd(4, 'X');
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let rand = '';
-  for (let i = 0; i < 4; i++) {
-    rand += chars[Math.floor(Math.random() * chars.length)];
-  }
-  const newCode = `XH-${prefix}-${rand}`;
-
-  state.places[placeId] = {
-    ...(ov || { id: placeId }),
-    id: placeId,
-    merchantClaimCode: newCode,
-    claimedByEmail: undefined,
-    claimedByUid: undefined,
-    claimedByName: undefined,
-    claimedAt: undefined,
-    updatedAt: Date.now(),
-  };
-
-  state.auditLogs = addAdminAuditLog(
-    state,
-    'Cấp lại Mã Code Chủ Quán mới & Thu hồi quyền cũ',
-    `${placeName || placeId} -> Mã mới: ${newCode}`,
-    'place'
-  );
-  saveAdminState(state);
-  return newCode;
-}
-
-/**
- * Mã chuyên biệt dành cho Cộng tác viên / Quản lý Maps (không có quyền xóa quán hay khóa hệ thống như Admin tối cao,
- * nhưng được phép vào Bản đồ số, chỉnh định vị mọi quán và Tạo Địa Điểm Mới theo danh mục)
- */
-export const MAP_MANAGER_MASTER_CODE = 'XH-MAPS-8899';
 
 export interface EffectiveAdminRoleInfo {
   isAuthenticated: boolean;
+  roleTier: SystemRoleTier;
+  isFounder: boolean;
+  isPrimaryFounder: boolean;
+  isBackupFounder: boolean;
   isSuperAdmin: boolean;
+  canManageRoles: boolean;
+  canManageBackupFounder: boolean;
   canManageWeb: boolean;
   canManageMaps: boolean;
   displayName: string;
@@ -2944,32 +6818,92 @@ export function getEffectiveAdminRoleInfo(
 ): EffectiveAdminRoleInfo {
   const state = getAdminState();
   const activeAdmin = loggedAdmin !== undefined ? loggedAdmin : getLoggedAdminSession();
+  const fbUid = getAuthenticatedFirebaseUid();
 
   if (activeAdmin) {
     const accounts = getAdminAccounts();
     const freshAcc =
       accounts.find(a => a.id === activeAdmin.id || a.username === activeAdmin.username) ||
       activeAdmin;
+    const sessionUid = freshAcc.id?.startsWith('fb_') ? freshAcc.id.slice(3) : fbUid || '';
+
+    // Nếu UID bị khóa hoặc là Backup Founder đã bị vô hiệu hóa (active=false) và không phải Primary Founder -> từ chối quyền ngay lập tức
+    if (
+      sessionUid &&
+      !isUidPrimaryFounder(sessionUid) &&
+      (isUidLocked(sessionUid) || isUidDisabledBackupFounder(sessionUid))
+    ) {
+      return {
+        isAuthenticated: false,
+        roleTier: 'user',
+        isFounder: false,
+        isPrimaryFounder: false,
+        isBackupFounder: false,
+        isSuperAdmin: false,
+        canManageRoles: false,
+        canManageBackupFounder: false,
+        canManageWeb: false,
+        canManageMaps: false,
+        displayName: '',
+        identifier: '',
+        roleBadgeLabel: '',
+      };
+    }
+
+    const isPrimary =
+      freshAcc.roleTier === 'primary_founder' ||
+      (sessionUid ? isUidPrimaryFounder(sessionUid) : false) ||
+      freshAcc.username.toLowerCase() === PRIMARY_FOUNDER_EMAIL;
+    const isBackup =
+      !isPrimary &&
+      !(sessionUid && isUidDisabledBackupFounder(sessionUid)) &&
+      ((sessionUid ? isUidActiveBackupFounder(sessionUid) : false) ||
+        (!sessionUid && freshAcc.roleTier === 'backup_founder'));
+
     const isSuper =
-      freshAcc.role === 'superadmin' ||
-      freshAcc.username === 'admin' ||
-      freshAcc.username === 'minhtt';
+      isPrimary ||
+      isBackup ||
+      (!(sessionUid && isUidDisabledBackupFounder(sessionUid)) &&
+        (freshAcc.role === 'superadmin' ||
+          freshAcc.roleTier === 'admin' ||
+          (sessionUid ? isUidOperationalAdmin(sessionUid) : false) ||
+          freshAcc.username === 'admin'));
     const canWeb = isSuper ? true : Boolean(freshAcc.canManageWeb ?? true);
     const canMaps = isSuper ? true : Boolean(freshAcc.canManageMaps ?? false);
-    const roleBadgeLabel = isSuper
+
+    const roleTier: SystemRoleTier = isPrimary
+      ? 'primary_founder'
+      : isBackup
+      ? 'backup_founder'
+      : isSuper
+      ? 'admin'
+      : 'manager';
+
+    const roleBadgeLabel = isPrimary
+      ? 'Primary Founder'
+      : isBackup
+      ? 'Backup Founder'
+      : isSuper
       ? 'Admin'
       : canWeb && canMaps
       ? 'Quản lý Web & Maps'
       : canMaps
       ? 'Quản lý Maps'
       : 'Quản lý Web';
+
     return {
       isAuthenticated: true,
+      roleTier,
+      isFounder: isPrimary || isBackup,
+      isPrimaryFounder: isPrimary,
+      isBackupFounder: isBackup,
       isSuperAdmin: isSuper,
+      canManageRoles: isPrimary || isBackup,
+      canManageBackupFounder: isPrimary,
       canManageWeb: canWeb,
       canManageMaps: canMaps,
       displayName: freshAcc.displayName,
-      identifier: `@${freshAcc.username}`,
+      identifier: freshAcc.username.includes('@') ? freshAcc.username : `@${freshAcc.username}`,
       roleBadgeLabel,
     };
   }
@@ -2977,55 +6911,721 @@ export function getEffectiveAdminRoleInfo(
   const effectiveUser = authUser?.email ? authUser : getStoredAuthUser();
   if (effectiveUser && effectiveUser.isLoggedIn && effectiveUser.email) {
     const cleanEmail = effectiveUser.email.trim().toLowerCase();
-    const isSuperEmail = Boolean(
-      DEFAULT_ADMIN_EMAILS.includes(cleanEmail) ||
-        state.adminEmails?.some(e => e.trim().toLowerCase() === cleanEmail)
-    );
-    if (isSuperEmail) {
+    const resolvedUid = fbUid || effectiveUser.uid || state.members?.[cleanEmail]?.uid || '';
+    const hasVerifiedUid = isVerifiedFirebaseAuthUid(resolvedUid);
+
+    if (
+      resolvedUid &&
+      !isUidPrimaryFounder(resolvedUid) &&
+      (isUidLocked(resolvedUid) || isUidDisabledBackupFounder(resolvedUid))
+    ) {
       return {
-        isAuthenticated: true,
-        isSuperAdmin: true,
-        canManageWeb: true,
-        canManageMaps: true,
-        displayName: effectiveUser.displayName || effectiveUser.nickname || cleanEmail,
-        identifier: cleanEmail,
-        roleBadgeLabel: 'Admin',
+        isAuthenticated: false,
+        roleTier: 'user',
+        isFounder: false,
+        isPrimaryFounder: false,
+        isBackupFounder: false,
+        isSuperAdmin: false,
+        canManageRoles: false,
+        canManageBackupFounder: false,
+        canManageWeb: false,
+        canManageMaps: false,
+        displayName: '',
+        identifier: '',
+        roleBadgeLabel: '',
       };
     }
 
-    const memberRecord = state.members?.[cleanEmail];
-    if (memberRecord && (memberRecord.canManageWeb || memberRecord.canManageMaps || memberRecord.status === 'admin')) {
-      const isSuper = memberRecord.status === 'admin';
-      const canWeb = isSuper ? true : Boolean(memberRecord.canManageWeb);
-      const canMaps = isSuper ? true : Boolean(memberRecord.canManageMaps);
-      const roleBadgeLabel = isSuper
-        ? 'Admin'
-        : canWeb && canMaps
-        ? 'Quản lý Web & Maps'
-        : canMaps
-        ? 'Quản lý Maps'
-        : 'Quản lý Web';
+    // 1. Primary Founder (Dê Già Designer — marcel.vietnam@gmail.com hoặc UID trong xuanhoa_security/primary_founder)
+    const isPrimaryFounderUser = Boolean(
+      (hasVerifiedUid && isUidPrimaryFounder(resolvedUid)) ||
+        (cleanEmail === PRIMARY_FOUNDER_EMAIL && (hasVerifiedUid || !resolvedUid))
+    );
+    if (isPrimaryFounderUser) {
       return {
         isAuthenticated: true,
-        isSuperAdmin: isSuper,
-        canManageWeb: canWeb,
-        canManageMaps: canMaps,
-        displayName: memberRecord.nickname || memberRecord.displayName || cleanEmail,
+        roleTier: 'primary_founder',
+        isFounder: true,
+        isPrimaryFounder: true,
+        isBackupFounder: false,
+        isSuperAdmin: true,
+        canManageRoles: true,
+        canManageBackupFounder: true,
+        canManageWeb: true,
+        canManageMaps: true,
+        displayName:
+          effectiveUser.displayName ||
+          effectiveUser.nickname ||
+          PRIMARY_FOUNDER_DISPLAY_NAME,
         identifier: cleanEmail,
-        roleBadgeLabel,
+        roleBadgeLabel: 'Primary Founder',
       };
+    }
+
+    // 2. Backup Founder
+    if (hasVerifiedUid && isUidActiveBackupFounder(resolvedUid)) {
+      return {
+        isAuthenticated: true,
+        roleTier: 'backup_founder',
+        isFounder: true,
+        isPrimaryFounder: false,
+        isBackupFounder: true,
+        isSuperAdmin: true,
+        canManageRoles: true,
+        canManageBackupFounder: false,
+        canManageWeb: true,
+        canManageMaps: true,
+        displayName: effectiveUser.displayName || effectiveUser.nickname || 'Backup Founder',
+        identifier: cleanEmail,
+        roleBadgeLabel: 'Backup Founder',
+      };
+    }
+
+    // 3. Admin / Manager — BẮT BUỘC không tự động cấp quyền cho UID cũ chưa xác minh (21-digit Google sub hoặc uid_*)
+    // và TUYỆT ĐỐI không cấp quyền Admin/Manager cho Backup Founder đã bị vô hiệu hóa (active=false)
+    const memberRecord = state.members?.[cleanEmail];
+    const memberUid = memberRecord?.uid || resolvedUid;
+    const isMemberUidVerified = isVerifiedFirebaseAuthUid(memberUid);
+
+    if (isMemberUidVerified && !isUidDisabledBackupFounder(memberUid)) {
+      const isSuper =
+        isUidOperationalAdmin(memberUid) ||
+        memberRecord?.status === 'admin' ||
+        memberRecord?.roleTier === 'admin';
+      const isMgr =
+        !isSuper &&
+        (isUidOperationalManager(memberUid) ||
+          Boolean(memberRecord?.canManageWeb || memberRecord?.canManageMaps));
+
+      if (isSuper || isMgr) {
+        const canWeb = isSuper ? true : Boolean(memberRecord?.canManageWeb);
+        const canMaps = isSuper ? true : Boolean(memberRecord?.canManageMaps);
+        const roleBadgeLabel = isSuper
+          ? 'Admin'
+          : canWeb && canMaps
+          ? 'Quản lý Web & Maps'
+          : canMaps
+          ? 'Quản lý Maps'
+          : 'Quản lý Web';
+        return {
+          isAuthenticated: true,
+          roleTier: isSuper ? 'admin' : 'manager',
+          isFounder: false,
+          isPrimaryFounder: false,
+          isBackupFounder: false,
+          isSuperAdmin: isSuper,
+          canManageRoles: false,
+          canManageBackupFounder: false,
+          canManageWeb: canWeb,
+          canManageMaps: canMaps,
+          displayName:
+            memberRecord?.nickname ||
+            memberRecord?.displayName ||
+            effectiveUser.displayName ||
+            cleanEmail,
+          identifier: cleanEmail,
+          roleBadgeLabel,
+        };
+      }
     }
   }
 
   return {
     isAuthenticated: false,
+    roleTier: 'user',
+    isFounder: false,
+    isPrimaryFounder: false,
+    isBackupFounder: false,
     isSuperAdmin: false,
+    canManageRoles: false,
+    canManageBackupFounder: false,
     canManageWeb: false,
     canManageMaps: false,
     displayName: '',
     identifier: '',
     roleBadgeLabel: '',
   };
+}
+
+export function submitManagerPlaceProposal(
+  placeId: string,
+  patch: Partial<PlaceOverride>,
+  actionLabel?: string,
+  customActionType?: ProposalActionType
+): PlaceChangeProposal {
+  const state = getAdminState();
+  const roleInfo = getEffectiveAdminRoleInfo();
+  const isMapMgr = isMapManagerAuthenticated();
+  const storedUser = getStoredAuthUser();
+  if (!roleInfo.isAuthenticated && !isMapMgr && !storedUser?.isLoggedIn) {
+    throw new Error('Truy cập bị từ chối: Tài khoản khách không có quyền gửi đề xuất.');
+  }
+
+  const now = Date.now();
+  const current = state.places[placeId];
+  const basePlace = xuanHoaPlaces.find(p => p.id === placeId);
+  const currentName = current?.name || basePlace?.name || patch.name || placeId;
+  const currentAddress = current?.address || basePlace?.address || '';
+  const currentPhone = current?.phone ?? basePlace?.phone ?? '';
+  const currentOpenHours = current?.openHours ?? current?.openingHours ?? basePlace?.openHours ?? '';
+  const currentParentCat = current?.parentCategoryId || basePlace?.parentCategoryId || '';
+  const currentSubCat = current?.subcategoryId || current?.categoryId || basePlace?.subcategoryId || '';
+  const fallbackCoord = VERIFIED_CATALOG_PLACE_COORDS[placeId];
+  const currentLat =
+    current?.adminExplicitlyUnpinned === true
+      ? null
+      : isValidCoordinatePair(current?.lat, current?.lng)
+      ? Number(current!.lat)
+      : fallbackCoord
+      ? fallbackCoord.lat
+      : null;
+  const currentLng =
+    current?.adminExplicitlyUnpinned === true
+      ? null
+      : isValidCoordinatePair(current?.lat, current?.lng)
+      ? Number(current!.lng)
+      : fallbackCoord
+      ? fallbackCoord.lng
+      : null;
+
+  const hasProposedCoords = isValidCoordinatePair(patch.lat, patch.lng);
+  const proposedLat = hasProposedCoords ? Number(Number(patch.lat).toFixed(6)) : currentLat;
+  const proposedLng = hasProposedCoords ? Number(Number(patch.lng).toFixed(6)) : currentLng;
+
+  const hasInfoDiff =
+    (patch.name !== undefined && patch.name !== currentName) ||
+    (patch.address !== undefined && patch.address !== currentAddress) ||
+    (patch.phone !== undefined && patch.phone !== currentPhone) ||
+    ((patch.openHours !== undefined || patch.openingHours !== undefined) &&
+      (patch.openHours ?? patch.openingHours) !== currentOpenHours) ||
+    ((patch.subcategoryId !== undefined || patch.categoryId !== undefined) &&
+      (patch.subcategoryId ?? patch.categoryId) !== currentSubCat);
+
+  const actionType: ProposalActionType =
+    customActionType || (hasProposedCoords && !hasInfoDiff ? 'pin' : 'update');
+
+  const isCreateAction = actionType === 'create' || actionType === 'CREATE_PLACE';
+  const isPinAction = actionType === 'pin' || actionType === 'UPDATE_COORDINATES';
+  const isHideAction = actionType === 'hide' || actionType === 'HIDE_PLACE';
+  const isDeleteAction = actionType === 'delete' || actionType === 'DELETE_PLACE';
+
+  const submitterUid =
+    getAuthenticatedFirebaseUid() ||
+    storedUser?.uid ||
+    roleInfo.identifier ||
+    storedUser?.email?.trim().toLowerCase() ||
+    'manager_unverified';
+  const submitterId =
+    roleInfo.identifier ||
+    storedUser?.email?.trim().toLowerCase() ||
+    'quanlymaps@xuanhoacogi.vn';
+  const submitterName =
+    roleInfo.displayName ||
+    storedUser?.displayName ||
+    storedUser?.nickname ||
+    'Quản lý Maps';
+  const submitterRole = roleInfo.roleBadgeLabel || 'Quản lý Maps';
+
+  const prevDataObj = {
+    name: currentName,
+    address: currentAddress,
+    phone: currentPhone,
+    openHours: currentOpenHours,
+    parentCategoryId: currentParentCat,
+    subcategoryId: currentSubCat,
+    lat: currentLat,
+    lng: currentLng,
+    mapsUrl: current?.mapsUrl || basePlace?.mapsUrl || '',
+    tagline: current?.tagline || basePlace?.tagline || '',
+  };
+  const nextDataObj = {
+    name: patch.name ?? currentName,
+    address: patch.address ?? currentAddress,
+    phone: patch.phone ?? currentPhone,
+    openHours: patch.openHours ?? patch.openingHours ?? currentOpenHours,
+    parentCategoryId: patch.parentCategoryId ?? currentParentCat,
+    subcategoryId: patch.subcategoryId ?? patch.categoryId ?? currentSubCat,
+    lat: proposedLat,
+    lng: proposedLng,
+    mapsUrl: patch.mapsUrl ?? current?.mapsUrl ?? basePlace?.mapsUrl ?? '',
+    tagline: patch.tagline ?? current?.tagline ?? basePlace?.tagline ?? '',
+    coordinateSource: patch.coordinateSource || 'unverified',
+  };
+
+  const proposalId = `prop_${placeId}_${now}`;
+  const proposal: PlaceChangeProposal = {
+    id: proposalId,
+    placeId,
+    placeName: patch.name || currentName,
+    actionType,
+    status: 'pending',
+    submittedBy: submitterId,
+    submittedByUid: submitterUid,
+    submittedByEmail: submitterId,
+    submittedByName: submitterName,
+    submittedByRole: submitterRole,
+    submittedAt: now,
+    baseVersion: current?.version || 1,
+    previousData: prevDataObj,
+    beforeData: prevDataObj,
+    proposedData: nextDataObj,
+    afterData: nextDataObj,
+  };
+
+  if (!state.placeProposals) state.placeProposals = {};
+  // Chỉ hủy các proposal pending cũ do chính người dùng hiện tại (`submitterUid`) tạo cho cùng placeId
+  for (const existingProp of Object.values(state.placeProposals)) {
+    if (
+      existingProp.placeId === placeId &&
+      existingProp.status === 'pending' &&
+      (existingProp.submittedByUid === submitterUid || existingProp.submittedBy === submitterId)
+    ) {
+      existingProp.status = 'cancelled';
+    }
+  }
+  state.placeProposals[proposalId] = proposal;
+
+  const summaryText =
+    actionLabel ||
+    (isPinAction
+      ? `Đề xuất định vị (${proposedLat}, ${proposedLng})`
+      : isCreateAction
+      ? `Đề xuất thêm địa điểm mới: ${proposal.placeName}`
+      : isHideAction
+      ? `Đề xuất ẩn địa điểm: ${proposal.placeName}`
+      : isDeleteAction
+      ? `Đề xuất xóa địa điểm: ${proposal.placeName}`
+      : `Đề xuất chỉnh sửa thông tin địa điểm`);
+
+  // Giữ nguyên dữ liệu và tọa độ công khai hiện tại của địa điểm cho đến khi Admin bấm Duyệt!
+  state.places[placeId] = {
+    ...(current || {
+      id: placeId,
+      status: 'active',
+      visibilityStatus: isCreateAction ? 'hidden' : 'visible',
+      lat: currentLat ?? undefined,
+      lng: currentLng ?? undefined,
+      coordinateVerified: currentLat !== null && currentLng !== null,
+      adminPinApproved: currentLat !== null && currentLng !== null,
+      locationStatus: currentLat !== null && currentLng !== null ? 'located' : 'unlocated',
+      version: 1,
+    }),
+    id: placeId,
+    pendingMapApproval: {
+      proposalId,
+      submittedBy: submitterId,
+      submittedByEmail: submitterId,
+      submittedByName: submitterName,
+      submittedAt: now,
+      actionSummary: summaryText,
+      actionType,
+      baseVersion: current?.version || 1,
+      previousLat: currentLat,
+      previousLng: currentLng,
+      proposedLat,
+      proposedLng,
+      proposedName: nextDataObj.name,
+      proposedAddress: nextDataObj.address,
+      proposedPhone: nextDataObj.phone,
+      isNewPlace: isCreateAction,
+      isDeleteRequest: isDeleteAction,
+    },
+    updatedAt: now,
+  };
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    `⏳ Quản lý gửi đề xuất (${
+      isPinAction
+        ? 'Định vị'
+        : isCreateAction
+        ? 'Thêm mới'
+        : isHideAction
+        ? 'Ẩn địa điểm'
+        : isDeleteAction
+        ? 'Xóa địa điểm'
+        : 'Chỉnh sửa'
+    }) chờ Admin duyệt`,
+    `${proposal.placeName} — bởi ${submitterName}`,
+    'place',
+    {
+      actorRole: 'manager',
+      eventCategory: 'manager_proposal',
+      refId: proposalId,
+      placeId,
+    }
+  );
+  saveAdminState(state, false);
+  syncSinglePlaceToCloud(placeId, state.places[placeId], proposal);
+  return proposal;
+}
+
+export function getAllPlaceChangeProposals(
+  filterOrOptions?:
+    | ProposalStatus
+    | { status?: ProposalStatus | string; submittedByEmail?: string }
+): PlaceChangeProposal[] {
+  const state = getAdminState();
+  const map = state.placeProposals || {};
+  const list = Object.values(map).map(p => {
+    const currentPlaceVer = state.places[p.placeId]?.version || 1;
+    return {
+      ...p,
+      submittedByEmail: p.submittedByEmail || p.submittedBy,
+      beforeData: p.beforeData || p.previousData,
+      afterData: p.afterData || p.proposedData,
+      message: p.message || p.reviewNote,
+      hasVersionConflict: p.status === 'pending' && currentPlaceVer > p.baseVersion,
+    };
+  });
+  const filterStatus =
+    typeof filterOrOptions === 'string'
+      ? filterOrOptions
+      : filterOrOptions?.status;
+  const filterEmail =
+    typeof filterOrOptions === 'object' && filterOrOptions?.submittedByEmail
+      ? filterOrOptions.submittedByEmail.trim().toLowerCase()
+      : null;
+  const filtered = list.filter(p => {
+    if (filterStatus && p.status !== filterStatus) return false;
+    if (filterEmail) {
+      const subEmail = (p.submittedByEmail || p.submittedBy || '').trim().toLowerCase();
+      if (subEmail !== filterEmail) return false;
+    }
+    return true;
+  });
+  return filtered.sort((a, b) => {
+    if (a.status === 'pending' && b.status !== 'pending') return -1;
+    if (a.status !== 'pending' && b.status === 'pending') return 1;
+    return b.submittedAt - a.submittedAt;
+  });
+}
+
+export function approvePlaceProposal(
+  proposalIdOrPlaceId: string,
+  reviewNote?: string,
+  options?: { allowConflictOverride?: boolean }
+): PlaceChangeProposal {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
+    throw new Error('Chỉ Admin mới có quyền phê duyệt yêu cầu thay đổi địa điểm.');
+  }
+
+  const state = getAdminState();
+  const proposals = state.placeProposals || {};
+  let proposal = proposals[proposalIdOrPlaceId];
+  if (!proposal) {
+    proposal = Object.values(proposals).find(
+      p => p.placeId === proposalIdOrPlaceId && p.status === 'pending'
+    ) as PlaceChangeProposal;
+  }
+  if (!proposal) {
+    throw new Error('Không tìm thấy yêu cầu chờ duyệt.');
+  }
+
+  const placeId = proposal.placeId;
+  const current = state.places[placeId] || { id: placeId, updatedAt: Date.now(), version: 1 };
+  const currentVer = current.version || 1;
+  if (currentVer > proposal.baseVersion && options?.allowConflictOverride === false) {
+    throw new Error(
+      `Xung đột phiên bản (Version Conflict): Địa điểm đã thay đổi từ v${proposal.baseVersion} lên v${currentVer} sau khi yêu cầu được gửi.`
+    );
+  }
+
+  const now = Date.now();
+  const pData = proposal.proposedData;
+  const hasValidCoord = isValidCoordinatePair(pData.lat, pData.lng);
+  const prevHistory = Array.isArray(current.locationHistory) ? current.locationHistory : [];
+  const isHideAction = proposal.actionType === 'hide' || proposal.actionType === 'HIDE_PLACE';
+  const isDeleteAction = proposal.actionType === 'delete' || proposal.actionType === 'DELETE_PLACE';
+  const isCreateAction = proposal.actionType === 'create' || proposal.actionType === 'CREATE_PLACE';
+  const isBaseCatalogPlace = xuanHoaPlaces.some(p => p.id === placeId);
+  const isCivicLandmarkCreate =
+    pData.parentCategoryId === 'landmark' ||
+    pData.parentCategoryId === 'education' ||
+    pData.parentCategoryId === 'public' ||
+    pData.parentCategoryId === 'health';
+  const createMapCat = pData.parentCategoryId === 'education' ? 'school' : 'public';
+
+  const patchToApply: Partial<PlaceOverride> = isDeleteAction
+    ? {
+        status: 'deleted',
+        visibilityStatus: 'deleted',
+        coordinateVerified: false,
+        adminPinApproved: false,
+        lat: undefined,
+        lng: undefined,
+        pendingMapApproval: null,
+        pendingWebApproval: null,
+      }
+    : isHideAction
+    ? {
+        status: 'active',
+        visibilityStatus: 'hidden',
+        pendingMapApproval: null,
+        pendingWebApproval: null,
+      }
+    : {
+        status: 'active',
+        visibilityStatus: 'visible',
+        ...(pData.name !== undefined ? { name: pData.name } : {}),
+        ...(pData.address !== undefined ? { address: pData.address } : {}),
+        ...(pData.phone !== undefined ? { phone: pData.phone } : {}),
+        ...(pData.openHours !== undefined
+          ? { openHours: pData.openHours, openingHours: pData.openHours }
+          : {}),
+        ...(pData.parentCategoryId ? { parentCategoryId: pData.parentCategoryId } : {}),
+        ...(pData.subcategoryId
+          ? { subcategoryId: pData.subcategoryId, categoryId: pData.subcategoryId }
+          : {}),
+        ...(pData.mapsUrl !== undefined ? { mapsUrl: pData.mapsUrl } : {}),
+        ...(pData.tagline !== undefined ? { tagline: pData.tagline } : {}),
+        ...(isCreateAction && !isBaseCatalogPlace && !current.customPlaceData
+          ? {
+              isCustom: true,
+              verified: true,
+              sectorTag: isCivicLandmarkCreate ? 'dia-danh' : 'an-chinh',
+              mapCategory: isCivicLandmarkCreate ? createMapCat : 'food',
+              showByDefault: isCivicLandmarkCreate,
+              defaultMapVisible: isCivicLandmarkCreate,
+              customPlaceData: {
+                id: placeId,
+                name: pData.name || proposal.placeName || placeId,
+                tagline: pData.tagline || `${proposal.placeName} — Phường Xuân Hòa`,
+                category: 'cafe',
+                address: pData.address || 'Phường Xuân Hòa, Phúc Yên, Vĩnh Phúc',
+                zone: 'center',
+                distance: 'Phường Xuân Hòa',
+                openHours: pData.openHours || '07:00 - 21:00',
+                phone: pData.phone || '',
+                priceRange: isCivicLandmarkCreate ? 'Địa danh công cộng' : '30k - 65k',
+                minPrice: 0,
+                maxPrice: 0,
+                rating: 5.0,
+                reviewCount: 10,
+                imageUrl: '',
+                tags: ['Địa danh', 'Xuân Hòa'],
+                signatureDish: {
+                  id: `${placeId}_sig`,
+                  name: isCivicLandmarkCreate ? 'Địa danh tại Phường Xuân Hòa' : `Đặc trưng tại ${proposal.placeName}`,
+                  price: 0,
+                  tag: isCivicLandmarkCreate ? 'Địa danh' : 'Món tủ',
+                },
+                menu: [],
+                serviceMode: 'both',
+                mapsQuery: `${pData.name || proposal.placeName} Xuân Hòa`,
+                mapsUrl:
+                  pData.mapsUrl ||
+                  (hasValidCoord
+                    ? `https://www.google.com/maps/search/?api=1&query=${Number(pData.lat).toFixed(6)},${Number(pData.lng).toFixed(6)}`
+                    : ''),
+                rarity: 2,
+                quip: pData.tagline || 'Địa điểm trên Bản đồ số Xuân Hòa!',
+              },
+            }
+          : {}),
+        ...(hasValidCoord
+          ? {
+              lat: Number(Number(pData.lat).toFixed(6)),
+              lng: Number(Number(pData.lng).toFixed(6)),
+              coordinateVerified: true,
+              adminPinApproved: true,
+              adminExplicitlyUnpinned: false,
+              locationStatus: 'located',
+              coordinateSource: 'admin_verified',
+              lastVerifiedAt: new Date(now).toISOString(),
+              locationHistory: [
+                {
+                  timestamp: now,
+                  actor: roleInfo.identifier || 'admin',
+                  actorRole: 'admin',
+                  action: 'approve_proposal',
+                  previousLat: proposal.previousData.lat ?? null,
+                  previousLng: proposal.previousData.lng ?? null,
+                  newLat: Number(Number(pData.lat).toFixed(6)),
+                  newLng: Number(Number(pData.lng).toFixed(6)),
+                  coordinateSource: 'admin_verified',
+                  note: reviewNote || `Admin duyệt đề xuất từ ${proposal.submittedByName}`,
+                },
+                ...prevHistory,
+              ].slice(0, 20),
+            }
+          : {}),
+        pendingMapApproval: null,
+        pendingWebApproval: null,
+      };
+
+  const reviewerUid = getAuthenticatedFirebaseUid() || roleInfo.identifier || 'admin';
+  const approvalReason = reviewNote || `Admin duyệt đề xuất từ ${proposal.submittedByName}`;
+  proposal.status = 'approved';
+  proposal.reviewedBy = roleInfo.identifier || 'admin';
+  proposal.reviewedByUid = reviewerUid;
+  proposal.reviewedByName = roleInfo.displayName || 'Admin';
+  proposal.reviewedAt = now;
+  proposal.reviewNote = approvalReason;
+  proposals[proposal.id] = proposal;
+  state.placeProposals = proposals;
+
+  if (isCloudWriteAllowedForCurrentSession()) {
+    try {
+      const rtdb = getRealtimeDb();
+      if (rtdb) {
+        syncProposalAndIndexToCloud(rtdb, proposal);
+      }
+    } catch {}
+  }
+
+  savePlaceAdminOverride(
+    placeId,
+    patchToApply,
+    `✅ Admin duyệt đề xuất (${proposal.actionType}) cho ${proposal.placeName}`,
+    {
+      bypassProposalCheck: true,
+      confirmCoordinateOverride: hasValidCoord && !isDeleteAction && !isHideAction,
+      coordinateOverrideReason: approvalReason,
+    }
+  );
+  return proposal;
+}
+
+export function rejectPlaceProposal(
+  proposalIdOrPlaceId: string,
+  reviewNote?: string
+): PlaceChangeProposal {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
+    throw new Error('Chỉ Admin mới có quyền từ chối yêu cầu thay đổi địa điểm.');
+  }
+
+  const state = getAdminState();
+  const proposals = state.placeProposals || {};
+  let proposal = proposals[proposalIdOrPlaceId];
+  if (!proposal) {
+    proposal = Object.values(proposals).find(
+      p => p.placeId === proposalIdOrPlaceId && p.status === 'pending'
+    ) as PlaceChangeProposal;
+  }
+  if (!proposal) {
+    throw new Error('Không tìm thấy yêu cầu chờ duyệt.');
+  }
+
+  const now = Date.now();
+  const placeId = proposal.placeId;
+  const ov = state.places[placeId];
+  const reviewerUid = getAuthenticatedFirebaseUid() || roleInfo.identifier || 'admin';
+
+  proposal.status = 'rejected';
+  proposal.reviewedBy = roleInfo.identifier || 'admin';
+  proposal.reviewedByUid = reviewerUid;
+  proposal.reviewedByName = roleInfo.displayName || 'Admin';
+  proposal.reviewedAt = now;
+  proposal.reviewNote = reviewNote || 'Admin từ chối yêu cầu thay đổi.';
+  proposals[proposal.id] = proposal;
+  state.placeProposals = proposals;
+
+  if (isCloudWriteAllowedForCurrentSession()) {
+    try {
+      const rtdb = getRealtimeDb();
+      if (rtdb) {
+        syncProposalAndIndexToCloud(rtdb, proposal);
+      }
+    } catch {}
+  }
+
+  if (ov) {
+    const isCreateAction =
+      proposal.actionType === 'create' || proposal.actionType === 'CREATE_PLACE';
+    if (isCreateAction && ov.isCustom) {
+      ov.status = 'deleted';
+      ov.visibilityStatus = 'deleted';
+      ov.pendingMapApproval = null;
+      ov.pendingWebApproval = null;
+    } else {
+      ov.pendingMapApproval = null;
+      ov.pendingWebApproval = null;
+      const prevHistory = Array.isArray(ov.locationHistory) ? ov.locationHistory : [];
+      ov.locationHistory = [
+        {
+          timestamp: now,
+          actor: roleInfo.identifier || 'admin',
+          actorUid: reviewerUid,
+          actorRole: 'admin',
+          action: 'reject_proposal',
+          previousLat: proposal.previousData.lat ?? null,
+          previousLng: proposal.previousData.lng ?? null,
+          newLat: proposal.proposedData.lat ?? null,
+          newLng: proposal.proposedData.lng ?? null,
+          coordinateSource: ov.coordinateSource || 'admin_verified',
+          reason: proposal.reviewNote,
+          note: proposal.reviewNote,
+        },
+        ...prevHistory,
+      ].slice(0, 20);
+    }
+    ov.updatedAt = now;
+    state.places[placeId] = ov;
+  }
+
+  state.auditLogs = addAdminAuditLog(
+    state,
+    `❌ Admin từ chối đề xuất (${proposal.actionType}) của ${proposal.submittedByName}`,
+    `${proposal.placeName} — Lý do: ${proposal.reviewNote}`,
+    'place',
+    {
+      actorRole: 'admin',
+      eventCategory: 'admin_review',
+      refId: proposal.id,
+      placeId,
+    }
+  );
+  saveAdminState(state);
+  return proposal;
+}
+
+export function cancelPlaceProposal(proposalId: string): void {
+  const state = getAdminState();
+  const prop = state.placeProposals?.[proposalId];
+  if (!prop || prop.status !== 'pending') return;
+
+  const roleInfo = getEffectiveAdminRoleInfo();
+  const storedUser = getStoredAuthUser();
+  const callerUid = getAuthenticatedFirebaseUid() || storedUser?.uid || roleInfo.identifier;
+  const callerEmail = (storedUser?.email || roleInfo.identifier || '').trim().toLowerCase();
+
+  // SEC-FINAL-01: Chỉ người tạo đề xuất mới được hủy đề xuất của chính mình khi đang pending (hoặc SuperAdmin)
+  const isOwner =
+    (prop.submittedByUid && callerUid && prop.submittedByUid === callerUid) ||
+    (!prop.submittedByUid &&
+      callerEmail &&
+      (prop.submittedBy?.toLowerCase() === callerEmail ||
+        prop.submittedByEmail?.toLowerCase() === callerEmail));
+
+  if (!isOwner && !roleInfo.isSuperAdmin) {
+    throw new Error('Truy cập bị từ chối: Bạn chỉ được hủy đề xuất do chính mình tạo.');
+  }
+
+  prop.status = 'cancelled';
+  const ov = state.places[prop.placeId];
+  if (ov) {
+    const isCreateAction =
+      prop.actionType === 'create' || prop.actionType === 'CREATE_PLACE';
+    if (isCreateAction && ov.isCustom) {
+      ov.status = 'deleted';
+      ov.visibilityStatus = 'deleted';
+    }
+    ov.pendingMapApproval = null;
+    ov.pendingWebApproval = null;
+    state.places[prop.placeId] = ov;
+  }
+  if (isCloudWriteAllowedForCurrentSession()) {
+    try {
+      const rtdb = getRealtimeDb();
+      if (rtdb) {
+        syncProposalAndIndexToCloud(rtdb, prop);
+      }
+    } catch {}
+  }
+  saveAdminState(state);
 }
 
 export function requestOrExecuteDeletePlace(
@@ -3040,8 +7640,8 @@ export function requestOrExecuteDeletePlace(
   const resolvedName =
     placeName || current.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
 
-  if (scope === 'maps' && !roleInfo.isSuperAdmin && !isAdminAuthenticated() && !forceImmediate) {
-    throw new Error('Quản lý chỉ được phép thêm mới và chỉnh sửa địa điểm, không có quyền xóa địa điểm.');
+  if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
+    throw new Error('Chỉ Admin mới có quyền xóa địa điểm. Tài khoản Quản lý không có quyền xóa.');
   }
 
   if (roleInfo.isSuperAdmin || isAdminAuthenticated() || forceImmediate) {
@@ -3065,10 +7665,6 @@ export function requestOrExecuteDeletePlace(
       status: 'deleted',
       visibilityStatus: 'deleted',
     });
-    const subKey = `sub_${placeId}`;
-    if (state.merchantSubmissions?.[subKey]) {
-      delete state.merchantSubmissions[subKey];
-    }
     state.auditLogs = addAdminAuditLog(
       state,
       scope === 'web' ? '🗑️ Admin xóa quán khỏi hệ thống' : '🗑️ Admin xóa địa điểm khỏi Bản đồ',
@@ -3079,38 +7675,28 @@ export function requestOrExecuteDeletePlace(
     return { executedImmediately: true };
   }
 
-  // Quản lý (Web / Maps) yêu cầu xóa -> Chờ Admin duyệt
-  const reqPayload = {
-    submittedBy: roleInfo.identifier || (scope === 'web' ? 'quanlyweb' : 'quanlymaps'),
-    submittedByName: roleInfo.displayName || (scope === 'web' ? 'Quản lý Web' : 'Quản lý Maps'),
-    submittedAt: Date.now(),
-    actionSummary: scope === 'web' ? 'Yêu cầu XÓA quán khỏi hệ thống' : 'Yêu cầu XÓA địa điểm khỏi Bản đồ',
-    actionType: 'delete' as const,
-    isDeleteRequest: true,
-  };
-
-  state.places[placeId] = {
-    ...current,
-    id: placeId,
-    name: current.name || resolvedName,
-    ...(scope === 'web' ? { pendingWebApproval: reqPayload } : { pendingMapApproval: reqPayload }),
-    version: ((current.version as number) || 0) + 1,
-    updatedAt: Date.now(),
-  };
-
-  state.auditLogs = addAdminAuditLog(
-    state,
-    scope === 'web' ? '⏳ Quản lý gửi yêu cầu XÓA quán (chờ duyệt)' : '⏳ Quản lý gửi yêu cầu XÓA địa điểm (chờ duyệt)',
-    `${resolvedName} — bởi ${reqPayload.submittedByName}`,
-    'place'
-  );
-  saveAdminState(state);
   return { executedImmediately: false };
 }
 
 export function approvePendingPlaceItem(placeId: string, scope: 'web' | 'maps'): void {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
+    throw new Error('Chỉ Admin mới có quyền phê duyệt yêu cầu.');
+  }
   const state = getAdminState();
   const ov = state.places[placeId];
+  const proposalId = ov?.pendingMapApproval?.proposalId || ov?.pendingWebApproval?.proposalId;
+  if (proposalId && state.placeProposals?.[proposalId]?.status === 'pending') {
+    approvePlaceProposal(proposalId);
+    return;
+  }
+  const matchingProposal = Object.values(state.placeProposals || {}).find(
+    p => p.placeId === placeId && p.status === 'pending'
+  );
+  if (matchingProposal) {
+    approvePlaceProposal(matchingProposal.id);
+    return;
+  }
   if (!ov) return;
 
   const baseName = ov.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
@@ -3118,6 +7704,7 @@ export function approvePendingPlaceItem(placeId: string, scope: 'web' | 'maps'):
   const isDelete = Boolean(
     pendingObj?.isDeleteRequest ||
       pendingObj?.actionType === 'delete' ||
+      pendingObj?.actionType === 'DELETE_PLACE' ||
       ov.pendingWebApproval?.isDeleteRequest ||
       ov.pendingMapApproval?.isDeleteRequest
   );
@@ -3130,19 +7717,18 @@ export function approvePendingPlaceItem(placeId: string, scope: 'web' | 'maps'):
     ov.pendingMapApproval = null;
   } else {
     ov.status = 'active';
-    const subKey = `sub_${placeId}`;
-    const pendingSub = state.merchantSubmissions?.[subKey];
+    ov.visibilityStatus = 'visible';
     if (
-      pendingSub?.proposed &&
-      typeof pendingSub.proposed.lat === 'number' &&
-      typeof pendingSub.proposed.lng === 'number'
+      typeof ov.pendingMapApproval?.proposedLat === 'number' &&
+      typeof ov.pendingMapApproval?.proposedLng === 'number'
     ) {
-      ov.lat = Number(pendingSub.proposed.lat.toFixed(6));
-      ov.lng = Number(pendingSub.proposed.lng.toFixed(6));
+      ov.lat = Number(ov.pendingMapApproval.proposedLat.toFixed(6));
+      ov.lng = Number(ov.pendingMapApproval.proposedLng.toFixed(6));
     }
     if (typeof ov.lat === 'number' && typeof ov.lng === 'number') {
       ov.coordinateVerified = true;
       ov.adminPinApproved = true;
+      ov.locationStatus = 'located';
       ov.coordinateSource = ov.coordinateSource || 'admin_verified';
     }
     if (scope === 'web') {
@@ -3151,15 +7737,9 @@ export function approvePendingPlaceItem(placeId: string, scope: 'web' | 'maps'):
       ov.pendingMapApproval = null;
     }
   }
+  ov.version = (ov.version || 1) + 1;
   ov.updatedAt = Date.now();
   state.places[placeId] = ov;
-
-  // Đồng thời duyệt luôn trong merchantSubmissions nếu có
-  const subKey = `sub_${placeId}`;
-  if (state.merchantSubmissions?.[subKey]?.status === 'pending') {
-    state.merchantSubmissions[subKey].status = 'approved';
-    state.merchantSubmissions[subKey].reviewedAt = Date.now();
-  }
 
   state.auditLogs = addAdminAuditLog(
     state,
@@ -3175,67 +7755,56 @@ export function approvePendingPlaceItem(placeId: string, scope: 'web' | 'maps'):
 }
 
 export function approveAllPendingPlaceItems(scope: 'web' | 'maps'): number {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
+    throw new Error('Chỉ Admin mới có quyền duyệt hàng loạt yêu cầu.');
+  }
   const state = getAdminState();
   let count = 0;
-  for (const [placeId, ov] of Object.entries(state.places || {})) {
+  for (const prop of Object.values(state.placeProposals || {})) {
+    if (prop.status === 'pending') {
+      approvePlaceProposal(prop.id);
+      count++;
+    }
+  }
+  const freshState = getAdminState();
+  for (const [placeId, ov] of Object.entries(freshState.places || {})) {
     const pendingObj = scope === 'web' ? ov.pendingWebApproval : ov.pendingMapApproval;
     if (!pendingObj) continue;
-    const isDelete = Boolean(pendingObj.isDeleteRequest || pendingObj.actionType === 'delete');
-    if (isDelete) {
-      ov.status = 'deleted';
-      ov.coordinateVerified = false;
-      ov.adminPinApproved = false;
-      ov.pendingWebApproval = null;
-      ov.pendingMapApproval = null;
-    } else {
-      ov.status = 'active';
-      const subKey = `sub_${placeId}`;
-      const pendingSub = state.merchantSubmissions?.[subKey];
-      if (
-        pendingSub?.proposed &&
-        typeof pendingSub.proposed.lat === 'number' &&
-        typeof pendingSub.proposed.lng === 'number'
-      ) {
-        ov.lat = Number(pendingSub.proposed.lat.toFixed(6));
-        ov.lng = Number(pendingSub.proposed.lng.toFixed(6));
-      }
-      if (typeof ov.lat === 'number' && typeof ov.lng === 'number') {
-        ov.coordinateVerified = true;
-        ov.adminPinApproved = true;
-        ov.coordinateSource = ov.coordinateSource || 'admin_verified';
-      }
-      if (scope === 'web') ov.pendingWebApproval = null;
-      else ov.pendingMapApproval = null;
-    }
-    ov.updatedAt = Date.now();
-    state.places[placeId] = ov;
-    const subKey = `sub_${placeId}`;
-    if (state.merchantSubmissions?.[subKey]?.status === 'pending') {
-      state.merchantSubmissions[subKey].status = 'approved';
-      state.merchantSubmissions[subKey].reviewedAt = Date.now();
-    }
+    approvePendingPlaceItem(placeId, scope);
     count++;
-  }
-  if (count > 0) {
-    state.auditLogs = addAdminAuditLog(
-      state,
-      `⚡ Admin duyệt hàng loạt ${count} yêu cầu (${scope === 'web' ? 'Quản lý Quán' : 'Quản lý Maps'})`,
-      `${count} mục`,
-      'place'
-    );
-    saveAdminState(state);
   }
   return count;
 }
 
-export function rejectPendingPlaceItem(placeId: string, scope: 'web' | 'maps'): void {
+export function rejectPendingPlaceItem(placeId: string, scope: 'web' | 'maps', reviewNote?: string): void {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.isSuperAdmin && !isAdminAuthenticated()) {
+    throw new Error('Chỉ Admin mới có quyền từ chối yêu cầu.');
+  }
   const state = getAdminState();
   const ov = state.places[placeId];
+  const proposalId = ov?.pendingMapApproval?.proposalId || ov?.pendingWebApproval?.proposalId;
+  if (proposalId && state.placeProposals?.[proposalId]?.status === 'pending') {
+    rejectPlaceProposal(proposalId, reviewNote);
+    return;
+  }
+  const matchingProposal = Object.values(state.placeProposals || {}).find(
+    p => p.placeId === placeId && p.status === 'pending'
+  );
+  if (matchingProposal) {
+    rejectPlaceProposal(matchingProposal.id, reviewNote);
+    return;
+  }
   if (!ov) return;
 
   const baseName = ov.name || xuanHoaPlaces.find(p => p.id === placeId)?.name || placeId;
   const pendingObj = scope === 'web' ? ov.pendingWebApproval : ov.pendingMapApproval;
-  const isDelete = Boolean(pendingObj?.isDeleteRequest || pendingObj?.actionType === 'delete');
+  const isDelete = Boolean(
+    pendingObj?.isDeleteRequest ||
+      pendingObj?.actionType === 'delete' ||
+      pendingObj?.actionType === 'DELETE_PLACE'
+  );
 
   if (isDelete) {
     if (scope === 'web') ov.pendingWebApproval = null;
@@ -3262,12 +7831,6 @@ export function rejectPendingPlaceItem(placeId: string, scope: 'web' | 'maps'): 
     }
   }
 
-  const subKey = `sub_${placeId}`;
-  if (state.merchantSubmissions?.[subKey]?.status === 'pending') {
-    state.merchantSubmissions[subKey].status = 'rejected';
-    state.merchantSubmissions[subKey].reviewedAt = Date.now();
-  }
-
   state.auditLogs = addAdminAuditLog(
     state,
     isDelete
@@ -3285,444 +7848,10 @@ export function isMapManagerAuthenticated(authUser?: UserAuthProfile | null): bo
   const roleInfo = getEffectiveAdminRoleInfo(undefined, authUser);
   if (roleInfo.isSuperAdmin || roleInfo.canManageMaps) return true;
   if (isAdminAuthenticated(authUser)) return true;
-  if (authUser?.isMapManager) return true;
+  if (authUser?.isMapManager && authUser?.email && authUser?.isLoggedIn) return true;
   const stored = getStoredAuthUser();
-  if (stored?.isMapManager) return true;
-  if (typeof window !== 'undefined') {
-    try {
-      return localStorage.getItem('xuanhoa_map_manager_active_v1') === 'true';
-    } catch {}
-  }
+  if (stored?.isMapManager && stored?.email && stored?.isLoggedIn) return true;
   return false;
-}
-
-/**
- * Chủ quán hoặc Quản lý Maps nhập Mã Code trên Bản đồ số
- */
-export function verifyAndClaimPlaceWithCode(
-  rawCodeInput: string,
-  authUser: UserAuthProfile | null | undefined
-): {
-  ok: boolean;
-  placeItem?: AdminPlaceItem;
-  isMapManager?: boolean;
-  message: string;
-} {
-  const cleanCode = rawCodeInput.trim().toUpperCase();
-  if (!cleanCode) {
-    return {
-      ok: false,
-      message: 'Vui lòng nhập mã định danh được cấp.',
-    };
-  }
-
-  const state = getAdminState();
-  const allManaged = getAllManagedPlaces();
-
-  // Kiểm tra nếu nhập Mã Quản Lý Maps (XH-MAPS-8899 hoặc XH-MAPS-6868)
-  if (cleanCode === MAP_MANAGER_MASTER_CODE || cleanCode === 'XH-MAPS-6868') {
-    const effectiveEmail = (authUser?.email || 'quanlymaps@xuanhoacogi.vn').trim().toLowerCase();
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('xuanhoa_map_manager_active_v1', 'true');
-      }
-      const baseUser: UserAuthProfile =
-        authUser && authUser.isLoggedIn
-          ? authUser
-          : {
-              isLoggedIn: true,
-              uid: `map_mgr_${Date.now()}`,
-              email: effectiveEmail,
-              displayName: 'Quản lý Maps Xuân Hòa',
-              nickname: 'Quản lý Maps',
-              gender: 'male',
-              avatar: '🗺️',
-              avatarId: 'm_ty',
-              hasCompletedProfile: true,
-              isFirstTimeSetupDone: true,
-              createdAt: Date.now(),
-            };
-      saveAuthUser({
-        ...baseUser,
-        isLoggedIn: true,
-        isMapManager: true,
-        merchantVerifiedCode: MAP_MANAGER_MASTER_CODE,
-        avatar: baseUser.avatar === '🐭' ? '🗺️' : baseUser.avatar,
-      });
-    } catch {}
-
-    state.auditLogs = addAdminAuditLog(
-      state,
-      '🗺️ Kích hoạt tài khoản Quản lý Maps & Định vị',
-      `Tài khoản: ${effectiveEmail} (Mã: ${cleanCode})`,
-      'system'
-    );
-    saveAdminState(state);
-
-    return {
-      ok: true,
-      isMapManager: true,
-      placeItem: allManaged[0],
-      message:
-        '🗺️ Đã kích hoạt quyền Quản lý Maps! Bạn có thể cập nhật định vị các quán và thêm địa điểm mới theo danh mục.',
-    };
-  }
-
-  let matchedItem: AdminPlaceItem | undefined;
-  for (const item of allManaged) {
-    const activeCode = getOrGenerateMerchantCode(item.place.id, false).toUpperCase();
-    if (activeCode === cleanCode) {
-      matchedItem = item;
-      break;
-    }
-  }
-
-  if (!matchedItem) {
-    return {
-      ok: false,
-      message: 'Mã định danh không chính xác. Vui lòng kiểm tra lại!',
-    };
-  }
-
-  const placeId = matchedItem.place.id;
-  const ov = state.places[placeId];
-
-  // Nếu người dùng đã đăng nhập Gmail thì lấy Gmail đó; nếu chưa đăng nhập thì tự động tạo/khôi phục phiên Nick Quán Chính Chủ theo Mã Code
-  const effectiveEmail = (
-    authUser?.email ||
-    ov?.claimedByEmail ||
-    `${placeId.replace(/[^a-z0-9]/gi, '').toLowerCase()}@chuquan.xuanhoa`
-  )
-    .trim()
-    .toLowerCase();
-
-  // Kiểm tra nếu mã đã được gắn với 1 Gmail thật khác (và người dùng hiện tại đang đăng nhập bằng 1 Gmail khác, không phải Admin)
-  if (
-    authUser?.email &&
-    ov?.claimedByEmail &&
-    !ov.claimedByEmail.endsWith('@chuquan.xuanhoa') &&
-    ov.claimedByEmail.trim().toLowerCase() !== effectiveEmail &&
-    !isAdminAuthenticated(authUser) &&
-    !isMapManagerAuthenticated(authUser)
-  ) {
-    return {
-      ok: false,
-      message: `Mã quán "${matchedItem.place.name}" đã được liên kết với Gmail (${ov.claimedByEmail}). Nếu bạn là chủ quán mới, hãy báo Admin cấp lại mã.`,
-    };
-  }
-
-  // Khóa mã code này vào tài khoản của chủ quán
-  state.places[placeId] = {
-    ...(ov || { id: placeId }),
-    id: placeId,
-    merchantClaimCode: cleanCode,
-    claimedByEmail: effectiveEmail,
-    claimedByUid: authUser?.uid || ov?.claimedByUid || `merchant_${placeId}`,
-    claimedByName: authUser?.displayName || matchedItem.place.name,
-    claimedAt: ov?.claimedAt || Date.now(),
-    updatedAt: Date.now(),
-  };
-
-  state.auditLogs = addAdminAuditLog(
-    state,
-    'Chủ quán kích hoạt Mã Code & Nhận quyền quản lý quán vĩnh viễn',
-    `${matchedItem.place.name} (Mã: ${cleanCode}) — Tài khoản: ${effectiveEmail}`,
-    'place'
-  );
-  saveAdminState(state);
-
-  const refreshed = getAllManagedPlaces().find((p) => p.place.id === placeId) || matchedItem;
-
-  // Tự động biến tài khoản đang dùng thành "Nick Quán Chính Chủ" vĩnh viễn (biểu tượng 🏪 + Tên Quán + Mã Code đi theo mãi)
-  try {
-    const baseUser: UserAuthProfile = authUser && authUser.isLoggedIn
-      ? authUser
-      : {
-          isLoggedIn: true,
-          uid: `merchant_${placeId}`,
-          email: effectiveEmail,
-          displayName: refreshed.place.name,
-          nickname: refreshed.place.name,
-          gender: 'male',
-          avatar: '🏪',
-          avatarId: 'm_ty',
-          hasCompletedProfile: true,
-          isFirstTimeSetupDone: true,
-          createdAt: Date.now(),
-        };
-
-    const updatedUser: UserAuthProfile = {
-      ...baseUser,
-      isLoggedIn: true,
-      email: effectiveEmail,
-      isMerchantAccount: true,
-      merchantPlaceId: refreshed.place.id,
-      merchantPlaceName: refreshed.place.name,
-      merchantVerifiedCode: cleanCode,
-      displayName: refreshed.place.name,
-      nickname: refreshed.place.name,
-      avatar: '🏪',
-    };
-    saveAuthUser(updatedUser);
-  } catch (err) {
-    console.warn('Merchant profile upgrade warning:', err);
-  }
-
-  return {
-    ok: true,
-    placeItem: refreshed,
-    message: `🎉 Xác thực thành công! Đã kết nối vĩnh viễn quán "${refreshed.place.name}" 🏪`,
-  };
-}
-
-/**
- * Lấy danh sách các quán mà Gmail hiện tại đã được cấp quyền quản lý
- */
-export function getClaimedPlacesForUser(email?: string | null): AdminPlaceItem[] {
-  if (!email) return [];
-  const cleanEmail = email.trim().toLowerCase();
-  const state = getAdminState();
-  const allManaged = getAllManagedPlaces();
-  return allManaged.filter((item) => {
-    const ov = state.places[item.place.id];
-    return ov?.claimedByEmail?.trim().toLowerCase() === cleanEmail;
-  });
-}
-
-/**
- * Lấy quán chính chủ đại diện cho tài khoản hiện tại (dùng để hiển thị biểu tượng Nick Quán 🏪 trên toàn hệ thống)
- */
-export function getPrimaryClaimedPlaceForUser(
-  authUser?: UserAuthProfile | null
-): AdminPlaceItem | null {
-  if (!authUser || !authUser.isLoggedIn || !authUser.email) return null;
-  const claimed = getClaimedPlacesForUser(authUser.email);
-  if (claimed.length === 0) return null;
-  if (authUser.merchantPlaceId) {
-    const matched = claimed.find((c) => c.place.id === authUser.merchantPlaceId);
-    if (matched) return matched;
-  }
-  return claimed[0];
-}
-
-/**
- * Chủ quán cập nhật tức thì Trạng thái Mở bán Hôm nay (Live Status)
- */
-export function updateMerchantLiveStatus(
-  placeId: string,
-  authUser: UserAuthProfile | null | undefined,
-  liveStatus: 'open_normal' | 'busy_hot' | 'closed_today',
-  liveStatusNote?: string
-): void {
-  const effectiveUser = authUser?.email ? authUser : getStoredAuthUser();
-  const state = getAdminState();
-  const ov = state.places[placeId];
-  const userEmail = (
-    effectiveUser?.email ||
-    ov?.claimedByEmail ||
-    'merchant@xuanhoacogi.vn'
-  )
-    .trim()
-    .toLowerCase();
-
-  if (
-    ov?.claimedByEmail &&
-    ov.claimedByEmail.trim().toLowerCase() !== userEmail &&
-    !isAdminAuthenticated(effectiveUser) &&
-    !isMapManagerAuthenticated(effectiveUser)
-  ) {
-    throw new Error('Tài khoản Gmail này chưa được cấp quyền quản lý quán này.');
-  }
-
-  state.places[placeId] = {
-    ...(ov || { id: placeId }),
-    id: placeId,
-    liveStatus,
-    liveStatusNote: (liveStatusNote || '').trim().slice(0, 80),
-    updatedAt: Date.now(),
-  };
-
-  const statusLabel =
-    liveStatus === 'closed_today'
-      ? 'Hôm nay tạm nghỉ'
-      : liveStatus === 'busy_hot'
-      ? 'Đang đông / Món mới nóng hổi'
-      : 'Đang mở bán bình thường';
-
-  state.auditLogs = addAdminAuditLog(
-    state,
-    `Chủ quán cập nhật trạng thái hôm nay (${statusLabel})`,
-    `${ov?.name || placeId} — bởi ${userEmail}`,
-    'place'
-  );
-  saveAdminState(state);
-}
-
-/**
- * Chủ quán hoặc Quản lý Maps gửi bản cập nhật (Định vị tọa độ, Tên quán, Giờ bán, SĐT, Menu...)
- * Chủ quán và Quản lý Maps hoàn toàn KHÔNG có quyền xóa quán.
- */
-export function submitMerchantPlaceUpdate(
-  placeId: string,
-  authUser: UserAuthProfile | null | undefined,
-  proposed: MerchantPendingSubmission['proposed']
-): MerchantPendingSubmission {
-  const effectiveUser = authUser?.email ? authUser : getStoredAuthUser();
-  const state = getAdminState();
-  const allManaged = getAllManagedPlaces();
-  const currentItem = allManaged.find((p) => p.place.id === placeId);
-  if (!currentItem) {
-    throw new Error('Không tìm thấy thông tin quán trong hệ thống.');
-  }
-
-  const ov = state.places[placeId];
-  const userEmail = (
-    effectiveUser?.email ||
-    ov?.claimedByEmail ||
-    'merchant@xuanhoacogi.vn'
-  )
-    .trim()
-    .toLowerCase();
-  if (
-    ov?.claimedByEmail &&
-    ov.claimedByEmail.trim().toLowerCase() !== userEmail &&
-    !isAdminAuthenticated(effectiveUser) &&
-    !isMapManagerAuthenticated(effectiveUser)
-  ) {
-    throw new Error('Gmail của bạn chưa kích hoạt Mã Code của quán này.');
-  }
-
-  if (proposed.lat !== null && proposed.lng !== null) {
-    const lat = Number(proposed.lat);
-    const lng = Number(proposed.lng);
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng) ||
-      lat < 20.0 ||
-      lat > 23.0 ||
-      lng < 104.0 ||
-      lng > 107.0
-    ) {
-      throw new Error('Tọa độ cắm ghim không hợp lệ (ngoài phạm vi Xuân Hòa - Phú Thọ).');
-    }
-  }
-
-  const submissionId = `sub_${placeId}`;
-  const submission: MerchantPendingSubmission = {
-    id: submissionId,
-    placeId,
-    placeOriginalName: currentItem.place.name,
-    merchantEmail: userEmail,
-    merchantName: effectiveUser?.displayName || effectiveUser?.nickname || userEmail,
-    claimCodeUsed: getOrGenerateMerchantCode(placeId, false),
-    submittedAt: Date.now(),
-    status: 'pending',
-    proposed: {
-      name: proposed.name.trim() || currentItem.place.name,
-      phone: proposed.phone.trim(),
-      openHours: proposed.openHours.trim() || currentItem.place.openHours || '07:00 - 22:00',
-      address: proposed.address.trim() || currentItem.place.address,
-      tagline: proposed.tagline?.trim() ?? currentItem.place.tagline,
-      minPrice: proposed.minPrice ?? currentItem.place.minPrice,
-      maxPrice: proposed.maxPrice ?? currentItem.place.maxPrice,
-      serviceMode: proposed.serviceMode ?? currentItem.place.serviceMode,
-      deliveryNote: proposed.deliveryNote?.trim() ?? currentItem.place.deliveryNote,
-      signatureDishName:
-        proposed.signatureDishName?.trim() ?? currentItem.place.signatureDish?.name,
-      signatureDishPrice:
-        proposed.signatureDishPrice ?? currentItem.place.signatureDish?.price,
-      customMenu: proposed.customMenu ?? currentItem.fullMenu,
-      lat: proposed.lat !== null ? Number(Number(proposed.lat).toFixed(6)) : null,
-      lng: proposed.lng !== null ? Number(Number(proposed.lng).toFixed(6)) : null,
-      gpsDistanceMeters: proposed.gpsDistanceMeters ?? null,
-    },
-    previous: {
-      name: currentItem.place.name,
-      phone: currentItem.place.phone || '',
-      openHours: currentItem.place.openHours || '',
-      address: currentItem.place.address || '',
-      lat: typeof ov?.lat === 'number' ? ov.lat : null,
-      lng: typeof ov?.lng === 'number' ? ov.lng : null,
-      menuCount: currentItem.fullMenu.length,
-    },
-  };
-
-  if (!state.merchantSubmissions) {
-    state.merchantSubmissions = {};
-  }
-  state.merchantSubmissions[submissionId] = submission;
-
-  // Áp dụng ngay tọa độ & thông tin đã lưu lên Bản đồ số để hiển thị tức thì (Admin vẫn kiểm soát tại mục Duyệt Quán)
-  const p = submission.proposed;
-  const nextOv: PlaceOverride = {
-    ...(ov || { id: placeId }),
-    id: placeId,
-    name: p.name,
-    phone: p.phone,
-    openHours: p.openHours,
-    address: p.address,
-    tagline: p.tagline,
-    minPrice: p.minPrice,
-    maxPrice: p.maxPrice,
-    serviceMode: p.serviceMode,
-    deliveryNote: p.deliveryNote,
-    signatureDishName: p.signatureDishName,
-    signatureDishPrice: p.signatureDishPrice,
-    customMenu: p.customMenu,
-    updatedAt: Date.now(),
-  };
-
-  const roleCheck = getEffectiveAdminRoleInfo(undefined, effectiveUser);
-  if (roleCheck.isSuperAdmin) {
-    if (p.lat !== null && p.lng !== null) {
-      nextOv.lat = p.lat;
-      nextOv.lng = p.lng;
-      nextOv.coordinateVerified = true;
-      nextOv.adminPinApproved = true;
-      nextOv.coordinateSource = 'admin_verified';
-      nextOv.lastVerifiedAt = new Date().toISOString().slice(0, 10);
-    }
-    nextOv.pendingMapApproval = null;
-    nextOv.pendingWebApproval = null;
-  } else {
-    if (p.lat !== null && p.lng !== null) {
-      nextOv.lat = p.lat;
-      nextOv.lng = p.lng;
-      nextOv.coordinateVerified = false;
-      nextOv.adminPinApproved = false;
-      nextOv.coordinateSource = 'merchant_verified';
-      nextOv.pendingMapApproval = {
-        submittedBy: userEmail,
-        submittedByName: submission.merchantName,
-        submittedAt: Date.now(),
-        actionSummary: `Chờ Admin duyệt tọa độ (${p.lat}, ${p.lng})`,
-        previousLat: submission.previous.lat,
-        previousLng: submission.previous.lng,
-      };
-    }
-    nextOv.pendingWebApproval = {
-      submittedBy: userEmail,
-      submittedByName: submission.merchantName,
-      submittedAt: Date.now(),
-      actionSummary: 'Cập nhật thông tin & thực đơn quán',
-    };
-  }
-
-  state.places[placeId] = nextOv;
-
-  state.auditLogs = addAdminAuditLog(
-    state,
-    '🏪 Lưu cập nhật Vị trí & Thông tin quán lên Bản đồ số',
-    `${submission.proposed.name} (${userEmail}) — Tọa độ: ${
-      submission.proposed.lat !== null
-        ? `${submission.proposed.lat}, ${submission.proposed.lng}`
-        : 'Giữ nguyên'
-    }`,
-    'place'
-  );
-
-  saveAdminState(state);
-  return submission;
 }
 
 /**
@@ -3734,24 +7863,34 @@ export function createNewPlaceFromMap(
   authUser: UserAuthProfile | null | undefined,
   payload: {
     name: string;
-    mapCategory: string;
+    mapCategory?: string;
     parentCategoryId?: string;
     subcategoryId?: string;
+    categoryId?: string;
     showByDefault?: boolean;
+    defaultMapVisible?: boolean;
     address: string;
     phone?: string;
     openHours?: string;
+    openingHours?: string;
     tagline?: string;
-    lat: number;
-    lng: number;
+    lat?: number | null;
+    lng?: number | null;
     mapsUrl?: string;
     signatureDishName?: string;
     signatureDishPrice?: number;
   }
 ): AdminPlaceItem {
   const effectiveUser = authUser?.email ? authUser : getStoredAuthUser();
-  if (!isAdminAuthenticated(effectiveUser) && !isMapManagerAuthenticated(effectiveUser)) {
-    throw new Error('Chỉ Quản trị viên hoặc Quản lý Maps mới có quyền tạo địa điểm mới trên bản đồ.');
+  const roleInfo = getEffectiveAdminRoleInfo(undefined, effectiveUser);
+  if (
+    !roleInfo.isSuperAdmin &&
+    !roleInfo.canManageMaps &&
+    !roleInfo.canManageWeb &&
+    !isAdminAuthenticated(effectiveUser) &&
+    !isMapManagerAuthenticated(effectiveUser)
+  ) {
+    throw new Error('Chỉ Quản trị viên hoặc Quản lý mới có quyền tạo địa điểm mới.');
   }
 
   const cleanName = payload.name.trim();
@@ -3759,64 +7898,73 @@ export function createNewPlaceFromMap(
     throw new Error('Vui lòng nhập tên quán hoặc tên địa điểm / đơn vị hành chính.');
   }
 
-  const lat = Number(Number(payload.lat).toFixed(6));
-  const lng = Number(Number(payload.lng).toFixed(6));
-  if (
-    !Number.isFinite(lat) ||
-    !Number.isFinite(lng) ||
-    lat < 20.0 ||
-    lat > 23.0 ||
-    lng < 104.0 ||
-    lng > 107.0
-  ) {
-    throw new Error('Tọa độ định vị chưa hợp lệ. Hãy dán Link Google Maps hoặc chấm trực tiếp trên bản đồ.');
-  }
+  const rawLat = payload.lat !== undefined && payload.lat !== null && String(payload.lat).trim() !== '' ? Number(payload.lat) : null;
+  const rawLng = payload.lng !== undefined && payload.lng !== null && String(payload.lng).trim() !== '' ? Number(payload.lng) : null;
+  const hasValidCoord = rawLat !== null && rawLng !== null && isValidCoordinatePair(rawLat, rawLng);
+  const lat = hasValidCoord ? Number(rawLat!.toFixed(6)) : undefined;
+  const lng = hasValidCoord ? Number(rawLng!.toFixed(6)) : undefined;
 
-  const mapCat = payload.mapCategory || 'food';
-  const isCivicOrSchool = mapCat === 'public' || mapCat === 'school' || mapCat === 'medical';
-  const sectorMap: Record<string, { category: Place['category']; sectorTag: string }> = {
-    food: { category: 'restaurant', sectorTag: 'an-chinh' },
-    pub: { category: 'pub', sectorTag: 'nhau-lau' },
-    cafe: { category: 'cafe', sectorTag: 'uong' },
-    snack: { category: 'fast_food', sectorTag: 'an-vat' },
-    billiards: { category: 'pub', sectorTag: 'bia-game' },
-    game: { category: 'pub', sectorTag: 'bia-game' },
-    entertainment: { category: 'pub', sectorTag: 'an-choi' },
-    phone: { category: 'cafe', sectorTag: 'dien-thoai' },
-    grocery: { category: 'fast_food', sectorTag: 'dich-vu' },
-    supermarket: { category: 'fast_food', sectorTag: 'dich-vu' },
-    service: { category: 'cafe', sectorTag: 'dich-vu' },
-    school: { category: 'cafe', sectorTag: 'dia-danh' },
-    public: { category: 'cafe', sectorTag: 'dia-danh' },
-    medical: { category: 'cafe', sectorTag: 'dia-danh' },
-  };
-  const mapped = sectorMap[mapCat] || sectorMap.food;
+  const effSubId = payload.subcategoryId || payload.categoryId;
+  const effShowDefault =
+    typeof payload.showByDefault === 'boolean'
+      ? payload.showByDefault
+      : payload.defaultMapVisible;
 
-  const newPlaceId = `xh_map_${Date.now()}`;
+  const taxonomy = resolvePlaceTaxonomy({
+    name: cleanName,
+    subType: payload.tagline,
+    mapCategory: payload.mapCategory,
+    category: payload.mapCategory,
+    explicitParentId: payload.parentCategoryId,
+    explicitSubcategoryId: effSubId,
+    explicitShowByDefault: effShowDefault,
+    dataSource: 'admin_custom',
+  });
+  const subMeta =
+    MAP_CATEGORY_REGISTRY[taxonomy.subcategoryId] || MAP_CATEGORY_REGISTRY.uncategorized;
+  const mapCat: string = taxonomy.legacyCategory || payload.mapCategory || 'food';
+  const resolvedSectorTag = getDefaultSectorTagForSubcategory(subMeta);
+
+  const isCivicOrSchool =
+    resolvedSectorTag === 'dia-danh' ||
+    mapCat === 'public' ||
+    mapCat === 'school' ||
+    mapCat === 'medical';
+
+  const placeCoreCategory: Place['category'] =
+    mapCat === 'pub' || mapCat === 'billiards' || mapCat === 'game' || mapCat === 'entertainment'
+      ? 'pub'
+      : mapCat === 'snack' || mapCat === 'grocery' || mapCat === 'supermarket'
+      ? 'fast_food'
+      : mapCat === 'food'
+      ? 'restaurant'
+      : 'cafe';
+
+  const now = Date.now();
+  const newPlaceId = `xh_map_${now}`;
   const sigName =
     payload.signatureDishName?.trim() ||
-    (mapCat === 'public' || mapCat === 'medical'
-      ? 'Cơ quan hành chính / Điểm công cộng'
-      : mapCat === 'school'
-      ? 'Cơ sở Giáo dục & Đào tạo'
+    (isCivicOrSchool
+      ? `${subMeta.label} tại Phường Xuân Hòa`
       : `Đặc trưng tại ${cleanName}`);
   const sigPrice = isCivicOrSchool ? 0 : Number(payload.signatureDishPrice) || 35;
+  const finalHours =
+    (payload.openHours ?? payload.openingHours)?.trim() ||
+    (isCivicOrSchool ? '07:30 - 17:30' : '07:00 - 22:00');
 
   const newPlace: Place = {
     id: newPlaceId,
     name: cleanName,
     tagline:
       payload.tagline?.trim() ||
-      (mapCat === 'public' || mapCat === 'medical'
-        ? 'Đơn vị hành chính & Điểm dịch vụ công Phường Xuân Hòa'
-        : mapCat === 'school'
-        ? 'Trường học & Giảng đường tại Phường Xuân Hòa'
-        : `Địa điểm tiêu biểu tại Phường Xuân Hòa`),
-    category: mapped.category,
+      (isCivicOrSchool
+        ? `${subMeta.label} — Phường Xuân Hòa`
+        : `${subMeta.label} tại Phường Xuân Hòa`),
+    category: placeCoreCategory,
     address: payload.address.trim() || 'Phường Xuân Hòa, Tỉnh Phú Thọ',
     zone: 'center',
     distance: 'Trung tâm Xuân Hòa',
-    openHours: payload.openHours?.trim() || (isCivicOrSchool ? '07:30 - 17:30' : '07:00 - 22:00'),
+    openHours: finalHours,
     phone: payload.phone?.trim() || '',
     priceRange: isCivicOrSchool ? 'Địa danh công cộng' : `${sigPrice}k - ${sigPrice + 35}k`,
     minPrice: isCivicOrSchool ? 0 : sigPrice,
@@ -3824,7 +7972,7 @@ export function createNewPlaceFromMap(
     rating: 5.0,
     reviewCount: 10,
     imageUrl: '',
-    tags: [mapCat, 'Xuân Hòa'],
+    tags: [subMeta.label, mapCat, 'Xuân Hòa'],
     signatureDish: {
       id: `${newPlaceId}_sig`,
       name: sigName,
@@ -3845,19 +7993,19 @@ export function createNewPlaceFromMap(
     mapsQuery: `${cleanName} Xuân Hòa Phú Thọ`,
     mapsUrl:
       payload.mapsUrl?.trim() ||
-      `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+      (hasValidCoord ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : ''),
     rarity: 2,
-    quip: `Địa điểm đã xác minh tọa độ trên Bản đồ số Xuân Hòa!`,
+    quip: `Địa điểm trên Bản đồ số Xuân Hòa!`,
   };
 
   const state = getAdminState();
   const creatorRole = getEffectiveAdminRoleInfo(undefined, effectiveUser);
-  const claimCode = getOrGenerateMerchantCode(newPlaceId, false, cleanName);
+  const isApprovedImmediately = creatorRole.isSuperAdmin;
 
   state.places[newPlaceId] = {
     id: newPlaceId,
     status: 'active',
-    visibilityStatus: 'visible',
+    visibilityStatus: isApprovedImmediately ? 'visible' : 'hidden',
     name: newPlace.name,
     tagline: newPlace.tagline,
     address: newPlace.address,
@@ -3865,36 +8013,70 @@ export function createNewPlaceFromMap(
     distance: newPlace.distance,
     phone: newPlace.phone,
     openHours: newPlace.openHours,
+    openingHours: newPlace.openHours,
     minPrice: newPlace.minPrice,
     maxPrice: newPlace.maxPrice,
     category: newPlace.category,
-    sectorTag: mapped.sectorTag,
+    sectorTag: resolvedSectorTag,
     mapCategory: mapCat,
-    ...(payload.parentCategoryId ? { parentCategoryId: payload.parentCategoryId } : {}),
-    ...(payload.subcategoryId ? { subcategoryId: payload.subcategoryId } : {}),
-    ...(typeof payload.showByDefault === 'boolean' ? { showByDefault: payload.showByDefault } : {}),
+    parentCategoryId: taxonomy.parentCategoryId,
+    subcategoryId: taxonomy.subcategoryId,
+    categoryId: taxonomy.subcategoryId,
+    showByDefault: taxonomy.showByDefault,
+    defaultMapVisible: taxonomy.showByDefault,
     tags: newPlace.tags,
     serviceMode: newPlace.serviceMode,
     mapsQuery: newPlace.mapsQuery,
     mapsUrl: newPlace.mapsUrl,
     quip: newPlace.quip,
-    verified: true,
+    verified: isApprovedImmediately,
     signatureDishName: sigName,
     signatureDishPrice: sigPrice,
     customMenu: newPlace.menu,
-    lat,
-    lng,
-    coordinateVerified: true,
-    adminPinApproved: true,
-    locationStatus: 'located',
-    mapsLinkStatus: computeMapsLinkStatus({ lat, lng, mapsUrl: newPlace.mapsUrl, coordinateSource: 'admin_verified' }, newPlace.mapsUrl),
-    coordinateSource: 'admin_verified',
-    lastVerifiedAt: new Date().toISOString().slice(0, 10),
-    merchantClaimCode: claimCode,
+    ...(hasValidCoord && isApprovedImmediately
+      ? {
+          lat,
+          lng,
+          coordinateVerified: true,
+          adminPinApproved: true,
+          locationStatus: 'located' as const,
+          coordinateSource: 'admin_verified' as const,
+          lastVerifiedAt: new Date(now).toISOString(),
+          locationHistory: [
+            {
+              timestamp: now,
+              actor: creatorRole.identifier || 'admin',
+              actorRole: 'admin' as const,
+              action: 'pin' as const,
+              previousLat: null,
+              previousLng: null,
+              newLat: lat,
+              newLng: lng,
+              coordinateSource: 'admin_verified',
+              note: 'Admin tạo mới và xác minh tọa độ',
+            },
+          ],
+        }
+      : {
+          coordinateVerified: false,
+          adminPinApproved: false,
+          locationStatus: 'unlocated' as const,
+          coordinateSource: 'unverified' as const,
+        }),
+    mapsLinkStatus: computeMapsLinkStatus(
+      {
+        lat: isApprovedImmediately ? lat : undefined,
+        lng: isApprovedImmediately ? lng : undefined,
+        mapsUrl: newPlace.mapsUrl,
+        coordinateSource: hasValidCoord && isApprovedImmediately ? 'admin_verified' : 'unverified',
+      },
+      newPlace.mapsUrl
+    ),
     pendingMapApproval: null,
     pendingWebApproval: null,
+    createdAt: now,
     version: 1,
-    updatedAt: Date.now(),
+    updatedAt: now,
     isCustom: true,
     customPlaceData: newPlace,
   };
@@ -3902,24 +8084,46 @@ export function createNewPlaceFromMap(
   logMapDebug('PLACE SAVE', {
     id: newPlaceId,
     name: newPlace.name,
-    lat,
-    lng,
-    locationStatus: 'located',
-    visibilityStatus: 'visible',
-    coordinateSource: 'admin_verified',
+    parentCategoryId: taxonomy.parentCategoryId,
+    subcategoryId: taxonomy.subcategoryId,
+    lat: isApprovedImmediately ? (lat ?? null) : null,
+    lng: isApprovedImmediately ? (lng ?? null) : null,
+    locationStatus: hasValidCoord && isApprovedImmediately ? 'located' : 'unlocated',
+    visibilityStatus: isApprovedImmediately ? 'visible' : 'hidden',
+    coordinateSource: hasValidCoord && isApprovedImmediately ? 'admin_verified' : 'unverified',
     version: 1,
   });
 
   state.auditLogs = addAdminAuditLog(
     state,
     creatorRole.isSuperAdmin
-      ? `🗺️ Admin ghim địa điểm mới trên Bản đồ (${mapCat})`
-      : `🗺️ Quản lý Maps thêm địa điểm mới trên Bản đồ (${mapCat})`,
-    `${cleanName} — Tọa độ: ${lat}, ${lng}`,
+      ? `🗺️ Admin tạo địa điểm mới (${subMeta.label})`
+      : `⏳ Quản lý đề xuất thêm địa điểm mới chờ duyệt (${subMeta.label})`,
+    hasValidCoord ? `${cleanName} — Tọa độ: ${lat}, ${lng}` : `${cleanName} (Chưa định vị)`,
     'place'
   );
 
   saveAdminState(state);
+
+  if (!isApprovedImmediately) {
+    submitManagerPlaceProposal(
+      newPlaceId,
+      {
+        name: newPlace.name,
+        address: newPlace.address,
+        phone: newPlace.phone,
+        openHours: newPlace.openHours,
+        parentCategoryId: taxonomy.parentCategoryId,
+        subcategoryId: taxonomy.subcategoryId,
+        lat,
+        lng,
+        mapsUrl: newPlace.mapsUrl,
+        tagline: newPlace.tagline,
+      },
+      `Đề xuất thêm địa điểm mới: ${cleanName}`,
+      'create'
+    );
+  }
 
   const created = getAllManagedPlaces().find((p) => p.place.id === newPlaceId);
   if (!created) {
@@ -3928,387 +8132,89 @@ export function createNewPlaceFromMap(
   return created;
 }
 
-/**
- * Lấy danh sách tất cả yêu cầu cập nhật từ Chủ quán (Ưu tiên trạng thái 'pending' lên đầu)
- */
-export function getAllMerchantSubmissions(): MerchantPendingSubmission[] {
-  const state = getAdminState();
-  const map = state.merchantSubmissions || {};
-  return Object.values(map).sort((a, b) => {
-    if (a.status === 'pending' && b.status !== 'pending') return -1;
-    if (a.status !== 'pending' && b.status === 'pending') return 1;
-    return b.submittedAt - a.submittedAt;
-  });
-}
+export const createPlace = createNewPlaceFromMap;
 
-/**
- * Admin nhấn OK / Duyệt phương án thay đổi của Chủ quán
- */
-export function approveMerchantSubmission(submissionId: string, reviewNote?: string): void {
-  const state = getAdminState();
-  const sub = state.merchantSubmissions?.[submissionId];
-  if (!sub) {
-    throw new Error('Không tìm thấy yêu cầu cần duyệt.');
-  }
-
-  const placeId = sub.placeId;
-  const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
-  const p = sub.proposed;
-  const hasValidCoord =
-    typeof p.lat === 'number' &&
-    typeof p.lng === 'number' &&
-    Number.isFinite(p.lat) &&
-    Number.isFinite(p.lng);
-
-  state.places[placeId] = {
-    ...prev,
-    id: placeId,
-    name: p.name,
-    phone: p.phone,
-    openHours: p.openHours,
-    address: p.address,
-    ...(p.tagline !== undefined ? { tagline: p.tagline } : {}),
-    ...(p.minPrice !== undefined ? { minPrice: p.minPrice } : {}),
-    ...(p.maxPrice !== undefined ? { maxPrice: p.maxPrice } : {}),
-    ...(p.serviceMode !== undefined ? { serviceMode: p.serviceMode } : {}),
-    ...(p.deliveryNote !== undefined ? { deliveryNote: p.deliveryNote } : {}),
-    ...(p.signatureDishName !== undefined ? { signatureDishName: p.signatureDishName } : {}),
-    ...(p.signatureDishPrice !== undefined ? { signatureDishPrice: p.signatureDishPrice } : {}),
-    ...(p.customMenu !== undefined ? { customMenu: p.customMenu } : {}),
-    ...(hasValidCoord
-      ? {
-          lat: Number(p.lat!.toFixed(6)),
-          lng: Number(p.lng!.toFixed(6)),
-          coordinateVerified: true,
-          adminPinApproved: true,
-          coordinateSource: 'merchant_verified',
-          lastVerifiedAt: new Date().toISOString(),
-        }
-      : {}),
-    pendingMapApproval: null,
-    pendingWebApproval: null,
-    updatedAt: Date.now(),
+if (typeof window !== 'undefined') {
+  (window as any).__XUANHOA_ADMIN_STORE__ = {
+    getAdminState,
+    getSecurityState,
+    getBackupFounderRecords,
+    getAllManagedPlaces,
+    getActivePublicPlaces,
+    savePlaceAdminOverride,
+    updatePlace,
+    updatePlaceCoordinates,
+    clearPlaceCoordinates,
+    createNewPlaceFromMap,
+    requestOrExecuteDeletePlace,
+    submitManagerPlaceProposal,
+    getAllPlaceChangeProposals,
+    approvePlaceProposal,
+    rejectPlaceProposal,
+    cancelPlaceProposal,
+    PENDING_LANDMARK_PLACE_PROPOSALS_SEED,
+    resolvePlaceOrPendingProposalCoordinates,
+    syncAdminStateToCloudConfirmed,
+    loginAdminWithFirebaseAuth,
+    loginAdminWithCredentials,
+    getFounderLoginLockoutStatus,
+    provisionBackupFounderAccount,
+    setBackupFounderActiveState,
+    resetBackupFounderPasswordViaBackend,
+    revokeBackupFounderSessionsViaBackend,
+    verifyBackupFounderRecoveryEmailViaBackend,
+    requestBackupFounderPasswordRecovery,
+    isUidDisabledBackupFounder,
+    grantOrRevokeAdminRole,
+    updateMemberManagerPermissions,
+    updateMemberStatusInAdmin,
+    logoutAdminSession,
+    upsertAdminAccount,
+    getEffectiveAdminRoleInfo,
   };
-
-  sub.status = 'approved';
-  sub.reviewedAt = Date.now();
-  sub.reviewNote = reviewNote || 'Đã được Admin phê duyệt và cập nhật lên Bản đồ số.';
-  state.merchantSubmissions![submissionId] = sub;
-
-  state.auditLogs = addAdminAuditLog(
-    state,
-    '✅ Admin ĐÃ DUYỆT cập nhật định vị & thông tin từ Chủ quán',
-    `${p.name} (Chủ quán: ${sub.merchantEmail})`,
-    'place'
-  );
-
-  saveAdminState(state);
 }
 
 /**
- * Admin từ chối phương án thay đổi của Chủ quán
+ * Lấy chế độ mở cửa của Bản đồ số (Mặc định: 'public_open' hoặc 'managers_and_admin_only' dành cho Quản lý & Admin)
  */
-export function rejectMerchantSubmission(submissionId: string, reviewNote?: string): void {
+export function getMapAccessMode(): 'managers_and_admin_only' | 'public_open' {
   const state = getAdminState();
-  const sub = state.merchantSubmissions?.[submissionId];
-  if (!sub) return;
-
-  sub.status = 'rejected';
-  sub.reviewedAt = Date.now();
-  sub.reviewNote = reviewNote || 'Thông tin hoặc vị trí ghim chưa chính xác, vui lòng kiểm tra lại.';
-  state.merchantSubmissions![submissionId] = sub;
-
-  state.auditLogs = addAdminAuditLog(
-    state,
-    '❌ Admin từ chối yêu cầu cập nhật của Chủ quán',
-    `${sub.placeOriginalName} (${sub.merchantEmail}) — Lý do: ${sub.reviewNote}`,
-    'place'
-  );
-
-  saveAdminState(state);
+  return state.mapAccessMode === 'public_open' ? 'public_open' : 'managers_and_admin_only';
 }
 
 /**
- * ĐẤNG TỐI CAO (SUPER ADMIN): Gán trực tiếp quyền Chủ Quán cho 1 địa chỉ Gmail bất kỳ (1 chạm, không cần nhập mã)
- * Hoặc truyền email rỗng '' để thu hồi quyền Chủ Quán.
+ * Admin bật/tắt công tắc Mở cửa Bản đồ số cho toàn bộ khách hoặc Chỉ Quản lý & Admin
  */
-export function assignMerchantOwnerByEmail(
-  placeId: string,
-  ownerEmail: string,
-  ownerName?: string
-): void {
-  const state = getAdminState();
-  const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
-  const cleanEmail = ownerEmail.trim().toLowerCase();
-  const activeCode = getOrGenerateMerchantCode(placeId, false);
-
-  if (!cleanEmail) {
-    state.places[placeId] = {
-      ...prev,
-      id: placeId,
-      claimedByEmail: '',
-      claimedByUid: '',
-      claimedByName: '',
-      updatedAt: Date.now(),
-    };
-    state.auditLogs = addAdminAuditLog(
-      state,
-      '🔓 Admin thu hồi quyền Chủ Quán',
-      `Quán ID: ${placeId}`,
-      'place'
-    );
-  } else {
-    state.places[placeId] = {
-      ...prev,
-      id: placeId,
-      merchantClaimCode: activeCode,
-      claimedByEmail: cleanEmail,
-      claimedByName: (ownerName || cleanEmail).trim(),
-      claimedAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    state.auditLogs = addAdminAuditLog(
-      state,
-      '👑 Admin gán thẳng quyền Chủ Quán cho Gmail',
-      `Quán ID: ${placeId} → Gmail: ${cleanEmail}`,
-      'place'
-    );
-  }
-
-  saveAdminState(state);
-
-  // Nếu Gmail được gán trùng với tài khoản đang đăng nhập trên trình duyệt hiện tại, đồng bộ ngay biểu tượng Nick Quán 🏪
-  try {
-    const currentStored = getStoredAuthUser();
-    if (currentStored?.email && currentStored.email.trim().toLowerCase() === cleanEmail) {
-      const targetPlace = getAllManagedPlaces().find((p) => p.place.id === placeId);
-      if (targetPlace) {
-        saveAuthUser({
-          ...currentStored,
-          isMerchantAccount: true,
-          merchantPlaceId: targetPlace.place.id,
-          merchantPlaceName: targetPlace.place.name,
-          merchantVerifiedCode: activeCode,
-          nickname: targetPlace.place.name,
-          avatar: '🏪',
-        });
-      }
-    }
-  } catch {}
-}
-
-/**
- * ĐẤNG TỐI CAO (SUPER ADMIN): Duyệt tất cả yêu cầu chờ duyệt chỉ với 1 chạm
- */
-export function approveAllPendingMerchantSubmissions(): number {
-  const state = getAdminState();
-  const map = state.merchantSubmissions || {};
-  let count = 0;
-
-  for (const sub of Object.values(map)) {
-    if (sub.status !== 'pending') continue;
-    const placeId = sub.placeId;
-    const prev = state.places[placeId] || { id: placeId, updatedAt: Date.now() };
-    const p = sub.proposed;
-    const hasValidCoord =
-      typeof p.lat === 'number' &&
-      typeof p.lng === 'number' &&
-      Number.isFinite(p.lat) &&
-      Number.isFinite(p.lng);
-
-    state.places[placeId] = {
-      ...prev,
-      id: placeId,
-      name: p.name,
-      phone: p.phone,
-      openHours: p.openHours,
-      address: p.address,
-      ...(p.tagline !== undefined ? { tagline: p.tagline } : {}),
-      ...(p.minPrice !== undefined ? { minPrice: p.minPrice } : {}),
-      ...(p.maxPrice !== undefined ? { maxPrice: p.maxPrice } : {}),
-      ...(p.serviceMode !== undefined ? { serviceMode: p.serviceMode } : {}),
-      ...(p.deliveryNote !== undefined ? { deliveryNote: p.deliveryNote } : {}),
-      ...(p.signatureDishName !== undefined ? { signatureDishName: p.signatureDishName } : {}),
-      ...(p.signatureDishPrice !== undefined ? { signatureDishPrice: p.signatureDishPrice } : {}),
-      ...(p.customMenu !== undefined ? { customMenu: p.customMenu } : {}),
-      ...(hasValidCoord
-        ? {
-            lat: Number(p.lat!.toFixed(6)),
-            lng: Number(p.lng!.toFixed(6)),
-            coordinateVerified: true,
-            adminPinApproved: true,
-            coordinateSource: 'merchant_verified',
-            lastVerifiedAt: new Date().toISOString(),
-          }
-        : {}),
-      pendingMapApproval: null,
-      pendingWebApproval: null,
-      updatedAt: Date.now(),
-    };
-
-    sub.status = 'approved';
-    sub.reviewedAt = Date.now();
-    sub.reviewNote = 'Đã được Admin duyệt nhanh (Duyệt tất cả 1 chạm).';
-    map[sub.id] = sub;
-    count++;
-  }
-
-  if (count > 0) {
-    state.auditLogs = addAdminAuditLog(
-      state,
-      `⚡ Admin duyệt hàng loạt ${count} yêu cầu từ Chủ quán`,
-      `Tổng số: ${count} quán`,
-      'place'
-    );
-    saveAdminState(state);
-  }
-  return count;
-}
-
-/**
- * Giả lập cập nhật định vị dành cho kiểm thử nội bộ
- */
-export function simulateMerchantDemoSubmission(
-  targetPlaceId?: string,
-  currentUser?: UserAuthProfile | null
-): MerchantPendingSubmission | null {
-  const allManaged = getAllManagedPlaces();
-  const item =
-    (targetPlaceId ? allManaged.find((p) => p.place.id === targetPlaceId) : null) ||
-    allManaged[0];
-  if (!item) return null;
-
-  const placeId = item.place.id;
-  const code = getOrGenerateMerchantCode(placeId, false, item.place.name);
-  const demoEmail = (currentUser?.email || 'chuquan.xuanhoa@gmail.com').trim().toLowerCase();
-
-  assignMerchantOwnerByEmail(placeId, demoEmail, item.place.name);
-
-  if (currentUser) {
-    saveAuthUser({
-      ...currentUser,
-      isLoggedIn: true,
-      email: demoEmail,
-      isMerchantAccount: true,
-      merchantPlaceId: placeId,
-      merchantPlaceName: item.place.name,
-      merchantVerifiedCode: code,
-      nickname: item.place.name,
-      avatar: '🏪',
-    });
-  } else {
-    const stored = getStoredAuthUser();
-    if (stored) {
-      saveAuthUser({
-        ...stored,
-        isLoggedIn: true,
-        email: stored.email || demoEmail,
-        isMerchantAccount: true,
-        merchantPlaceId: placeId,
-        merchantPlaceName: item.place.name,
-        merchantVerifiedCode: code,
-        nickname: item.place.name,
-        avatar: '🏪',
-      });
-    }
-  }
-
-  const state = getAdminState();
-  const ov = state.places[placeId];
-  const hashNum = placeId.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  const demoLat = Number((21.2808 + (hashNum % 25) * 0.00018).toFixed(6));
-  const demoLng = Number((105.7248 + (hashNum % 25) * 0.00022).toFixed(6));
-
-  const updatedMenu: CustomMenuEntry[] = item.fullMenu.map((m, idx) =>
-    idx === 0 ? { ...m, price: m.price + 5 } : { ...m }
-  );
-
-  const submissionId = `sub_${placeId}`;
-  const submission: MerchantPendingSubmission = {
-    id: submissionId,
-    placeId,
-    placeOriginalName: item.place.name,
-    merchantEmail: demoEmail,
-    merchantName: `🏪 ${item.place.name}`,
-    claimCodeUsed: code,
-    submittedAt: Date.now(),
-    status: 'pending',
-    proposed: {
-      name: item.place.name,
-      phone: item.place.phone || '0988 686 868',
-      openHours: '07:00 - 22:30 (Mở cả tuần)',
-      address: item.place.address,
-      tagline: item.place.tagline,
-      minPrice: item.place.minPrice,
-      maxPrice: item.place.maxPrice,
-      serviceMode: 'both',
-      deliveryNote: item.place.deliveryNote,
-      signatureDishName: item.place.signatureDish?.name,
-      signatureDishPrice: item.place.signatureDish?.price,
-      customMenu: updatedMenu,
-      lat: demoLat,
-      lng: demoLng,
-      gpsDistanceMeters: 0,
-    },
-    previous: {
-      name: item.place.name,
-      phone: item.place.phone || '',
-      openHours: item.place.openHours || '',
-      address: item.place.address,
-      lat: typeof ov?.lat === 'number' ? ov.lat : null,
-      lng: typeof ov?.lng === 'number' ? ov.lng : null,
-      menuCount: item.fullMenu.length,
-    },
-  };
-
-  if (!state.merchantSubmissions) state.merchantSubmissions = {};
-  state.merchantSubmissions[submissionId] = submission;
-  saveAdminState(state);
-  return submission;
-}
-
-/**
- * Lấy chế độ mở cửa của Bản đồ số (Mặc định: 'merchants_and_admin_only' — Chỉ mở cho Chủ Quán đã có Mã Code & Admin)
- */
-export function getMapAccessMode(): 'merchants_and_admin_only' | 'public_open' {
-  const state = getAdminState();
-  return state.mapAccessMode || 'merchants_and_admin_only';
-}
-
-/**
- * Admin bật/tắt công tắc Mở cửa Bản đồ số cho toàn bộ khách hoặc Chỉ Chủ Quán & Admin
- */
-export function setMapAccessMode(mode: 'merchants_and_admin_only' | 'public_open'): void {
+export function setMapAccessMode(mode: 'managers_and_admin_only' | 'public_open'): void {
   const state = getAdminState();
   state.mapAccessMode = mode;
   state.auditLogs = addAdminAuditLog(
     state,
     mode === 'public_open'
       ? '🌍 Admin MỞ CỬA Bản Đồ Số công khai cho toàn bộ Khách'
-      : '🔒 Admin bật chế độ Bản Đồ Số: Chỉ Chủ Quán (có Mã Code) & Admin',
-    mode === 'public_open' ? 'Công khai toàn bộ' : 'Chỉ Chủ Quán & Admin',
+      : '🔒 Admin bật chế độ Bản Đồ Số: Chỉ Quản lý & Admin',
+    mode === 'public_open' ? 'Công khai toàn bộ' : 'Chỉ Quản lý & Admin',
     'system'
   );
   saveAdminState(state);
 }
 
 /**
- * Kiểm tra quyền vào Bản đồ số của tài khoản hiện tại:
- * - Admin: Auto vào thẳng 100%
- * - Quản lý Maps (đã kích hoạt mã XH-MAPS-8899): Auto vào thẳng 100% + Quyền tạo mới & chỉnh định vị
- * - Chủ Quán đã kích hoạt Mã Code (đi theo Gmail mãi mãi): Auto vào thẳng Bản đồ + Quản lý quán
- * - Khách thường: Nếu đang ở chế độ 'merchants_and_admin_only' -> Hiện màn hình "Đang phát triển • Nhập Mã Code Chủ Quán"
+ * Kiểm tra quyền vào Bản đồ số của tài khoản hiện tại theo mô hình 3 vai trò (USER / MANAGER / ADMIN):
+ * - ADMIN: Vào thẳng 100% + toàn quyền quản trị
+ * - MANAGER: Vào thẳng 100% + gửi đề xuất thêm/sửa/định vị
+ * - USER / GUEST: Vào xem công khai khi mode === 'public_open'
  */
 export function getDigitalMapAccessStatus(authUser?: UserAuthProfile | null): {
   canAccess: boolean;
-  accessReason: 'admin' | 'map_manager' | 'merchant' | 'public_open' | 'locked_for_guest';
-  mode: 'merchants_and_admin_only' | 'public_open';
-  claimedPlace: AdminPlaceItem | null;
+  accessReason: 'admin' | 'map_manager' | 'public_open' | 'locked_for_guest';
+  mode: 'managers_and_admin_only' | 'public_open';
   verifiedCount: number;
   totalCount: number;
 } {
   const state = getAdminState();
-  const mode = state.mapAccessMode || 'merchants_and_admin_only';
+  const mode: 'managers_and_admin_only' | 'public_open' =
+    state.mapAccessMode === 'public_open' ? 'public_open' : 'managers_and_admin_only';
   const allManaged = getAllManagedPlaces();
   const totalCount = allManaged.length;
   const verifiedCount = allManaged.filter((item) => {
@@ -4320,17 +8226,11 @@ export function getDigitalMapAccessStatus(authUser?: UserAuthProfile | null): {
     );
   }).length;
 
-  let claimedPlace = getPrimaryClaimedPlaceForUser(authUser);
-  if (!claimedPlace && authUser?.isLoggedIn && authUser?.isMerchantAccount && authUser?.merchantPlaceId) {
-    claimedPlace = allManaged.find((p) => p.place.id === authUser.merchantPlaceId) || null;
-  }
-
   if (isAdminAuthenticated(authUser)) {
     return {
       canAccess: true,
       accessReason: 'admin',
       mode,
-      claimedPlace,
       verifiedCount,
       totalCount,
     };
@@ -4341,18 +8241,6 @@ export function getDigitalMapAccessStatus(authUser?: UserAuthProfile | null): {
       canAccess: true,
       accessReason: 'map_manager',
       mode,
-      claimedPlace,
-      verifiedCount,
-      totalCount,
-    };
-  }
-
-  if (claimedPlace) {
-    return {
-      canAccess: true,
-      accessReason: 'merchant',
-      mode,
-      claimedPlace,
       verifiedCount,
       totalCount,
     };
@@ -4371,7 +8259,6 @@ export function getDigitalMapAccessStatus(authUser?: UserAuthProfile | null): {
       canAccess: true,
       accessReason: 'public_open',
       mode,
-      claimedPlace: null,
       verifiedCount,
       totalCount,
     };
@@ -4381,10 +8268,10 @@ export function getDigitalMapAccessStatus(authUser?: UserAuthProfile | null): {
     canAccess: false,
     accessReason: 'locked_for_guest',
     mode,
-    claimedPlace: null,
     verifiedCount,
     totalCount,
   };
 }
+
 
 

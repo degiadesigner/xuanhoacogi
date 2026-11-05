@@ -1,0 +1,105 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "xuanhoa_security": {
+      ".read": false,
+      ".write": false,
+      "admins": {
+        ".read": "auth != null && (auth.token.admin === true || root.child('xuanhoa_security/admins/' + auth.uid).val() === true)",
+        ".write": false
+      },
+      "managers": {
+        ".read": "auth != null && (auth.token.admin === true || root.child('xuanhoa_security/admins/' + auth.uid).val() === true || auth.token.manager === true || root.child('xuanhoa_security/managers/' + auth.uid).val() === true)",
+        ".write": false
+      }
+    },
+
+    "xuanhoa_public": {
+      ".read": false,
+      ".write": false
+    },
+
+    "xuanhoa_admin": {
+      ".read": false,
+      ".write": false,
+
+      "coordinate_history": {
+        ".read": "auth != null && (auth.token.admin === true || root.child('xuanhoa_security/admins/' + auth.uid).val() === true)",
+        ".write": false
+      },
+
+      "members_registry": {
+        ".read": "auth != null && (auth.token.admin === true || root.child('xuanhoa_security/admins/' + auth.uid).val() === true)",
+        ".write": false,
+        "$memberKey": {
+          ".read": "auth != null && (auth.token.admin === true || root.child('xuanhoa_security/admins/' + auth.uid).val() === true || data.child('uid').val() === auth.uid)",
+          ".write": false
+        }
+      },
+
+      "global_state": {
+        ".read": false,
+        ".write": false,
+
+        "places": {
+          ".read": true,
+          ".write": false
+        },
+        "dishes": {
+          ".read": true,
+          ".write": false
+        },
+        "sectorTags": {
+          ".read": true,
+          ".write": false
+        },
+        "fontScale": {
+          ".read": true,
+          ".write": false
+        },
+        "mapAccessMode": {
+          ".read": true,
+          ".write": false
+        },
+        "updatedAt": {
+          ".read": true,
+          ".write": false
+        },
+        "landmarkBindings": {
+          ".read": true,
+          ".write": false
+        },
+        "placeProposals": {
+          ".read": "auth != null && (auth.token.admin === true || root.child('xuanhoa_security/admins/' + auth.uid).val() === true)",
+          ".write": false
+        },
+        "merchantSubmissions": {
+          ".read": "auth != null && (auth.token.admin === true || root.child('xuanhoa_security/admins/' + auth.uid).val() === true)",
+          ".write": false
+        },
+        "auditLogs": {
+          ".read": "auth != null && (auth.token.admin === true || root.child('xuanhoa_security/admins/' + auth.uid).val() === true)",
+          ".write": false
+        },
+        "members": {
+          ".read": false,
+          ".write": false
+        },
+        "adminAccounts": {
+          ".read": false,
+          ".write": false
+        },
+        "adminEmails": {
+          ".read": false,
+          ".write": false
+        },
+        "adminPin": {
+          ".read": false,
+          ".write": false
+        }
+      }
+    }
+  }
+}

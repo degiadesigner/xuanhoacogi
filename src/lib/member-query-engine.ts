@@ -1,7 +1,19 @@
 import {
   ManagedMember,
   MemberStatus,
+  SystemRoleTier,
+  PRIMARY_FOUNDER_EMAIL,
+  PRIMARY_FOUNDER_DISPLAY_NAME,
   getAdminState,
+  getSecurityState,
+  isVerifiedFirebaseAuthUid,
+  isUidPrimaryFounder,
+  isUidActiveBackupFounder,
+  isUidDisabledBackupFounder,
+  isUidOperationalAdmin,
+  isUidOperationalManager,
+  isUidLocked,
+  grantOrRevokeAdminRole,
   saveAdminState,
   updateMemberManagerPermissions,
   updateMemberStatusInAdmin,
@@ -10,10 +22,11 @@ import {
   addAdminAuditLog,
 } from './admin-store';
 
-export type MemberRoleFilter = 'all' | 'admin' | 'web' | 'maps' | 'both' | 'member';
+export type MemberRoleFilter = 'all' | 'founder' | 'admin' | 'web' | 'maps' | 'both' | 'member';
 export type MemberStatusFilter = 'all' | 'active' | 'muted' | 'banned';
 export type MemberSortOption = 'newest' | 'oldest' | 'name_asc' | 'name_desc' | 'last_active';
 export type MemberPageSize = 25 | 50 | 100;
+export type UidVerificationClass = 'verified_28char' | 'google_sub_21digit' | 'synthetic_uid';
 
 export interface IndexedMemberRecord {
   uid: string;
@@ -27,8 +40,14 @@ export interface IndexedMemberRecord {
   residentType: string;
   status: MemberStatus;
   effectiveStatus: 'active' | 'muted' | 'banned';
+  roleTier: SystemRoleTier;
+  isPrimaryFounder: boolean;
+  isBackupFounder: boolean;
   isFounder: boolean;
   isAdmin: boolean;
+  isUidVerified: boolean;
+  uidVerificationClass: UidVerificationClass;
+  hasLegacyPendingRole: boolean;
   canManageWeb: boolean;
   canManageMaps: boolean;
   isWebManager: boolean;
@@ -49,6 +68,7 @@ export interface IndexedMemberRecord {
 
 export interface UnifiedMemberCounts {
   all: number;
+  founder: number;
   admin: number;
   web: number;
   maps: number;
@@ -61,9 +81,11 @@ export interface UnifiedMemberCounts {
 }
 
 export interface OperatorGroupsSummary {
+  founders: IndexedMemberRecord[];
   admins: IndexedMemberRecord[];
   webManagers: IndexedMemberRecord[];
   mapsManagers: IndexedMemberRecord[];
+  founderTotal: number;
   adminTotal: number;
   webTotal: number;
   mapsTotal: number;
@@ -92,17 +114,20 @@ export interface MemberQueryResult {
   queryTimeMs: number;
 }
 
-const FOUNDER_EMAILS = new Set([
-  'truongtuanminh.91@gmail.com',
-  'minhtt@xuanhoacogi.com',
+const PRIMARY_FOUNDER_EMAILS = new Set([
+  PRIMARY_FOUNDER_EMAIL,
 ]);
 
 const DEFAULT_SYSTEM_ADMIN_EMAILS = new Set([
-  'truongtuanminh.91@gmail.com',
-  'marcel.vietnam@gmail.com',
-  'admin@xuanhoacogi.com',
-  'minhtt@xuanhoacogi.com',
+  PRIMARY_FOUNDER_EMAIL,
 ]);
+
+export function classifyMemberUid(uid?: string | null): UidVerificationClass {
+  const clean = String(uid || '').trim();
+  if (isVerifiedFirebaseAuthUid(clean)) return 'verified_28char';
+  if (/^[0-9]{20,22}$/.test(clean)) return 'google_sub_21digit';
+  return 'synthetic_uid';
+}
 
 export function stripVnAccents(str?: string | null): string {
   if (!str) return '';
@@ -148,16 +173,28 @@ export function formatShortDateVi(timestamp?: number | null): string {
   return `${dd}/${mm}/${yy}`;
 }
 
-export function isFounderMember(memberOrEmail?: { email?: string; nickname?: string } | string | null): boolean {
+export function isFounderMember(
+  memberOrEmail?: { email?: string; nickname?: string; uid?: string; roleTier?: SystemRoleTier } | string | null
+): boolean {
   if (!memberOrEmail) return false;
+  if (typeof memberOrEmail === 'object') {
+    if (
+      memberOrEmail.roleTier === 'primary_founder' ||
+      memberOrEmail.roleTier === 'backup_founder'
+    ) {
+      return true;
+    }
+    if (
+      memberOrEmail.uid &&
+      (isUidPrimaryFounder(memberOrEmail.uid) || isUidActiveBackupFounder(memberOrEmail.uid))
+    ) {
+      return true;
+    }
+  }
   const email = (typeof memberOrEmail === 'string' ? memberOrEmail : memberOrEmail.email || '')
     .trim()
     .toLowerCase();
-  if (FOUNDER_EMAILS.has(email)) return true;
-  if (typeof memberOrEmail === 'object' && memberOrEmail.nickname) {
-    const nick = memberOrEmail.nickname.trim().toLowerCase();
-    if (nick === 'minhtt' || nick === 'minhtt (founder)') return true;
-  }
+  if (PRIMARY_FOUNDER_EMAILS.has(email)) return true;
   return false;
 }
 
@@ -426,6 +463,7 @@ let cachedByEmail = new Map<string, IndexedMemberRecord>();
 let cachedByUid = new Map<string, IndexedMemberRecord>();
 let cachedUnifiedCounts: UnifiedMemberCounts = {
   all: 0,
+  founder: 0,
   admin: 0,
   web: 0,
   maps: 0,
@@ -437,9 +475,11 @@ let cachedUnifiedCounts: UnifiedMemberCounts = {
   statusBanned: 0,
 };
 let cachedOperators: OperatorGroupsSummary = {
+  founders: [],
   admins: [],
   webManagers: [],
   mapsManagers: [],
+  founderTotal: 0,
   adminTotal: 0,
   webTotal: 0,
   mapsTotal: 0,
@@ -461,12 +501,8 @@ function buildEffectiveMembersSource(): {
   stamp: string;
 } {
   const state = getAdminState();
+  const sec = getSecurityState();
   const adminEmailsSet = new Set<string>(DEFAULT_SYSTEM_ADMIN_EMAILS);
-  for (const em of state.adminEmails || []) {
-    if (em && em.includes('@')) {
-      adminEmailsSet.add(em.trim().toLowerCase());
-    }
-  }
 
   if (simulatedMembersOverlay) {
     return {
@@ -479,53 +515,79 @@ function buildEffectiveMembersSource(): {
   const baseMembers = state.members || {};
   const merged: Record<string, ManagedMember> = { ...baseMembers };
 
-  // Đảm bảo Founder MinhTT và Admin hệ thống luôn có bản ghi hợp nhất trong danh mục Quản trị
-  const defaultFounderEmail = 'truongtuanminh.91@gmail.com';
-  if (!merged[defaultFounderEmail]) {
-    merged[defaultFounderEmail] = {
-      uid: `uid_${defaultFounderEmail.replace(/[^a-z0-9]/g, '_')}`,
-      email: defaultFounderEmail,
-      displayName: 'MinhTT',
-      nickname: 'MinhTT',
-      avatar: '🛡️',
+  // Đảm bảo Primary Founder (Dê Già Designer — marcel.vietnam@gmail.com) luôn có mặt trong danh mục Quản trị
+  const primaryFounderUid = Object.keys(sec.primary_founder || {})[0] || '';
+  if (!merged[PRIMARY_FOUNDER_EMAIL]) {
+    merged[PRIMARY_FOUNDER_EMAIL] = {
+      uid: primaryFounderUid || '4ouY5sN8r3P6wQvX2kLm9jBcTd92',
+      email: PRIMARY_FOUNDER_EMAIL,
+      displayName: PRIMARY_FOUNDER_DISPLAY_NAME,
+      nickname: PRIMARY_FOUNDER_DISPLAY_NAME,
+      avatar: '👑',
       avatarId: 'm_thin',
       gender: 'male',
       residentType: 'local',
       status: 'admin',
-      canManageWeb: true,
-      canManageMaps: true,
-      spinsCount: 100,
-      level: 10,
-      reviewsCount: 10,
-      createdAt: 1710000000000,
-      lastActiveAt: Date.now(),
-    };
-  }
-
-  const secondAdminEmail = 'marcel.vietnam@gmail.com';
-  if (!merged[secondAdminEmail]) {
-    merged[secondAdminEmail] = {
-      uid: `uid_${secondAdminEmail.replace(/[^a-z0-9]/g, '_')}`,
-      email: secondAdminEmail,
-      displayName: 'Admin Xuân Hòa',
-      nickname: 'Admin Xuân Hòa',
-      avatar: '🛡️',
-      avatarId: 'm_thin',
-      gender: 'male',
-      residentType: 'local',
-      status: 'admin',
+      roleTier: 'primary_founder',
       canManageWeb: true,
       canManageMaps: true,
       spinsCount: 50,
-      level: 8,
+      level: 10,
       reviewsCount: 5,
       createdAt: 1712000000000,
-      lastActiveAt: Date.now() - 3600_000,
+      lastActiveAt: Date.now(),
+    };
+  } else if (primaryFounderUid && !isVerifiedFirebaseAuthUid(merged[PRIMARY_FOUNDER_EMAIL].uid)) {
+    merged[PRIMARY_FOUNDER_EMAIL] = {
+      ...merged[PRIMARY_FOUNDER_EMAIL],
+      uid: primaryFounderUid,
+      roleTier: 'primary_founder',
+      status: 'admin',
+      canManageWeb: true,
+      canManageMaps: true,
     };
   }
 
+  // Đồng bộ các bản ghi Backup Founder đang active từ xuanhoa_security/backup_founder vào danh mục
+  for (const [bfUid, bfVal] of Object.entries(sec.backup_founder || {})) {
+    if (!isVerifiedFirebaseAuthUid(bfUid)) continue;
+    const bfObj = typeof bfVal === 'object' && bfVal ? bfVal : null;
+    const bfEmail = (
+      bfObj?.recoveryEmail ||
+      `${bfObj?.username || 'backup_founder'}@xuanhoacogi.vn`
+    )
+      .trim()
+      .toLowerCase();
+    const isAlreadyPresent = Object.values(merged).some(
+      m => m && (m.uid === bfUid || m.email?.toLowerCase() === bfEmail)
+    );
+    if (!isAlreadyPresent && (bfVal === true || bfObj?.active === true)) {
+      merged[bfEmail] = {
+        uid: bfUid,
+        email: bfEmail,
+        displayName: bfObj?.displayName || `Backup Founder (@${bfObj?.username || 'backup'})`,
+        nickname: bfObj?.displayName || `Backup Founder (@${bfObj?.username || 'backup'})`,
+        avatar: '🛡️',
+        avatarId: 'founder-backup',
+        gender: 'other',
+        residentType: 'local',
+        status: 'admin',
+        roleTier: 'backup_founder',
+        canManageWeb: true,
+        canManageMaps: true,
+        createdAt: bfObj?.createdAt || Date.now(),
+        lastActiveAt: bfObj?.updatedAt || Date.now(),
+      };
+    }
+  }
+
+  const secStamp = `${Object.keys(sec.primary_founder || {}).join(',')}|${Object.keys(
+    sec.backup_founder || {}
+  ).join(',')}|${Object.keys(sec.admins || {}).join(',')}|${Object.keys(
+    sec.managers || {}
+  ).join(',')}|${Object.keys(sec.locked_uids || {}).join(',')}`;
   const memberCount = Object.keys(merged).length;
-  const stamp = `real_${state.updatedAt || 0}_${memberCount}_${simulatedDatasetVersion}`;
+  const stamp = `real_${state.updatedAt || 0}_${memberCount}_${secStamp}_${simulatedDatasetVersion}`;
   return {
     sourceMap: merged,
     adminEmailsSet,
@@ -539,10 +601,12 @@ function ensureMemberIndex(): void {
     return;
   }
 
+  const isSimulationMode = Boolean(simulatedMembersOverlay);
   const list: IndexedMemberRecord[] = [];
   const byEmail = new Map<string, IndexedMemberRecord>();
   const byUid = new Map<string, IndexedMemberRecord>();
 
+  const founders: IndexedMemberRecord[] = [];
   const admins: IndexedMemberRecord[] = [];
   const webManagers: IndexedMemberRecord[] = [];
   const mapsManagers: IndexedMemberRecord[] = [];
@@ -560,39 +624,85 @@ function ensureMemberIndex(): void {
 
     const uid = m.uid || `uid_${email.replace(/[^a-z0-9]/g, '_')}`;
     const displayName = (m.nickname || m.displayName || email.split('@')[0]).trim();
-    const isFounder = isFounderMember({ email, nickname: displayName });
-    const isAdmin = isFounder || m.status === 'admin' || adminEmailsSet.has(email);
+    const uidVerificationClass = classifyMemberUid(uid);
+    const isUidVerified = isSimulationMode ? true : uidVerificationClass === 'verified_28char';
+    const isDisabledBf = !isSimulationMode && isUidDisabledBackupFounder(uid);
+    const isLocked = !isSimulationMode && (isUidLocked(uid) || isDisabledBf);
 
-    // Nếu là Admin tối cao -> thuộc nhóm ADMIN.
-    // Nhóm QUẢN LÝ WEB và QUẢN LÝ MAPS dành cho các thành viên được cấp quyền vận hành Web / Maps
-    // (Một user có cả Web + Maps chỉ có 1 bản ghi duy nhất nhưng xuất hiện ở cả 2 cột QUẢN LÝ WEB và QUẢN LÝ MAPS)
-    const canManageWeb = isAdmin ? true : Boolean(m.canManageWeb);
-    const canManageMaps = isAdmin ? true : Boolean(m.canManageMaps);
-    const isWebManager = !isAdmin && canManageWeb;
-    const isMapsManager = !isAdmin && canManageMaps;
+    const isPrimaryFounder =
+      !isSimulationMode
+        ? (isUidVerified && isUidPrimaryFounder(uid)) ||
+          email === PRIMARY_FOUNDER_EMAIL
+        : email === PRIMARY_FOUNDER_EMAIL;
+    const isBackupFounder =
+      !isPrimaryFounder &&
+      !isLocked &&
+      !isDisabledBf &&
+      ((isUidVerified && isUidActiveBackupFounder(uid)) ||
+        (!isUidVerified && m.roleTier === 'backup_founder'));
+    const isFounder = isPrimaryFounder || isBackupFounder;
+
+    // QUY TẮC FOUNDER V2: Không tự động cấp quyền Admin/Manager cho UID cũ chưa xác minh (21-digit Google sub hoặc uid_*)
+    const wantsLegacyRole = Boolean(
+      m.status === 'admin' || m.roleTier === 'admin' || m.canManageWeb || m.canManageMaps
+    );
+    const hasLegacyPendingRole = !isPrimaryFounder && !isUidVerified && wantsLegacyRole;
+
+    const isOperationalAdmin =
+      isFounder ||
+      (!isLocked &&
+        !isDisabledBf &&
+        isUidVerified &&
+        (isUidOperationalAdmin(uid) ||
+          m.status === 'admin' ||
+          m.roleTier === 'admin' ||
+          adminEmailsSet.has(email)));
+
+    const canManageWeb = isOperationalAdmin
+      ? true
+      : !isLocked && !isDisabledBf && isUidVerified && Boolean(m.canManageWeb || isUidOperationalManager(uid));
+    const canManageMaps = isOperationalAdmin
+      ? true
+      : !isLocked && !isDisabledBf && isUidVerified && Boolean(m.canManageMaps || isUidOperationalManager(uid));
+
+    const isWebManager = !isOperationalAdmin && canManageWeb;
+    const isMapsManager = !isOperationalAdmin && canManageMaps;
     const isBothManager = isWebManager && isMapsManager;
-    const isRegularMember = !isAdmin && !isWebManager && !isMapsManager;
+    const isRegularMember = !isOperationalAdmin && !isWebManager && !isMapsManager;
 
-    const effectiveStatus: 'active' | 'muted' | 'banned' =
-      isAdmin
-        ? 'active'
-        : m.status === 'banned'
-        ? 'banned'
-        : m.status === 'muted'
-        ? 'muted'
-        : 'active';
+    const roleTier: SystemRoleTier = isPrimaryFounder
+      ? 'primary_founder'
+      : isBackupFounder
+      ? 'backup_founder'
+      : isOperationalAdmin
+      ? 'admin'
+      : isWebManager || isMapsManager
+      ? 'manager'
+      : 'user';
+
+    const effectiveStatus: 'active' | 'muted' | 'banned' = isPrimaryFounder
+      ? 'active'
+      : isLocked || m.status === 'banned'
+      ? 'banned'
+      : isOperationalAdmin
+      ? 'active'
+      : m.status === 'muted'
+      ? 'muted'
+      : 'active';
 
     if (effectiveStatus === 'active') statusActive++;
     else if (effectiveStatus === 'muted') statusMuted++;
     else if (effectiveStatus === 'banned') statusBanned++;
 
     const roleTokens: string[] = [];
-    if (isFounder) roleTokens.push('founder', 'sang lap');
-    if (isAdmin) roleTokens.push('admin', 'quan tri', 'superadmin');
-    if (isWebManager) roleTokens.push('ql web', 'quan ly web', 'web', 'quan ly quan');
-    if (isMapsManager) roleTokens.push('ql maps', 'quan ly maps', 'maps', 'ban do');
+    if (isPrimaryFounder) roleTokens.push('primary founder', 'founder chinh', 'founder', 'sang lap');
+    if (isBackupFounder) roleTokens.push('backup founder', 'founder du phong', 'founder');
+    if (isOperationalAdmin) roleTokens.push('admin', 'quan tri', 'superadmin');
+    if (isWebManager) roleTokens.push('ql web', 'quan ly web', 'web', 'manager');
+    if (isMapsManager) roleTokens.push('ql maps', 'quan ly maps', 'maps', 'ban do', 'manager');
     if (isBothManager) roleTokens.push('web maps', 'kiem nhiem');
-    if (isRegularMember) roleTokens.push('thanh vien', 'member');
+    if (hasLegacyPendingRole) roleTokens.push('cho xac minh uid', 'unverified uid');
+    if (isRegularMember) roleTokens.push('thanh vien', 'member', 'user');
 
     const normName = stripVnAccents(displayName);
     const searchHaystack = `${displayName.toLowerCase()} ${normName} ${email} ${uid.toLowerCase()} ${
@@ -606,13 +716,19 @@ function ensureMemberIndex(): void {
       nickname: m.nickname || displayName,
       shortEmail: formatShortEmail(email, 16),
       initials: computeAvatarInitials(displayName, email),
-      avatar: m.avatar || '🐭',
+      avatar: isPrimaryFounder ? '👑' : isBackupFounder ? '🛡️' : m.avatar || '🐭',
       phone: m.phone || '',
       residentType: m.residentType || 'student_sp2',
-      status: isAdmin ? 'admin' : m.status || 'active',
+      status: isOperationalAdmin ? 'admin' : effectiveStatus,
       effectiveStatus,
+      roleTier,
+      isPrimaryFounder,
+      isBackupFounder,
       isFounder,
-      isAdmin,
+      isAdmin: isOperationalAdmin,
+      isUidVerified,
+      uidVerificationClass,
+      hasLegacyPendingRole,
       canManageWeb,
       canManageMaps,
       isWebManager,
@@ -633,7 +749,10 @@ function ensureMemberIndex(): void {
     byEmail.set(email, record);
     byUid.set(uid, record);
 
-    if (isAdmin) {
+    if (isFounder) {
+      founders.push(record);
+    }
+    if (isOperationalAdmin) {
       admins.push(record);
     } else {
       if (isWebManager) webManagers.push(record);
@@ -643,22 +762,30 @@ function ensureMemberIndex(): void {
     }
   }
 
-  // Sắp xếp Founder lên đầu cột ADMIN, tiếp theo theo tên
-  admins.sort((a, b) => {
-    if (a.isFounder !== b.isFounder) return a.isFounder ? -1 : 1;
+  // Sắp xếp Primary Founder -> Backup Founder -> Admin theo tên
+  const sortFounderPriority = (a: IndexedMemberRecord, b: IndexedMemberRecord) => {
+    if (a.isPrimaryFounder !== b.isPrimaryFounder) return a.isPrimaryFounder ? -1 : 1;
+    if (a.isBackupFounder !== b.isBackupFounder) return a.isBackupFounder ? -1 : 1;
     return a.displayName.localeCompare(b.displayName, 'vi');
-  });
+  };
+  founders.sort(sortFounderPriority);
+  admins.sort(sortFounderPriority);
   webManagers.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
   mapsManagers.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
 
-  // Mặc định sắp xếp danh sách tổng theo thời gian tham gia mới nhất
-  list.sort((a, b) => b.createdAt - a.createdAt);
+  // Mặc định sắp xếp danh sách tổng: Primary Founder -> Backup Founder -> Admin -> thời gian tham gia
+  list.sort((a, b) => {
+    if (a.isPrimaryFounder !== b.isPrimaryFounder) return a.isPrimaryFounder ? -1 : 1;
+    if (a.isBackupFounder !== b.isBackupFounder) return a.isBackupFounder ? -1 : 1;
+    return b.createdAt - a.createdAt;
+  });
 
   cachedIndexedAll = list;
   cachedByEmail = byEmail;
   cachedByUid = byUid;
   cachedUnifiedCounts = {
     all: list.length,
+    founder: founders.length,
     admin: admins.length,
     web: webManagers.length,
     maps: mapsManagers.length,
@@ -670,9 +797,11 @@ function ensureMemberIndex(): void {
     statusBanned,
   };
   cachedOperators = {
+    founders,
     admins,
     webManagers,
     mapsManagers,
+    founderTotal: founders.length,
     adminTotal: admins.length,
     webTotal: webManagers.length,
     mapsTotal: mapsManagers.length,
@@ -711,6 +840,9 @@ export function queryMembersPage(params: MemberQueryParams): MemberQueryResult {
   // 1. Chọn tập nguồn theo roleFilter từ index đã phân loại sẵn
   let roleFiltered: IndexedMemberRecord[];
   switch (roleFilter) {
+    case 'founder':
+      roleFiltered = cachedOperators.founders;
+      break;
     case 'admin':
       roleFiltered = cachedOperators.admins;
       break;
@@ -806,7 +938,7 @@ export function queryMembersPage(params: MemberQueryParams): MemberQueryResult {
 // ============================================================================
 export function updateMemberPermissionsUnified(
   emailKey: string,
-  patch: { canManageWeb: boolean; canManageMaps: boolean }
+  patch: { canManageWeb: boolean; canManageMaps: boolean; makeAdmin?: boolean }
 ): { ok: boolean; message: string; updated?: IndexedMemberRecord | null } {
   const cleanEmail = emailKey.trim().toLowerCase();
   const existing = getIndexedMemberByKey(cleanEmail);
@@ -817,35 +949,66 @@ export function updateMemberPermissionsUnified(
   if (existing.isFounder) {
     return {
       ok: false,
-      message: 'Tài khoản Founder (Sáng lập) có toàn quyền mặc định, không thể hạ quyền.',
+      message: 'Tài khoản Founder (Primary / Backup Founder) có toàn quyền mặc định, không thể hạ quyền qua mục Quản lý.',
     };
   }
 
   if (simulatedMembersOverlay && simulatedMembersOverlay[cleanEmail]) {
+    const nextAdmin = patch.makeAdmin !== undefined ? patch.makeAdmin : simulatedMembersOverlay[cleanEmail].status === 'admin';
     simulatedMembersOverlay[cleanEmail] = {
       ...simulatedMembersOverlay[cleanEmail],
-      canManageWeb: patch.canManageWeb,
-      canManageMaps: patch.canManageMaps,
+      status: nextAdmin ? 'admin' : 'active',
+      roleTier: nextAdmin ? 'admin' : patch.canManageWeb || patch.canManageMaps ? 'manager' : 'user',
+      canManageWeb: nextAdmin ? true : patch.canManageWeb,
+      canManageMaps: nextAdmin ? true : patch.canManageMaps,
       lastActiveAt: Date.now(),
     };
     simulatedDatasetVersion += 1;
     invalidateMemberIndexCache();
   } else {
-    updateMemberManagerPermissions(cleanEmail, {
-      canManageWeb: patch.canManageWeb,
-      canManageMaps: patch.canManageMaps,
-    });
-    invalidateMemberIndexCache();
+    try {
+      if (patch.makeAdmin !== undefined) {
+        if (patch.makeAdmin) {
+          grantOrRevokeAdminRole(cleanEmail, true);
+        } else {
+          if (existing.isAdmin) {
+            grantOrRevokeAdminRole(cleanEmail, false);
+          }
+          updateMemberManagerPermissions(cleanEmail, {
+            canManageWeb: patch.canManageWeb,
+            canManageMaps: patch.canManageMaps,
+          });
+        }
+      } else {
+        updateMemberManagerPermissions(cleanEmail, {
+          canManageWeb: patch.canManageWeb,
+          canManageMaps: patch.canManageMaps,
+        });
+      }
+      invalidateMemberIndexCache();
+    } catch (err: any) {
+      return {
+        ok: false,
+        message: err?.message || 'Không thể cập nhật phân quyền thành viên.',
+      };
+    }
   }
 
   const updated = getIndexedMemberByKey(cleanEmail);
+  if (patch.makeAdmin) {
+    return {
+      ok: true,
+      message: `👑 Đã cấp quyền ADMIN cho ${existing.displayName}`,
+      updated,
+    };
+  }
   const roleParts: string[] = [];
   if (patch.canManageWeb) roleParts.push('Quản lý Web');
   if (patch.canManageMaps) roleParts.push('Quản lý Maps');
   const msg =
     roleParts.length > 0
       ? `Đã cấp quyền ${roleParts.join(' + ')} cho ${existing.displayName}`
-      : `Đã gỡ quyền Quản lý của ${existing.displayName}`;
+      : `Đã thu hồi quyền Admin / Quản lý của ${existing.displayName} (về User)`;
 
   return { ok: true, message: msg, updated };
 }
@@ -859,10 +1022,16 @@ export function updateMemberStatusUnified(
   if (!existing) {
     return { ok: false, message: 'Không tìm thấy thành viên.' };
   }
-  if (existing.isFounder || existing.isAdmin) {
+  if (existing.isPrimaryFounder) {
     return {
       ok: false,
-      message: 'Không thể tắt tiếng hoặc khóa tài khoản Admin / Founder.',
+      message: 'Tuyệt đối không thể tắt tiếng hoặc khóa tài khoản Primary Founder (Dê Già Designer).',
+    };
+  }
+  if (existing.isBackupFounder) {
+    return {
+      ok: false,
+      message: 'Để tạm ngưng hoặc thu hồi phiên của Backup Founder, vui lòng sử dụng bảng Quản lý Backup Founder.',
     };
   }
 
@@ -875,8 +1044,15 @@ export function updateMemberStatusUnified(
     simulatedDatasetVersion += 1;
     invalidateMemberIndexCache();
   } else {
-    updateMemberStatusInAdmin(cleanEmail, nextStatus);
-    invalidateMemberIndexCache();
+    try {
+      updateMemberStatusInAdmin(cleanEmail, nextStatus);
+      invalidateMemberIndexCache();
+    } catch (err: any) {
+      return {
+        ok: false,
+        message: err?.message || 'Không thể cập nhật trạng thái tài khoản.',
+      };
+    }
   }
 
   const statusText =
@@ -894,10 +1070,10 @@ export function deleteMemberUnified(emailKey: string): { ok: boolean; message: s
   if (!existing) {
     return { ok: false, message: 'Không tìm thấy thành viên.' };
   }
-  if (existing.isFounder || existing.isAdmin) {
+  if (existing.isPrimaryFounder || existing.isBackupFounder) {
     return {
       ok: false,
-      message: 'Không thể xóa tài khoản Admin / Founder.',
+      message: 'Không thể xóa tài khoản Founder.',
     };
   }
 
@@ -906,8 +1082,15 @@ export function deleteMemberUnified(emailKey: string): { ok: boolean; message: s
     simulatedDatasetVersion += 1;
     invalidateMemberIndexCache();
   } else {
-    deleteMemberAndPurgeReviews(cleanEmail);
-    invalidateMemberIndexCache();
+    try {
+      deleteMemberAndPurgeReviews(cleanEmail);
+      invalidateMemberIndexCache();
+    } catch (err: any) {
+      return {
+        ok: false,
+        message: err?.message || 'Không thể xóa tài khoản.',
+      };
+    }
   }
 
   return { ok: true, message: `Đã xóa thành viên ${existing.displayName}` };

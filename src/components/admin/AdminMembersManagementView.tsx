@@ -5,6 +5,8 @@ import {
   Plus,
   MoreHorizontal,
   Shield,
+  ShieldAlert,
+  ShieldCheck,
   Check,
   X,
   KeyRound,
@@ -19,6 +21,8 @@ import {
   Eye,
   Edit3,
   Users,
+  History,
+  Lock,
 } from 'lucide-react';
 import {
   IndexedMemberRecord,
@@ -37,7 +41,26 @@ import {
   getSimulatedMembersCount,
   setSimulatedMembersDataset,
 } from '@/lib/member-query-engine';
-import type { AdminAccount } from '@/lib/admin-store';
+import {
+  getAdminState,
+  getBackupFounderRecords,
+  getEffectiveAdminRoleInfo,
+  provisionBackupFounderAccount,
+  setBackupFounderActiveState,
+  resetBackupFounderPasswordViaBackend,
+  revokeBackupFounderSessionsViaBackend,
+  verifyBackupFounderRecoveryEmailViaBackend,
+  type AdminAccount,
+} from '@/lib/admin-store';
+import {
+  getActivePolicyMetadata,
+  publishPolicyVersionViaBackend,
+  processDataRightsRequestViaBackend,
+  DATA_RIGHTS_REQUEST_TYPE_LABELS,
+  type DataRightsRequestRecord,
+  type DataRightsRequestStatus,
+} from '@/lib/legal-compliance';
+import { getFirebaseAuth } from '@/lib/firebase';
 
 export interface AdminMembersThemeTokens {
   bgMain: string;
@@ -70,12 +93,37 @@ interface AdminMembersManagementViewProps {
 // ROLE CHIP COMPONENT (22-24px height, compact, minimal)
 // ============================================================================
 const RoleBadgeChip: React.FC<{
-  type: 'founder' | 'admin' | 'web' | 'maps';
+  type:
+    | 'primary_founder'
+    | 'backup_founder'
+    | 'founder'
+    | 'admin'
+    | 'web'
+    | 'maps'
+    | 'unverified_uid';
 }> = React.memo(function RoleBadgeChip({ type }) {
   const styles: Record<
-    'founder' | 'admin' | 'web' | 'maps',
+    | 'primary_founder'
+    | 'backup_founder'
+    | 'founder'
+    | 'admin'
+    | 'web'
+    | 'maps'
+    | 'unverified_uid',
     { label: string; bg: string; color: string; border: string }
   > = {
+    primary_founder: {
+      label: '👑 Primary Founder',
+      bg: '#FEF3C7',
+      color: '#92400E',
+      border: '#F59E0B',
+    },
+    backup_founder: {
+      label: '🛡️ Backup Founder',
+      bg: '#EDE9FE',
+      color: '#5B21B6',
+      border: '#C4B5FD',
+    },
     founder: {
       label: 'Founder',
       bg: '#FEF3C7',
@@ -99,6 +147,12 @@ const RoleBadgeChip: React.FC<{
       bg: '#D1FAE5',
       color: '#065F46',
       border: '#6EE7B7',
+    },
+    unverified_uid: {
+      label: 'Chờ xác minh UID',
+      bg: '#F3F4F6',
+      color: '#6B7280',
+      border: '#D1D5DB',
     },
   };
   const st = styles[type];
@@ -305,12 +359,14 @@ const MemberTableRow = React.memo<MemberTableRowProps>(
               cursor: 'pointer',
             }}
           >
-            {hasAnyRole ? (
+            {hasAnyRole || member.hasLegacyPendingRole ? (
               <>
-                {member.isFounder && <RoleBadgeChip type="founder" />}
-                {member.isAdmin && <RoleBadgeChip type="admin" />}
+                {member.isPrimaryFounder && <RoleBadgeChip type="primary_founder" />}
+                {member.isBackupFounder && <RoleBadgeChip type="backup_founder" />}
+                {!member.isFounder && member.isAdmin && <RoleBadgeChip type="admin" />}
                 {!member.isAdmin && member.isWebManager && <RoleBadgeChip type="web" />}
                 {!member.isAdmin && member.isMapsManager && <RoleBadgeChip type="maps" />}
+                {member.hasLegacyPendingRole && <RoleBadgeChip type="unverified_uid" />}
               </>
             ) : (
               <span
@@ -400,10 +456,10 @@ const MemberTableRow = React.memo<MemberTableRowProps>(
                 style={menuItemBtnStyle(theme)}
               >
                 <Shield size={13} />
-                <span>Cấp quyền</span>
+                <span>Cấp / Thu hồi quyền</span>
               </button>
 
-              {!member.isFounder && !member.isAdmin && (
+              {!member.isFounder && (
                 <>
                   {member.effectiveStatus === 'muted' ? (
                     <button
@@ -531,8 +587,10 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
   // Row menu & Modals
   const [openMenuUid, setOpenMenuUid] = useState<string | null>(null);
   const [permissionModalTarget, setPermissionModalTarget] = useState<IndexedMemberRecord | null>(null);
+  const [permAdminChecked, setPermAdminChecked] = useState(false);
   const [permWebChecked, setPermWebChecked] = useState(false);
   const [permMapsChecked, setPermMapsChecked] = useState(false);
+  const [permConfirmIntent, setPermConfirmIntent] = useState(false);
 
   const [detailModalTarget, setDetailModalTarget] = useState<IndexedMemberRecord | null>(null);
   const [operatorDrawerGroup, setOperatorDrawerGroup] = useState<'admin' | 'web' | 'maps' | null>(null);
@@ -544,12 +602,81 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
   const [newMemberWeb, setNewMemberWeb] = useState(false);
   const [newMemberMaps, setNewMemberMaps] = useState(false);
 
+  // Backup Founder One-Time Setup & Founder Security Panel (mặc định mở sẵn trên Founder Dashboard)
+  const [showBackupFounderPanel, setShowBackupFounderPanel] = useState(true);
+  const [isProvisionBackupModalOpen, setIsProvisionBackupModalOpen] = useState(false);
+  const [bfUsername, setBfUsername] = useState('');
+  const [bfPassword, setBfPassword] = useState('');
+  const [bfDisplayName, setBfDisplayName] = useState('Founder Dự Phòng');
+  const [bfRecoveryEmail, setBfRecoveryEmail] = useState('');
+  const [bfConfirmIntent, setBfConfirmIntent] = useState(false);
+  const [bfSubmitting, setBfSubmitting] = useState(false);
+  const [copiedBfUid, setCopiedBfUid] = useState<string | null>(null);
+
+  // Reset Password Modal cho Backup Founder (Primary Founder đặt mật khẩu mới không cần mật khẩu cũ)
+  const [resetPwdTargetUid, setResetPwdTargetUid] = useState<string | null>(null);
+  const [resetPwdTargetUsername, setResetPwdTargetUsername] = useState<string>('');
+  const [newBfPassword, setNewBfPassword] = useState('');
+  const [confirmNewBfPassword, setConfirmNewBfPassword] = useState('');
+  const [resetPwdRecentAuthConfirmed, setResetPwdRecentAuthConfirmed] = useState(true);
+  const [resetPwdSubmitting, setResetPwdSubmitting] = useState(false);
+
+  // Verify / Update Recovery Email Modal
+  const [verifyEmailTargetUid, setVerifyEmailTargetUid] = useState<string | null>(null);
+  const [verifyEmailInput, setVerifyEmailInput] = useState('');
+  const [verifyEmailSubmitting, setVerifyEmailSubmitting] = useState(false);
+
+  const [showRoleAuditLogsPanel, setShowRoleAuditLogsPanel] = useState(false);
+
+  // Legal Compliance & Data Rights Management Panel (Founder / Admin)
+  const [showLegalCompliancePanel, setShowLegalCompliancePanel] = useState(true);
+  const [activePolicyMeta, setActivePolicyMeta] = useState(() => getActivePolicyMetadata());
+  const [newPolicyVersionInput, setNewPolicyVersionInput] = useState('');
+  const [newPolicyTitleInput, setNewPolicyTitleInput] = useState('');
+  const [newPolicyChangesInput, setNewPolicyChangesInput] = useState('');
+  const [newPolicyRequiresReconsent, setNewPolicyRequiresReconsent] = useState(false);
+  const [publishingPolicy, setPublishingPolicy] = useState(false);
+  const [dataRightsQueue, setDataRightsQueue] = useState<DataRightsRequestRecord[]>([]);
+  const [consentStatsSummary, setConsentStatsSummary] = useState<{
+    totalConsentedUsers: number;
+    currentVersionCount: number;
+    optionalTasteGranted: number;
+    optionalAnalyticsGranted: number;
+    optionalMarketingGranted: number;
+    withdrawnCount: number;
+  }>({
+    totalConsentedUsers: 0,
+    currentVersionCount: 0,
+    optionalTasteGranted: 0,
+    optionalAnalyticsGranted: 0,
+    optionalMarketingGranted: 0,
+    withdrawnCount: 0,
+  });
+  const [resolvingRequestId, setResolvingRequestId] = useState<string | null>(null);
+  const [resolutionStatusInput, setResolutionStatusInput] =
+    useState<DataRightsRequestStatus>('completed');
+  const [resolutionNoteInput, setResolutionNoteInput] = useState('');
+
   // Optional blocks: Mới tham gia (compact) & Nick/Pass Accounts drawer
   const [showRecentBlock, setShowRecentBlock] = useState(false);
   const [showNickAccountsPanel, setShowNickAccountsPanel] = useState(false);
   const [simTick, setSimTick] = useState(0);
 
   const tableSectionRef = useRef<HTMLDivElement | null>(null);
+  const currentRoleInfo = useMemo(() => getEffectiveAdminRoleInfo(), [refreshTick, simTick]);
+  const backupFounderRecords = useMemo(() => getBackupFounderRecords(), [refreshTick, simTick]);
+  const roleAuditLogs = useMemo(() => {
+    const state = getAdminState();
+    return (state.auditLogs || [])
+      .filter(
+        l =>
+          l.type === 'user' ||
+          l.eventCategory === 'founder_security' ||
+          l.eventCategory === 'role_management' ||
+          l.eventCategory === 'role_change'
+      )
+      .slice(0, 15);
+  }, [refreshTick, simTick]);
 
   // Debounce search 240ms (nằm trong khoảng 200-300ms theo yêu cầu)
   useEffect(() => {
@@ -585,6 +712,41 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
     window.addEventListener('xuanhoa-member-sim-change', handleSimChange);
     return () => window.removeEventListener('xuanhoa-member-sim-change', handleSimChange);
   }, []);
+
+  // Tải thống kê Consent & Hàng đợi Yêu cầu Quyền Dữ liệu Cá nhân từ Backend
+  const fetchLegalComplianceSummary = useCallback(async () => {
+    setActivePolicyMeta(getActivePolicyMetadata());
+    try {
+      const auth = getFirebaseAuth();
+      const idToken = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
+      const res = await fetch('/api/founder-security/data-rights', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        body: JSON.stringify({ action: 'list' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.ok) {
+          if (Array.isArray(data.requests)) {
+            setDataRightsQueue(data.requests);
+          }
+          if (data.consentStats) {
+            setConsentStatsSummary(data.consentStats);
+          }
+          if (data.activePolicy) {
+            setActivePolicyMeta(data.activePolicy);
+          }
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchLegalComplianceSummary();
+  }, [fetchLegalComplianceSummary, refreshTick, simTick]);
 
   // Query dữ liệu trang hiện tại từ Member Query Engine
   const queryResult = useMemo(() => {
@@ -653,15 +815,28 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
   const handleOpenPermissionModal = useCallback((member: IndexedMemberRecord) => {
     setOpenMenuUid(null);
     setPermissionModalTarget(member);
-    setPermWebChecked(Boolean(member.rawMember.canManageWeb));
-    setPermMapsChecked(Boolean(member.rawMember.canManageMaps));
+    setPermAdminChecked(Boolean(member.isAdmin && !member.isFounder));
+    setPermWebChecked(Boolean(member.rawMember.canManageWeb || member.isAdmin));
+    setPermMapsChecked(Boolean(member.rawMember.canManageMaps || member.isAdmin));
+    setPermConfirmIntent(false);
   }, []);
 
   const handleSavePermissionModal = () => {
     if (!permissionModalTarget) return;
+    if (!currentRoleInfo.canManageRoles && !getSimulatedMembersCount()) {
+      onShowToast('Chỉ Primary Founder hoặc Backup Founder mới có quyền cấp/thu hồi Admin & Quản lý.', 'warn');
+      return;
+    }
+    const isElevatingToAdmin =
+      permAdminChecked && !Boolean(permissionModalTarget.isAdmin && !permissionModalTarget.isFounder);
+    if (isElevatingToAdmin && !permConfirmIntent && !getSimulatedMembersCount()) {
+      onShowToast('Vui lòng tích chọn xác nhận nâng quyền lên ADMIN trước khi lưu.', 'warn');
+      return;
+    }
     const res = updateMemberPermissionsUnified(permissionModalTarget.email, {
-      canManageWeb: permWebChecked,
-      canManageMaps: permMapsChecked,
+      makeAdmin: permAdminChecked,
+      canManageWeb: permAdminChecked ? true : permWebChecked,
+      canManageMaps: permAdminChecked ? true : permMapsChecked,
     });
     if (!res.ok) {
       onShowToast(res.message, 'warn');
@@ -671,6 +846,151 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
     setSimTick(t => t + 1);
     onRefresh();
     onShowToast(res.message, 'approve');
+  };
+
+  const handleCopyBackupUsername = async (uid: string, username: string) => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(username);
+      }
+      setCopiedBfUid(uid);
+      onShowToast(`Đã sao chép tên đăng nhập dự phòng: ${username}`, 'approve');
+      window.setTimeout(() => {
+        setCopiedBfUid(prev => (prev === uid ? null : prev));
+      }, 2200);
+    } catch {
+      onShowToast(`Tên đăng nhập dự phòng: ${username}`, 'approve');
+    }
+  };
+
+  const handleOpenResetBackupPasswordModal = (uid: string, username: string) => {
+    setResetPwdTargetUid(uid);
+    setResetPwdTargetUsername(username);
+    setNewBfPassword('');
+    setConfirmNewBfPassword('');
+    setResetPwdRecentAuthConfirmed(true);
+  };
+
+  const handleSubmitResetBackupPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPwdTargetUid) return;
+    setResetPwdSubmitting(true);
+    try {
+      const res = await resetBackupFounderPasswordViaBackend({
+        backupUid: resetPwdTargetUid,
+        newPassword: newBfPassword,
+        confirmNewPassword: confirmNewBfPassword,
+        recentAuthConfirmed: resetPwdRecentAuthConfirmed,
+      });
+      if (!res.ok) {
+        onShowToast(res.message, 'warn');
+        setResetPwdSubmitting(false);
+        return;
+      }
+      setNewBfPassword('');
+      setConfirmNewBfPassword('');
+      setResetPwdTargetUid(null);
+      setSimTick(t => t + 1);
+      onRefresh();
+      onShowToast(res.message, 'approve');
+    } finally {
+      setResetPwdSubmitting(false);
+    }
+  };
+
+  const handleRevokeBackupSessionsOnly = async (backupUid: string) => {
+    try {
+      const res = await revokeBackupFounderSessionsViaBackend(
+        backupUid,
+        'Primary Founder thu hồi phiên đăng nhập trên Founder Security Panel'
+      );
+      if (!res.ok) {
+        onShowToast(res.message, 'warn');
+        return;
+      }
+      setSimTick(t => t + 1);
+      onRefresh();
+      onShowToast(res.message, 'approve');
+    } catch (err: any) {
+      onShowToast(err?.message || 'Không thể thu hồi phiên đăng nhập.', 'warn');
+    }
+  };
+
+  const handleSubmitVerifyRecoveryEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifyEmailTargetUid) return;
+    setVerifyEmailSubmitting(true);
+    try {
+      const res = await verifyBackupFounderRecoveryEmailViaBackend(
+        verifyEmailTargetUid,
+        verifyEmailInput
+      );
+      if (!res.ok) {
+        onShowToast(res.message, 'warn');
+        setVerifyEmailSubmitting(false);
+        return;
+      }
+      setVerifyEmailTargetUid(null);
+      setVerifyEmailInput('');
+      setSimTick(t => t + 1);
+      onRefresh();
+      onShowToast(res.message, 'approve');
+    } finally {
+      setVerifyEmailSubmitting(false);
+    }
+  };
+
+  const handleProvisionBackupFounder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bfConfirmIntent) {
+      onShowToast('Vui lòng tích xác nhận chủ đích tạo Backup Founder của Primary Founder.', 'warn');
+      return;
+    }
+    setBfSubmitting(true);
+    try {
+      const res = await provisionBackupFounderAccount({
+        username: bfUsername,
+        password: bfPassword,
+        displayName: bfDisplayName,
+        recoveryEmail: bfRecoveryEmail,
+        confirmPrimaryFounderIntent: bfConfirmIntent,
+      });
+      if (!res.ok) {
+        onShowToast(res.message, 'warn');
+        setBfSubmitting(false);
+        return;
+      }
+      setBfUsername('');
+      setBfPassword('');
+      setBfConfirmIntent(false);
+      setIsProvisionBackupModalOpen(false);
+      setSimTick(t => t + 1);
+      onRefresh();
+      onShowToast(res.message, 'approve');
+    } finally {
+      setBfSubmitting(false);
+    }
+  };
+
+  const handleToggleBackupFounderActive = async (
+    backupUid: string,
+    nextActive: boolean,
+    revokeSessions = false
+  ) => {
+    try {
+      const res = await setBackupFounderActiveState(backupUid, nextActive, {
+        revokeSessions,
+        lockUid: !nextActive && revokeSessions,
+        reason: nextActive
+          ? 'Primary Founder kích hoạt lại trên Founder Dashboard'
+          : 'Primary Founder thu hồi phiên / tạm ngưng trên Founder Dashboard',
+      });
+      setSimTick(t => t + 1);
+      onRefresh();
+      onShowToast(res.message, nextActive ? 'approve' : 'warn');
+    } catch (err: any) {
+      onShowToast(err?.message || 'Không thể thay đổi trạng thái Backup Founder.', 'warn');
+    }
   };
 
   const handleOpenDetailModal = useCallback((member: IndexedMemberRecord) => {
@@ -795,6 +1115,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
 
   const roleTabs: Array<{ id: MemberRoleFilter; label: string; count: number }> = [
     { id: 'all', label: 'Tất cả', count: counts.all },
+    { id: 'founder', label: 'Founder', count: counts.founder },
     { id: 'admin', label: 'Admin', count: counts.admin },
     { id: 'web', label: 'QL Web', count: counts.web },
     { id: 'maps', label: 'QL Maps', count: counts.maps },
@@ -815,7 +1136,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
   }> = [
     {
       key: 'admin',
-      title: 'ADMIN',
+      title: 'FOUNDER & ADMIN',
       total: operators.adminTotal,
       items: operators.admins.slice(0, 4),
       accentColor: '#B45309',
@@ -921,6 +1242,54 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              data-testid="toggle-backup-founder-panel-btn"
+              onClick={() => setShowBackupFounderPanel(prev => !prev)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                height: '34px',
+                padding: '0 11px',
+                borderRadius: '8px',
+                border: `1px solid ${showBackupFounderPanel ? '#7C3AED' : theme.border}`,
+                background: showBackupFounderPanel ? '#EDE9FE' : theme.bgElevated,
+                color: showBackupFounderPanel ? '#5B21B6' : theme.textSecondary,
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+              title="Quản lý Founder Dự Phòng (Backup Founder) & Phục hồi khẩn cấp"
+            >
+              <ShieldCheck size={14} />
+              <span>Backup Founder ({backupFounderRecords.length})</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="toggle-role-audit-logs-btn"
+              onClick={() => setShowRoleAuditLogsPanel(prev => !prev)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                height: '34px',
+                padding: '0 11px',
+                borderRadius: '8px',
+                border: `1px solid ${theme.border}`,
+                background: showRoleAuditLogsPanel ? theme.accentSoft : theme.bgElevated,
+                color: showRoleAuditLogsPanel ? theme.accent : theme.textSecondary,
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+              title="Xem lịch sử thay đổi quyền và sự kiện bảo mật Founder"
+            >
+              <History size={13} />
+              <span>Lịch sử quyền ({roleAuditLogs.length})</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setShowNickAccountsPanel(prev => !prev)}
@@ -1129,6 +1498,947 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
           )}
         </div>
       </div>
+
+      {/* ===================================================================== */}
+      {/* PANEL 1A: BẢNG BẢO MẬT TÀI KHOẢN (FOUNDER SECURITY PANEL — 7 MỤC)      */}
+      {/* ===================================================================== */}
+      {showBackupFounderPanel && (
+        <div
+          data-testid="backup-founder-panel"
+          style={{
+            background: theme.bgCard,
+            borderRadius: '12px',
+            border: `1.5px solid #C4B5FD`,
+            boxShadow: theme.shadow,
+            padding: '14px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '14px', fontWeight: 800, color: '#5B21B6' }}>
+                  🛡️ Bảng Bảo mật tài khoản (Founder Security Panel)
+                </span>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    background: '#FEF3C7',
+                    color: '#92400E',
+                    border: '1px solid #F59E0B',
+                  }}
+                >
+                  👑 Primary Founder: Dê Già Designer
+                </span>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    background: '#EDE9FE',
+                    color: '#5B21B6',
+                    border: '1px solid #C4B5FD',
+                  }}
+                >
+                  Privileged Backend + Firebase Auth
+                </span>
+              </div>
+              <div style={{ fontSize: '11.5px', color: theme.textMuted, marginTop: '3px' }}>
+                Quản lý tập trung tài khoản <b>Backup Founder</b> (Tên đăng nhập, Trạng thái Active/Locked, Email khôi phục thực, Đặt lại mật khẩu không cần mật khẩu cũ, Khóa/Mở khóa, Thu hồi phiên & Nhật ký bảo mật). Mật khẩu tuyệt đối không bao giờ hiển thị hay lưu trong RTDB/LocalStorage/Git.
+              </div>
+            </div>
+
+            {currentRoleInfo.isPrimaryFounder ? (
+              <button
+                type="button"
+                data-testid="open-provision-backup-founder-btn"
+                onClick={() => setIsProvisionBackupModalOpen(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  height: '32px',
+                  padding: '0 12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#6D28D9',
+                  color: '#FFFFFF',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <Plus size={13} /> Khởi tạo Backup Founder
+              </button>
+            ) : (
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#92400E',
+                  background: '#FEF3C7',
+                  padding: '4px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid #F59E0B',
+                }}
+              >
+                Chỉ Primary Founder (Dê Già Designer) có quyền điều khiển bảo mật Backup Founder
+              </span>
+            )}
+          </div>
+
+          {backupFounderRecords.length === 0 ? (
+            <div
+              style={{
+                padding: '12px',
+                borderRadius: '9px',
+                background: theme.bgElevated,
+                border: `1px dashed ${theme.border}`,
+                fontSize: '12px',
+                color: theme.textSecondary,
+              }}
+            >
+              Chưa khởi tạo tài khoản Backup Founder nào. Primary Founder bấm <b>"Khởi tạo Backup Founder"</b> để thiết lập tài khoản dự phòng bằng tên đăng nhập, mật khẩu và email khôi phục thực.
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+                gap: '10px',
+              }}
+            >
+              {backupFounderRecords.map(bf => (
+                <div
+                  key={bf.uid}
+                  data-testid={`backup-founder-card-${bf.uid}`}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    background: theme.bgElevated,
+                    border: `1.5px solid ${bf.active ? '#C4B5FD' : '#FCA5A5'}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  {/* 1. Tên đăng nhập dự phòng (xem & sao chép) + 2. Trạng thái tài khoản (Active / Locked) */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: theme.textPrimary }}>
+                        {bf.displayName || `Backup Founder (@${bf.username})`}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '11.5px', color: theme.textSecondary }}>
+                          1. Tên đăng nhập dự phòng:{' '}
+                          <b data-testid={`backup-founder-username-${bf.uid}`} style={{ color: '#5B21B6' }}>
+                            @{bf.username}
+                          </b>
+                        </span>
+                        <button
+                          type="button"
+                          data-testid={`copy-backup-username-btn-${bf.uid}`}
+                          onClick={() => handleCopyBackupUsername(bf.uid, bf.username)}
+                          style={{
+                            height: '22px',
+                            padding: '0 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #C4B5FD',
+                            background: copiedBfUid === bf.uid ? '#D1FAE5' : '#EDE9FE',
+                            color: copiedBfUid === bf.uid ? '#065F46' : '#5B21B6',
+                            fontSize: '10.5px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {copiedBfUid === bf.uid ? '✓ Đã sao chép' : 'Sao chép'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. Trạng thái tài khoản — Active / Locked */}
+                    <span
+                      data-testid={`backup-founder-status-badge-${bf.uid}`}
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        padding: '3px 9px',
+                        borderRadius: '999px',
+                        background: bf.active ? '#D1FAE5' : '#FEE2E2',
+                        color: bf.active ? '#065F46' : '#991B1B',
+                        border: `1px solid ${bf.active ? '#6EE7B7' : '#FCA5A5'}`,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      2. {bf.active ? 'Active (Hoạt động)' : 'Locked (Đã khóa)'}
+                    </span>
+                  </div>
+
+                  {/* 3. Email khôi phục — hiển thị và xác minh */}
+                  <div
+                    style={{
+                      padding: '7px 10px',
+                      borderRadius: '8px',
+                      background: theme.bgCard,
+                      border: `1px solid ${theme.border}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      flexWrap: 'wrap',
+                      fontSize: '11.5px',
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ color: theme.textMuted }}>3. Email khôi phục: </span>
+                      <b
+                        data-testid={`backup-founder-recovery-email-${bf.uid}`}
+                        style={{ color: theme.textPrimary, wordBreak: 'break-all' }}
+                      >
+                        {bf.recoveryEmail || 'Chưa cấu hình email thực'}
+                      </b>{' '}
+                      <span
+                        style={{
+                          fontSize: '10.5px',
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: '999px',
+                          background: bf.recoveryEmailVerified ? '#D1FAE5' : '#FEF3C7',
+                          color: bf.recoveryEmailVerified ? '#065F46' : '#92400E',
+                        }}
+                      >
+                        {bf.recoveryEmailVerified ? '✓ Đã xác minh' : 'Chưa xác minh'}
+                      </span>
+                    </div>
+                    {currentRoleInfo.isPrimaryFounder && (
+                      <button
+                        type="button"
+                        data-testid={`verify-recovery-email-btn-${bf.uid}`}
+                        onClick={() => {
+                          setVerifyEmailTargetUid(bf.uid);
+                          setVerifyEmailInput(bf.recoveryEmail || '');
+                        }}
+                        style={{
+                          height: '24px',
+                          padding: '0 8px',
+                          borderRadius: '6px',
+                          border: `1px solid ${theme.border}`,
+                          background: theme.bgElevated,
+                          color: theme.textPrimary,
+                          fontSize: '10.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {bf.recoveryEmailVerified ? 'Đổi / Xác minh lại' : 'Xác minh email'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Thông tin phiên bảo mật */}
+                  <div style={{ fontSize: '11px', color: theme.textMuted, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <span>
+                      UID: <code>{bf.uid.slice(0, 6)}...{bf.uid.slice(-4)}</code> • Phiên (Epoch): <b>#{bf.sessionEpoch || 1}</b>
+                    </span>
+                    {bf.lastPasswordResetAt && (
+                      <span>Đặt lại MK gần nhất: {formatShortDateVi(bf.lastPasswordResetAt)}</span>
+                    )}
+                  </div>
+
+                  {/* 4. Nút Đặt lại mật khẩu + 5. Nút Khóa / Mở khóa tài khoản + 6. Nút Thu hồi phiên đăng nhập */}
+                  {currentRoleInfo.isPrimaryFounder && (
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                      {/* 4. Nút Đặt lại mật khẩu */}
+                      <button
+                        type="button"
+                        data-testid={`open-reset-backup-password-btn-${bf.uid}`}
+                        onClick={() => handleOpenResetBackupPasswordModal(bf.uid, bf.username)}
+                        style={{
+                          flex: '1 1 130px',
+                          height: '30px',
+                          borderRadius: '7px',
+                          border: '1px solid #C4B5FD',
+                          background: '#6D28D9',
+                          color: '#FFFFFF',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        4. Đặt lại mật khẩu
+                      </button>
+
+                      {/* 5. Nút Khóa / Mở khóa tài khoản */}
+                      {bf.active ? (
+                        <button
+                          type="button"
+                          data-testid={`toggle-lock-backup-founder-btn-${bf.uid}`}
+                          onClick={() => handleToggleBackupFounderActive(bf.uid, false, true)}
+                          style={{
+                            flex: '1 1 120px',
+                            height: '30px',
+                            borderRadius: '7px',
+                            border: '1px solid #FCA5A5',
+                            background: '#FEF2F2',
+                            color: '#DC2626',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          5. Khóa tài khoản
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          data-testid={`toggle-lock-backup-founder-btn-${bf.uid}`}
+                          onClick={() => handleToggleBackupFounderActive(bf.uid, true, false)}
+                          style={{
+                            flex: '1 1 120px',
+                            height: '30px',
+                            borderRadius: '7px',
+                            border: '1px solid #6EE7B7',
+                            background: '#ECFDF5',
+                            color: '#047857',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          5. Mở khóa tài khoản
+                        </button>
+                      )}
+
+                      {/* 6. Nút Thu hồi phiên đăng nhập */}
+                      <button
+                        type="button"
+                        data-testid={`revoke-backup-sessions-btn-${bf.uid}`}
+                        onClick={() => handleRevokeBackupSessionsOnly(bf.uid)}
+                        style={{
+                          flex: '1 1 135px',
+                          height: '30px',
+                          borderRadius: '7px',
+                          border: '1px solid #F59E0B',
+                          background: '#FFFBEB',
+                          color: '#B45309',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        6. Thu hồi phiên đăng nhập
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 7. Lịch sử thao tác bảo mật (nhúng trực tiếp trong Founder Security Panel) */}
+          <div
+            data-testid="founder-security-history-list"
+            style={{
+              padding: '10px 12px',
+              borderRadius: '10px',
+              background: theme.bgElevated,
+              border: `1px solid ${theme.border}`,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '6px',
+              }}
+            >
+              <span style={{ fontSize: '12px', fontWeight: 800, color: theme.textPrimary }}>
+                7. 📜 Lịch sử thao tác bảo mật & phân quyền gần nhất ({roleAuditLogs.length})
+              </span>
+              <span style={{ fontSize: '10.5px', color: theme.textMuted }}>
+                Không bao giờ ghi mật khẩu/token vào nhật ký
+              </span>
+            </div>
+            {roleAuditLogs.length === 0 ? (
+              <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
+                Chưa có thao tác bảo mật nào được ghi nhận.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '140px', overflowY: 'auto' }}>
+                {roleAuditLogs.slice(0, 6).map(log => (
+                  <div
+                    key={log.id}
+                    style={{
+                      padding: '5px 8px',
+                      borderRadius: '6px',
+                      background: theme.bgCard,
+                      border: `1px solid ${theme.border}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      fontSize: '11px',
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ fontWeight: 700, color: theme.textPrimary }}>{log.action}</span>{' '}
+                      <span style={{ color: theme.textSecondary }}>— {log.target}</span>
+                    </div>
+                    <span style={{ fontSize: '10px', color: theme.textMuted, whiteSpace: 'nowrap' }}>
+                      {formatShortDateVi(log.timestamp)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* PANEL 1C: QUẢN TRỊ PHÁP LÝ, PHIÊN BẢN CHÍNH SÁCH & QUYỀN DỮ LIỆU      */}
+      {/* (Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15 & Nghị định 356/2025/NĐ-CP) */}
+      {/* ===================================================================== */}
+      {(currentRoleInfo.isFounder || currentRoleInfo.roleTier === 'admin') && (
+        <div
+          data-testid="founder-legal-compliance-panel"
+          style={{
+            background: theme.bgCard,
+            borderRadius: '12px',
+            border: `1.5px solid ${theme.accentBorder}`,
+            boxShadow: theme.shadow,
+            padding: '14px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '13.5px', fontWeight: 800, color: theme.textPrimary }}>
+                ⚖️ Quản trị Pháp lý, Phiên bản Chính sách & Quyền Dữ liệu Cá nhân (Luật 91/2025/QH15)
+              </div>
+              <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
+                Phiên bản hiện hành: <code>{activePolicyMeta.version}</code> (Hiệu lực: {activePolicyMeta.effectiveDate}) · Bằng chứng xác nhận (<code>consent_audit_trail</code>) được khóa bất biến, không ai được phép xóa trái phép.
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="toggle-legal-compliance-panel-btn"
+              onClick={() => setShowLegalCompliancePanel(!showLegalCompliancePanel)}
+              style={{
+                height: '28px',
+                padding: '0 10px',
+                borderRadius: '7px',
+                border: `1px solid ${theme.border}`,
+                background: theme.bgElevated,
+                color: theme.textPrimary,
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {showLegalCompliancePanel ? 'Thu gọn' : 'Mở bảng Pháp lý & Consent'}
+            </button>
+          </div>
+
+          {showLegalCompliancePanel && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* 1. Thống kê trạng thái xác nhận (Ẩn danh, không lộ dữ liệu nhạy cảm) */}
+              <div
+                data-testid="founder-consent-stats-grid"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                  gap: '8px',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '9px 11px',
+                    borderRadius: '9px',
+                    background: theme.bgElevated,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                >
+                  <div style={{ fontSize: '10.5px', color: theme.textMuted }}>Đã lưu Consent Record</div>
+                  <div style={{ fontSize: '16px', fontWeight: 800, color: theme.textPrimary }}>
+                    {consentStatsSummary.totalConsentedUsers} thành viên
+                  </div>
+                  <div style={{ fontSize: '10px', color: '#059669' }}>
+                    Đúng phiên bản hiện tại: {consentStatsSummary.currentVersionCount}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: '9px 11px',
+                    borderRadius: '9px',
+                    background: theme.bgElevated,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                >
+                  <div style={{ fontSize: '10.5px', color: theme.textMuted }}>Đồng ý tùy chọn D1 (Khẩu vị/SĐT)</div>
+                  <div style={{ fontSize: '16px', fontWeight: 800, color: theme.textPrimary }}>
+                    {consentStatsSummary.optionalTasteGranted}
+                  </div>
+                  <div style={{ fontSize: '10px', color: theme.textMuted }}>Tự nguyện bật</div>
+                </div>
+
+                <div
+                  style={{
+                    padding: '9px 11px',
+                    borderRadius: '9px',
+                    background: theme.bgElevated,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                >
+                  <div style={{ fontSize: '10.5px', color: theme.textMuted }}>Đồng ý tùy chọn D2 (Phân tích)</div>
+                  <div style={{ fontSize: '16px', fontWeight: 800, color: theme.textPrimary }}>
+                    {consentStatsSummary.optionalAnalyticsGranted}
+                  </div>
+                  <div style={{ fontSize: '10px', color: theme.textMuted }}>Tự nguyện bật</div>
+                </div>
+
+                <div
+                  style={{
+                    padding: '9px 11px',
+                    borderRadius: '9px',
+                    background: theme.bgElevated,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                >
+                  <div style={{ fontSize: '10.5px', color: theme.textMuted }}>Đã rút lại đồng ý / Yêu cầu dữ liệu</div>
+                  <div style={{ fontSize: '16px', fontWeight: 800, color: '#D97706' }}>
+                    {consentStatsSummary.withdrawnCount} rút · {dataRightsQueue.length} yêu cầu
+                  </div>
+                  <div style={{ fontSize: '10px', color: theme.textMuted }}>Theo dõi thời gian thực</div>
+                </div>
+              </div>
+
+              {/* 2. Quản lý Yêu cầu Quyền Dữ liệu Cá nhân (Data Rights Requests Queue) */}
+              <div
+                data-testid="founder-data-rights-queue"
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  background: theme.bgElevated,
+                  border: `1px solid ${theme.border}`,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '6px',
+                  }}
+                >
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: theme.textPrimary }}>
+                    📋 Hàng đợi Yêu cầu Quyền Dữ liệu Cá nhân ({dataRightsQueue.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={fetchLegalComplianceSummary}
+                    style={{
+                      fontSize: '10.5px',
+                      fontWeight: 700,
+                      color: theme.accent,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Làm mới
+                  </button>
+                </div>
+
+                {dataRightsQueue.length === 0 ? (
+                  <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
+                    Hiện không có yêu cầu quyền dữ liệu cá nhân nào đang chờ xử lý.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {dataRightsQueue.slice(0, 8).map(req => (
+                      <div
+                        key={req.requestId}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          background: theme.bgCard,
+                          border: `1px solid ${theme.border}`,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '5px',
+                          fontSize: '11.5px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                          <div>
+                            <span style={{ fontWeight: 800, color: theme.textPrimary }}>
+                              [{DATA_RIGHTS_REQUEST_TYPE_LABELS[req.requestType]?.label || req.requestType}]
+                            </span>{' '}
+                            <span style={{ color: theme.textSecondary }}>
+                              — {req.userDisplayName} (<code>{req.firebaseAuthUid.slice(0, 6)}...</code>)
+                            </span>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '10.5px',
+                              fontWeight: 700,
+                              padding: '1px 7px',
+                              borderRadius: '999px',
+                              background:
+                                req.status === 'completed'
+                                  ? '#D1FAE5'
+                                  : req.status === 'rejected_legal_obligation'
+                                  ? '#FEE2E2'
+                                  : '#FEF3C7',
+                              color:
+                                req.status === 'completed'
+                                  ? '#065F46'
+                                  : req.status === 'rejected_legal_obligation'
+                                  ? '#991B1B'
+                                  : '#92400E',
+                            }}
+                          >
+                            {req.status}
+                          </span>
+                        </div>
+                        <div style={{ color: theme.textSecondary }}>{req.details}</div>
+                        {req.resolutionNote && (
+                          <div style={{ fontSize: '11px', color: '#059669' }}>
+                            Kết quả xử lý: {req.resolutionNote}
+                          </div>
+                        )}
+                        {req.status === 'pending' || req.status === 'in_progress' ? (
+                          resolvingRequestId === req.requestId ? (
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+                              <select
+                                value={resolutionStatusInput}
+                                onChange={e =>
+                                  setResolutionStatusInput(e.target.value as DataRightsRequestStatus)
+                                }
+                                style={{
+                                  height: '28px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${theme.border}`,
+                                  padding: '0 6px',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                <option value="in_progress">Đang xử lý (in_progress)</option>
+                                <option value="completed">Đã hoàn tất (completed)</option>
+                                <option value="rejected_legal_obligation">
+                                  Giữ lại theo nghĩa vụ pháp lý (rejected_legal_obligation)
+                                </option>
+                              </select>
+                              <input
+                                type="text"
+                                placeholder="Ghi chú kết quả xử lý (ghi vào Audit Log)..."
+                                value={resolutionNoteInput}
+                                onChange={e => setResolutionNoteInput(e.target.value)}
+                                style={{
+                                  flex: 1,
+                                  minWidth: '180px',
+                                  height: '28px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${theme.border}`,
+                                  padding: '0 8px',
+                                  fontSize: '11px',
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const res = await processDataRightsRequestViaBackend({
+                                    requestId: req.requestId,
+                                    status: resolutionStatusInput,
+                                    resolutionNote:
+                                      resolutionNoteInput.trim() ||
+                                      'Đã xử lý theo quy trình Bảo vệ dữ liệu cá nhân.',
+                                  });
+                                  onShowToast(res.message);
+                                  if (res.ok) {
+                                    setResolvingRequestId(null);
+                                    setResolutionNoteInput('');
+                                    fetchLegalComplianceSummary();
+                                    onRefresh();
+                                  }
+                                }}
+                                style={{
+                                  height: '28px',
+                                  padding: '0 10px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background: '#059669',
+                                  color: '#FFF',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Lưu xử lý
+                              </button>
+                            </div>
+                          ) : (
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setResolvingRequestId(req.requestId);
+                                  setResolutionStatusInput('completed');
+                                  setResolutionNoteInput('');
+                                }}
+                                style={{
+                                  height: '24px',
+                                  padding: '0 8px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${theme.border}`,
+                                  background: theme.bgElevated,
+                                  color: theme.textPrimary,
+                                  fontSize: '10.5px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Xử lý yêu cầu & Ghi nhật ký
+                              </button>
+                            </div>
+                          )
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Quản lý Phiên bản Chính sách (Chỉ dành cho Primary Founder) */}
+              {currentRoleInfo.isPrimaryFounder && (
+                <div
+                  data-testid="founder-policy-version-manager"
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    background: theme.bgElevated,
+                    border: `1px solid ${theme.border}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: theme.textPrimary }}>
+                    🔖 Phát hành Phiên bản Chính sách mới (Chỉ yêu cầu xác nhận lại khi có thay đổi trọng yếu)
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <input
+                      type="text"
+                      placeholder="Mã phiên bản mới (VD: 2026.12.01-v3.1)"
+                      value={newPolicyVersionInput}
+                      onChange={e => setNewPolicyVersionInput(e.target.value)}
+                      style={{
+                        flex: '1 1 160px',
+                        height: '30px',
+                        borderRadius: '7px',
+                        border: `1px solid ${theme.border}`,
+                        padding: '0 9px',
+                        fontSize: '11.5px',
+                        background: theme.bgCard,
+                        color: theme.textPrimary,
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Tiêu đề cập nhật..."
+                      value={newPolicyTitleInput}
+                      onChange={e => setNewPolicyTitleInput(e.target.value)}
+                      style={{
+                        flex: '2 1 220px',
+                        height: '30px',
+                        borderRadius: '7px',
+                        border: `1px solid ${theme.border}`,
+                        padding: '0 9px',
+                        fontSize: '11.5px',
+                        background: theme.bgCard,
+                        color: theme.textPrimary,
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Tóm tắt nội dung thay đổi (Changelog)..."
+                      value={newPolicyChangesInput}
+                      onChange={e => setNewPolicyChangesInput(e.target.value)}
+                      style={{
+                        flex: '2 1 220px',
+                        height: '30px',
+                        borderRadius: '7px',
+                        border: `1px solid ${theme.border}`,
+                        padding: '0 9px',
+                        fontSize: '11.5px',
+                        background: theme.bgCard,
+                        color: theme.textPrimary,
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: theme.textSecondary, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={newPolicyRequiresReconsent}
+                        onChange={e => setNewPolicyRequiresReconsent(e.target.checked)}
+                      />
+                      <span>Yêu cầu người dùng xác nhận lại ở lần đăng nhập tiếp theo (<code>requiresReconsent</code>)</span>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={publishingPolicy}
+                      onClick={async () => {
+                        if (!newPolicyVersionInput.trim() || !newPolicyTitleInput.trim()) {
+                          onShowToast('Vui lòng nhập mã phiên bản và tiêu đề cập nhật.');
+                          return;
+                        }
+                        setPublishingPolicy(true);
+                        try {
+                          const res = await publishPolicyVersionViaBackend({
+                            version: newPolicyVersionInput.trim(),
+                            privacyNoticeVersion: newPolicyVersionInput.trim(),
+                            communityGuidelinesVersion: newPolicyVersionInput.trim(),
+                            effectiveDate: new Date().toISOString().slice(0, 10),
+                            title: newPolicyTitleInput.trim(),
+                            changes: [
+                              newPolicyChangesInput.trim() ||
+                                'Cập nhật điều khoản và thông báo bảo vệ dữ liệu cá nhân.',
+                            ],
+                            requiresReconsent: newPolicyRequiresReconsent,
+                          });
+                          onShowToast(res.message);
+                          if (res.ok && res.policy) {
+                            setActivePolicyMeta(res.policy);
+                            setNewPolicyVersionInput('');
+                            setNewPolicyTitleInput('');
+                            setNewPolicyChangesInput('');
+                          }
+                        } finally {
+                          setPublishingPolicy(false);
+                        }
+                      }}
+                      style={{
+                        height: '30px',
+                        padding: '0 12px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: '#B45309',
+                        color: '#FFF',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {publishingPolicy ? 'Đang phát hành...' : 'Phát hành phiên bản chính sách'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* PANEL 1B: LỊCH SỬ THAY ĐỔI QUYỀN & NHẬT KÝ BẢO MẬT FOUNDER            */}
+      {/* ===================================================================== */}
+      {showRoleAuditLogsPanel && (
+        <div
+          data-testid="role-audit-logs-panel"
+          style={{
+            background: theme.bgCard,
+            borderRadius: '12px',
+            border: `1px solid ${theme.border}`,
+            boxShadow: theme.shadow,
+            padding: '14px 16px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '8px',
+            }}
+          >
+            <div style={{ fontSize: '13.5px', fontWeight: 800 }}>
+              📜 Lịch sử Thay đổi Phân quyền & Bảo mật Founder
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRoleAuditLogsPanel(false)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: theme.textMuted,
+                cursor: 'pointer',
+              }}
+            >
+              <X size={15} />
+            </button>
+          </div>
+          {roleAuditLogs.length === 0 ? (
+            <div style={{ fontSize: '12px', color: theme.textMuted }}>
+              Chưa có nhật ký thay đổi phân quyền nào.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflowY: 'auto' }}>
+              {roleAuditLogs.map(log => (
+                <div
+                  key={log.id}
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: '8px',
+                    background: theme.bgElevated,
+                    border: `1px solid ${theme.border}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    fontSize: '11.5px',
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontWeight: 700, color: theme.textPrimary }}>{log.action}</span>{' '}
+                    <span style={{ color: theme.textSecondary }}>— {log.target}</span>
+                  </div>
+                  <span style={{ fontSize: '10.5px', color: theme.textMuted, whiteSpace: 'nowrap' }}>
+                    {formatShortDateVi(log.timestamp)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* PANEL TÀI KHOẢN NICK & MẬT KHẨU RIÊNG (MỞ KHI BẤM NÚT NICK QUẢN LÝ) */}
       {showNickAccountsPanel && (
@@ -2183,7 +3493,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
       </section>
 
       {/* ===================================================================== */}
-      {/* MODAL 1: CẤP QUYỀN THÀNH VIÊN (POPOVER / MODAL NHỎ GỌN)               */}
+      {/* MODAL 1: CẤP QUYỀN THÀNH VIÊN (FOUNDER DASHBOARD — 5 TIER RBAC)        */}
       {/* ===================================================================== */}
       {permissionModalTarget && (
         <div
@@ -2195,7 +3505,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: '360px',
+              maxWidth: '410px',
               background: theme.bgCard,
               color: theme.textPrimary,
               borderRadius: '14px',
@@ -2212,7 +3522,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                 marginBottom: '10px',
               }}
             >
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>Quyền thành viên</h3>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>Phân quyền thành viên (Founder V2)</h3>
               <button
                 type="button"
                 onClick={() => setPermissionModalTarget(null)}
@@ -2243,15 +3553,28 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
               <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
                 {permissionModalTarget.email}
               </div>
-              {(permissionModalTarget.isFounder || permissionModalTarget.isAdmin) && (
-                <div style={{ display: 'flex', gap: '5px', marginTop: '6px' }}>
-                  {permissionModalTarget.isFounder && <RoleBadgeChip type="founder" />}
-                  {permissionModalTarget.isAdmin && <RoleBadgeChip type="admin" />}
-                </div>
-              )}
+              <div style={{ fontSize: '10.5px', color: theme.textMuted, marginTop: '3px' }}>
+                UID:{' '}
+                <code style={{ fontWeight: 700 }}>{permissionModalTarget.uid}</code> •{' '}
+                {permissionModalTarget.isUidVerified ? (
+                  <span style={{ color: '#047857', fontWeight: 700 }}>✓ Đã xác minh Firebase Auth 28 ký tự</span>
+                ) : (
+                  <span style={{ color: '#B45309', fontWeight: 700 }}>⚠️ Chưa xác minh Firebase Auth UID</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+                {permissionModalTarget.isPrimaryFounder && <RoleBadgeChip type="primary_founder" />}
+                {permissionModalTarget.isBackupFounder && <RoleBadgeChip type="backup_founder" />}
+                {!permissionModalTarget.isFounder && permissionModalTarget.isAdmin && (
+                  <RoleBadgeChip type="admin" />
+                )}
+                {permissionModalTarget.hasLegacyPendingRole && (
+                  <RoleBadgeChip type="unverified_uid" />
+                )}
+              </div>
             </div>
 
-            {permissionModalTarget.isFounder ? (
+            {permissionModalTarget.isPrimaryFounder ? (
               <div
                 style={{
                   padding: '10px 12px',
@@ -2264,10 +3587,134 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                   marginBottom: '14px',
                 }}
               >
-                Tài khoản Founder (Sáng lập) được bảo vệ mặc định và sở hữu toàn quyền Quản trị hệ thống.
+                👑 Tài khoản <b>Primary Founder (Dê Già Designer)</b> sở hữu toàn quyền hệ thống tối cao. Không tài khoản nào (kể cả Backup Founder hay Admin) được phép hạ quyền, khóa hoặc xóa.
+              </div>
+            ) : permissionModalTarget.isBackupFounder ? (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '9px',
+                  background: '#EDE9FE',
+                  border: '1px solid #C4B5FD',
+                  color: '#5B21B6',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  marginBottom: '14px',
+                }}
+              >
+                🛡️ Đây là tài khoản <b>Backup Founder</b>. Primary Founder có thể kích hoạt / tạm ngưng hoặc thu hồi phiên trong bảng <b>"Backup Founder"</b> phía trên.
+              </div>
+            ) : !permissionModalTarget.isUidVerified && !getSimulatedMembersCount() ? (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '9px',
+                  background: '#FEF2F2',
+                  border: '1px solid #FCA5A5',
+                  color: '#991B1B',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  marginBottom: '14px',
+                }}
+              >
+                ⚠️ Tài khoản này đang mang UID cũ chưa xác minh (<code>{permissionModalTarget.uidVerificationClass}</code>). Theo quy tắc bảo mật Founder V2, hệ thống không tự động cấp quyền cho UID chưa xác minh. Thành viên cần đăng nhập một lần qua Firebase Authentication để đồng bộ UID 28 ký tự trước khi Founder cấp quyền.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+                {!currentRoleInfo.canManageRoles && !getSimulatedMembersCount() && (
+                  <div
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      background: '#FEF3C7',
+                      border: '1px solid #F59E0B',
+                      color: '#92400E',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    🔒 Chỉ Primary Founder hoặc Backup Founder mới có quyền cấp/thu hồi vai trò Admin & Quản lý.
+                  </div>
+                )}
+
+                {/* Chọn nhanh vai trò 1 chạm (Fast Role Assignment) */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '2px' }}>
+                  {[
+                    { label: 'User thường', admin: false, web: false, maps: false },
+                    { label: 'Quản lý Web', admin: false, web: true, maps: false },
+                    { label: 'Quản lý Maps', admin: false, web: false, maps: true },
+                    { label: 'Web + Maps', admin: false, web: true, maps: true },
+                    { label: '👑 Admin', admin: true, web: true, maps: true },
+                  ].map(preset => {
+                    const isPresetActive =
+                      permAdminChecked === preset.admin &&
+                      (preset.admin || (permWebChecked === preset.web && permMapsChecked === preset.maps));
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setPermAdminChecked(preset.admin);
+                          setPermWebChecked(preset.web);
+                          setPermMapsChecked(preset.maps);
+                        }}
+                        style={{
+                          height: '26px',
+                          padding: '0 9px',
+                          borderRadius: '999px',
+                          border: isPresetActive ? `1.5px solid ${theme.accent}` : `1px solid ${theme.border}`,
+                          background: isPresetActive ? theme.accentSoft : theme.bgElevated,
+                          color: isPresetActive ? theme.accent : theme.textSecondary,
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Cấp quyền ADMIN */}
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px 12px',
+                    borderRadius: '9px',
+                    border: permAdminChecked
+                      ? `1.5px solid #DC2626`
+                      : `1px solid ${theme.border}`,
+                    background: permAdminChecked ? 'rgba(220, 38, 38, 0.07)' : theme.bgElevated,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    data-testid="perm-checkbox-admin"
+                    checked={permAdminChecked}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setPermAdminChecked(checked);
+                      if (checked) {
+                        setPermWebChecked(true);
+                        setPermMapsChecked(true);
+                      }
+                    }}
+                    style={{ width: '16px', height: '16px', accentColor: '#DC2626', cursor: 'pointer' }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: theme.textPrimary }}>
+                      Cấp quyền Admin (Quản trị viên)
+                    </div>
+                    <div style={{ fontSize: '11px', color: theme.textMuted }}>
+                      Duyệt đề xuất, quản lý địa điểm Web + Maps (Không được tự ý sửa Founder)
+                    </div>
+                  </div>
+                </label>
+
                 <label
                   style={{
                     display: 'flex',
@@ -2286,12 +3733,13 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                     type="checkbox"
                     data-testid="perm-checkbox-web"
                     checked={permWebChecked}
+                    disabled={permAdminChecked}
                     onChange={e => setPermWebChecked(e.target.checked)}
                     style={{ width: '16px', height: '16px', accentColor: '#2563EB', cursor: 'pointer' }}
                   />
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: 700, color: theme.textPrimary }}>
-                      Quản lý Web
+                      Quản lý Web (Manager)
                     </div>
                     <div style={{ fontSize: '11px', color: theme.textMuted }}>
                       Quản lý thông tin quán, thực đơn & món ăn
@@ -2317,18 +3765,49 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                     type="checkbox"
                     data-testid="perm-checkbox-maps"
                     checked={permMapsChecked}
+                    disabled={permAdminChecked}
                     onChange={e => setPermMapsChecked(e.target.checked)}
                     style={{ width: '16px', height: '16px', accentColor: '#059669', cursor: 'pointer' }}
                   />
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: 700, color: theme.textPrimary }}>
-                      Quản lý Maps
+                      Quản lý Maps (Manager)
                     </div>
                     <div style={{ fontSize: '11px', color: theme.textMuted }}>
-                      Định vị tọa độ, thêm & chỉnh sửa địa điểm Bản đồ số
+                      Đề xuất định vị tọa độ, thêm & chỉnh sửa địa điểm Bản đồ số
                     </div>
                   </div>
                 </label>
+
+                {/* Chỉ yêu cầu xác nhận thêm khi nâng quyền lên ADMIN */}
+                {permAdminChecked && !Boolean(permissionModalTarget.isAdmin && !permissionModalTarget.isFounder) && (
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      background: '#FEF3C7',
+                      border: '1px solid #F59E0B',
+                      color: '#92400E',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      data-testid="perm-confirm-intent-checkbox"
+                      checked={permConfirmIntent}
+                      onChange={e => setPermConfirmIntent(e.target.checked)}
+                      style={{ marginTop: '2px', accentColor: '#D97706' }}
+                    />
+                    <span>
+                      Xác nhận của Founder: Tôi đồng ý nâng quyền Quản trị (ADMIN) cho UID đã xác minh này và ghi nhận vào nhật ký bảo mật.
+                    </span>
+                  </label>
+                )}
               </div>
             )}
 
@@ -2350,27 +3829,561 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
               >
                 Hủy
               </button>
-              {!permissionModalTarget.isFounder && (
+              {!permissionModalTarget.isFounder &&
+                (permissionModalTarget.isUidVerified || getSimulatedMembersCount() > 0) && (
+                  <button
+                    type="button"
+                    data-testid="perm-save-btn"
+                    onClick={handleSavePermissionModal}
+                    style={{
+                      height: '34px',
+                      padding: '0 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: theme.accent,
+                      color: '#FFFFFF',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Lưu phân quyền
+                  </button>
+                )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 1B: KHỞI TẠO BACKUP FOUNDER MỘT LẦN (ONE-TIME SETUP)             */}
+      {/* ===================================================================== */}
+      {isProvisionBackupModalOpen && (
+        <div
+          className="xh-modal-backdrop"
+          onClick={() => !bfSubmitting && setIsProvisionBackupModalOpen(false)}
+        >
+          <div
+            data-testid="provision-backup-founder-modal"
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '420px',
+              background: theme.bgCard,
+              color: theme.textPrimary,
+              borderRadius: '14px',
+              border: `1.5px solid #C4B5FD`,
+              padding: '18px',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.22)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '10px',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#5B21B6' }}>
+                🛡️ Khởi tạo Backup Founder (One-Time Setup)
+              </h3>
+              <button
+                type="button"
+                disabled={bfSubmitting}
+                onClick={() => setIsProvisionBackupModalOpen(false)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: theme.textMuted,
+                  cursor: 'pointer',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div
+              style={{
+                padding: '9px 11px',
+                borderRadius: '8px',
+                background: '#EDE9FE',
+                border: '1px solid #C4B5FD',
+                color: '#5B21B6',
+                fontSize: '11.5px',
+                marginBottom: '12px',
+              }}
+            >
+              Tài khoản này được tạo trực tiếp trên <b>Firebase Authentication (Email/Password)</b> để đăng nhập dự phòng khi Google OAuth gặp sự cố. Mật khẩu tuyệt đối <b>không</b> lưu trong RTDB, LocalStorage hay Git.
+            </div>
+
+            <form
+              onSubmit={handleProvisionBackupFounder}
+              style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+            >
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, marginBottom: '4px' }}>
+                  Tên đăng nhập (Username) *
+                </label>
+                <input
+                  type="text"
+                  data-testid="bf-username-input"
+                  value={bfUsername}
+                  onChange={e => setBfUsername(e.target.value)}
+                  placeholder="VD: founder_duphong_xh"
+                  required
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgInput,
+                    fontSize: '12.5px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, marginBottom: '4px' }}>
+                  Mật khẩu mạnh (≥ 12 ký tự, chữ hoa, thường, số, ký tự đặc biệt) *
+                </label>
+                <input
+                  type="password"
+                  data-testid="bf-password-input"
+                  value={bfPassword}
+                  onChange={e => setBfPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu bảo mật cao..."
+                  autoComplete="new-password"
+                  required
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgInput,
+                    fontSize: '12.5px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, marginBottom: '4px' }}>
+                  Tên hiển thị
+                </label>
+                <input
+                  type="text"
+                  value={bfDisplayName}
+                  onChange={e => setBfDisplayName(e.target.value)}
+                  placeholder="Founder Dự Phòng"
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgInput,
+                    fontSize: '12.5px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, marginBottom: '4px' }}>
+                  Email khôi phục thực (Bắt buộc — dùng để nhận email khôi phục) *
+                </label>
+                <input
+                  type="email"
+                  data-testid="bf-recovery-email-input"
+                  value={bfRecoveryEmail}
+                  onChange={e => setBfRecoveryEmail(e.target.value)}
+                  placeholder="email-khoi-phuc-thuc@gmail.com"
+                  required
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgInput,
+                    fontSize: '12.5px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  background: '#FEF3C7',
+                  border: '1px solid #F59E0B',
+                  color: '#92400E',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  data-testid="bf-confirm-checkbox"
+                  checked={bfConfirmIntent}
+                  onChange={e => setBfConfirmIntent(e.target.checked)}
+                  style={{ marginTop: '2px', accentColor: '#D97706' }}
+                />
+                <span>
+                  Tôi (Primary Founder — Dê Già Designer) xác nhận khởi tạo tài khoản Backup Founder này và đã lưu giữ mật khẩu ở nơi an toàn.
+                </span>
+              </label>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
                 <button
                   type="button"
-                  data-testid="perm-save-btn"
-                  onClick={handleSavePermissionModal}
+                  disabled={bfSubmitting}
+                  onClick={() => setIsProvisionBackupModalOpen(false)}
+                  style={{
+                    height: '34px',
+                    padding: '0 14px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgElevated,
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  data-testid="bf-submit-btn"
+                  disabled={bfSubmitting}
                   style={{
                     height: '34px',
                     padding: '0 16px',
                     borderRadius: '8px',
                     border: 'none',
-                    background: theme.accent,
+                    background: '#6D28D9',
                     color: '#FFFFFF',
                     fontSize: '12.5px',
                     fontWeight: 700,
+                    cursor: bfSubmitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {bfSubmitting ? 'Đang khởi tạo...' : 'Khởi tạo Backup Founder'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 1C: ĐẶT LẠI MẬT KHẨU BACKUP FOUNDER (KHÔNG CẦN MẬT KHẨU CŨ)      */}
+      {/* ===================================================================== */}
+      {resetPwdTargetUid && (
+        <div
+          className="xh-modal-backdrop"
+          onClick={() => !resetPwdSubmitting && setResetPwdTargetUid(null)}
+        >
+          <div
+            data-testid="reset-backup-password-modal"
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '420px',
+              background: theme.bgCard,
+              color: theme.textPrimary,
+              borderRadius: '14px',
+              border: `1.5px solid #C4B5FD`,
+              padding: '18px',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.22)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '10px',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#5B21B6' }}>
+                🔑 Đặt lại mật khẩu Backup Founder (@{resetPwdTargetUsername})
+              </h3>
+              <button
+                type="button"
+                disabled={resetPwdSubmitting}
+                onClick={() => setResetPwdTargetUid(null)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: theme.textMuted,
+                  cursor: 'pointer',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div
+              style={{
+                padding: '9px 11px',
+                borderRadius: '8px',
+                background: '#EDE9FE',
+                border: '1px solid #C4B5FD',
+                color: '#5B21B6',
+                fontSize: '11.5px',
+                marginBottom: '12px',
+              }}
+            >
+              Primary Founder đặt mật khẩu mới cho <b>@{resetPwdTargetUsername}</b> qua <b>Privileged Backend</b> mà <b>không cần nhập mật khẩu cũ</b>. Ngay sau khi đổi, mật khẩu cũ bị vô hiệu hóa tức thì và mọi phiên đăng nhập cũ bị thu hồi.
+            </div>
+
+            <form
+              onSubmit={handleSubmitResetBackupPassword}
+              style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+            >
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, marginBottom: '4px' }}>
+                  Mật khẩu mới (tối thiểu 10 ký tự) *
+                </label>
+                <input
+                  type="password"
+                  data-testid="reset-bf-new-password-input"
+                  value={newBfPassword}
+                  onChange={e => setNewBfPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu mới..."
+                  autoComplete="new-password"
+                  required
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgInput,
+                    fontSize: '12.5px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, marginBottom: '4px' }}>
+                  Xác nhận mật khẩu mới *
+                </label>
+                <input
+                  type="password"
+                  data-testid="reset-bf-confirm-password-input"
+                  value={confirmNewBfPassword}
+                  onChange={e => setConfirmNewBfPassword(e.target.value)}
+                  placeholder="Nhập lại mật khẩu mới..."
+                  autoComplete="new-password"
+                  required
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgInput,
+                    fontSize: '12.5px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  background: '#FEF3C7',
+                  border: '1px solid #F59E0B',
+                  color: '#92400E',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  data-testid="reset-bf-confirm-auth-checkbox"
+                  checked={resetPwdRecentAuthConfirmed}
+                  onChange={e => setResetPwdRecentAuthConfirmed(e.target.checked)}
+                  style={{ marginTop: '2px', accentColor: '#D97706' }}
+                />
+                <span>
+                  Xác thực phiên Primary Founder (Dê Già Designer): Đặt mật khẩu mới và thu hồi toàn bộ phiên cũ của Backup Founder.
+                </span>
+              </label>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                <button
+                  type="button"
+                  disabled={resetPwdSubmitting}
+                  onClick={() => setResetPwdTargetUid(null)}
+                  style={{
+                    height: '34px',
+                    padding: '0 14px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgElevated,
+                    fontSize: '12.5px',
+                    fontWeight: 600,
                     cursor: 'pointer',
                   }}
                 >
-                  Lưu
+                  Hủy
                 </button>
-              )}
+                <button
+                  type="submit"
+                  data-testid="reset-bf-submit-btn"
+                  disabled={resetPwdSubmitting}
+                  style={{
+                    height: '34px',
+                    padding: '0 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#6D28D9',
+                    color: '#FFFFFF',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: resetPwdSubmitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {resetPwdSubmitting ? 'Đang cập nhật...' : 'Xác nhận đặt mật khẩu mới'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 1D: XÁC MINH / CẬP NHẬT EMAIL KHÔI PHỤC BACKUP FOUNDER          */}
+      {/* ===================================================================== */}
+      {verifyEmailTargetUid && (
+        <div
+          className="xh-modal-backdrop"
+          onClick={() => !verifyEmailSubmitting && setVerifyEmailTargetUid(null)}
+        >
+          <div
+            data-testid="verify-recovery-email-modal"
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '400px',
+              background: theme.bgCard,
+              color: theme.textPrimary,
+              borderRadius: '14px',
+              border: `1.5px solid #C4B5FD`,
+              padding: '18px',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.22)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '10px',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#5B21B6' }}>
+                ✉️ Xác minh Email khôi phục thực
+              </h3>
+              <button
+                type="button"
+                disabled={verifyEmailSubmitting}
+                onClick={() => setVerifyEmailTargetUid(null)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: theme.textMuted,
+                  cursor: 'pointer',
+                }}
+              >
+                <X size={16} />
+              </button>
             </div>
+
+            <form
+              onSubmit={handleSubmitVerifyRecoveryEmail}
+              style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+            >
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, marginBottom: '4px' }}>
+                  Địa chỉ Email khôi phục nhận thư thực tế *
+                </label>
+                <input
+                  type="email"
+                  data-testid="verify-recovery-email-input"
+                  value={verifyEmailInput}
+                  onChange={e => setVerifyEmailInput(e.target.value)}
+                  placeholder="email-khoi-phuc-thuc@gmail.com"
+                  required
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgInput,
+                    fontSize: '12.5px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  disabled={verifyEmailSubmitting}
+                  onClick={() => setVerifyEmailTargetUid(null)}
+                  style={{
+                    height: '34px',
+                    padding: '0 14px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.border}`,
+                    background: theme.bgElevated,
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  data-testid="verify-recovery-email-submit-btn"
+                  disabled={verifyEmailSubmitting}
+                  style={{
+                    height: '34px',
+                    padding: '0 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#6D28D9',
+                    color: '#FFFFFF',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: verifyEmailSubmitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {verifyEmailSubmitting ? 'Đang xác minh...' : 'Lưu & Xác minh Email'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

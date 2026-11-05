@@ -7,7 +7,7 @@
     <meta name="application-name" content="Xuân Hòa Có Gì" />
     <meta name="author" content="MinhTT" />
     <meta name="copyright" content="Bản quyền 2026 của MinhTT" />
-    <meta name="description" content="Xuân Hòa Có Gì - Ăn gì, Nhậu gì, Uống gì, Ăn vặt hôm nay tại khu vực ĐH Sư Phạm Hà Nội 2, P. Xuân Hòa, TP. Phúc Yên, Vĩnh Phúc." />
+    <meta name="description" content="Xuân Hòa Có Gì - Ăn gì, Nhậu gì, Uống gì, Ăn vặt hôm nay tại khu vực ĐH Sư Phạm Hà Nội 2, Phường Xuân Hòa, tỉnh Phú Thọ." />
     <link rel="icon" type="image/x-icon" href="%BASE_URL%favicon.ico?v=2" />
     <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%brand/favicon-cs-v2.png?v=2" />
     <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%brand/apple-touch-icon-cs-v2.png?v=2" />
@@ -62,6 +62,14 @@
             window.history.replaceState(null, document.title, '/#/quanly');
           } else if (p === '/bandoso' || p === '/bandoso/' || p === '/ban-do' || p === '/ban-do/') {
             window.history.replaceState(null, document.title, '/#/bandoso');
+          } else if (p === '/terms/' || p === '/dieu-khoan' || p === '/dieu-khoan/') {
+            window.history.replaceState(null, document.title, '/terms');
+          } else if (p === '/privacy/' || p === '/chinh-sach-bao-mat' || p === '/chinh-sach-bao-mat/') {
+            window.history.replaceState(null, document.title, '/privacy');
+          } else if (p === '/community-guidelines/' || p === '/tieu-chuan-cong-dong' || p === '/tieu-chuan-cong-dong/') {
+            window.history.replaceState(null, document.title, '/community-guidelines');
+          } else if (p === '/data-rights/' || p === '/quyen-du-lieu' || p === '/quyen-du-lieu/') {
+            window.history.replaceState(null, document.title, '/data-rights');
           }
         } catch (err) {}
       })();

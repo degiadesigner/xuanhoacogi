@@ -2,6 +2,9 @@ import {
   ManagedMember,
   MemberStatus,
   SystemRoleTier,
+  AccountIdentityStatus,
+  PendingRoleAssignmentRecord,
+  PendingRoleTargetType,
   PRIMARY_FOUNDER_EMAIL,
   PRIMARY_FOUNDER_DISPLAY_NAME,
   getAdminState,
@@ -13,6 +16,10 @@ import {
   isUidOperationalAdmin,
   isUidOperationalManager,
   isUidLocked,
+  resolveMemberIdentityState,
+  getPendingRoleAssignmentForMember,
+  saveOrQueueMemberRoleAssignment,
+  cancelPendingRoleAssignment,
   grantOrRevokeAdminRole,
   saveAdminState,
   updateMemberManagerPermissions,
@@ -24,6 +31,12 @@ import {
 
 export type MemberRoleFilter = 'all' | 'founder' | 'admin' | 'web' | 'maps' | 'both' | 'member';
 export type MemberStatusFilter = 'all' | 'active' | 'muted' | 'banned';
+export type MemberVerificationFilter =
+  | 'all'
+  | 'verified'
+  | 'pending_verification'
+  | 'pending_role_activation'
+  | 'conflict';
 export type MemberSortOption = 'newest' | 'oldest' | 'name_asc' | 'name_desc' | 'last_active';
 export type MemberPageSize = 25 | 50 | 100;
 export type UidVerificationClass = 'verified_28char' | 'google_sub_21digit' | 'synthetic_uid';
@@ -47,6 +60,11 @@ export interface IndexedMemberRecord {
   isAdmin: boolean;
   isUidVerified: boolean;
   uidVerificationClass: UidVerificationClass;
+  identityStatus: AccountIdentityStatus;
+  legacyUid: string;
+  googleSub: string | null;
+  conflictReason: string | null;
+  pendingRoleAssignment: PendingRoleAssignmentRecord | null;
   hasLegacyPendingRole: boolean;
   canManageWeb: boolean;
   canManageMaps: boolean;
@@ -78,6 +96,10 @@ export interface UnifiedMemberCounts {
   statusActive: number;
   statusMuted: number;
   statusBanned: number;
+  verifiedCount: number;
+  pendingVerificationCount: number;
+  pendingRoleActivationCount: number;
+  conflictCount: number;
 }
 
 export interface OperatorGroupsSummary {
@@ -96,6 +118,7 @@ export interface MemberQueryParams {
   pageSize: MemberPageSize;
   roleFilter: MemberRoleFilter;
   statusFilter: MemberStatusFilter;
+  verificationFilter?: MemberVerificationFilter;
   search: string;
   sortBy: MemberSortOption;
 }
@@ -473,6 +496,10 @@ let cachedUnifiedCounts: UnifiedMemberCounts = {
   statusActive: 0,
   statusMuted: 0,
   statusBanned: 0,
+  verifiedCount: 0,
+  pendingVerificationCount: 0,
+  pendingRoleActivationCount: 0,
+  conflictCount: 0,
 };
 let cachedOperators: OperatorGroupsSummary = {
   founders: [],
@@ -581,11 +608,17 @@ function buildEffectiveMembersSource(): {
     }
   }
 
+  const pendingStamp = Object.entries(sec.pending_role_assignments || {})
+    .map(([k, v]) => `${k}:${v?.status}:${v?.requestedRole}:v${v?.revision || 1}`)
+    .join(',');
+  const linksStamp = Object.entries(sec.identity_links || {})
+    .map(([k, v]) => `${k}:${v?.status}:${v?.verifiedFirebaseUid || ''}`)
+    .join(',');
   const secStamp = `${Object.keys(sec.primary_founder || {}).join(',')}|${Object.keys(
     sec.backup_founder || {}
   ).join(',')}|${Object.keys(sec.admins || {}).join(',')}|${Object.keys(
     sec.managers || {}
-  ).join(',')}|${Object.keys(sec.locked_uids || {}).join(',')}`;
+  ).join(',')}|${Object.keys(sec.locked_uids || {}).join(',')}|${pendingStamp}|${linksStamp}`;
   const memberCount = Object.keys(merged).length;
   const stamp = `real_${state.updatedAt || 0}_${memberCount}_${secStamp}_${simulatedDatasetVersion}`;
   return {
@@ -601,6 +634,7 @@ function ensureMemberIndex(): void {
     return;
   }
 
+  const sec = getSecurityState();
   const isSimulationMode = Boolean(simulatedMembersOverlay);
   const list: IndexedMemberRecord[] = [];
   const byEmail = new Map<string, IndexedMemberRecord>();
@@ -616,16 +650,35 @@ function ensureMemberIndex(): void {
   let statusActive = 0;
   let statusMuted = 0;
   let statusBanned = 0;
+  let verifiedCount = 0;
+  let pendingVerificationCount = 0;
+  let pendingRoleActivationCount = 0;
+  let conflictCount = 0;
 
   for (const [rawKey, m] of Object.entries(sourceMap)) {
     if (!m || !m.email) continue;
     const email = m.email.trim().toLowerCase() || rawKey.trim().toLowerCase();
     if (!email || byEmail.has(email)) continue;
 
-    const uid = m.uid || `uid_${email.replace(/[^a-z0-9]/g, '_')}`;
+    const identityInfo = isSimulationMode
+      ? {
+          status: 'VERIFIED' as AccountIdentityStatus,
+          verifiedUid: m.uid || `uid_${email.replace(/[^a-z0-9]/g, '_')}`,
+          legacyUid: m.uid || `uid_${email.replace(/[^a-z0-9]/g, '_')}`,
+          googleSub: null,
+          conflictReason: null,
+        }
+      : resolveMemberIdentityState(m, sec, sourceMap);
+
+    const uid =
+      identityInfo.verifiedUid ||
+      m.uid ||
+      `uid_${email.replace(/[^a-z0-9]/g, '_')}`;
     const displayName = (m.nickname || m.displayName || email.split('@')[0]).trim();
     const uidVerificationClass = classifyMemberUid(uid);
-    const isUidVerified = isSimulationMode ? true : uidVerificationClass === 'verified_28char';
+    const isUidVerified = isSimulationMode
+      ? true
+      : identityInfo.status === 'VERIFIED' && uidVerificationClass === 'verified_28char';
     const isDisabledBf = !isSimulationMode && isUidDisabledBackupFounder(uid);
     const isLocked = !isSimulationMode && (isUidLocked(uid) || isDisabledBf);
 
@@ -642,17 +695,19 @@ function ensureMemberIndex(): void {
         (!isUidVerified && m.roleTier === 'backup_founder'));
     const isFounder = isPrimaryFounder || isBackupFounder;
 
-    // QUY TẮC FOUNDER V2: Không tự động cấp quyền Admin/Manager cho UID cũ chưa xác minh (21-digit Google sub hoặc uid_*)
+    const rawPendingRole = isSimulationMode ? null : getPendingRoleAssignmentForMember(email, sec);
+
+    // QUY TẮC FOUNDER V2 + V6: Không tự động cấp quyền Admin/Manager hoạt động cho UID cũ chưa xác minh (21-digit Google sub hoặc uid_*)
     const wantsLegacyRole = Boolean(
       m.status === 'admin' || m.roleTier === 'admin' || m.canManageWeb || m.canManageMaps
     );
-    const hasLegacyPendingRole = !isPrimaryFounder && !isUidVerified && wantsLegacyRole;
 
     const isOperationalAdmin =
       isFounder ||
       (!isLocked &&
         !isDisabledBf &&
         isUidVerified &&
+        identityInfo.status !== 'CONFLICT' &&
         (isUidOperationalAdmin(uid) ||
           m.status === 'admin' ||
           m.roleTier === 'admin' ||
@@ -660,15 +715,42 @@ function ensureMemberIndex(): void {
 
     const canManageWeb = isOperationalAdmin
       ? true
-      : !isLocked && !isDisabledBf && isUidVerified && Boolean(m.canManageWeb || isUidOperationalManager(uid));
+      : !isLocked &&
+        !isDisabledBf &&
+        isUidVerified &&
+        identityInfo.status !== 'CONFLICT' &&
+        Boolean(m.canManageWeb || isUidOperationalManager(uid));
     const canManageMaps = isOperationalAdmin
       ? true
-      : !isLocked && !isDisabledBf && isUidVerified && Boolean(m.canManageMaps || isUidOperationalManager(uid));
+      : !isLocked &&
+        !isDisabledBf &&
+        isUidVerified &&
+        identityInfo.status !== 'CONFLICT' &&
+        Boolean(m.canManageMaps || isUidOperationalManager(uid));
 
     const isWebManager = !isOperationalAdmin && canManageWeb;
     const isMapsManager = !isOperationalAdmin && canManageMaps;
     const isBothManager = isWebManager && isMapsManager;
     const isRegularMember = !isOperationalAdmin && !isWebManager && !isMapsManager;
+
+    // Không bao giờ hiển thị đồng thời ACTIVE và PENDING cho cùng một quyền
+    const pendingRoleAssignment =
+      !isOperationalAdmin && !isWebManager && !isMapsManager ? rawPendingRole : null;
+    const hasLegacyPendingRole =
+      !isPrimaryFounder &&
+      !isUidVerified &&
+      Boolean(pendingRoleAssignment || wantsLegacyRole);
+
+    if (identityInfo.status === 'CONFLICT') {
+      conflictCount++;
+    } else if (isUidVerified || isPrimaryFounder) {
+      verifiedCount++;
+    } else {
+      pendingVerificationCount++;
+    }
+    if (pendingRoleAssignment) {
+      pendingRoleActivationCount++;
+    }
 
     const roleTier: SystemRoleTier = isPrimaryFounder
       ? 'primary_founder'
@@ -701,11 +783,17 @@ function ensureMemberIndex(): void {
     if (isWebManager) roleTokens.push('ql web', 'quan ly web', 'web', 'manager');
     if (isMapsManager) roleTokens.push('ql maps', 'quan ly maps', 'maps', 'ban do', 'manager');
     if (isBothManager) roleTokens.push('web maps', 'kiem nhiem');
-    if (hasLegacyPendingRole) roleTokens.push('cho xac minh uid', 'unverified uid');
+    if (hasLegacyPendingRole) roleTokens.push('cho xac minh uid', 'unverified uid', 'cho kich hoat');
+    if (pendingRoleAssignment) {
+      roleTokens.push('pending role', 'quyen cho', pendingRoleAssignment.requestedRole);
+    }
+    if (identityInfo.status === 'CONFLICT') {
+      roleTokens.push('xung dot', 'conflict');
+    }
     if (isRegularMember) roleTokens.push('thanh vien', 'member', 'user');
 
     const normName = stripVnAccents(displayName);
-    const searchHaystack = `${displayName.toLowerCase()} ${normName} ${email} ${uid.toLowerCase()} ${
+    const searchHaystack = `${displayName.toLowerCase()} ${normName} ${email} ${uid.toLowerCase()} ${identityInfo.legacyUid.toLowerCase()} ${
       m.phone || ''
     } ${roleTokens.join(' ')}`;
 
@@ -726,8 +814,13 @@ function ensureMemberIndex(): void {
       isBackupFounder,
       isFounder,
       isAdmin: isOperationalAdmin,
-      isUidVerified,
+      isUidVerified: isUidVerified || isPrimaryFounder,
       uidVerificationClass,
+      identityStatus: isPrimaryFounder ? 'VERIFIED' : identityInfo.status,
+      legacyUid: identityInfo.legacyUid,
+      googleSub: identityInfo.googleSub,
+      conflictReason: identityInfo.conflictReason,
+      pendingRoleAssignment,
       hasLegacyPendingRole,
       canManageWeb,
       canManageMaps,
@@ -795,6 +888,10 @@ function ensureMemberIndex(): void {
     statusActive,
     statusMuted,
     statusBanned,
+    verifiedCount,
+    pendingVerificationCount,
+    pendingRoleActivationCount,
+    conflictCount,
   };
   cachedOperators = {
     founders,
@@ -827,11 +924,12 @@ export function queryMembersPage(params: MemberQueryParams): MemberQueryResult {
       : 50;
   const roleFilter: MemberRoleFilter = params.roleFilter || 'all';
   const statusFilter: MemberStatusFilter = params.statusFilter || 'all';
+  const verificationFilter: MemberVerificationFilter = params.verificationFilter || 'all';
   const sortBy: MemberSortOption = params.sortBy || 'newest';
   const rawSearch = (params.search || '').trim().toLowerCase();
   const normSearch = rawSearch ? stripVnAccents(rawSearch) : '';
 
-  const cacheKey = `${cachedIndexStamp}|${roleFilter}|${statusFilter}|${sortBy}|${rawSearch}|${params.page}|${pageSize}`;
+  const cacheKey = `${cachedIndexStamp}|${roleFilter}|${statusFilter}|${verificationFilter}|${sortBy}|${rawSearch}|${params.page}|${pageSize}`;
   const cachedResult = pageSliceCache.get(cacheKey);
   if (cachedResult) {
     return cachedResult;
@@ -864,13 +962,28 @@ export function queryMembersPage(params: MemberQueryParams): MemberQueryResult {
       break;
   }
 
-  // 2. Lọc theo statusFilter và search token
+  // 2. Lọc theo statusFilter, verificationFilter và search token
   let filtered = roleFiltered;
-  if (statusFilter !== 'all' || rawSearch) {
+  if (statusFilter !== 'all' || verificationFilter !== 'all' || rawSearch) {
     const tokens = normSearch ? normSearch.split(/\s+/).filter(Boolean) : [];
     filtered = roleFiltered.filter(item => {
       if (statusFilter !== 'all' && item.effectiveStatus !== statusFilter) {
         return false;
+      }
+      if (verificationFilter !== 'all') {
+        if (verificationFilter === 'verified' && !item.isUidVerified) return false;
+        if (
+          verificationFilter === 'pending_verification' &&
+          (item.isUidVerified || item.identityStatus === 'CONFLICT')
+        ) {
+          return false;
+        }
+        if (verificationFilter === 'pending_role_activation' && !item.pendingRoleAssignment) {
+          return false;
+        }
+        if (verificationFilter === 'conflict' && item.identityStatus !== 'CONFLICT') {
+          return false;
+        }
       }
       if (!rawSearch) return true;
       if (item.searchHaystack.includes(rawSearch)) return true;
@@ -934,12 +1047,17 @@ export function queryMembersPage(params: MemberQueryParams): MemberQueryResult {
 
 // ============================================================================
 // MUTATION HELPERS (CẬP NHẬT TỨC THÌ TRÊN CẢ STORE THẬT VÀ DATASET GIẢ LẬP)
-// Bảo vệ tuyệt đối quyền Founder / SuperAdmin
+// Bảo vệ tuyệt đối quyền Founder / SuperAdmin + Hỗ trợ Quyền Chờ Kích Hoạt V6
 // ============================================================================
 export function updateMemberPermissionsUnified(
   emailKey: string,
   patch: { canManageWeb: boolean; canManageMaps: boolean; makeAdmin?: boolean }
-): { ok: boolean; message: string; updated?: IndexedMemberRecord | null } {
+): {
+  ok: boolean;
+  mode?: 'ACTIVE_IMMEDIATELY' | 'PENDING_ROLE_ACTIVATION' | 'CLEARED_TO_MEMBER';
+  message: string;
+  updated?: IndexedMemberRecord | null;
+} {
   const cleanEmail = emailKey.trim().toLowerCase();
   const existing = getIndexedMemberByKey(cleanEmail);
   if (!existing) {
@@ -965,52 +1083,71 @@ export function updateMemberPermissionsUnified(
     };
     simulatedDatasetVersion += 1;
     invalidateMemberIndexCache();
-  } else {
-    try {
-      if (patch.makeAdmin !== undefined) {
-        if (patch.makeAdmin) {
-          grantOrRevokeAdminRole(cleanEmail, true);
-        } else {
-          if (existing.isAdmin) {
-            grantOrRevokeAdminRole(cleanEmail, false);
-          }
-          updateMemberManagerPermissions(cleanEmail, {
-            canManageWeb: patch.canManageWeb,
-            canManageMaps: patch.canManageMaps,
-          });
-        }
-      } else {
-        updateMemberManagerPermissions(cleanEmail, {
-          canManageWeb: patch.canManageWeb,
-          canManageMaps: patch.canManageMaps,
-        });
-      }
-      invalidateMemberIndexCache();
-    } catch (err: any) {
-      return {
-        ok: false,
-        message: err?.message || 'Không thể cập nhật phân quyền thành viên.',
-      };
-    }
-  }
-
-  const updated = getIndexedMemberByKey(cleanEmail);
-  if (patch.makeAdmin) {
+    const updatedSim = getIndexedMemberByKey(cleanEmail);
     return {
       ok: true,
-      message: `👑 Đã cấp quyền ADMIN cho ${existing.displayName}`,
-      updated,
+      mode: 'ACTIVE_IMMEDIATELY',
+      message: nextAdmin
+        ? `👑 Đã cấp quyền ADMIN cho ${existing.displayName}`
+        : patch.canManageWeb || patch.canManageMaps
+        ? `Đã cấp quyền Quản lý cho ${existing.displayName}`
+        : `Đã thu hồi quyền của ${existing.displayName} (về Thành viên)`,
+      updated: updatedSim,
     };
   }
-  const roleParts: string[] = [];
-  if (patch.canManageWeb) roleParts.push('Quản lý Web');
-  if (patch.canManageMaps) roleParts.push('Quản lý Maps');
-  const msg =
-    roleParts.length > 0
-      ? `Đã cấp quyền ${roleParts.join(' + ')} cho ${existing.displayName}`
-      : `Đã thu hồi quyền Admin / Quản lý của ${existing.displayName} (về User)`;
 
-  return { ok: true, message: msg, updated };
+  try {
+    const makeAdmin = Boolean(patch.makeAdmin);
+    const requestedRole: PendingRoleTargetType = makeAdmin
+      ? 'admin'
+      : patch.canManageWeb && patch.canManageMaps
+      ? 'manager_both'
+      : patch.canManageWeb
+      ? 'manager_web'
+      : patch.canManageMaps
+      ? 'manager_maps'
+      : 'member';
+
+    const saveRes = saveOrQueueMemberRoleAssignment(cleanEmail, {
+      requestedRole,
+      canManageWeb: makeAdmin ? true : patch.canManageWeb,
+      canManageMaps: makeAdmin ? true : patch.canManageMaps,
+    });
+    invalidateMemberIndexCache();
+    const updated = getIndexedMemberByKey(cleanEmail);
+    return {
+      ok: true,
+      mode: saveRes.mode,
+      message: saveRes.message,
+      updated,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      message: err?.message || 'Không thể cập nhật phân quyền thành viên.',
+    };
+  }
+}
+
+export function cancelPendingRoleUnified(
+  emailKey: string,
+  reason?: string
+): { ok: boolean; message: string; updated?: IndexedMemberRecord | null } {
+  const cleanEmail = emailKey.trim().toLowerCase();
+  try {
+    const res = cancelPendingRoleAssignment(cleanEmail, reason);
+    invalidateMemberIndexCache();
+    return {
+      ok: res.ok,
+      message: res.message,
+      updated: getIndexedMemberByKey(cleanEmail),
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      message: err?.message || 'Không thể hủy yêu cầu quyền chờ kích hoạt.',
+    };
+  }
 }
 
 export function updateMemberStatusUnified(
@@ -1206,16 +1343,26 @@ export function bulkUpdateMembersUnified(
       if (rec.isFounder || rec.isAdmin) continue;
 
       if (action.type === 'grant_roles') {
-        target.canManageWeb = action.canManageWeb;
-        target.canManageMaps = action.canManageMaps;
-        target.lastActiveAt = Date.now();
-        pushMemberToCloudRealtime(target, true);
+        const reqRole: PendingRoleTargetType =
+          action.canManageWeb && action.canManageMaps
+            ? 'manager_both'
+            : action.canManageWeb
+            ? 'manager_web'
+            : action.canManageMaps
+            ? 'manager_maps'
+            : 'member';
+        saveOrQueueMemberRoleAssignment(em, {
+          requestedRole: reqRole,
+          canManageWeb: action.canManageWeb,
+          canManageMaps: action.canManageMaps,
+        });
         updatedCount++;
       } else if (action.type === 'revoke_roles') {
-        target.canManageWeb = false;
-        target.canManageMaps = false;
-        target.lastActiveAt = Date.now();
-        pushMemberToCloudRealtime(target, true);
+        saveOrQueueMemberRoleAssignment(em, {
+          requestedRole: 'member',
+          canManageWeb: false,
+          canManageMaps: false,
+        });
         updatedCount++;
       } else if (action.type === 'status') {
         target.status = action.status;
@@ -1257,6 +1404,7 @@ if (typeof window !== 'undefined') {
     queryMembersPage,
     getIndexedMemberByKey,
     updateMemberPermissionsUnified,
+    cancelPendingRoleUnified,
     updateMemberStatusUnified,
     deleteMemberUnified,
     bulkUpdateMembersUnified,

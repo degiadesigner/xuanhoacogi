@@ -29,6 +29,7 @@ import {
   Settings,
   Bookmark,
   Home,
+  Layers,
 } from 'lucide-react';
 import type { Place } from '@/lib/places-xuanhoa';
 import type { UserAuthProfile } from '@/lib/auth';
@@ -3255,6 +3256,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
 
       const handleUserInteractionStart = () => {
         hasUserInteractedRef.current = true;
+        map.stop();
       };
 
       const handleCameraMove = () => {
@@ -3332,6 +3334,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
       is3DModeRef.current = next;
       const map = mapInstanceRef.current;
       if (map) {
+        map.stop();
         map.easeTo({
           pitch: next ? 42 : 0,
           bearing: 0,
@@ -3342,6 +3345,31 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
       return next;
     });
   }, [scheduleCanvasRender]);
+
+  const handleSelectMapMode = useCallback(
+    (mode: '2d' | '2.5d' | '3d') => {
+      triggerFeedback('tap');
+      if (mode === '3d') {
+        setIsCity3DOpen(true);
+        return;
+      }
+      const next3D = mode === '2.5d';
+      setIsCity3DOpen(false);
+      setIs3DMode(next3D);
+      is3DModeRef.current = next3D;
+      const map = mapInstanceRef.current;
+      if (map) {
+        map.stop();
+        map.easeTo({
+          pitch: next3D ? 42 : 0,
+          bearing: 0,
+          duration: 360,
+        });
+      }
+      scheduleCanvasRender();
+    },
+    [scheduleCanvasRender]
+  );
 
   // Xử lý click lên bản đồ:
   // 1. Nếu Chủ quán đang cắm ghim -> Di chuyển tâm ngắm ghim tới đúng vị trí vừa chạm (kèm phản hồi âm thanh)
@@ -3607,9 +3635,25 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     scheduleCanvasRender();
   }, [userHome, scheduleCanvasRender]);
 
-  // Điều hướng Camera + Cập nhật Tiêu điểm 3D (Spotlight 3D) tới đúng vùng đang xem
+  const cameraNavRequestIdRef = useRef<number>(0);
+  const lastEmbeddedFlyKeyRef = useRef<string>('');
+
+  // Điều hướng Camera một chiều có kiểm soát (Camera Navigation Controller) + Cập nhật Tiêu điểm 3D tới đúng vùng đang xem
   const flyToCoordinates = useCallback(
     (lat: number, lng: number, zoom = 16.4, focusLabel?: string, radiusDeg = 0.0044) => {
+      if (
+        typeof lat !== 'number' ||
+        typeof lng !== 'number' ||
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng) ||
+        lat < 20 ||
+        lat > 23 ||
+        lng < 104 ||
+        lng > 107
+      ) {
+        return;
+      }
+      cameraNavRequestIdRef.current += 1;
       const map = mapInstanceRef.current;
       focusTargetRef.current = {
         lat,
@@ -3698,7 +3742,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
     ]
   );
 
-  // Tự động di chuyển Bản đồ số nhúng trong Cột 3 của Quản lý Maps tới tọa độ quán đang chọn (nhẹ tênh 160ms easeTo, hủy animation cũ, không recompute store)
+  // Tự động di chuyển Bản đồ số nhúng trong Cột 3 của Quản lý Maps tới tọa độ quán đang chọn (nhẹ tênh 160ms easeTo, hủy animation cũ, không lặp vô hạn)
   useEffect(() => {
     if (!embeddedInAdmin) return;
     const map = mapInstanceRef.current;
@@ -3712,6 +3756,13 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
       adminPreviewLng >= 104 &&
       adminPreviewLng <= 107
     ) {
+      const flyKey = `${adminSelectedPlaceId || ''}_${adminPreviewLat.toFixed(6)}_${adminPreviewLng.toFixed(6)}_${adminFlyTrigger || 0}`;
+      if (lastEmbeddedFlyKeyRef.current === flyKey) {
+        scheduleCanvasRender();
+        return;
+      }
+      lastEmbeddedFlyKeyRef.current = flyKey;
+      cameraNavRequestIdRef.current += 1;
       focusTargetRef.current = {
         lat: adminPreviewLat,
         lng: adminPreviewLng,
@@ -3725,7 +3776,7 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         map.easeTo({
           center: [adminPreviewLng, adminPreviewLat],
           zoom: Math.max(map.getZoom(), 16.3),
-          duration: distDeg < 0.0012 ? 120 : 180,
+          duration: distDeg < 0.0012 ? 120 : 220,
           essential: true,
         });
       }
@@ -4236,7 +4287,8 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         return;
       }
       triggerFeedback('tap');
-      const target = place || selectedPlace || verifiedMapMarkers[0] || unverifiedCatalogPlaces[0] || null;
+      // Không bao giờ tự động chọn verifiedMapMarkers[0] (Hiệu bộ ĐHSP Hà Nội 2) khi người dùng chưa chọn địa điểm
+      const target = place || selectedPlace || null;
       setIsAdminCreatingNew(false);
       populateAdminFormFromPlace(target);
       if (embeddedInAdmin && onAdminSelectPlace && target) {
@@ -4251,8 +4303,6 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
       isAdminUser,
       isMapManagerUser,
       selectedPlace,
-      verifiedMapMarkers,
-      unverifiedCatalogPlaces,
       populateAdminFormFromPlace,
       embeddedInAdmin,
       onAdminSelectPlace,
@@ -5388,7 +5438,9 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
         activePresetId={activePresetId}
         onOpenDataQualityModal={() => setIsDataQualityOpen(true)}
         is3DMode={is3DMode}
+        isCity3DOpen={isCity3DOpen}
         onToggle3DMode={handleToggle3DMode}
+        onSelectMapMode={handleSelectMapMode}
         onOpenCity3D={() => setIsCity3DOpen(true)}
         onClickHomeButton={handleClickHomeButton}
         hasSavedHome={Boolean(userHome)}
@@ -5518,10 +5570,29 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                   >
                     <span className="flex items-center gap-2">
                       <Edit3 size={16} className="text-[#0F172A]" />
-                      <span>Sửa địa điểm</span>
+                      <span>Sửa địa điểm & Định vị</span>
                     </span>
                     <span className="text-[11px] text-[#64748B] truncate max-w-[140px]">
                       {selectedPlace ? selectedPlace.name : 'Chọn quán / trụ sở'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="sheet-action-align-3d"
+                    onClick={() => {
+                      setIsManageSheetOpen(false);
+                      setAdminLandmarkMode2D('mode_b_model');
+                      setIsCity3DOpen(true);
+                    }}
+                    className="w-full p-3 rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] border border-[#BFDBFE] text-[#1E3A8A] flex items-center justify-between gap-2 font-bold text-[12.5px] cursor-pointer transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Layers size={16} className="text-[#2563EB]" />
+                      <span>Căn chỉnh Mô hình 3D (12 Landmark)</span>
+                    </span>
+                    <span className="text-[11px] text-[#1D4ED8] truncate max-w-[140px]">
+                      {selectedPlace ? selectedPlace.name : 'Chọn trên 3D →'}
                     </span>
                   </button>
 
@@ -6453,16 +6524,20 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                       if (embeddedInAdmin && onAdminSelectPlace && found) {
                         onAdminSelectPlace(found.id);
                       }
-                      if (found && found.lat !== null && found.lng !== null) {
-                        flyToCoordinates(found.lat, found.lng, 16.5, found.name, 0.0042);
-                      }
                       setNominatimSuggestions([]);
                       setAdminFeedback(
-                        found ? `Đang chọn: "${found.name}"` : null
+                        found
+                          ? found.lat !== null && found.lng !== null
+                            ? `Đang chọn: "${found.name}" (${found.lat}, ${found.lng}) — bấm nút "Định vị" bên dưới để bay camera tới địa điểm này.`
+                            : `⚠️ "${found.name}" hiện chưa có tọa độ xác minh. Hãy bấm "Chấm trên 2D" hoặc "Chấm trên 3D" để gán vị trí.`
+                          : null
                       );
                     }}
                     className="w-full h-9 px-2.5 rounded-[9px] bg-[#F8FAFC] border border-[#CBD5E1] font-semibold text-[#0F172A] text-xs focus:outline-none focus:border-[#059669]"
                   >
+                    <option value="">
+                      -- Chọn địa danh / trụ sở / quán ({verifiedMapMarkers.length + unverifiedCatalogPlaces.length}) --
+                    </option>
                     <optgroup label={`Đang hiển thị trên Bản đồ (${verifiedMapMarkers.length})`}>
                       {verifiedMapMarkers.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -6636,13 +6711,71 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
                 />
               </div>
 
-              {/* KHUNG ĐỊNH VỊ GỌN (Phần 16–18: Ưu tiên Chấm trên 2D / Chấm trên 3D) */}
+              {/* KHUNG ĐỊNH VỊ GỌN (Phần 16–18: Ưu tiên Định vị trực tiếp / Chấm trên 2D / Chấm trên 3D) */}
               <div className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
                 <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                  <span className="font-semibold text-[#334155] text-[11px] truncate">
-                    Định vị ({adminLatInput && adminLngInput ? `${Number(adminLatInput).toFixed(4)}, ${Number(adminLngInput).toFixed(4)}` : 'Chưa chấm'})
+                  <span
+                    data-testid="admin-coord-display-span"
+                    data-lat={adminLatInput}
+                    data-lng={adminLngInput}
+                    className="font-semibold text-[#334155] text-[11px] truncate"
+                  >
+                    Định vị (
+                    {adminLatInput.trim() !== '' &&
+                    adminLngInput.trim() !== '' &&
+                    Number.isFinite(Number(adminLatInput)) &&
+                    Number.isFinite(Number(adminLngInput))
+                      ? `${Number(adminLatInput).toFixed(4)}, ${Number(adminLngInput).toFixed(4)}`
+                      : 'Chưa có tọa độ'}
+                    )
                   </span>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1 flex-wrap shrink-0">
+                    <button
+                      type="button"
+                      data-testid="admin-locate-place-btn"
+                      onClick={() => {
+                        triggerFeedback('tap');
+                        const latNum = adminLatInput.trim() !== '' ? Number(adminLatInput) : NaN;
+                        const lngNum = adminLngInput.trim() !== '' ? Number(adminLngInput) : NaN;
+                        if (
+                          !Number.isFinite(latNum) ||
+                          !Number.isFinite(lngNum) ||
+                          latNum < 21.15 ||
+                          latNum > 21.40 ||
+                          lngNum < 105.60 ||
+                          lngNum > 105.85
+                        ) {
+                          setAdminFeedback(
+                            '⚠️ Địa điểm chưa có tọa độ xác minh để định vị. Hãy bấm "Chấm trên 2D" hoặc "Chấm trên 3D" để gán vị trí.'
+                          );
+                          return;
+                        }
+                        if (adminTargetPlace) {
+                          setSelectedPlace({
+                            ...adminTargetPlace,
+                            lat: latNum,
+                            lng: lngNum,
+                          });
+                        }
+                        setIsAdminCoordModalOpen(false);
+                        flyToCoordinates(
+                          latNum,
+                          lngNum,
+                          16.8,
+                          adminEditName || adminTargetPlace?.name || 'Vị trí định vị',
+                          0.0042
+                        );
+                        showTemporaryMapNotice(
+                          `🎯 Đã định vị tới "${adminEditName || adminTargetPlace?.name || 'Địa điểm'}" (${latNum.toFixed(5)}, ${lngNum.toFixed(5)})`,
+                          3200
+                        );
+                      }}
+                      className="h-7 px-2.5 rounded-[8px] bg-[#059669] hover:bg-[#047857] text-white font-bold flex items-center gap-1 cursor-pointer text-[11px] whitespace-nowrap"
+                      title="Bay camera bản đồ tới đúng vị trí của địa điểm đang chọn"
+                    >
+                      <MapPin size={12} />
+                      <span>Định vị</span>
+                    </button>
                     <button
                       type="button"
                       onClick={handleSuggestFromOsm}
@@ -7277,15 +7410,28 @@ const DigitalMapViewInner: React.FC<DigitalMapViewProps> = ({
             window.location.hash = '#/quanly';
             window.dispatchEvent(new HashChangeEvent('hashchange'));
           }}
-          onClose={(centerFrom3D, zoomFrom3D) => {
+          onClose={(centerFrom3D, zoomFrom3D, targetMode, placeFrom3D) => {
             setIsCity3DOpen(false);
             setAdminLandmarkMode2D(null);
-            if (centerFrom3D && mapInstanceRef.current) {
+            if (placeFrom3D !== undefined) {
+              setSelectedPlace(placeFrom3D);
+            }
+            if (targetMode === '2d' || targetMode === '2.5d') {
+              const next3D = targetMode === '2.5d';
+              setIs3DMode(next3D);
+              is3DModeRef.current = next3D;
+            }
+            if (mapInstanceRef.current) {
+              const nextPitch =
+                targetMode === '2.5d' ? 42 : targetMode === '2d' ? 0 : is3DModeRef.current ? 42 : 0;
+              mapInstanceRef.current.stop();
               mapInstanceRef.current.jumpTo({
-                center: [centerFrom3D.lng, centerFrom3D.lat],
+                ...(centerFrom3D ? { center: [centerFrom3D.lng, centerFrom3D.lat] } : {}),
                 ...(typeof zoomFrom3D === 'number' && !Number.isNaN(zoomFrom3D)
                   ? { zoom: zoomFrom3D }
                   : {}),
+                pitch: nextPitch,
+                bearing: 0,
               });
               scheduleCanvasRender();
             }

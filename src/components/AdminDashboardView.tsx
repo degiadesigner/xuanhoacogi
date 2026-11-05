@@ -43,6 +43,7 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { PlaceFields, type PlaceFieldsValue } from '@/components/admin/PlaceFields';
+import { CategoryTaxonomyPicker, CategoryFilterPicker } from '@/components/admin/CategoryPicker';
 import {
   AdminThemeMode,
   AdminPlaceItem,
@@ -669,6 +670,7 @@ export function AdminDashboardView({
   const [editPlaceSigPrice, setEditPlaceSigPrice] = useState(35);
   const [editPlaceQuip, setEditPlaceQuip] = useState('');
   const [editPlaceImageUrl, setEditPlaceImageUrl] = useState('');
+  const [confirmLogoutInModal, setConfirmLogoutInModal] = useState(false);
 
   // Thực đơn Món của Quán
   const [editPlaceMenu, setEditPlaceMenu] = useState<CustomMenuEntry[]>([]);
@@ -3000,8 +3002,8 @@ export function AdminDashboardView({
             <Shield size={16} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-            <span className="xh-topbar-title" style={{ fontSize: '14px', fontWeight: 800, whiteSpace: 'nowrap' }}>
-              QUẢN TRỊ <span className="xh-hide-mobile">XUÂN HÒA CÓ GÌ</span>
+            <span className="xh-topbar-title xh-hide-mobile" style={{ fontSize: '14px', fontWeight: 800, whiteSpace: 'nowrap' }}>
+              QUẢN TRỊ XUÂN HÒA CÓ GÌ
             </span>
           </div>
         </div>
@@ -3048,16 +3050,28 @@ export function AdminDashboardView({
             <span>{roleInfo.displayName}</span>
             <span
               className="xh-hide-mobile"
+              data-testid="admin-topbar-role-badge"
               style={{
                 fontSize: '10.5px',
                 fontWeight: 800,
-                padding: '1px 6px',
-                borderRadius: '5px',
+                padding: '2px 7px',
+                borderRadius: '6px',
                 background: isSuperAdmin ? theme.accentSoft : '#E0F2FE',
                 color: isSuperAdmin ? theme.accent : '#0369A1',
+                whiteSpace: 'nowrap',
               }}
             >
-              {roleInfo.roleBadgeLabel}
+              {roleInfo.isPrimaryFounder
+                ? '👑 Founder'
+                : roleInfo.isBackupFounder
+                ? '🛡️ Backup Founder'
+                : isSuperAdmin
+                ? 'Admin'
+                : canManageWeb && canManageMaps
+                ? 'QL Web + Maps'
+                : canManageMaps
+                ? 'QL Maps'
+                : 'QL Web'}
             </span>
           </div>
 
@@ -3672,39 +3686,37 @@ export function AdminDashboardView({
                   {/* 2 Ô LỰA CHỌN SỔ RA NẰM NGANG HÀNG NHAU (PHÂN KHU + TRẠNG THÁI) */}
                   {placeListTab === 'all' && (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
-                      <select
+                      <CategoryFilterPicker
+                        testId="admin-web-sector-filter"
                         value={placeSectorFilter}
-                        onChange={e => setPlaceSectorFilter(e.target.value)}
-                        style={{ ...lightSelectStyle(theme), fontSize: '11.5px', padding: '5px 7px' }}
-                      >
-                        <option value="all">Tất cả danh mục ({commercialPlaces.length})</option>
-                        <optgroup label="Nhóm chính">
-                          {MAP_PARENT_CATEGORIES.filter(p => p.id !== 'uncategorized').map(p => (
-                            <option key={`web-parent-${p.id}`} value={p.id}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="Loại chi tiết">
-                          {Object.values(MAP_CATEGORY_REGISTRY)
+                        onChange={val => setPlaceSectorFilter(val)}
+                        compact
+                        placeholder="Tất cả danh mục"
+                        theme={theme}
+                        options={[
+                          { value: 'all', label: `Tất cả danh mục (${commercialPlaces.length})` },
+                          ...MAP_PARENT_CATEGORIES.filter(p => p.id !== 'uncategorized').map(p => ({
+                            value: p.id,
+                            label: `Nhóm: ${p.label}`,
+                            groupLabel: 'Nhóm chính',
+                          })),
+                          ...Object.values(MAP_CATEGORY_REGISTRY)
                             .filter(s => s.id !== 'uncategorized')
-                            .map(sub => (
-                              <option key={`web-sub-${sub.id}`} value={sub.id}>
-                                {sub.label}
-                              </option>
-                            ))}
-                        </optgroup>
-                        <optgroup label="Phân khu cũ">
-                          {commercialSectorTags.map(sec => {
+                            .map(sub => ({
+                              value: sub.id,
+                              label: sub.label,
+                              groupLabel: 'Loại chi tiết',
+                            })),
+                          ...commercialSectorTags.map(sec => {
                             const cnt = commercialPlaces.filter(p => p.sectorTag === sec.id).length;
-                            return (
-                              <option key={sec.id} value={sec.id}>
-                                {sec.label.split(' (')[0]} ({cnt})
-                              </option>
-                            );
-                          })}
-                        </optgroup>
-                      </select>
+                            return {
+                              value: sec.id,
+                              label: `${sec.label.split(' (')[0]} (${cnt})`,
+                              groupLabel: 'Phân khu',
+                            };
+                          }),
+                        ]}
+                      />
 
                       <select
                         value={placeStatusFilter}
@@ -4319,69 +4331,27 @@ export function AdminDashboardView({
                         />
                       </div>
 
-                      {/* DANH MỤC ĐỒNG BỘ 100% VỚI QUẢN LÝ MAPS & BẢN ĐỒ SỐ */}
-                      <div>
-                        <label style={compactLabelStyle(theme)}>Nhóm danh mục (Parent)</label>
-                        <select
-                          value={editPlaceParentCat}
-                          onChange={e => {
+                      {/* DANH MỤC ĐỒNG BỘ 100% VỚI QUẢN LÝ MAPS & BẢN ĐỒ SỐ (CATEGORY PICKER CHUYÊN NGHIỆP) */}
+                      <div className="xh-col-span-2">
+                        <CategoryTaxonomyPicker
+                          parentCategoryId={editPlaceParentCat}
+                          subcategoryId={editPlaceSubcategory}
+                          onChange={(nextParent, nextSubId) => {
                             triggerFeedback('tap');
-                            const nextParent = e.target.value as MapParentCategoryId;
                             setEditPlaceParentCat(nextParent);
-                            const subs = getSubcategoriesByParent(nextParent);
-                            const firstSub = subs[0];
-                            if (firstSub) {
-                              setEditPlaceSubcategory(firstSub.id);
-                              setEditPlaceMapCategory(firstSub.legacyCategory as EditableMapCategory);
-                              setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(firstSub));
-                            }
-                          }}
-                          style={{
-                            ...lightSelectStyle(theme),
-                            height: '38px',
-                            padding: '0 10px',
-                            fontSize: '13px',
-                            boxSizing: 'border-box',
-                          }}
-                        >
-                          {MAP_PARENT_CATEGORIES.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label style={compactLabelStyle(theme)}>Loại chi tiết (Subcategory)</label>
-                        <select
-                          value={editPlaceSubcategory}
-                          onChange={e => {
-                            triggerFeedback('tap');
-                            const nextSubId = e.target.value as MapSubcategoryId;
                             setEditPlaceSubcategory(nextSubId);
                             const subMeta = MAP_CATEGORY_REGISTRY[nextSubId];
                             if (subMeta) {
-                              setEditPlaceParentCat(subMeta.parentId);
                               setEditPlaceMapCategory(subMeta.legacyCategory as EditableMapCategory);
                               setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(subMeta));
                               setEditPlaceCatalogEnabled(Boolean(subMeta.defaultCatalogEnabled));
                             }
                           }}
-                          style={{
-                            ...lightSelectStyle(theme),
-                            height: '38px',
-                            padding: '0 10px',
-                            fontSize: '13px',
-                            boxSizing: 'border-box',
-                          }}
-                        >
-                          {getSubcategoriesByParent(editPlaceParentCat).map(sub => (
-                            <option key={sub.id} value={sub.id}>
-                              {sub.label}
-                            </option>
-                          ))}
-                        </select>
+                          theme={theme}
+                          testIdPrefix="admin-web-cat-picker"
+                          legacyParentSelectTestId="admin-web-parent-category-select"
+                          legacySubSelectTestId="admin-web-subcategory-select"
+                        />
                       </div>
 
                       {/* CẤP 3 — TAG BỔ SUNG (EXTRA TAGS) ĐỒNG BỘ 100% TRÊN WEBSITE & MAPS */}
@@ -5768,44 +5738,30 @@ export function AdminDashboardView({
 
                     {/* DÒNG 3: [Nhóm bản đồ ▼] [Trạng thái ▼] */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '6px' }}>
-                      <select
+                      <CategoryFilterPicker
+                        testId="admin-map-cat-filter"
                         value={mapCatFilter}
-                        onChange={e => setMapCatFilter(e.target.value)}
-                        style={{
-                          width: '100%',
-                          minWidth: 0,
-                          height: '32px',
-                          padding: '0 6px',
-                          borderRadius: '8px',
-                          border: '1px solid #E8E2D8',
-                          backgroundColor: '#FFFFFF',
-                          color: theme.textPrimary,
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          outline: 'none',
-                          cursor: 'pointer',
-                          boxSizing: 'border-box',
-                        }}
-                      >
-                        <option value="all">Nhóm bản đồ ({allMapPlaces.length})</option>
-                        <option value="uncategorized">Chưa phân loại</option>
-                        <optgroup label="Nhóm chính">
-                          {MAP_PARENT_CATEGORIES.filter(p => p.id !== 'uncategorized').map(p => (
-                            <option key={`parent-${p.id}`} value={p.id}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                        {MAP_PARENT_CATEGORIES.filter(p => p.id !== 'uncategorized').map(parent => (
-                          <optgroup key={`group-${parent.id}`} label={`Loại: ${parent.label}`}>
-                            {getSubcategoriesByParent(parent.id).map(sub => (
-                              <option key={sub.id} value={sub.id}>
-                                {sub.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                        onChange={val => setMapCatFilter(val)}
+                        compact
+                        placeholder="Nhóm bản đồ"
+                        theme={theme}
+                        options={[
+                          { value: 'all', label: `Nhóm bản đồ (${allMapPlaces.length})` },
+                          { value: 'uncategorized', label: 'Chưa phân loại' },
+                          ...MAP_PARENT_CATEGORIES.filter(p => p.id !== 'uncategorized').map(p => ({
+                            value: p.id,
+                            label: `Nhóm: ${p.label}`,
+                            groupLabel: 'Nhóm chính',
+                          })),
+                          ...MAP_PARENT_CATEGORIES.filter(p => p.id !== 'uncategorized').flatMap(parent =>
+                            getSubcategoriesByParent(parent.id).map(sub => ({
+                              value: sub.id,
+                              label: sub.label,
+                              groupLabel: parent.label,
+                            }))
+                          ),
+                        ]}
+                      />
                       <select
                         data-testid="admin-map-coord-filter-select"
                         value={mapCoordFilter}
@@ -6757,81 +6713,26 @@ export function AdminDashboardView({
                             )}
                           </div>
 
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                            <div>
-                              <span style={{ display: 'block', fontSize: '10.5px', fontWeight: 600, color: theme.textMuted, marginBottom: '2px' }}>
-                                Nhóm (Parent Category)
-                              </span>
-                              <select
-                                data-testid="admin-map-parent-category-select"
-                                value={editPlaceParentCat}
-                                onChange={e => {
-                                  triggerFeedback('tap');
-                                  const nextParent = e.target.value as MapParentCategoryId;
-                                  setEditPlaceParentCat(nextParent);
-                                  const subs = getSubcategoriesByParent(nextParent);
-                                  const firstSub = subs[0];
-                                  if (firstSub) {
-                                    setEditPlaceSubcategory(firstSub.id);
-                                    setEditPlaceMapCategory(firstSub.legacyCategory as EditableMapCategory);
-                                    setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(firstSub));
-                                  }
-                                }}
-                                style={{
-                                  ...lightSelectStyle(theme),
-                                  height: '35px',
-                                  padding: '0 8px',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  backgroundColor: theme.bgInput,
-                                  boxSizing: 'border-box',
-                                }}
-                              >
-                                {MAP_PARENT_CATEGORIES.map(p => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <span style={{ display: 'block', fontSize: '10.5px', fontWeight: 600, color: theme.textMuted, marginBottom: '2px' }}>
-                                Loại chi tiết (Subcategory)
-                              </span>
-                              <select
-                                data-testid="admin-map-subcategory-select"
-                                value={editPlaceSubcategory}
-                                onChange={e => {
-                                  triggerFeedback('tap');
-                                  const nextSubId = e.target.value as MapSubcategoryId;
-                                  setEditPlaceSubcategory(nextSubId);
-                                  const subMeta = MAP_CATEGORY_REGISTRY[nextSubId];
-                                  if (subMeta) {
-                                    setEditPlaceParentCat(subMeta.parentId);
-                                    setEditPlaceMapCategory(subMeta.legacyCategory as EditableMapCategory);
-                                    setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(subMeta));
-                                    setEditPlaceCatalogEnabled(Boolean(subMeta.defaultCatalogEnabled));
-                                  }
-                                }}
-                                style={{
-                                  ...lightSelectStyle(theme),
-                                  height: '35px',
-                                  padding: '0 8px',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  backgroundColor: theme.bgInput,
-                                  boxSizing: 'border-box',
-                                }}
-                              >
-                                {getSubcategoriesByParent(editPlaceParentCat).map(sub => (
-                                  <option key={sub.id} value={sub.id}>
-                                    {sub.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
+                          <CategoryTaxonomyPicker
+                            parentCategoryId={editPlaceParentCat}
+                            subcategoryId={editPlaceSubcategory}
+                            onChange={(nextParent, nextSubId) => {
+                              triggerFeedback('tap');
+                              setEditPlaceParentCat(nextParent);
+                              setEditPlaceSubcategory(nextSubId);
+                              const subMeta = MAP_CATEGORY_REGISTRY[nextSubId];
+                              if (subMeta) {
+                                setEditPlaceMapCategory(subMeta.legacyCategory as EditableMapCategory);
+                                setEditPlaceSectorTag(getDefaultSectorTagForSubcategory(subMeta));
+                                setEditPlaceCatalogEnabled(Boolean(subMeta.defaultCatalogEnabled));
+                              }
+                            }}
+                            theme={theme}
+                            compact
+                            testIdPrefix="admin-map-cat-picker"
+                            legacyParentSelectTestId="admin-map-parent-category-select"
+                            legacySubSelectTestId="admin-map-subcategory-select"
+                          />
 
                           {/* CẤP 3 — TAG BỔ SUNG (EXTRA TAGS) */}
                           <div style={{ marginTop: '6px' }}>
@@ -7295,49 +7196,94 @@ export function AdminDashboardView({
                                     </div>
                                   </div>
 
-                                  <button
-                                    type="button"
-                                    data-testid="admin-verify-coord-btn"
-                                    onClick={() => {
-                                      const nLat =
-                                        editPlaceLat.trim() !== '' ? Number(editPlaceLat) : null;
-                                      const nLng =
-                                        editPlaceLng.trim() !== '' ? Number(editPlaceLng) : null;
-                                      const qual = evaluatePlaceCoordinateQuality({
-                                        id: selectedPlaceItem.place.id,
-                                        name: editPlaceName.trim() || selectedPlaceItem.place.name,
-                                        lat: nLat,
-                                        lng: nLng,
-                                      });
-                                      if (qual.status === 'located' && nLat !== null && nLng !== null) {
-                                        setHasActivelyPinnedOnMap(true);
-                                        setMapFlyTrigger(t => t + 1);
-                                        const msg = `✓ Tọa độ hợp lệ (${nLat.toFixed(6)}, ${nLng.toFixed(6)}) nằm trong vùng Xuân Hòa — đã di chuyển Bản đồ Cột 3 tới điểm ghim!`;
-                                        setInlineActionFeedback(msg);
-                                        showToast(msg, 'approve');
-                                      } else {
-                                        const warnMsg =
-                                          qual.reason ||
-                                          'Chưa có tọa độ hợp lệ. Hãy chấm trực tiếp lên Bản đồ Cột 3 hoặc bấm Tìm tọa độ.';
-                                        setInlineActionFeedback(`⚠️ ${warnMsg}`);
-                                        showToast(`⚠️ ${warnMsg}`, 'warn');
-                                      }
-                                    }}
-                                    style={{
-                                      height: '28px',
-                                      padding: '0 10px',
-                                      borderRadius: '6px',
-                                      border: '1px solid #059669',
-                                      background: '#ECFDF5',
-                                      color: '#047857',
-                                      fontSize: '11px',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    🎯 Kiểm tra tọa độ
-                                  </button>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    <button
+                                      type="button"
+                                      data-testid="admin-locate-place-btn"
+                                      onClick={() => {
+                                        const nLat =
+                                          editPlaceLat.trim() !== '' ? Number(editPlaceLat) : null;
+                                        const nLng =
+                                          editPlaceLng.trim() !== '' ? Number(editPlaceLng) : null;
+                                        const qual = evaluatePlaceCoordinateQuality({
+                                          id: selectedPlaceItem.place.id,
+                                          name: editPlaceName.trim() || selectedPlaceItem.place.name,
+                                          lat: nLat,
+                                          lng: nLng,
+                                        });
+                                        if (qual.status === 'located' && nLat !== null && nLng !== null) {
+                                          setHasActivelyPinnedOnMap(true);
+                                          setMapFlyTrigger(t => t + 1);
+                                          const msg = `📍 Đã định vị "${editPlaceName.trim() || selectedPlaceItem.place.name}" (${nLat.toFixed(6)}, ${nLng.toFixed(6)}) trên Bản đồ Cột 3.`;
+                                          setInlineActionFeedback(msg);
+                                          showToast(msg, 'approve');
+                                        } else {
+                                          const warnMsg =
+                                            'Địa điểm chưa có tọa độ xác minh. Vui lòng nhập tọa độ hợp lệ hoặc chấm trực tiếp trên Bản đồ.';
+                                          setInlineActionFeedback(`⚠️ ${warnMsg}`);
+                                          showToast(`⚠️ ${warnMsg}`, 'warn');
+                                        }
+                                      }}
+                                      style={{
+                                        height: '28px',
+                                        padding: '0 10px',
+                                        borderRadius: '6px',
+                                        border: '1px solid #0284C7',
+                                        background: '#E0F2FE',
+                                        color: '#0369A1',
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      📍 Định vị
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      data-testid="admin-verify-coord-btn"
+                                      onClick={() => {
+                                        const nLat =
+                                          editPlaceLat.trim() !== '' ? Number(editPlaceLat) : null;
+                                        const nLng =
+                                          editPlaceLng.trim() !== '' ? Number(editPlaceLng) : null;
+                                        const qual = evaluatePlaceCoordinateQuality({
+                                          id: selectedPlaceItem.place.id,
+                                          name: editPlaceName.trim() || selectedPlaceItem.place.name,
+                                          lat: nLat,
+                                          lng: nLng,
+                                        });
+                                        if (qual.status === 'located' && nLat !== null && nLng !== null) {
+                                          setHasActivelyPinnedOnMap(true);
+                                          setMapFlyTrigger(t => t + 1);
+                                          const msg = `✓ Tọa độ hợp lệ (${nLat.toFixed(6)}, ${nLng.toFixed(6)}) nằm trong vùng Xuân Hòa — đã di chuyển Bản đồ Cột 3 tới điểm ghim!`;
+                                          setInlineActionFeedback(msg);
+                                          showToast(msg, 'approve');
+                                        } else {
+                                          const warnMsg =
+                                            qual.reason ||
+                                            'Địa điểm chưa có tọa độ xác minh. Hãy chấm trực tiếp lên Bản đồ Cột 3 hoặc bấm Tìm tọa độ.';
+                                          setInlineActionFeedback(`⚠️ ${warnMsg}`);
+                                          showToast(`⚠️ ${warnMsg}`, 'warn');
+                                        }
+                                      }}
+                                      style={{
+                                        height: '28px',
+                                        padding: '0 10px',
+                                        borderRadius: '6px',
+                                        border: '1px solid #059669',
+                                        background: '#ECFDF5',
+                                        color: '#047857',
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      🎯 Kiểm tra tọa độ
+                                    </button>
+                                  </div>
                                 </div>
 
                                 {historyList.length > 0 && (
@@ -7931,23 +7877,40 @@ export function AdminDashboardView({
       </div>
 
       {/* ======================================================================= */}
-      {/* Ô CÀI ĐẶT GÓC PHẢI — SIÊU GỌN: MÀU SẮC SỔ RA 3 MÀU NGANG HÀNG CỠ CHỮ   */}
+      {/* MODAL CÀI ĐẶT ADMIN (6 NHÓM GỌN SẠCH — DESKTOP & MOBILE RESPONSIVE)     */}
       {/* ======================================================================= */}
       {isSettingsModalOpen && (
-        <div className="xh-modal-backdrop">
+        <div
+          className="xh-modal-backdrop"
+          data-testid="admin-settings-modal-backdrop"
+          onClick={() => {
+            setConfirmLogoutInModal(false);
+            setIsSettingsModalOpen(false);
+          }}
+        >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cài đặt Quản trị"
+            data-testid="admin-settings-modal"
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: '460px',
+              maxWidth: '480px',
+              maxHeight: '88dvh',
               background: theme.bgCard,
               color: theme.textPrimary,
               borderRadius: '16px',
               border: `1px solid ${theme.border}`,
-              padding: '18px 20px',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.18)',
+              padding: '16px 18px',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.2)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxSizing: 'border-box',
             }}
           >
+            {/* Header Modal */}
             <div
               style={{
                 display: 'flex',
@@ -7955,15 +7918,21 @@ export function AdminDashboardView({
                 justifyContent: 'space-between',
                 paddingBottom: '10px',
                 borderBottom: `1px solid ${theme.border}`,
-                marginBottom: '14px',
+                marginBottom: '12px',
+                flexShrink: 0,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                 <Settings size={17} style={{ color: theme.accent }} />
-                <span style={{ fontSize: '15.5px', fontWeight: 800 }}>Cài đặt</span>
+                <span style={{ fontSize: '15px', fontWeight: 800 }}>Cài đặt Quản trị</span>
               </div>
               <button
-                onClick={() => setIsSettingsModalOpen(false)}
+                type="button"
+                data-testid="admin-settings-close-btn"
+                onClick={() => {
+                  setConfirmLogoutInModal(false);
+                  setIsSettingsModalOpen(false);
+                }}
                 style={{
                   border: `1px solid ${theme.border}`,
                   background: theme.bgElevated,
@@ -7971,183 +7940,463 @@ export function AdminDashboardView({
                   padding: '4px',
                   cursor: 'pointer',
                   color: theme.textPrimary,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
                 <X size={15} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {/* HÀNG 1: MÀU SẮC (1 Ô SỔ RA 3 MÀU) NẰM NGANG HÀNG VỚI CỠ CHỮ */}
+            {/* Body cuộn mượt trên màn hình nhỏ */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                overflowY: 'auto',
+                paddingRight: '2px',
+                flex: 1,
+                minHeight: 0,
+              }}
+            >
+              {/* 1. TÀI KHOẢN HIỆN TẠI */}
               <div
-                style={{
-                  ...settingRowBoxStyle(theme),
-                  display: 'grid',
-                  gridTemplateColumns: '1.2fr 1fr',
-                  gap: '10px',
-                }}
-              >
-                <div>
-                  <label style={compactLabelStyle(theme)}>Màu giao diện</label>
-                  <select
-                    value={themeMode}
-                    onChange={e => handleSelectTheme(e.target.value as AdminThemeMode)}
-                    style={{ ...lightSelectStyle(theme), padding: '7px 10px', fontSize: '12.5px' }}
-                  >
-                    <option value="ivory-gold">● Vàng Champagne</option>
-                    <option value="platinum-royal">● Xanh Hoàng Gia</option>
-                    <option value="emerald- pearl">● Ngọc Lục Bảo</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={compactLabelStyle(theme)}>Cỡ chữ hiển thị</label>
-                  <select
-                    value={adminState.fontScale || 'normal'}
-                    onChange={e => {
-                      updateAdminSystemSettings({ fontScale: e.target.value as 'normal' | 'large' });
-                      setRefreshTick(t => t + 1);
-                    }}
-                    style={{ ...lightSelectStyle(theme), padding: '7px 10px', fontSize: '12.5px' }}
-                  >
-                    <option value="normal">Chữ tiêu chuẩn</option>
-                    <option value="large">Chữ lớn dễ nhìn</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* HÀNG 2: LINK QUẢN LÝ MỌI NƠI */}
-              <div
+                data-testid="settings-group-current-account"
                 style={{
                   ...settingRowBoxStyle(theme),
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  gap: '8px',
+                  gap: '10px',
+                  flexWrap: 'wrap',
                 }}
               >
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: 700 }}>Link vào Quản lý (PC & Mobile)</div>
-                  <div style={{ fontSize: '11.5px', color: theme.accent, fontWeight: 700 }}>
-                    https://xuanhoacogi.com/quanly
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, color: theme.textMuted, textTransform: 'uppercase' }}>
+                    1. Tài khoản hiện tại
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: theme.textPrimary }}>
+                      {roleInfo.displayName}
+                    </span>
+                    <span
+                      data-testid="settings-short-role-badge"
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: roleInfo.isPrimaryFounder
+                          ? '#FEF3C7'
+                          : roleInfo.isBackupFounder
+                          ? '#EDE9FE'
+                          : isSuperAdmin
+                          ? theme.accentSoft
+                          : '#E0F2FE',
+                        color: roleInfo.isPrimaryFounder
+                          ? '#92400E'
+                          : roleInfo.isBackupFounder
+                          ? '#5B21B6'
+                          : isSuperAdmin
+                          ? theme.accent
+                          : '#0369A1',
+                        border: roleInfo.isPrimaryFounder
+                          ? '1px solid #F59E0B'
+                          : roleInfo.isBackupFounder
+                          ? '1px solid #C4B5FD'
+                          : `1px solid ${theme.border}`,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {roleInfo.isPrimaryFounder
+                        ? '👑 Founder'
+                        : roleInfo.isBackupFounder
+                        ? '🛡️ Backup Founder'
+                        : isSuperAdmin
+                        ? 'Admin'
+                        : canManageWeb && canManageMaps
+                        ? 'QL Web + Maps'
+                        : canManageMaps
+                        ? 'QL Maps'
+                        : 'QL Web'}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: theme.textMuted,
+                      marginTop: '2px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: '280px',
+                    }}
+                  >
+                    Gmail: <b style={{ color: theme.accent }}>{effectiveAuthUser?.email || 'Chưa kết nối Google'}</b>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard?.writeText('https://xuanhoacogi.com/quanly');
-                    showToast('Đã sao chép link');
-                  }}
-                  style={smallRowBtnStyle(theme)}
-                >
-                  <Copy size={12} /> Copy
-                </button>
               </div>
 
-              {/* HÀNG 3: SAO LƯU & KHÔI PHỤC GỌN TRÊN 1 DÒNG */}
+              {/* 2. GIAO DIỆN & HIỂN THỊ */}
               <div
+                data-testid="settings-group-appearance"
+                style={{
+                  ...settingRowBoxStyle(theme),
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '7px',
+                }}
+              >
+                <div style={{ fontSize: '10.5px', fontWeight: 800, color: theme.textMuted, textTransform: 'uppercase' }}>
+                  2. Giao diện & Hiển thị
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={compactLabelStyle(theme)}>Màu giao diện</label>
+                    <select
+                      value={themeMode}
+                      onChange={e => handleSelectTheme(e.target.value as AdminThemeMode)}
+                      style={{ ...lightSelectStyle(theme), padding: '6px 8px', fontSize: '12px' }}
+                    >
+                      <option value="ivory-gold">● Vàng Champagne</option>
+                      <option value="platinum-royal">● Xanh Hoàng Gia</option>
+                      <option value="emerald- pearl">● Ngọc Lục Bảo</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={compactLabelStyle(theme)}>Cỡ chữ hiển thị</label>
+                    <select
+                      value={adminState.fontScale || 'normal'}
+                      onChange={e => {
+                        updateAdminSystemSettings({ fontScale: e.target.value as 'normal' | 'large' });
+                        setRefreshTick(t => t + 1);
+                      }}
+                      style={{ ...lightSelectStyle(theme), padding: '6px 8px', fontSize: '12px' }}
+                    >
+                      <option value="normal">Chữ tiêu chuẩn</option>
+                      <option value="large">Chữ lớn dễ nhìn</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. TÀI KHOẢN & BẢO MẬT */}
+              <div
+                data-testid="settings-group-security"
                 style={{
                   ...settingRowBoxStyle(theme),
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: '8px',
+                  flexWrap: 'wrap',
                 }}
               >
-                <span style={{ fontSize: '12px', fontWeight: 700 }}>Sao lưu & Khôi phục</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, color: theme.textMuted, textTransform: 'uppercase' }}>
+                    3. Tài khoản & Bảo mật
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: theme.textSecondary, marginTop: '2px' }}>
+                    Backup Founder, Nick Quản lý & Nhật ký phân quyền
+                  </div>
+                </div>
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    data-testid="settings-open-founder-security-btn"
+                    onClick={() => {
+                      setIsSettingsModalOpen(false);
+                      setActiveSection('members');
+                      setTimeout(() => {
+                        window.dispatchEvent(
+                          new CustomEvent('xuanhoa-open-member-accordion', { detail: 'founder' })
+                        );
+                      }, 60);
+                    }}
+                    style={smallRowBtnStyle(theme)}
+                  >
+                    <Shield size={12} /> Mở Founder & Bảo mật
+                  </button>
+                )}
+              </div>
+
+              {/* 4. SAO LƯU & KHÔI PHỤC */}
+              <div
+                data-testid="settings-group-backup"
+                style={{
+                  ...settingRowBoxStyle(theme),
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, color: theme.textMuted, textTransform: 'uppercase' }}>
+                    4. Sao lưu & Khôi phục
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: theme.textSecondary, marginTop: '2px' }}>
+                    Xuất / Nhập toàn bộ cấu hình JSON (có xác nhận an toàn)
+                  </div>
+                </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  <button onClick={handleExportBackupJson} style={smallRowBtnStyle(theme)}>
+                  <button
+                    type="button"
+                    data-testid="settings-export-backup-btn"
+                    onClick={handleExportBackupJson}
+                    style={smallRowBtnStyle(theme)}
+                  >
                     <Download size={12} /> Tải Backup
                   </button>
-                  <label style={{ ...smallRowBtnStyle(theme), cursor: 'pointer' }}>
+                  <label
+                    data-testid="settings-import-backup-label"
+                    style={{ ...smallRowBtnStyle(theme), cursor: 'pointer' }}
+                  >
                     <Upload size={12} /> Khôi phục
                     <input
                       type="file"
                       accept=".json"
-                      onChange={handleImportBackupJson}
+                      onChange={e => {
+                        if (
+                          typeof window !== 'undefined' &&
+                          !window.confirm(
+                            'Xác nhận khôi phục dữ liệu từ file Backup JSON? Thao tác này sẽ cập nhật dữ liệu Quản trị hiện tại.'
+                          )
+                        ) {
+                          e.target.value = '';
+                          return;
+                        }
+                        handleImportBackupJson(e);
+                      }}
                       style={{ display: 'none' }}
                     />
                   </label>
                 </div>
               </div>
 
-              {/* HÀNG 4: KẾT NỐI / ĐỔI GMAIL GOOGLE TRỰC TIẾP */}
+              {/* 5. PHÁP LÝ & QUYỀN RIÊNG TƯ */}
               <div
+                data-testid="settings-group-legal"
                 style={{
                   ...settingRowBoxStyle(theme),
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: '8px',
+                  flexWrap: 'wrap',
                 }}
               >
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: 700 }}>
-                    Gmail đang kết nối:{' '}
-                    <span style={{ color: theme.accent }}>
-                      {effectiveAuthUser?.email || 'Chưa kết nối Gmail'}
-                    </span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, color: theme.textMuted, textTransform: 'uppercase' }}>
+                    5. Pháp lý & Quyền riêng tư
                   </div>
-                  <div style={{ fontSize: '11px', color: theme.textMuted }}>
-                    Đăng nhập bằng Google (Gmail) để đồng bộ 1 nick duy nhất
+                  <div style={{ fontSize: '11.5px', color: theme.textSecondary, marginTop: '2px' }}>
+                    Luật 91/2025/QH15 • Nghị định 356/2025/NĐ-CP
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      data-testid="settings-open-legal-panel-btn"
+                      onClick={() => {
+                        setIsSettingsModalOpen(false);
+                        setActiveSection('members');
+                        setTimeout(() => {
+                          window.dispatchEvent(
+                            new CustomEvent('xuanhoa-open-member-accordion', { detail: 'legal' })
+                          );
+                        }, 60);
+                      }}
+                      style={smallRowBtnStyle(theme)}
+                    >
+                      Quản trị Consent
+                    </button>
+                  )}
+                  <a
+                    href="/chinh-sach-bao-mat"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      ...smallRowBtnStyle(theme),
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <ExternalLink size={11} /> Chính sách
+                  </a>
+                </div>
+              </div>
+
+              {/* 6. LIÊN KẾT & TRUY CẬP */}
+              <div
+                data-testid="settings-group-links"
+                style={{
+                  ...settingRowBoxStyle(theme),
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, color: theme.textMuted, textTransform: 'uppercase' }}>
+                    6. Liên kết & Truy cập
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: theme.accent, fontWeight: 700, marginTop: '2px' }}>
+                    https://xuanhoacogi.com/quanly
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={handleGoogleOAuthLoginInAdmin}
-                  style={{
-                    ...smallRowBtnStyle(theme),
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
+                  data-testid="settings-copy-admin-link-btn"
+                  onClick={() => {
+                    navigator.clipboard?.writeText('https://xuanhoacogi.com/quanly');
+                    showToast('Đã sao chép link Quản trị');
                   }}
+                  style={smallRowBtnStyle(theme)}
                 >
-                  <GoogleGIcon size={13} />
-                  <span>{effectiveAuthUser?.email ? 'Đổi Gmail' : 'Đăng nhập Gmail'}</span>
+                  <Copy size={12} /> Sao chép link
                 </button>
               </div>
+            </div>
 
-              {/* HÀNG 5: TÀI KHOẢN HIỆN TẠI & NÚT THOÁT (ĐĂNG XUẤT) ĐƯỢC GOM VÀO CÀI ĐẶT */}
-              <div
-                style={{
-                  ...settingRowBoxStyle(theme),
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '8px',
-                  borderColor: 'rgba(220, 38, 38, 0.22)',
-                  background: 'rgba(254, 242, 242, 0.6)',
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: 800, color: theme.textPrimary }}>
-                    {roleInfo.displayName} ({roleInfo.roleBadgeLabel})
-                  </div>
-                  <div style={{ fontSize: '11px', color: theme.textMuted }}>
-                    Đăng xuất khỏi phiên Quản trị hiện tại
+            {/* FOOTER MODAL: ĐỔI TÀI KHOẢN GOOGLE & THOÁT QUẢN TRỊ (CÓ BƯỚC XÁC NHẬN) */}
+            <div
+              style={{
+                marginTop: '12px',
+                paddingTop: '12px',
+                borderTop: `1px solid ${theme.border}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                flexShrink: 0,
+              }}
+            >
+              {confirmLogoutInModal ? (
+                <div
+                  data-testid="settings-logout-confirm-box"
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    background: '#FEF2F2',
+                    border: '1px solid #FCA5A5',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#991B1B' }}>
+                    Xác nhận thoát phiên Quản trị hiện tại?
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      data-testid="settings-logout-cancel-btn"
+                      onClick={() => setConfirmLogoutInModal(false)}
+                      style={{
+                        height: '30px',
+                        padding: '0 10px',
+                        borderRadius: '7px',
+                        border: '1px solid #CBD5E1',
+                        background: '#FFFFFF',
+                        color: '#475569',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="settings-logout-confirm-btn"
+                      onClick={() => {
+                        setConfirmLogoutInModal(false);
+                        setIsSettingsModalOpen(false);
+                        handleAdminLogout();
+                      }}
+                      style={{
+                        height: '30px',
+                        padding: '0 12px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: '#DC2626',
+                        color: '#FFFFFF',
+                        fontSize: '11.5px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Xác nhận thoát
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setIsSettingsModalOpen(false);
-                    handleAdminLogout();
-                  }}
+              ) : (
+                <div
                   style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    padding: '7px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(220, 38, 38, 0.35)',
-                    background: '#DC2626',
-                    color: '#FFFFFF',
-                    fontSize: '12px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '8px',
                   }}
                 >
-                  <LogOut size={13} /> Thoát Quản trị
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    data-testid="settings-switch-google-btn"
+                    onClick={handleGoogleOAuthLoginInAdmin}
+                    style={{
+                      height: '36px',
+                      padding: '0 10px',
+                      borderRadius: '9px',
+                      border: `1px solid ${theme.border}`,
+                      background: theme.bgElevated,
+                      color: theme.textPrimary,
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <GoogleGIcon size={13} />
+                    <span>Đổi tài khoản Google</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="settings-logout-trigger-btn"
+                    onClick={() => setConfirmLogoutInModal(true)}
+                    style={{
+                      height: '36px',
+                      padding: '0 10px',
+                      borderRadius: '9px',
+                      border: '1px solid rgba(220, 38, 38, 0.35)',
+                      background: '#FEF2F2',
+                      color: '#DC2626',
+                      fontSize: '12px',
+                      fontWeight: 800,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <LogOut size={13} />
+                    <span>Thoát quản trị</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -8869,7 +9118,7 @@ function smallRowBtnStyle(theme: ThemeTokens): React.CSSProperties {
 
 function settingRowBoxStyle(theme: ThemeTokens): React.CSSProperties {
   return {
-    padding: '10px 12px',
+    padding: '7px 11px',
     borderRadius: '10px',
     backgroundColor: theme.bgElevated,
     border: `1px solid ${theme.border}`,

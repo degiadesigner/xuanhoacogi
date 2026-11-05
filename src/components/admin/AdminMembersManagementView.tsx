@@ -28,11 +28,13 @@ import {
   IndexedMemberRecord,
   MemberRoleFilter,
   MemberStatusFilter,
+  MemberVerificationFilter,
   MemberSortOption,
   MemberPageSize,
   queryMembersPage,
   getIndexedMemberByKey,
   updateMemberPermissionsUnified,
+  cancelPendingRoleUnified,
   updateMemberStatusUnified,
   deleteMemberUnified,
   createMemberUnified,
@@ -50,6 +52,7 @@ import {
   resetBackupFounderPasswordViaBackend,
   revokeBackupFounderSessionsViaBackend,
   verifyBackupFounderRecoveryEmailViaBackend,
+  runAccountsReconciliationClient,
   type AdminAccount,
 } from '@/lib/admin-store';
 import {
@@ -92,24 +95,27 @@ interface AdminMembersManagementViewProps {
 // ============================================================================
 // ROLE CHIP COMPONENT (22-24px height, compact, minimal)
 // ============================================================================
+type RoleBadgeChipType =
+  | 'primary_founder'
+  | 'backup_founder'
+  | 'founder'
+  | 'admin'
+  | 'web'
+  | 'maps'
+  | 'unverified_uid'
+  | 'verified_uid'
+  | 'pending_verification'
+  | 'conflict_uid'
+  | 'pending_role_admin'
+  | 'pending_role_web'
+  | 'pending_role_maps'
+  | 'pending_role_both';
+
 const RoleBadgeChip: React.FC<{
-  type:
-    | 'primary_founder'
-    | 'backup_founder'
-    | 'founder'
-    | 'admin'
-    | 'web'
-    | 'maps'
-    | 'unverified_uid';
+  type: RoleBadgeChipType;
 }> = React.memo(function RoleBadgeChip({ type }) {
   const styles: Record<
-    | 'primary_founder'
-    | 'backup_founder'
-    | 'founder'
-    | 'admin'
-    | 'web'
-    | 'maps'
-    | 'unverified_uid',
+    RoleBadgeChipType,
     { label: string; bg: string; color: string; border: string }
   > = {
     primary_founder: {
@@ -149,10 +155,52 @@ const RoleBadgeChip: React.FC<{
       border: '#6EE7B7',
     },
     unverified_uid: {
-      label: 'Chờ xác minh UID',
+      label: '⏳ Chờ xác minh',
       bg: '#F3F4F6',
-      color: '#6B7280',
+      color: '#4B5563',
       border: '#D1D5DB',
+    },
+    verified_uid: {
+      label: '✓ Đã xác minh',
+      bg: '#ECFDF5',
+      color: '#047857',
+      border: '#A7F3D0',
+    },
+    pending_verification: {
+      label: '⏳ Chờ xác minh',
+      bg: '#F3F4F6',
+      color: '#4B5563',
+      border: '#D1D5DB',
+    },
+    conflict_uid: {
+      label: '⚠️ Xung đột',
+      bg: '#FEF2F2',
+      color: '#B91C1C',
+      border: '#FECACA',
+    },
+    pending_role_admin: {
+      label: '🕐 Chờ kích hoạt: Admin',
+      bg: '#FEF3C7',
+      color: '#92400E',
+      border: '#F59E0B',
+    },
+    pending_role_web: {
+      label: '🕐 Chờ kích hoạt: QL Web',
+      bg: '#EFF6FF',
+      color: '#1D4ED8',
+      border: '#93C5FD',
+    },
+    pending_role_maps: {
+      label: '🕐 Chờ kích hoạt: QL Maps',
+      bg: '#ECFDF5',
+      color: '#047857',
+      border: '#6EE7B7',
+    },
+    pending_role_both: {
+      label: '🕐 Chờ kích hoạt: QL Web + Maps',
+      bg: '#F5F3FF',
+      color: '#5B21B6',
+      border: '#C4B5FD',
     },
   };
   const st = styles[type];
@@ -337,15 +385,16 @@ const MemberTableRow = React.memo<MemberTableRowProps>(
           </div>
         </td>
 
-        {/* 3. Quyền (Click để mở popover/modal cấp quyền) */}
+        {/* 3. Quyền & Xác minh (Click để mở popover/modal cấp quyền) */}
         <td style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}>
           <button
             type="button"
+            data-testid={`member-role-cell-${member.email}`}
             onClick={() => onOpenPermissionModal(member)}
             title={
               member.isFounder
                 ? 'Founder có toàn quyền hệ thống'
-                : 'Bấm để chỉnh quyền Quản lý Web / Maps'
+                : 'Bấm để chỉnh quyền Quản lý Web / Maps / Admin'
             }
             style={{
               display: 'inline-flex',
@@ -359,26 +408,32 @@ const MemberTableRow = React.memo<MemberTableRowProps>(
               cursor: 'pointer',
             }}
           >
-            {hasAnyRole || member.hasLegacyPendingRole ? (
-              <>
-                {member.isPrimaryFounder && <RoleBadgeChip type="primary_founder" />}
-                {member.isBackupFounder && <RoleBadgeChip type="backup_founder" />}
-                {!member.isFounder && member.isAdmin && <RoleBadgeChip type="admin" />}
-                {!member.isAdmin && member.isWebManager && <RoleBadgeChip type="web" />}
-                {!member.isAdmin && member.isMapsManager && <RoleBadgeChip type="maps" />}
-                {member.hasLegacyPendingRole && <RoleBadgeChip type="unverified_uid" />}
-              </>
+            {member.isPrimaryFounder && <RoleBadgeChip type="primary_founder" />}
+            {member.isBackupFounder && <RoleBadgeChip type="backup_founder" />}
+            {!member.isFounder && member.isAdmin && <RoleBadgeChip type="admin" />}
+            {!member.isAdmin && member.isWebManager && <RoleBadgeChip type="web" />}
+            {!member.isAdmin && member.isMapsManager && <RoleBadgeChip type="maps" />}
+            {!hasAnyRole && member.pendingRoleAssignment && (
+              <RoleBadgeChip
+                type={
+                  member.pendingRoleAssignment.makeAdmin ||
+                  member.pendingRoleAssignment.requestedRole === 'admin'
+                    ? 'pending_role_admin'
+                    : member.pendingRoleAssignment.canManageWeb &&
+                      member.pendingRoleAssignment.canManageMaps
+                    ? 'pending_role_both'
+                    : member.pendingRoleAssignment.canManageWeb
+                    ? 'pending_role_web'
+                    : 'pending_role_maps'
+                }
+              />
+            )}
+            {member.identityStatus === 'CONFLICT' ? (
+              <RoleBadgeChip type="conflict_uid" />
+            ) : member.isUidVerified ? (
+              <RoleBadgeChip type="verified_uid" />
             ) : (
-              <span
-                style={{
-                  fontSize: '12.5px',
-                  color: theme.textMuted,
-                  fontWeight: 500,
-                  padding: '0 4px',
-                }}
-              >
-                —
-              </span>
+              <RoleBadgeChip type="pending_verification" />
             )}
           </button>
         </td>
@@ -573,9 +628,11 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
   // Filters & Pagination
   const [roleFilter, setRoleFilter] = useState<MemberRoleFilter>('all');
   const [statusFilter, setStatusFilter] = useState<MemberStatusFilter>('all');
+  const [verificationFilter, setVerificationFilter] = useState<MemberVerificationFilter>('all');
   const [sortBy, setSortBy] = useState<MemberSortOption>('newest');
   const [pageSize, setPageSize] = useState<MemberPageSize>(50);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [reconcilingAccounts, setReconcilingAccounts] = useState(false);
 
   // Bulk selection
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(() => new Set());
@@ -602,8 +659,24 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
   const [newMemberWeb, setNewMemberWeb] = useState(false);
   const [newMemberMaps, setNewMemberMaps] = useState(false);
 
-  // Backup Founder One-Time Setup & Founder Security Panel (mặc định mở sẵn trên Founder Dashboard)
-  const [showBackupFounderPanel, setShowBackupFounderPanel] = useState(true);
+  useEffect(() => {
+    const onOpenAccordion = (ev: Event) => {
+      const detail = (ev as CustomEvent<string>).detail;
+      if (detail === 'founder') {
+        setShowBackupFounderPanel(true);
+      } else if (detail === 'legal') {
+        setShowLegalCompliancePanel(true);
+      } else if (detail === 'nicks') {
+        setShowNickAccountsPanel(true);
+      }
+    };
+    window.addEventListener('xuanhoa-open-member-accordion', onOpenAccordion);
+    return () => window.removeEventListener('xuanhoa-open-member-accordion', onOpenAccordion);
+  }, []);
+
+  // PANEL 1A: ACCORDION "FOUNDER & BẢO MẬT" (MẶC ĐỊNH ĐÓNG, MỞ ĐẦY ĐỦ 7 MỤC)
+  const [showBackupFounderPanel, setShowBackupFounderPanel] = useState(false);
+  const [showOperatorsSummary, setShowOperatorsSummary] = useState(false);
   const [isProvisionBackupModalOpen, setIsProvisionBackupModalOpen] = useState(false);
   const [bfUsername, setBfUsername] = useState('');
   const [bfPassword, setBfPassword] = useState('');
@@ -628,8 +701,8 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
 
   const [showRoleAuditLogsPanel, setShowRoleAuditLogsPanel] = useState(false);
 
-  // Legal Compliance & Data Rights Management Panel (Founder / Admin)
-  const [showLegalCompliancePanel, setShowLegalCompliancePanel] = useState(true);
+  // Legal Compliance & Data Rights Management Panel (Founder / Admin — mặc định thu gọn thành Accordion)
+  const [showLegalCompliancePanel, setShowLegalCompliancePanel] = useState(false);
   const [activePolicyMeta, setActivePolicyMeta] = useState(() => getActivePolicyMetadata());
   const [newPolicyVersionInput, setNewPolicyVersionInput] = useState('');
   const [newPolicyTitleInput, setNewPolicyTitleInput] = useState('');
@@ -755,10 +828,11 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
       pageSize,
       roleFilter,
       statusFilter,
+      verificationFilter,
       search: debouncedSearch,
       sortBy,
     });
-  }, [currentPage, pageSize, roleFilter, statusFilter, debouncedSearch, sortBy, refreshTick, simTick]);
+  }, [currentPage, pageSize, roleFilter, statusFilter, verificationFilter, debouncedSearch, sortBy, refreshTick, simTick]);
 
   const { items, totalItems, totalPages, counts, operators, recentMembers } = queryResult;
   const simulatedCount = getSimulatedMembersCount();
@@ -814,10 +888,21 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
 
   const handleOpenPermissionModal = useCallback((member: IndexedMemberRecord) => {
     setOpenMenuUid(null);
-    setPermissionModalTarget(member);
-    setPermAdminChecked(Boolean(member.isAdmin && !member.isFounder));
-    setPermWebChecked(Boolean(member.rawMember.canManageWeb || member.isAdmin));
-    setPermMapsChecked(Boolean(member.rawMember.canManageMaps || member.isAdmin));
+    const fresh = getIndexedMemberByKey(member.email) || member;
+    setPermissionModalTarget(fresh);
+    if (fresh.pendingRoleAssignment) {
+      const isPendingAdm = Boolean(
+        fresh.pendingRoleAssignment.makeAdmin ||
+          fresh.pendingRoleAssignment.requestedRole === 'admin'
+      );
+      setPermAdminChecked(isPendingAdm);
+      setPermWebChecked(Boolean(fresh.pendingRoleAssignment.canManageWeb || isPendingAdm));
+      setPermMapsChecked(Boolean(fresh.pendingRoleAssignment.canManageMaps || isPendingAdm));
+    } else {
+      setPermAdminChecked(Boolean(fresh.isAdmin && !fresh.isFounder));
+      setPermWebChecked(Boolean(fresh.rawMember.canManageWeb || fresh.isAdmin));
+      setPermMapsChecked(Boolean(fresh.rawMember.canManageMaps || fresh.isAdmin));
+    }
     setPermConfirmIntent(false);
   }, []);
 
@@ -827,10 +912,11 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
       onShowToast('Chỉ Primary Founder hoặc Backup Founder mới có quyền cấp/thu hồi Admin & Quản lý.', 'warn');
       return;
     }
-    const isElevatingToAdmin =
-      permAdminChecked && !Boolean(permissionModalTarget.isAdmin && !permissionModalTarget.isFounder);
-    if (isElevatingToAdmin && !permConfirmIntent && !getSimulatedMembersCount()) {
-      onShowToast('Vui lòng tích chọn xác nhận nâng quyền lên ADMIN trước khi lưu.', 'warn');
+    if (permissionModalTarget.identityStatus === 'CONFLICT') {
+      onShowToast(
+        `Tài khoản đang ở trạng thái XUNG ĐỘT (${permissionModalTarget.conflictReason || 'cần kiểm tra'}). Không thể kích hoạt quyền trước khi xử lý.`,
+        'warn'
+      );
       return;
     }
     const res = updateMemberPermissionsUnified(permissionModalTarget.email, {
@@ -846,6 +932,32 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
     setSimTick(t => t + 1);
     onRefresh();
     onShowToast(res.message, 'approve');
+  };
+
+  const handleCancelPendingRole = () => {
+    if (!permissionModalTarget) return;
+    const res = cancelPendingRoleUnified(permissionModalTarget.email);
+    if (!res.ok) {
+      onShowToast(res.message, 'warn');
+      return;
+    }
+    setPermissionModalTarget(null);
+    setSimTick(t => t + 1);
+    onRefresh();
+    onShowToast(res.message, 'approve');
+  };
+
+  const handleRunReconciliation = async () => {
+    if (reconcilingAccounts) return;
+    setReconcilingAccounts(true);
+    try {
+      const res = await runAccountsReconciliationClient('apply');
+      setSimTick(t => t + 1);
+      onRefresh();
+      onShowToast(res.message, res.ok ? 'approve' : 'warn');
+    } finally {
+      setReconcilingAccounts(false);
+    }
   };
 
   const handleCopyBackupUsername = async (uid: string, username: string) => {
@@ -1161,23 +1273,22 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
   ];
 
   return (
-    <div className="xh-members-redesign" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+    <div className="xh-members-redesign" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {/* ===================================================================== */}
-      {/* 1. HEADER TRANG + SEARCH + FILTER TABS (STICKY)                       */}
+      {/* 1. HEADER TRANG + SEARCH + FILTER TABS (COMPACT)                      */}
       {/* ===================================================================== */}
       <div
         style={{
-          position: 'sticky',
-          top: '52px',
-          zIndex: 35,
+          position: 'relative',
+          zIndex: 20,
           background: theme.bgCard,
           borderRadius: '12px',
           border: `1px solid ${theme.border}`,
           boxShadow: theme.shadow,
-          padding: '12px 16px',
+          padding: '10px 14px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '10px',
+          gap: '8px',
         }}
       >
         {/* Hàng 1: Tiêu đề trang + Nút [+ Thêm thành viên] */}
@@ -1241,11 +1352,12 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <button
               type="button"
-              data-testid="toggle-backup-founder-panel-btn"
-              onClick={() => setShowBackupFounderPanel(prev => !prev)}
+              data-testid="reconcile-accounts-btn"
+              disabled={reconcilingAccounts}
+              onClick={handleRunReconciliation}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1253,17 +1365,17 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                 height: '34px',
                 padding: '0 11px',
                 borderRadius: '8px',
-                border: `1px solid ${showBackupFounderPanel ? '#7C3AED' : theme.border}`,
-                background: showBackupFounderPanel ? '#EDE9FE' : theme.bgElevated,
-                color: showBackupFounderPanel ? '#5B21B6' : theme.textSecondary,
+                border: `1px solid ${theme.border}`,
+                background: theme.bgElevated,
+                color: theme.textSecondary,
                 fontSize: '12px',
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: reconcilingAccounts ? 'wait' : 'pointer',
               }}
-              title="Quản lý Founder Dự Phòng (Backup Founder) & Phục hồi khẩn cấp"
+              title="Tự động đối soát và liên kết UID Firebase Auth cho các tài khoản cũ đã đăng nhập"
             >
-              <ShieldCheck size={14} />
-              <span>Backup Founder ({backupFounderRecords.length})</span>
+              <ShieldCheck size={13} />
+              <span>{reconcilingAccounts ? 'Đang đối soát...' : 'Đối soát UID'}</span>
             </button>
 
             <button
@@ -1500,16 +1612,95 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
       </div>
 
       {/* ===================================================================== */}
-      {/* PANEL 1A: BẢNG BẢO MẬT TÀI KHOẢN (FOUNDER SECURITY PANEL — 7 MỤC)      */}
+      {/* PANEL 1A: ACCORDION "FOUNDER & BẢO MẬT" (7 MỤC — MẶC ĐỊNH ĐÓNG)        */}
       {/* ===================================================================== */}
-      {showBackupFounderPanel && (
+      <div
+        data-testid="founder-security-accordion"
+        style={{
+          background: theme.bgCard,
+          borderRadius: '10px',
+          border: `1px solid ${showBackupFounderPanel ? '#C4B5FD' : theme.border}`,
+          boxShadow: theme.shadow,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          data-testid="founder-security-accordion-header"
+          onClick={() => setShowBackupFounderPanel(prev => !prev)}
+          style={{
+            padding: '9px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            flexWrap: 'wrap',
+            cursor: 'pointer',
+            background: showBackupFounderPanel ? '#F5F3FF' : theme.bgCard,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 }}>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: '#5B21B6' }}>
+              🛡️ Founder & Bảo mật
+            </span>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: '999px',
+                background: '#FEF3C7',
+                color: '#92400E',
+                border: '1px solid #F59E0B',
+              }}
+            >
+              👑 Founder: Dê Già Designer
+            </span>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: '999px',
+                background: '#EDE9FE',
+                color: '#5B21B6',
+              }}
+            >
+              {backupFounderRecords.length} Backup Founder • 7 mục bảo mật
+            </span>
+          </div>
+          <button
+            type="button"
+            data-testid="toggle-backup-founder-panel-btn"
+            onClick={e => {
+              e.stopPropagation();
+              setShowBackupFounderPanel(prev => !prev);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              height: '26px',
+              padding: '0 10px',
+              borderRadius: '7px',
+              border: `1px solid ${showBackupFounderPanel ? '#C4B5FD' : theme.border}`,
+              background: showBackupFounderPanel ? '#EDE9FE' : theme.bgElevated,
+              color: showBackupFounderPanel ? '#5B21B6' : theme.textPrimary,
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <span>{showBackupFounderPanel ? 'Thu gọn' : 'Mở Founder & Bảo mật'}</span>
+            {showBackupFounderPanel ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+        </div>
+
+        {showBackupFounderPanel && (
         <div
           data-testid="backup-founder-panel"
           style={{
             background: theme.bgCard,
-            borderRadius: '12px',
-            border: `1.5px solid #C4B5FD`,
-            boxShadow: theme.shadow,
+            borderTop: `1px solid #DDD6FE`,
             padding: '14px 16px',
             display: 'flex',
             flexDirection: 'column',
@@ -1908,10 +2099,11 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
             )}
           </div>
         </div>
-      )}
+        )}
+      </div>
 
       {/* ===================================================================== */}
-      {/* PANEL 1C: QUẢN TRỊ PHÁP LÝ, PHIÊN BẢN CHÍNH SÁCH & QUYỀN DỮ LIỆU      */}
+      {/* PANEL 1C: ACCORDION "PHÁP LÝ & QUYỀN DỮ LIỆU" (MẶC ĐỊNH ĐÓNG)          */}
       {/* (Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15 & Nghị định 356/2025/NĐ-CP) */}
       {/* ===================================================================== */}
       {(currentRoleInfo.isFounder || currentRoleInfo.roleTier === 'admin') && (
@@ -1919,38 +2111,59 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
           data-testid="founder-legal-compliance-panel"
           style={{
             background: theme.bgCard,
-            borderRadius: '12px',
-            border: `1.5px solid ${theme.accentBorder}`,
+            borderRadius: '10px',
+            border: `1px solid ${showLegalCompliancePanel ? theme.accentBorder : theme.border}`,
             boxShadow: theme.shadow,
-            padding: '14px 16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
+            overflow: 'hidden',
           }}
         >
           <div
+            data-testid="legal-compliance-accordion-header"
+            onClick={() => setShowLegalCompliancePanel(prev => !prev)}
             style={{
+              padding: '9px 14px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '10px',
               flexWrap: 'wrap',
+              cursor: 'pointer',
+              background: showLegalCompliancePanel ? theme.accentSoft : theme.bgCard,
             }}
           >
-            <div>
-              <div style={{ fontSize: '13.5px', fontWeight: 800, color: theme.textPrimary }}>
-                ⚖️ Quản trị Pháp lý, Phiên bản Chính sách & Quyền Dữ liệu Cá nhân (Luật 91/2025/QH15)
-              </div>
-              <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
-                Phiên bản hiện hành: <code>{activePolicyMeta.version}</code> (Hiệu lực: {activePolicyMeta.effectiveDate}) · Bằng chứng xác nhận (<code>consent_audit_trail</code>) được khóa bất biến, không ai được phép xóa trái phép.
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 }}>
+              <span style={{ fontSize: '13px', fontWeight: 800, color: theme.textPrimary }}>
+                ⚖️ Pháp lý & Quyền dữ liệu
+              </span>
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  background: '#ECFDF5',
+                  color: '#065F46',
+                  border: '1px solid #A7F3D0',
+                }}
+              >
+                Chính sách {activePolicyMeta.version}
+              </span>
+              <span style={{ fontSize: '11px', color: theme.textMuted }}>
+                {consentStatsSummary.totalConsentedUsers} đồng ý · {dataRightsQueue.length} yêu cầu dữ liệu
+              </span>
             </div>
             <button
               type="button"
               data-testid="toggle-legal-compliance-panel-btn"
-              onClick={() => setShowLegalCompliancePanel(!showLegalCompliancePanel)}
+              onClick={e => {
+                e.stopPropagation();
+                setShowLegalCompliancePanel(prev => !prev);
+              }}
               style={{
-                height: '28px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                height: '26px',
                 padding: '0 10px',
                 borderRadius: '7px',
                 border: `1px solid ${theme.border}`,
@@ -1961,12 +2174,13 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                 cursor: 'pointer',
               }}
             >
-              {showLegalCompliancePanel ? 'Thu gọn' : 'Mở bảng Pháp lý & Consent'}
+              <span>{showLegalCompliancePanel ? 'Thu gọn' : 'Mở Pháp lý & Quyền dữ liệu'}</span>
+              {showLegalCompliancePanel ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
           </div>
 
           {showLegalCompliancePanel && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ padding: '14px 16px', borderTop: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {/* 1. Thống kê trạng thái xác nhận (Ẩn danh, không lộ dữ liệu nhạy cảm) */}
               <div
                 data-testid="founder-consent-stats-grid"
@@ -2568,33 +2782,60 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
       )}
 
       {/* ===================================================================== */}
-      {/* 2. PHẦN A: QUẢN TRỊ & QUẢN LÝ (3 CỘT TRÊN CÙNG, TỐI ĐA 4 NGƯỜI/CỘT)   */}
+      {/* 2. ACCORDION TÓM TẮT NHÂN SỰ VẬN HÀNH (THU GỌN MẶC ĐỊNH ĐỂ TRÁNH TRÙNG) */}
       {/* ===================================================================== */}
-      <section aria-label="Quản trị và Quản lý">
+      <section aria-label="Quản trị và Quản lý" data-testid="operators-summary-accordion">
         <div
+          onClick={() => setShowOperatorsSummary(prev => !prev)}
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '8px',
+            padding: '8px 14px',
+            borderRadius: '10px',
+            background: theme.bgCard,
+            border: `1px solid ${theme.border}`,
+            cursor: 'pointer',
+            marginBottom: showOperatorsSummary ? '8px' : 0,
           }}
         >
           <span
             style={{
-              fontSize: '11.5px',
+              fontSize: '12px',
               fontWeight: 800,
-              color: theme.textMuted,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
+              color: theme.textSecondary,
             }}
           >
-            QUẢN TRỊ & QUẢN LÝ
+            👥 Tóm tắt Nhân sự Vận hành (Admin: {counts.admin} · QL Web: {counts.web} · QL Maps: {counts.maps})
           </span>
-          <span style={{ fontSize: '11px', color: theme.textMuted }}>
-            Chạm vào tên để xem hồ sơ hoặc chỉnh quyền nhanh
-          </span>
+          <button
+            type="button"
+            data-testid="toggle-operators-summary-btn"
+            onClick={e => {
+              e.stopPropagation();
+              setShowOperatorsSummary(prev => !prev);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              height: '24px',
+              padding: '0 8px',
+              borderRadius: '6px',
+              border: `1px solid ${theme.border}`,
+              background: theme.bgElevated,
+              color: theme.textSecondary,
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <span>{showOperatorsSummary ? 'Ẩn sơ đồ' : 'Xem sơ đồ 3 cột'}</span>
+            {showOperatorsSummary ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
         </div>
 
+        {showOperatorsSummary && (
         <div className="xh-operators-grid">
           {operatorColumns.map(col => (
             <div
@@ -2784,6 +3025,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
             </div>
           ))}
         </div>
+        )}
       </section>
 
       {/* BLOCK COMPACT TÙY CHỌN: MỚI THAM GIA (5 NGƯỜI GẦN NHẤT) */}
@@ -2939,6 +3181,37 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* Dropdown Trạng thái xác minh V6 */}
+            <select
+              data-testid="members-verification-filter"
+              value={verificationFilter}
+              onChange={e => {
+                setVerificationFilter(e.target.value as MemberVerificationFilter);
+                setCurrentPage(1);
+              }}
+              aria-label="Lọc theo trạng thái xác minh UID"
+              style={{
+                height: '32px',
+                padding: '0 10px',
+                borderRadius: '8px',
+                border: `1px solid ${theme.border}`,
+                background: theme.bgElevated,
+                color: theme.textPrimary,
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              <option value="all">Tất cả xác minh ({counts.all})</option>
+              <option value="verified">Đã xác minh ({counts.verifiedCount})</option>
+              <option value="pending_verification">Chờ xác minh ({counts.pendingVerificationCount})</option>
+              <option value="pending_role_activation">
+                Chờ kích hoạt quyền ({counts.pendingRoleActivationCount})
+              </option>
+              <option value="conflict">Xung đột — cần xử lý ({counts.conflictCount})</option>
+            </select>
+
             {/* Dropdown Trạng thái */}
             <select
               data-testid="member-status-select"
@@ -3269,12 +3542,38 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     <div
                       onClick={() => handleOpenPermissionModal(member)}
-                      style={{ display: 'flex', gap: '4px', cursor: 'pointer' }}
+                      style={{ display: 'flex', gap: '4px', cursor: 'pointer', flexWrap: 'wrap', justifyContent: 'flex-end' }}
                     >
                       {member.isFounder && <RoleBadgeChip type="founder" />}
                       {member.isAdmin && <RoleBadgeChip type="admin" />}
                       {!member.isAdmin && member.isWebManager && <RoleBadgeChip type="web" />}
                       {!member.isAdmin && member.isMapsManager && <RoleBadgeChip type="maps" />}
+                      {!member.isFounder &&
+                        !member.isAdmin &&
+                        !member.isWebManager &&
+                        !member.isMapsManager &&
+                        member.pendingRoleAssignment && (
+                          <RoleBadgeChip
+                            type={
+                              member.pendingRoleAssignment.makeAdmin ||
+                              member.pendingRoleAssignment.requestedRole === 'admin'
+                                ? 'pending_role_admin'
+                                : member.pendingRoleAssignment.canManageWeb &&
+                                  member.pendingRoleAssignment.canManageMaps
+                                ? 'pending_role_both'
+                                : member.pendingRoleAssignment.canManageWeb
+                                ? 'pending_role_web'
+                                : 'pending_role_maps'
+                            }
+                          />
+                        )}
+                      {member.identityStatus === 'CONFLICT' ? (
+                        <RoleBadgeChip type="conflict_uid" />
+                      ) : member.isUidVerified ? (
+                        <RoleBadgeChip type="verified_uid" />
+                      ) : (
+                        <RoleBadgeChip type="pending_verification" />
+                      )}
                     </div>
 
                     <StatusDotBadge status={member.effectiveStatus} />
@@ -3522,7 +3821,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                 marginBottom: '10px',
               }}
             >
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>Phân quyền thành viên (Founder V2)</h3>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>Phân quyền thành viên</h3>
               <button
                 type="button"
                 onClick={() => setPermissionModalTarget(null)}
@@ -3553,13 +3852,30 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
               <div style={{ fontSize: '11.5px', color: theme.textMuted }}>
                 {permissionModalTarget.email}
               </div>
-              <div style={{ fontSize: '10.5px', color: theme.textMuted, marginTop: '3px' }}>
-                UID:{' '}
-                <code style={{ fontWeight: 700 }}>{permissionModalTarget.uid}</code> •{' '}
-                {permissionModalTarget.isUidVerified ? (
-                  <span style={{ color: '#047857', fontWeight: 700 }}>✓ Đã xác minh Firebase Auth 28 ký tự</span>
+              <div style={{ fontSize: '10.5px', color: theme.textMuted, marginTop: '4px', lineHeight: 1.5 }}>
+                {permissionModalTarget.identityStatus === 'CONFLICT' ? (
+                  <span style={{ color: '#B91C1C', fontWeight: 700 }}>
+                    ⚠️ Xung đột danh tính ({permissionModalTarget.conflictReason || 'cần kiểm tra'})
+                  </span>
+                ) : permissionModalTarget.isUidVerified ? (
+                  <>
+                    <span style={{ color: '#047857', fontWeight: 700 }}>✓ Đã xác minh</span> • Firebase UID:{' '}
+                    <code style={{ fontWeight: 700 }}>{permissionModalTarget.uid}</code>
+                    {permissionModalTarget.legacyUid &&
+                      permissionModalTarget.legacyUid !== permissionModalTarget.uid && (
+                        <span>
+                          {' '}
+                          • Legacy ID: <code>{permissionModalTarget.legacyUid}</code>
+                        </span>
+                      )}
+                  </>
                 ) : (
-                  <span style={{ color: '#B45309', fontWeight: 700 }}>⚠️ Chưa xác minh Firebase Auth UID</span>
+                  <>
+                    <span style={{ color: '#B45309', fontWeight: 700 }}>⏳ Chờ xác minh</span> • Legacy ID:{' '}
+                    <code style={{ fontWeight: 700 }}>
+                      {permissionModalTarget.legacyUid || permissionModalTarget.uid}
+                    </code>
+                  </>
                 )}
               </div>
               <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
@@ -3568,8 +3884,33 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                 {!permissionModalTarget.isFounder && permissionModalTarget.isAdmin && (
                   <RoleBadgeChip type="admin" />
                 )}
-                {permissionModalTarget.hasLegacyPendingRole && (
-                  <RoleBadgeChip type="unverified_uid" />
+                {!permissionModalTarget.isAdmin && permissionModalTarget.isWebManager && (
+                  <RoleBadgeChip type="web" />
+                )}
+                {!permissionModalTarget.isAdmin && permissionModalTarget.isMapsManager && (
+                  <RoleBadgeChip type="maps" />
+                )}
+                {permissionModalTarget.pendingRoleAssignment && (
+                  <RoleBadgeChip
+                    type={
+                      permissionModalTarget.pendingRoleAssignment.makeAdmin ||
+                      permissionModalTarget.pendingRoleAssignment.requestedRole === 'admin'
+                        ? 'pending_role_admin'
+                        : permissionModalTarget.pendingRoleAssignment.canManageWeb &&
+                          permissionModalTarget.pendingRoleAssignment.canManageMaps
+                        ? 'pending_role_both'
+                        : permissionModalTarget.pendingRoleAssignment.canManageWeb
+                        ? 'pending_role_web'
+                        : 'pending_role_maps'
+                    }
+                  />
+                )}
+                {permissionModalTarget.identityStatus === 'CONFLICT' ? (
+                  <RoleBadgeChip type="conflict_uid" />
+                ) : permissionModalTarget.isUidVerified ? (
+                  <RoleBadgeChip type="verified_uid" />
+                ) : (
+                  <RoleBadgeChip type="pending_verification" />
                 )}
               </div>
             </div>
@@ -3602,10 +3943,11 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                   marginBottom: '14px',
                 }}
               >
-                🛡️ Đây là tài khoản <b>Backup Founder</b>. Primary Founder có thể kích hoạt / tạm ngưng hoặc thu hồi phiên trong bảng <b>"Backup Founder"</b> phía trên.
+                🛡️ Đây là tài khoản <b>Backup Founder</b>. Primary Founder có thể kích hoạt / tạm ngưng hoặc thu hồi phiên trong bảng <b>"Founder & Bảo mật"</b>.
               </div>
-            ) : !permissionModalTarget.isUidVerified && !getSimulatedMembersCount() ? (
+            ) : permissionModalTarget.identityStatus === 'CONFLICT' ? (
               <div
+                data-testid="permission-modal-conflict-box"
                 style={{
                   padding: '10px 12px',
                   borderRadius: '9px',
@@ -3617,7 +3959,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                   marginBottom: '14px',
                 }}
               >
-                ⚠️ Tài khoản này đang mang UID cũ chưa xác minh (<code>{permissionModalTarget.uidVerificationClass}</code>). Theo quy tắc bảo mật Founder V2, hệ thống không tự động cấp quyền cho UID chưa xác minh. Thành viên cần đăng nhập một lần qua Firebase Authentication để đồng bộ UID 28 ký tự trước khi Founder cấp quyền.
+                ⚠️ Tài khoản này đang ở trạng thái <b>Xung đột — cần xử lý</b> (<code>{permissionModalTarget.conflictReason || 'IDENTITY_CONFLICT'}</code>). Hệ thống tạm chặn kích hoạt quyền cho đến khi xác minh rõ danh tính.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
@@ -3637,10 +3979,84 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                   </div>
                 )}
 
+                {!permissionModalTarget.isUidVerified && (
+                  <div
+                    data-testid="pending-verification-info-banner"
+                    style={{
+                      padding: '9px 11px',
+                      borderRadius: '8px',
+                      background: '#FFFBEB',
+                      border: '1px solid #FCD34D',
+                      color: '#92400E',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    ⏳ Tài khoản này sẽ nhận quyền ngay khi chủ tài khoản đăng nhập Google thành công.
+                  </div>
+                )}
+
+                {permissionModalTarget.pendingRoleAssignment && (
+                  <div
+                    data-testid="pending-role-status-box"
+                    style={{
+                      padding: '9px 11px',
+                      borderRadius: '8px',
+                      background: '#EFF6FF',
+                      border: '1px solid #93C5FD',
+                      color: '#1E3A8A',
+                      fontSize: '11.5px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700 }}>
+                        🕐 Đang có quyền chờ kích hoạt (v{permissionModalTarget.pendingRoleAssignment.revision || 1}):{' '}
+                        {permissionModalTarget.pendingRoleAssignment.makeAdmin ||
+                        permissionModalTarget.pendingRoleAssignment.requestedRole === 'admin'
+                          ? 'Admin'
+                          : permissionModalTarget.pendingRoleAssignment.canManageWeb &&
+                            permissionModalTarget.pendingRoleAssignment.canManageMaps
+                          ? 'Quản lý Web + Maps'
+                          : permissionModalTarget.pendingRoleAssignment.canManageWeb
+                          ? 'Quản lý Web'
+                          : 'Quản lý Maps'}
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: '#1D4ED8' }}>
+                        Bạn có thể chỉnh vai trò bên dưới rồi bấm Lưu quyền chờ để cập nhật, hoặc hủy quyền chờ.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="cancel-pending-role-btn"
+                      onClick={handleCancelPendingRole}
+                      style={{
+                        height: '26px',
+                        padding: '0 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #FCA5A5',
+                        background: '#FEF2F2',
+                        color: '#B91C1C',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Hủy quyền chờ
+                    </button>
+                  </div>
+                )}
+
                 {/* Chọn nhanh vai trò 1 chạm (Fast Role Assignment) */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '2px' }}>
                   {[
-                    { label: 'User thường', admin: false, web: false, maps: false },
+                    { label: 'Thành viên', admin: false, web: false, maps: false },
                     { label: 'Quản lý Web', admin: false, web: true, maps: false },
                     { label: 'Quản lý Maps', admin: false, web: false, maps: true },
                     { label: 'Web + Maps', admin: false, web: true, maps: true },
@@ -3830,7 +4246,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                 Hủy
               </button>
               {!permissionModalTarget.isFounder &&
-                (permissionModalTarget.isUidVerified || getSimulatedMembersCount() > 0) && (
+                permissionModalTarget.identityStatus !== 'CONFLICT' && (
                   <button
                     type="button"
                     data-testid="perm-save-btn"
@@ -3847,7 +4263,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                       cursor: 'pointer',
                     }}
                   >
-                    Lưu phân quyền
+                    {permissionModalTarget.isUidVerified ? 'Lưu quyền' : 'Lưu quyền chờ'}
                   </button>
                 )}
             </div>
@@ -4498,7 +4914,9 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                   border: `1px solid ${theme.border}`,
                 }}
               >
-                <div style={{ fontSize: '10.5px', color: theme.textMuted }}>UID hệ thống</div>
+                <div style={{ fontSize: '10.5px', color: theme.textMuted }}>
+                  {detailModalTarget.isUidVerified ? 'Firebase UID (Đã xác minh)' : 'Legacy ID (Chờ xác minh)'}
+                </div>
                 <div
                   data-testid="detail-modal-uid"
                   style={{
@@ -4513,6 +4931,11 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                 >
                   {detailModalTarget.uid}
                 </div>
+                {detailModalTarget.legacyUid && detailModalTarget.legacyUid !== detailModalTarget.uid && (
+                  <div style={{ fontSize: '10px', color: theme.textMuted, marginTop: '2px' }}>
+                    Legacy ID: <code>{detailModalTarget.legacyUid}</code>
+                  </div>
+                )}
               </div>
               <div
                 style={{
@@ -4522,8 +4945,25 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
                   border: `1px solid ${theme.border}`,
                 }}
               >
-                <div style={{ fontSize: '10.5px', color: theme.textMuted }}>Ngày tham gia</div>
-                <div style={{ fontWeight: 700 }}>{formatShortDateVi(detailModalTarget.createdAt)}</div>
+                <div style={{ fontSize: '10.5px', color: theme.textMuted }}>Trạng thái & Ngày tham gia</div>
+                <div style={{ fontWeight: 700 }}>
+                  {detailModalTarget.isUidVerified ? '✓ Đã xác minh' : '⏳ Chờ xác minh'} •{' '}
+                  {formatShortDateVi(detailModalTarget.createdAt)}
+                </div>
+                {detailModalTarget.pendingRoleAssignment && (
+                  <div style={{ fontSize: '10.5px', color: '#1D4ED8', fontWeight: 700, marginTop: '2px' }}>
+                    🕐 Quyền chờ:{' '}
+                    {detailModalTarget.pendingRoleAssignment.makeAdmin ||
+                    detailModalTarget.pendingRoleAssignment.requestedRole === 'admin'
+                      ? 'Admin'
+                      : detailModalTarget.pendingRoleAssignment.canManageWeb &&
+                        detailModalTarget.pendingRoleAssignment.canManageMaps
+                      ? 'QL Web + Maps'
+                      : detailModalTarget.pendingRoleAssignment.canManageWeb
+                      ? 'QL Web'
+                      : 'QL Maps'}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -5062,7 +5502,7 @@ export const AdminMembersManagementView: React.FC<AdminMembersManagementViewProp
             scroll-snap-align: start;
           }
         }
-        @media (max-width: 767px) {
+        @media (max-width: 900px) {
           .xh-members-desktop-table-wrap {
             display: none !important;
           }

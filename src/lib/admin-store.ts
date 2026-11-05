@@ -370,12 +370,78 @@ export interface BackupFounderRecord {
   lastLoginAt?: number;
 }
 
+export type AccountIdentityStatus =
+  | 'VERIFIED'
+  | 'AUTO_LINKABLE'
+  | 'PENDING_VERIFICATION'
+  | 'CONFLICT';
+
+export type IdentityLinkMethod =
+  | 'existing_verified_uid'
+  | 'google_sub_match'
+  | 'verified_email_match'
+  | 'login_token_sync'
+  | 'pending'
+  | 'conflict';
+
+export interface IdentityLinkRecord {
+  legacyKey: string;
+  email: string;
+  verifiedEmail: boolean;
+  legacyUid: string;
+  googleSub?: string | null;
+  verifiedFirebaseUid?: string | null;
+  status: AccountIdentityStatus;
+  linkMethod: IdentityLinkMethod;
+  linkedAt: number;
+  linkedBy: string;
+  conflictReason?: string | null;
+}
+
+export type PendingRoleTargetType =
+  | 'admin'
+  | 'manager_web'
+  | 'manager_maps'
+  | 'manager_both'
+  | 'member';
+
+export type PendingRoleStatus =
+  | 'PENDING_ROLE_ACTIVATION'
+  | 'ACTIVATED'
+  | 'CANCELLED'
+  | 'SUPERSEDED';
+
+export interface PendingRoleAssignmentRecord {
+  requestId: string;
+  legacyKey: string;
+  targetEmail: string;
+  legacyUid: string;
+  googleSub?: string | null;
+  requestedRole: PendingRoleTargetType;
+  makeAdmin?: boolean;
+  canManageWeb: boolean;
+  canManageMaps: boolean;
+  status: PendingRoleStatus;
+  revision: number;
+  requestedByUid: string;
+  requestedByRole: 'primary_founder' | 'backup_founder';
+  requestedAt: number;
+  updatedAt: number;
+  activatedUid?: string | null;
+  activatedAt?: number | null;
+  cancelledByUid?: string | null;
+  cancelledAt?: number | null;
+  note?: string;
+}
+
 export interface XuanHoaSecurityState {
   primary_founder: Record<string, boolean>;
   backup_founder: Record<string, boolean | BackupFounderRecord>;
   admins: Record<string, boolean>;
   managers: Record<string, boolean>;
   locked_uids: Record<string, boolean>;
+  identity_links?: Record<string, IdentityLinkRecord>;
+  pending_role_assignments?: Record<string, PendingRoleAssignmentRecord>;
 }
 
 export interface AdminAccount {
@@ -431,6 +497,10 @@ export interface ManagedMember {
   createdAt: number;
   lastActiveAt: number;
   isTestAccount?: boolean;
+  legacyUid?: string;
+  googleSub?: string;
+  identityStatus?: AccountIdentityStatus;
+  conflictReason?: string;
 }
 
 export interface AdminAuditLog {
@@ -1146,6 +1216,8 @@ let cachedSecurityState: XuanHoaSecurityState = {
   admins: {},
   managers: {},
   locked_uids: {},
+  identity_links: {},
+  pending_role_assignments: {},
 };
 
 export function getSecurityState(): XuanHoaSecurityState {
@@ -1160,6 +1232,9 @@ export function getSecurityState(): XuanHoaSecurityState {
         admins: parsed.admins || cachedSecurityState.admins || {},
         managers: parsed.managers || cachedSecurityState.managers || {},
         locked_uids: parsed.locked_uids || cachedSecurityState.locked_uids || {},
+        identity_links: parsed.identity_links || cachedSecurityState.identity_links || {},
+        pending_role_assignments:
+          parsed.pending_role_assignments || cachedSecurityState.pending_role_assignments || {},
       };
     }
   } catch {}
@@ -1173,6 +1248,9 @@ export function saveSecurityStateCache(next: Partial<XuanHoaSecurityState>): Xua
     admins: next.admins ?? cachedSecurityState.admins ?? {},
     managers: next.managers ?? cachedSecurityState.managers ?? {},
     locked_uids: next.locked_uids ?? cachedSecurityState.locked_uids ?? {},
+    identity_links: next.identity_links ?? cachedSecurityState.identity_links ?? {},
+    pending_role_assignments:
+      next.pending_role_assignments ?? cachedSecurityState.pending_role_assignments ?? {},
   };
   if (typeof window !== 'undefined') {
     try {
@@ -2390,6 +2468,8 @@ export function initAdminCloudSync(): void {
               admins: rawSec.admins || {},
               managers: rawSec.managers || {},
               locked_uids: rawSec.locked_uids || {},
+              identity_links: rawSec.identity_links || {},
+              pending_role_assignments: rawSec.pending_role_assignments || {},
             });
 
             // Kiểm tra thu hồi phiên (Session Revocation) hoặc khóa tài khoản tức thì
@@ -2509,6 +2589,96 @@ export function initAdminCloudSync(): void {
     if (!e.key || e.key.startsWith('xuanhoa_')) {
       window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync'));
     }
+  });
+
+  // 1b. Lắng nghe sự kiện đối soát UID & tự động kích hoạt quyền chờ (V6)
+  window.addEventListener('xuanhoa_identity_reconciled', (e: Event) => {
+    try {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail || !detail.ok) return;
+      const cleanEmail = String(detail.email || '').trim().toLowerCase();
+      const verifiedUid = String(detail.verifiedFirebaseUid || detail.uid || '').trim();
+      if (!cleanEmail || !isVerifiedFirebaseAuthUid(verifiedUid)) return;
+
+      const safeKey = encodeRtdbKey(cleanEmail);
+      const sec = getSecurityState();
+      const nextLinks = { ...(sec.identity_links || {}) };
+      if (detail.identityLink && typeof detail.identityLink === 'object') {
+        nextLinks[safeKey] = detail.identityLink as IdentityLinkRecord;
+      }
+      const nextPending = { ...(sec.pending_role_assignments || {}) };
+      const nextAdmins = { ...(sec.admins || {}) };
+      const nextManagers = { ...(sec.managers || {}) };
+
+      if (detail.roleActivated && detail.activatedRole) {
+        const actRole = String(detail.activatedRole);
+        if (actRole === 'admin') {
+          nextAdmins[verifiedUid] = true;
+          delete nextManagers[verifiedUid];
+        } else if (
+          actRole === 'manager_web' ||
+          actRole === 'manager_maps' ||
+          actRole === 'manager_both'
+        ) {
+          nextManagers[verifiedUid] = true;
+        }
+        if (nextPending[safeKey]) {
+          nextPending[safeKey] = {
+            ...nextPending[safeKey],
+            status: 'ACTIVATED',
+            activatedUid: verifiedUid,
+            activatedAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+        }
+      }
+
+      saveSecurityStateCache({
+        identity_links: nextLinks,
+        pending_role_assignments: nextPending,
+        admins: nextAdmins,
+        managers: nextManagers,
+      });
+
+      const state = getAdminState();
+      const existing = state.members?.[cleanEmail];
+      if (existing) {
+        const oldUid = existing.uid;
+        existing.uid = verifiedUid;
+        if (!isVerifiedFirebaseAuthUid(oldUid) && oldUid) {
+          existing.legacyUid = existing.legacyUid || oldUid;
+          if (/^\d{20,22}$/.test(oldUid)) {
+            existing.googleSub = existing.googleSub || oldUid;
+          }
+        }
+        existing.identityStatus = 'VERIFIED';
+        if (detail.roleActivated && detail.activatedRole) {
+          const actRole = String(detail.activatedRole);
+          if (actRole === 'admin') {
+            existing.status = 'admin';
+            existing.roleTier = 'admin';
+            existing.canManageWeb = true;
+            existing.canManageMaps = true;
+          } else if (
+            actRole === 'manager_web' ||
+            actRole === 'manager_maps' ||
+            actRole === 'manager_both'
+          ) {
+            existing.roleTier = 'manager';
+            existing.canManageWeb = Boolean(
+              detail.canManageWeb ?? (actRole === 'manager_web' || actRole === 'manager_both')
+            );
+            existing.canManageMaps = Boolean(
+              detail.canManageMaps ?? (actRole === 'manager_maps' || actRole === 'manager_both')
+            );
+          }
+        }
+        existing.lastActiveAt = Date.now();
+        state.members[cleanEmail] = existing;
+        saveAdminState(state, false);
+      }
+      window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync'));
+    } catch {}
   });
 
   if (!firebaseConfig.apiKey) return;
@@ -3019,20 +3189,188 @@ export function updateMemberStatusInAdmin(
   saveAdminState(state);
 }
 
+export function resolveMemberIdentityState(
+  member: ManagedMember,
+  secInput?: XuanHoaSecurityState,
+  allMembersInput?: Record<string, ManagedMember>
+): {
+  status: AccountIdentityStatus;
+  verifiedUid: string | null;
+  legacyUid: string;
+  googleSub: string | null;
+  conflictReason: string | null;
+} {
+  const sec = secInput || getSecurityState();
+  const cleanEmail = (member.email || '').trim().toLowerCase();
+  const safeKey = encodeRtdbKey(cleanEmail);
+  const link = sec.identity_links?.[safeKey] || sec.identity_links?.[cleanEmail] || null;
+  const rawUid = String(member.uid || '').trim();
+  const legacyUid = String(
+    member.legacyUid ||
+      link?.legacyUid ||
+      (!isVerifiedFirebaseAuthUid(rawUid) && rawUid
+        ? rawUid
+        : `uid_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`)
+  ).trim();
+  const googleSub =
+    member.googleSub ||
+    link?.googleSub ||
+    (/^\d{20,22}$/.test(rawUid)
+      ? rawUid
+      : /^\d{20,22}$/.test(legacyUid)
+      ? legacyUid
+      : null);
+
+  if (link?.status === 'CONFLICT' || member.identityStatus === 'CONFLICT') {
+    return {
+      status: 'CONFLICT',
+      verifiedUid: null,
+      legacyUid,
+      googleSub,
+      conflictReason:
+        link?.conflictReason ||
+        member.conflictReason ||
+        'Xung đột định danh giữa các hồ sơ thành viên.',
+    };
+  }
+
+  // Kiểm tra xung đột chéo trong danh bạ thành viên (1 UID hoặc 1 Google sub gán cho > 1 email)
+  if (allMembersInput) {
+    for (const [otherKey, otherMem] of Object.entries(allMembersInput)) {
+      if (!otherMem || otherKey === cleanEmail) continue;
+      const otherEmail = (otherMem.email || otherKey).trim().toLowerCase();
+      if (otherEmail === cleanEmail) continue;
+      const otherUid = String(otherMem.uid || '').trim();
+      if (isVerifiedFirebaseAuthUid(rawUid) && otherUid === rawUid) {
+        return {
+          status: 'CONFLICT',
+          verifiedUid: null,
+          legacyUid,
+          googleSub,
+          conflictReason: `Trùng Firebase Auth UID (${rawUid}) với hồ sơ ${otherEmail}.`,
+        };
+      }
+      if (googleSub && (otherUid === googleSub || otherMem.googleSub === googleSub)) {
+        return {
+          status: 'CONFLICT',
+          verifiedUid: null,
+          legacyUid,
+          googleSub,
+          conflictReason: `Trùng Google sub (${googleSub}) với hồ sơ ${otherEmail}.`,
+        };
+      }
+    }
+  }
+
+  const currentAuthUser = getFirebaseAuth()?.currentUser || null;
+  const isVerifiedByLiveSession =
+    Boolean(
+      currentAuthUser &&
+        isVerifiedFirebaseAuthUid(rawUid) &&
+        currentAuthUser.uid === rawUid &&
+        currentAuthUser.emailVerified === true &&
+        (currentAuthUser.email || '').trim().toLowerCase() === cleanEmail
+    );
+  const isVerifiedBySecurityTree =
+    isVerifiedFirebaseAuthUid(rawUid) &&
+    Boolean(
+      sec.primary_founder?.[rawUid] === true ||
+        sec.backup_founder?.[rawUid] ||
+        sec.admins?.[rawUid] === true ||
+        sec.managers?.[rawUid] === true ||
+        (cleanEmail === PRIMARY_FOUNDER_EMAIL && rawUid === '4ouYaH3MRxe78eUNPIcy6cmgTd92')
+    );
+
+  const candidateVerifiedUid =
+    link?.status === 'VERIFIED' && isVerifiedFirebaseAuthUid(link?.verifiedFirebaseUid)
+      ? link!.verifiedFirebaseUid!.trim()
+      : (member.identityStatus === 'VERIFIED' || isVerifiedBySecurityTree || isVerifiedByLiveSession) &&
+        isVerifiedFirebaseAuthUid(rawUid)
+      ? rawUid
+      : null;
+
+  if (candidateVerifiedUid) {
+    return {
+      status: 'VERIFIED',
+      verifiedUid: candidateVerifiedUid,
+      legacyUid,
+      googleSub,
+      conflictReason: null,
+    };
+  }
+
+  if (link?.status === 'AUTO_LINKABLE') {
+    return {
+      status: 'AUTO_LINKABLE',
+      verifiedUid: null,
+      legacyUid,
+      googleSub,
+      conflictReason: null,
+    };
+  }
+
+  return {
+    status: 'PENDING_VERIFICATION',
+    verifiedUid: null,
+    legacyUid,
+    googleSub,
+    conflictReason: null,
+  };
+}
+
+export function getPendingRoleAssignmentForMember(
+  emailOrKey: string,
+  secInput?: XuanHoaSecurityState
+): PendingRoleAssignmentRecord | null {
+  if (!emailOrKey) return null;
+  const sec = secInput || getSecurityState();
+  const cleanEmail = decodeRtdbKey(emailOrKey).trim().toLowerCase();
+  const safeKey = encodeRtdbKey(cleanEmail);
+  const entry =
+    sec.pending_role_assignments?.[safeKey] ||
+    sec.pending_role_assignments?.[cleanEmail] ||
+    null;
+  if (!entry || entry.status !== 'PENDING_ROLE_ACTIVATION') {
+    return null;
+  }
+  return entry;
+}
+
+export interface SaveRoleAssignmentResult {
+  ok: boolean;
+  mode: 'ACTIVE_IMMEDIATELY' | 'PENDING_ROLE_ACTIVATION' | 'CLEARED_TO_MEMBER';
+  requestedRole: PendingRoleTargetType;
+  verifiedUid?: string | null;
+  pendingAssignment?: PendingRoleAssignmentRecord | null;
+  message: string;
+}
+
 /**
- * FOUNDER SYSTEM V2: Cấp hoặc thu hồi quyền Admin (`xuanhoa_security/admins/$uid`)
- * - Chỉ Primary Founder hoặc Backup Founder đang hoạt động (`roleInfo.canManageRoles === true`) mới được phép thực hiện.
- * - Tuyệt đối không cấp quyền cho UID chưa xác minh (Google OAuth sub 21 chữ số hoặc uid_* tự sinh).
- * - Không ai có thể thu hồi quyền của Primary Founder.
+ * ACCOUNT IDENTITY & UID V6:
+ * Founder thiết lập phân quyền cho BẤT KỲ thành viên nào trong danh sách (kể cả hồ sơ cũ Google sub 21 chữ số / uid_*):
+ * - Nếu tài khoản đã xác minh (`VERIFIED` 28-char Firebase Auth UID): Cấp quyền hoạt động ngay lập tức trên `xuanhoa_security/admins` hoặc `xuanhoa_security/managers`.
+ * - Nếu tài khoản chưa xác minh (`PENDING_VERIFICATION`): Lưu yêu cầu phân quyền ở trạng thái `PENDING_ROLE_ACTIVATION` tại `xuanhoa_security/pending_role_assignments/$legacyKey`.
+ *   Tuyệt đối KHÔNG tạo UID 28 ký tự giả, KHÔNG ghi `admins/$uid = true` hay `managers/$uid = true`, và KHÔNG đánh dấu thành viên là Admin/Manager đang hoạt động trước khi người dùng đăng nhập xác thực.
+ * - Nếu tài khoản bị xung đột (`CONFLICT`): Chặn kích hoạt quyền và báo rõ lý do xung đột.
  */
-export function grantOrRevokeAdminRole(memberKey: string, makeAdmin: boolean): void {
+export function saveOrQueueMemberRoleAssignment(
+  memberKey: string,
+  config: {
+    requestedRole: PendingRoleTargetType;
+    canManageWeb?: boolean;
+    canManageMaps?: boolean;
+    note?: string;
+  }
+): SaveRoleAssignmentResult {
   const roleInfo = getEffectiveAdminRoleInfo();
   if (!roleInfo.canManageRoles) {
-    throw new Error('Từ chối truy cập: Chỉ Primary Founder hoặc Backup Founder mới có quyền cấp/thu hồi Admin.');
+    throw new Error(
+      'Từ chối truy cập: Chỉ Primary Founder hoặc Backup Founder đang hoạt động mới có quyền thiết lập phân quyền thành viên.'
+    );
   }
 
   const state = getAdminState();
-  const key = memberKey.trim().toLowerCase();
+  const key = decodeRtdbKey(memberKey).trim().toLowerCase();
   const target = state.members[key];
   if (!target) {
     throw new Error('Không tìm thấy hồ sơ thành viên trong hệ thống.');
@@ -3046,158 +3384,598 @@ export function grantOrRevokeAdminRole(memberKey: string, makeAdmin: boolean): v
     throw new Error('Chỉ Primary Founder mới có quyền thay đổi phân quyền của Backup Founder.');
   }
 
-  if (makeAdmin && !isVerifiedFirebaseAuthUid(target.uid)) {
+  const sec = getSecurityState();
+  const identity = resolveMemberIdentityState(target, sec, state.members);
+  if (identity.status === 'CONFLICT') {
     throw new Error(
-      'Chưa thể cấp quyền Admin: Tài khoản này chưa có Firebase Auth UID 28 ký tự đã xác minh (hiện đang là Google sub 21 chữ số hoặc mã tạm). Người dùng cần đăng nhập Google trên hệ thống 1 lần trước khi Founder cấp quyền.'
+      `Xung đột định danh (CONFLICT): ${
+        identity.conflictReason ||
+        'Hồ sơ này đang xung đột UID/Email, không thể cấp hoặc kích hoạt quyền.'
+      }`
     );
   }
 
+  const requestedRole = config.requestedRole;
+  const makeAdmin = requestedRole === 'admin';
+  const canWeb = makeAdmin
+    ? true
+    : requestedRole === 'manager_both' || requestedRole === 'manager_web'
+    ? true
+    : requestedRole === 'member' || requestedRole === 'manager_maps'
+    ? false
+    : Boolean(config.canManageWeb);
+  const canMaps = makeAdmin
+    ? true
+    : requestedRole === 'manager_both' || requestedRole === 'manager_maps'
+    ? true
+    : requestedRole === 'member' || requestedRole === 'manager_web'
+    ? false
+    : Boolean(config.canManageMaps);
+  const willBeManager = !makeAdmin && Boolean(canWeb || canMaps);
+
   const now = Date.now();
-  target.status = makeAdmin ? 'admin' : 'active';
-  target.roleTier = makeAdmin ? 'admin' : 'user';
-  target.canManageWeb = makeAdmin;
-  target.canManageMaps = makeAdmin;
-  target.lastActiveAt = now;
-
-  if (makeAdmin) {
-    if (!state.adminEmails.includes(key)) {
-      state.adminEmails = [...state.adminEmails, key];
-    }
-  } else {
-    state.adminEmails = (state.adminEmails || []).filter(e => e.trim().toLowerCase() !== key);
-  }
-
+  const safeKey = encodeRtdbKey(key);
   const actorRoleForLog: 'primary_founder' | 'backup_founder' = roleInfo.isPrimaryFounder
     ? 'primary_founder'
     : 'backup_founder';
+  const actorUid =
+    getAuthenticatedFirebaseUid() ||
+    (roleInfo.isPrimaryFounder ? '4ouYaH3MRxe78eUNPIcy6cmgTd92' : 'backup_founder_verified');
+
+  // TRƯỜNG HỢP 1: TÀI KHOẢN ĐÃ CÓ FIREBASE AUTH UID 28 KÝ TỰ ĐÃ XÁC MINH -> ÁP DỤNG NGAY LẬP TỨC
+  if (identity.status === 'VERIFIED' && identity.verifiedUid) {
+    const cleanUid = identity.verifiedUid;
+    target.uid = cleanUid;
+    target.identityStatus = 'VERIFIED';
+    target.status = makeAdmin ? 'admin' : target.status === 'admin' ? 'active' : target.status || 'active';
+    target.roleTier = makeAdmin ? 'admin' : willBeManager ? 'manager' : 'user';
+    target.canManageWeb = makeAdmin ? true : canWeb;
+    target.canManageMaps = makeAdmin ? true : canMaps;
+    target.lastActiveAt = now;
+
+    if (makeAdmin) {
+      if (!state.adminEmails.includes(key)) {
+        state.adminEmails = [...state.adminEmails, key];
+      }
+    } else {
+      state.adminEmails = (state.adminEmails || []).filter(e => e.trim().toLowerCase() !== key);
+    }
+
+    const nextAdmins = { ...(sec.admins || {}) };
+    const nextManagers = { ...(sec.managers || {}) };
+    const nextPending = { ...(sec.pending_role_assignments || {}) };
+
+    if (makeAdmin) {
+      nextAdmins[cleanUid] = true;
+      delete nextManagers[cleanUid];
+    } else if (willBeManager) {
+      delete nextAdmins[cleanUid];
+      nextManagers[cleanUid] = true;
+    } else {
+      delete nextAdmins[cleanUid];
+      delete nextManagers[cleanUid];
+    }
+
+    // Nếu trước đó có pending_role_assignments đang chờ, chuyển sang SUPERSEDED để không bao giờ vừa ACTIVE vừa PENDING
+    if (nextPending[safeKey] && nextPending[safeKey].status === 'PENDING_ROLE_ACTIVATION') {
+      nextPending[safeKey] = {
+        ...nextPending[safeKey],
+        status: 'SUPERSEDED',
+        activatedUid: cleanUid,
+        activatedAt: now,
+        updatedAt: now,
+      };
+    }
+
+    saveSecurityStateCache({
+      admins: nextAdmins,
+      managers: nextManagers,
+      pending_role_assignments: nextPending,
+    });
+
+    const roleDesc = makeAdmin
+      ? 'Admin'
+      : canWeb && canMaps
+      ? 'Quản lý Web & Maps'
+      : canWeb
+      ? 'Quản lý Web'
+      : canMaps
+      ? 'Quản lý Maps'
+      : 'Thành viên';
+
+    state.auditLogs = addAdminAuditLog(
+      state,
+      requestedRole === 'member'
+        ? '⚠️ Founder thu hồi quyền Quản trị/Quản lý về Thành viên'
+        : `🛡️ Founder cấp quyền hoạt động ngay: ${roleDesc}`,
+      `${target.nickname} (${target.email}) [UID: ${cleanUid.slice(0, 6)}...]`,
+      'user',
+      {
+        actorRole: actorRoleForLog,
+        eventCategory: 'role_management',
+        refId: cleanUid,
+        memberLastActiveAt: now,
+      }
+    );
+
+    pushMemberToCloudRealtime(target, true);
+
+    try {
+      const rtdb = getRealtimeDb();
+      if (rtdb && isCloudWriteAllowedForCurrentSession()) {
+        if (makeAdmin) {
+          set(ref(rtdb, `xuanhoa_security/admins/${cleanUid}`), true).catch(() => {});
+          remove(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`)).catch(() => {});
+        } else if (willBeManager) {
+          remove(ref(rtdb, `xuanhoa_security/admins/${cleanUid}`)).catch(() => {});
+          set(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`), true).catch(() => {});
+        } else {
+          remove(ref(rtdb, `xuanhoa_security/admins/${cleanUid}`)).catch(() => {});
+          remove(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`)).catch(() => {});
+        }
+        if (nextPending[safeKey]) {
+          set(
+            ref(rtdb, `xuanhoa_security/pending_role_assignments/${safeKey}`),
+            nextPending[safeKey]
+          ).catch(() => {});
+        }
+      }
+    } catch {}
+
+    callFounderSecurityBackend('role-update', {
+      action: 'set',
+      targetUid: cleanUid,
+      targetEmail: key,
+      legacyKey: safeKey,
+      requestedRole,
+      role: makeAdmin ? 'admin' : willBeManager ? 'manager' : 'user',
+      canManageWeb: target.canManageWeb,
+      canManageMaps: target.canManageMaps,
+    }).catch(() => {});
+
+    saveAdminState(state);
+
+    return {
+      ok: true,
+      mode: 'ACTIVE_IMMEDIATELY',
+      requestedRole,
+      verifiedUid: cleanUid,
+      pendingAssignment: null,
+      message:
+        requestedRole === 'member'
+          ? `Đã thu hồi quyền và chuyển ${target.nickname} về Thành viên.`
+          : `Đã cấp quyền ${roleDesc} có hiệu lực ngay cho ${target.nickname}.`,
+    };
+  }
+
+  // TRƯỜNG HỢP 2: TÀI KHOẢN CHƯA XÁC MINH (`PENDING_VERIFICATION` — Google sub 21 chữ số hoặc uid_*)
+  // Nếu Founder chọn "Thành viên" (thu hồi/hủy yêu cầu cấp quyền chờ):
+  if (requestedRole === 'member') {
+    target.status = target.status === 'admin' ? 'active' : target.status || 'active';
+    target.roleTier = 'user';
+    target.canManageWeb = false;
+    target.canManageMaps = false;
+    target.lastActiveAt = now;
+    state.adminEmails = (state.adminEmails || []).filter(e => e.trim().toLowerCase() !== key);
+
+    const nextPending = { ...(sec.pending_role_assignments || {}) };
+    if (nextPending[safeKey] && nextPending[safeKey].status === 'PENDING_ROLE_ACTIVATION') {
+      nextPending[safeKey] = {
+        ...nextPending[safeKey],
+        status: 'CANCELLED',
+        cancelledByUid: actorUid,
+        cancelledAt: now,
+        updatedAt: now,
+      };
+      saveSecurityStateCache({ pending_role_assignments: nextPending });
+      try {
+        const rtdb = getRealtimeDb();
+        if (rtdb && isCloudWriteAllowedForCurrentSession()) {
+          set(
+            ref(rtdb, `xuanhoa_security/pending_role_assignments/${safeKey}`),
+            nextPending[safeKey]
+          ).catch(() => {});
+        }
+      } catch {}
+    }
+
+    callFounderSecurityBackend('role-update', {
+      action: 'cancel',
+      targetEmail: key,
+      legacyKey: safeKey,
+    }).catch(() => {});
+
+    pushMemberToCloudRealtime(target, true);
+    saveAdminState(state);
+
+    return {
+      ok: true,
+      mode: 'CLEARED_TO_MEMBER',
+      requestedRole: 'member',
+      verifiedUid: null,
+      pendingAssignment: null,
+      message: `Đã lưu trạng thái Thành viên cho ${target.nickname}.`,
+    };
+  }
+
+  // Lưu yêu cầu quyền chờ kích hoạt (`PENDING_ROLE_ACTIVATION`):
+  // TUYỆT ĐỐI KHÔNG bật status='admin', canManageWeb=true, canManageMaps=true trên hồ sơ hoạt động trước khi xác minh!
+  target.status = target.status === 'admin' ? 'active' : target.status || 'active';
+  target.roleTier = 'user';
+  target.canManageWeb = false;
+  target.canManageMaps = false;
+  target.legacyUid = identity.legacyUid;
+  if (identity.googleSub) {
+    target.googleSub = identity.googleSub;
+  }
+  target.identityStatus = 'PENDING_VERIFICATION';
+  target.lastActiveAt = now;
+  state.adminEmails = (state.adminEmails || []).filter(e => e.trim().toLowerCase() !== key);
+
+  const nextPending = { ...(sec.pending_role_assignments || {}) };
+  const prevPending = nextPending[safeKey];
+  const nextRevision =
+    prevPending && typeof prevPending.revision === 'number' ? prevPending.revision + 1 : 1;
+
+  const pendingRecord: PendingRoleAssignmentRecord = {
+    requestId: `req_${safeKey}_v${nextRevision}_${now}`,
+    legacyKey: safeKey,
+    targetEmail: key,
+    legacyUid: identity.legacyUid,
+    googleSub: identity.googleSub || null,
+    requestedRole,
+    canManageWeb: canWeb,
+    canManageMaps: canMaps,
+    status: 'PENDING_ROLE_ACTIVATION',
+    revision: nextRevision,
+    requestedByUid: actorUid,
+    requestedByRole: actorRoleForLog,
+    requestedAt:
+      prevPending?.status === 'PENDING_ROLE_ACTIVATION' ? prevPending.requestedAt || now : now,
+    updatedAt: now,
+    note: config.note || 'Chờ người dùng đăng nhập xác thực để kích hoạt tự động',
+  };
+
+  nextPending[safeKey] = pendingRecord;
+  saveSecurityStateCache({ pending_role_assignments: nextPending });
+
+  const pendingRoleLabel =
+    requestedRole === 'admin'
+      ? 'Admin'
+      : requestedRole === 'manager_both'
+      ? 'Quản lý Web & Maps'
+      : requestedRole === 'manager_web'
+      ? 'Quản lý Web'
+      : 'Quản lý Maps';
 
   state.auditLogs = addAdminAuditLog(
     state,
-    makeAdmin
-      ? '🛡️ Founder CẤP QUYỀN ADMIN cho thành viên'
-      : '⚠️ Founder THU HỒI QUYỀN ADMIN của thành viên',
-    `${target.nickname} (${target.email}) [UID: ${target.uid.slice(0, 6)}...]`,
+    `⏳ Founder lưu quyền chờ kích hoạt (${pendingRoleLabel}) [v${nextRevision}]`,
+    `${target.nickname} (${target.email}) [Legacy ID: ${identity.legacyUid}]`,
     'user',
     {
       actorRole: actorRoleForLog,
       eventCategory: 'role_management',
-      refId: target.uid || key,
+      refId: safeKey,
       memberLastActiveAt: now,
     }
   );
 
   pushMemberToCloudRealtime(target, true);
 
-  if (isVerifiedFirebaseAuthUid(target.uid)) {
-    const cleanUid = target.uid.trim();
-    const sec = getSecurityState();
-    const nextAdmins = { ...(sec.admins || {}) };
-    const nextManagers = { ...(sec.managers || {}) };
-    if (makeAdmin) {
-      nextAdmins[cleanUid] = true;
-      delete nextManagers[cleanUid];
-    } else {
-      delete nextAdmins[cleanUid];
+  try {
+    const rtdb = getRealtimeDb();
+    if (rtdb && isCloudWriteAllowedForCurrentSession()) {
+      set(
+        ref(rtdb, `xuanhoa_security/pending_role_assignments/${safeKey}`),
+        pendingRecord
+      ).catch(() => {});
     }
-    saveSecurityStateCache({ admins: nextAdmins, managers: nextManagers });
+  } catch {}
 
-    try {
-      const rtdb = getRealtimeDb();
-      if (rtdb) {
-        if (makeAdmin) {
-          set(ref(rtdb, `xuanhoa_security/admins/${cleanUid}`), true).catch(() => {});
-          remove(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`)).catch(() => {});
-        } else {
-          remove(ref(rtdb, `xuanhoa_security/admins/${cleanUid}`)).catch(() => {});
+  // Đồng bộ với Privileged Backend (nếu Backend phát hiện tài khoản này thực chất đã có Firebase Auth UID 28 ký tự trong Firebase Auth -> tự động nâng lên ACTIVE_IMMEDIATELY)
+  callFounderSecurityBackend('role-update', {
+    action: 'set',
+    targetEmail: key,
+    legacyKey: safeKey,
+    legacyUid: identity.legacyUid,
+    requestedRole,
+    role: makeAdmin ? 'admin' : 'manager',
+    canManageWeb: canWeb,
+    canManageMaps: canMaps,
+  })
+    .then(backendRes => {
+      if (
+        backendRes &&
+        backendRes.ok === true &&
+        backendRes.mode === 'ACTIVE_IMMEDIATELY' &&
+        isVerifiedFirebaseAuthUid(backendRes.targetUid)
+      ) {
+        const verifiedUid = String(backendRes.targetUid).trim();
+        const freshState = getAdminState();
+        const freshTarget = freshState.members[key];
+        if (freshTarget) {
+          freshTarget.uid = verifiedUid;
+          freshTarget.identityStatus = 'VERIFIED';
+          freshTarget.status = makeAdmin ? 'admin' : freshTarget.status || 'active';
+          freshTarget.roleTier = makeAdmin ? 'admin' : 'manager';
+          freshTarget.canManageWeb = canWeb;
+          freshTarget.canManageMaps = canMaps;
+          freshState.members[key] = freshTarget;
+          saveAdminState(freshState, false);
         }
+        const freshSec = getSecurityState();
+        const updAdmins = { ...(freshSec.admins || {}) };
+        const updManagers = { ...(freshSec.managers || {}) };
+        const updPending = { ...(freshSec.pending_role_assignments || {}) };
+        if (makeAdmin) {
+          updAdmins[verifiedUid] = true;
+          delete updManagers[verifiedUid];
+        } else {
+          updManagers[verifiedUid] = true;
+        }
+        if (updPending[safeKey]) {
+          updPending[safeKey] = {
+            ...updPending[safeKey],
+            status: 'ACTIVATED',
+            activatedUid: verifiedUid,
+            activatedAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+        }
+        saveSecurityStateCache({
+          admins: updAdmins,
+          managers: updManagers,
+          pending_role_assignments: updPending,
+        });
+        window.dispatchEvent(new CustomEvent('xuanhoa_admin_sync'));
       }
-    } catch {}
-  }
+    })
+    .catch(() => {});
 
   saveAdminState(state);
+
+  return {
+    ok: true,
+    mode: 'PENDING_ROLE_ACTIVATION',
+    requestedRole,
+    verifiedUid: null,
+    pendingAssignment: pendingRecord,
+    message:
+      'Đã lưu quyền chờ kích hoạt. Quyền sẽ có hiệu lực sau khi xác minh đúng tài khoản.',
+  };
+}
+
+export function cancelPendingRoleAssignment(
+  memberKey: string,
+  reason?: string
+): { ok: boolean; message: string } {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.canManageRoles) {
+    throw new Error(
+      'Từ chối truy cập: Chỉ Primary Founder hoặc Backup Founder mới có quyền hủy yêu cầu phân quyền chờ.'
+    );
+  }
+
+  const state = getAdminState();
+  const key = decodeRtdbKey(memberKey).trim().toLowerCase();
+  const safeKey = encodeRtdbKey(key);
+  const sec = getSecurityState();
+  const existing = sec.pending_role_assignments?.[safeKey];
+
+  if (!existing || existing.status !== 'PENDING_ROLE_ACTIVATION') {
+    return {
+      ok: false,
+      message: 'Không có yêu cầu cấp quyền chờ kích hoạt nào cho thành viên này.',
+    };
+  }
+
+  const now = Date.now();
+  const actorUid =
+    getAuthenticatedFirebaseUid() ||
+    (roleInfo.isPrimaryFounder ? '4ouYaH3MRxe78eUNPIcy6cmgTd92' : 'backup_founder_verified');
+  const actorRoleForLog: 'primary_founder' | 'backup_founder' = roleInfo.isPrimaryFounder
+    ? 'primary_founder'
+    : 'backup_founder';
+
+  const cancelledRecord: PendingRoleAssignmentRecord = {
+    ...existing,
+    status: 'CANCELLED',
+    cancelledByUid: actorUid,
+    cancelledAt: now,
+    updatedAt: now,
+    note: reason || 'Founder chủ động hủy yêu cầu cấp quyền chờ kích hoạt',
+  };
+
+  const nextPending = {
+    ...(sec.pending_role_assignments || {}),
+    [safeKey]: cancelledRecord,
+  };
+  saveSecurityStateCache({ pending_role_assignments: nextPending });
+
+  const target = state.members[key];
+  state.auditLogs = addAdminAuditLog(
+    state,
+    `🚫 Founder hủy yêu cầu quyền chờ kích hoạt (${existing.requestedRole})`,
+    `${target?.nickname || key} (${key})`,
+    'user',
+    {
+      actorRole: actorRoleForLog,
+      eventCategory: 'role_management',
+      refId: safeKey,
+      memberLastActiveAt: now,
+    }
+  );
+
+  try {
+    const rtdb = getRealtimeDb();
+    if (rtdb && isCloudWriteAllowedForCurrentSession()) {
+      set(
+        ref(rtdb, `xuanhoa_security/pending_role_assignments/${safeKey}`),
+        cancelledRecord
+      ).catch(() => {});
+    }
+  } catch {}
+
+  callFounderSecurityBackend('role-update', {
+    action: 'cancel',
+    targetEmail: key,
+    legacyKey: safeKey,
+    reason,
+  }).catch(() => {});
+
+  saveAdminState(state);
+
+  return {
+    ok: true,
+    message: `Đã hủy yêu cầu cấp quyền chờ kích hoạt cho ${target?.nickname || key}.`,
+  };
+}
+
+export async function runAccountsReconciliationClient(
+  mode: 'dry_run' | 'apply' | 'rollback' = 'dry_run',
+  snapshotId?: string
+): Promise<{
+  ok: boolean;
+  mode: string;
+  snapshotId?: string | null;
+  summary: {
+    totalMembers: number;
+    verified: number;
+    autoLinkable: number;
+    pendingVerification: number;
+    conflict: number;
+  };
+  message: string;
+}> {
+  const roleInfo = getEffectiveAdminRoleInfo();
+  if (!roleInfo.canManageRoles) {
+    throw new Error('Chỉ Primary Founder hoặc Backup Founder mới có quyền chạy đối soát UID.');
+  }
+
+  const backendRes = await callFounderSecurityBackend('reconcile-accounts', {
+    mode,
+    snapshotId,
+  });
+
+  if (backendRes && backendRes.ok === true && backendRes.summary) {
+    return {
+      ok: true,
+      mode: backendRes.mode || mode,
+      snapshotId: backendRes.snapshotId || null,
+      summary: backendRes.summary,
+      message: backendRes.message || 'Đã hoàn tất đối soát tài khoản qua Privileged Backend.',
+    };
+  }
+
+  // Fallback đối soát cục bộ trên danh bạ hiện tại
+  const state = getAdminState();
+  const sec = getSecurityState();
+  const membersMap = state.members || {};
+  let verified = 0;
+  let autoLinkable = 0;
+  let pendingVerification = 0;
+  let conflict = 0;
+  const nextLinks = { ...(sec.identity_links || {}) };
+  const now = Date.now();
+  const actorUid =
+    getAuthenticatedFirebaseUid() || '4ouYaH3MRxe78eUNPIcy6cmgTd92';
+
+  for (const [emailKey, m] of Object.entries(membersMap)) {
+    if (!m) continue;
+    const idState = resolveMemberIdentityState(m, sec, membersMap);
+    const safeKey = encodeRtdbKey(emailKey);
+    if (idState.status === 'VERIFIED') verified++;
+    else if (idState.status === 'AUTO_LINKABLE') autoLinkable++;
+    else if (idState.status === 'CONFLICT') conflict++;
+    else pendingVerification++;
+
+    if (mode === 'apply') {
+      nextLinks[safeKey] = {
+        legacyKey: safeKey,
+        email: emailKey,
+        verifiedEmail: idState.status === 'VERIFIED',
+        legacyUid: idState.legacyUid,
+        googleSub: idState.googleSub,
+        verifiedFirebaseUid: idState.verifiedUid,
+        status: idState.status,
+        linkMethod:
+          idState.status === 'VERIFIED'
+            ? 'existing_verified_uid'
+            : idState.status === 'CONFLICT'
+            ? 'conflict'
+            : 'pending',
+        linkedAt: now,
+        linkedBy: actorUid,
+        conflictReason: idState.conflictReason,
+      };
+    }
+  }
+
+  if (mode === 'apply') {
+    saveSecurityStateCache({ identity_links: nextLinks });
+  }
+
+  const totalMembers = Object.keys(membersMap).length;
+  return {
+    ok: true,
+    mode,
+    snapshotId: mode === 'apply' ? `local_reconcile_${now}` : null,
+    summary: {
+      totalMembers,
+      verified,
+      autoLinkable,
+      pendingVerification,
+      conflict,
+    },
+    message: `Đối soát ${totalMembers} hồ sơ: ${verified} Đã xác minh, ${autoLinkable} Tự khớp, ${pendingVerification} Chờ xác minh, ${conflict} Xung đột.`,
+  };
+}
+
+/**
+ * FOUNDER SYSTEM V2 + V6: Cấp hoặc thu hồi quyền Admin
+ * - Nếu tài khoản đã có Firebase Auth UID 28 ký tự: cấp/thu hồi ngay trên `xuanhoa_security/admins/$uid`.
+ * - Nếu tài khoản đang là hồ sơ cũ (`PENDING_VERIFICATION`): lưu vào `pending_role_assignments` để tự động kích hoạt khi người dùng đăng nhập xác thực.
+ */
+export function grantOrRevokeAdminRole(memberKey: string, makeAdmin: boolean): void {
+  saveOrQueueMemberRoleAssignment(memberKey, {
+    requestedRole: makeAdmin ? 'admin' : 'member',
+    canManageWeb: makeAdmin,
+    canManageMaps: makeAdmin,
+  });
 }
 
 export function updateMemberManagerPermissions(
   memberKey: string,
   patch: { canManageWeb?: boolean; canManageMaps?: boolean }
 ): void {
-  const roleInfo = getEffectiveAdminRoleInfo();
-  if (!roleInfo.canManageRoles) {
-    throw new Error('Từ chối truy cập: Chỉ Primary Founder hoặc Backup Founder mới có quyền cấp/thu hồi quyền Quản lý (Manager).');
-  }
-
   const state = getAdminState();
-  const key = memberKey.trim().toLowerCase();
+  const key = decodeRtdbKey(memberKey).trim().toLowerCase();
   const target = state.members[key];
   if (!target) return;
 
-  if (isPrimaryFounderIdentifier(key, target.uid)) {
-    throw new Error('Bảo mật Founder: Primary Founder luôn có toàn quyền hệ thống.');
-  }
+  const sec = getSecurityState();
+  const pending = getPendingRoleAssignmentForMember(key, sec);
+  const baseWeb = pending ? pending.canManageWeb : Boolean(target.canManageWeb);
+  const baseMaps = pending ? pending.canManageMaps : Boolean(target.canManageMaps);
 
-  const nextWeb = patch.canManageWeb !== undefined ? patch.canManageWeb : Boolean(target.canManageWeb);
-  const nextMaps = patch.canManageMaps !== undefined ? patch.canManageMaps : Boolean(target.canManageMaps);
-  const willBeManager = Boolean(nextWeb || nextMaps);
+  const nextWeb = patch.canManageWeb !== undefined ? patch.canManageWeb : baseWeb;
+  const nextMaps = patch.canManageMaps !== undefined ? patch.canManageMaps : baseMaps;
 
-  if (willBeManager && !isVerifiedFirebaseAuthUid(target.uid)) {
-    throw new Error(
-      'Chưa thể cấp quyền Manager: Tài khoản này chưa có Firebase Auth UID 28 ký tự đã xác minh (hiện đang là Google sub 21 chữ số hoặc mã tạm). Người dùng cần đăng nhập Google trên hệ thống 1 lần trước khi Founder cấp quyền.'
-    );
-  }
+  const requestedRole: PendingRoleTargetType =
+    nextWeb && nextMaps
+      ? 'manager_both'
+      : nextWeb
+      ? 'manager_web'
+      : nextMaps
+      ? 'manager_maps'
+      : 'member';
 
-  target.canManageWeb = nextWeb;
-  target.canManageMaps = nextMaps;
-  if (target.status !== 'admin') {
-    target.roleTier = willBeManager ? 'manager' : 'user';
-  }
-  target.lastActiveAt = Date.now();
-
-  const roles: string[] = [];
-  if (target.canManageWeb) roles.push('Quản lý Web (Quán)');
-  if (target.canManageMaps) roles.push('Quản lý Maps');
-
-  const actorRoleForLog: 'primary_founder' | 'backup_founder' = roleInfo.isPrimaryFounder
-    ? 'primary_founder'
-    : 'backup_founder';
-
-  state.auditLogs = addAdminAuditLog(
-    state,
-    roles.length > 0 ? `🗺️ Founder cấp quyền: ${roles.join(' + ')}` : '⚠️ Founder thu hồi quyền Quản lý Web/Maps',
-    `${target.nickname} (${target.email})`,
-    'user',
-    {
-      actorRole: actorRoleForLog,
-      eventCategory: 'role_management',
-      refId: target.uid || key,
-      memberLastActiveAt: target.lastActiveAt,
-    }
-  );
-  pushMemberToCloudRealtime(target, true);
-
-  // Chỉ ghi lên xuanhoa_security/managers/$uid khi target.uid là Firebase Auth UID 28 ký tự hợp lệ đã xác minh
-  if (isVerifiedFirebaseAuthUid(target.uid)) {
-    const cleanUid = target.uid.trim();
-    const sec = getSecurityState();
-    const nextManagers = { ...(sec.managers || {}) };
-    if (willBeManager) {
-      nextManagers[cleanUid] = true;
-    } else {
-      delete nextManagers[cleanUid];
-    }
-    saveSecurityStateCache({ managers: nextManagers });
-
-    try {
-      const rtdb = getRealtimeDb();
-      if (rtdb) {
-        if (willBeManager) {
-          set(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`), true).catch(() => {});
-        } else {
-          remove(ref(rtdb, `xuanhoa_security/managers/${cleanUid}`)).catch(() => {});
-        }
-      }
-    } catch {}
-  }
-  saveAdminState(state);
+  saveOrQueueMemberRoleAssignment(memberKey, {
+    requestedRole,
+    canManageWeb: nextWeb,
+    canManageMaps: nextMaps,
+  });
 }
 
 export function deleteMemberAndPurgeReviews(memberKey: string): { purgedReviews: number } {
@@ -8168,6 +8946,11 @@ if (typeof window !== 'undefined') {
     grantOrRevokeAdminRole,
     updateMemberManagerPermissions,
     updateMemberStatusInAdmin,
+    resolveMemberIdentityState,
+    getPendingRoleAssignmentForMember,
+    saveOrQueueMemberRoleAssignment,
+    cancelPendingRoleAssignment,
+    runAccountsReconciliationClient,
     logoutAdminSession,
     upsertAdminAccount,
     getEffectiveAdminRoleInfo,

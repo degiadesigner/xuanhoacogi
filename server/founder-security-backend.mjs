@@ -56,10 +56,16 @@ export const DEFAULT_POLICY_VERSION_META = {
   ],
 };
 
-export function isVerified28CharUid(uid) {
+export function isPlausibleFirebaseAuthUid(uid) {
   const clean = String(uid || '').trim();
-  return /^[A-Za-z0-9]{28}$/.test(clean) && !/^[0-9]+$/.test(clean);
+  if (!clean || clean.length < 10 || clean.length > 128) return false;
+  if (/^[0-9]+$/.test(clean)) return false;
+  if (/^(uid_|google_|fb_|adm_)/i.test(clean)) return false;
+  return /^[A-Za-z0-9_-]{10,128}$/.test(clean);
 }
+
+// Export alias maintained for backward compatibility; no longer relies on 28-char regex length
+export const isVerified28CharUid = isPlausibleFirebaseAuthUid;
 
 export function isStrongBackupFounderPassword(password) {
   const raw = String(password || '');
@@ -135,23 +141,6 @@ export async function mintServiceAccountAccessToken(serviceAccountInput) {
         : serviceAccountInput;
     if (!sa || !sa.client_email || !sa.private_key) return null;
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const header = { alg: 'RS256', typ: 'JWT' };
-    const claimSet = {
-      iss: sa.client_email,
-      sub: sa.client_email,
-      scope: [
-        'https://www.googleapis.com/auth/firebase.database',
-        'https://www.googleapis.com/auth/userinfo.email',
-        'https://www.googleapis.com/auth/identitytoolkit',
-        'https://www.googleapis.com/auth/cloud-platform',
-      ].join(' '),
-      aud: sa.token_uri || 'https://oauth2.googleapis.com/token',
-      iat: nowSec,
-      exp: nowSec + 3600,
-    };
-
-    const unsignedToken = `${base64UrlEncodeJson(header)}.${base64UrlEncodeJson(claimSet)}`;
     const cryptoKey = await globalThis.crypto.subtle.importKey(
       'pkcs8',
       pemToArrayBuffer(sa.private_key),
@@ -159,23 +148,88 @@ export async function mintServiceAccountAccessToken(serviceAccountInput) {
       false,
       ['sign']
     );
-    const sigBuf = await globalThis.crypto.subtle.sign(
-      'RSASSA-PKCS1-v1_5',
-      cryptoKey,
-      new TextEncoder().encode(unsignedToken)
-    );
-    const signedJwt = `${unsignedToken}.${base64UrlEncodeBytes(new Uint8Array(sigBuf))}`;
 
-    const resp = await fetch(sa.token_uri || 'https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${encodeURIComponent(signedJwt)}`,
-    });
+    const requestTokenAtTime = async baseSec => {
+      const header = { alg: 'RS256', typ: 'JWT' };
+      const claimSet = {
+        iss: sa.client_email,
+        sub: sa.client_email,
+        scope: [
+          'https://www.googleapis.com/auth/firebase.database',
+          'https://www.googleapis.com/auth/userinfo.email',
+          'https://www.googleapis.com/auth/identitytoolkit',
+          'https://www.googleapis.com/auth/cloud-platform',
+        ].join(' '),
+        aud: sa.token_uri || 'https://oauth2.googleapis.com/token',
+        iat: baseSec - 30,
+        exp: baseSec + 3300,
+      };
+
+      const unsignedToken = `${base64UrlEncodeJson(header)}.${base64UrlEncodeJson(claimSet)}`;
+      const sigBuf = await globalThis.crypto.subtle.sign(
+        'RSASSA-PKCS1-v1_5',
+        cryptoKey,
+        new TextEncoder().encode(unsignedToken)
+      );
+      const signedJwt = `${unsignedToken}.${base64UrlEncodeBytes(new Uint8Array(sigBuf))}`;
+
+      return fetch(sa.token_uri || 'https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${encodeURIComponent(signedJwt)}`,
+      });
+    };
+
+    let resp = await requestTokenAtTime(Math.floor(Date.now() / 1000));
+    if (!resp.ok) {
+      const dateHeader = resp.headers?.get?.('date');
+      if (dateHeader) {
+        const serverSec = Math.floor(Date.parse(dateHeader) / 1000);
+        if (Number.isFinite(serverSec) && serverSec > 0) {
+          resp = await requestTokenAtTime(serverSec);
+        }
+      }
+    }
     if (!resp.ok) return null;
     const data = await resp.json();
     return data?.access_token || null;
   } catch {
     return null;
+  }
+}
+
+export function isGoogleSub21Digit(uid) {
+  if (typeof uid !== 'string' || !uid.trim()) return false;
+  return /^\d{18,25}$/.test(uid.trim());
+}
+
+export function encodeRtdbMemberKey(key) {
+  return String(key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/%/g, '%25')
+    .replace(/\./g, '%2E')
+    .replace(/#/g, '%23')
+    .replace(/\$/g, '%24')
+    .replace(/\//g, '%2F')
+    .replace(/\[/g, '%5B')
+    .replace(/\]/g, '%5D');
+}
+
+export function decodeRtdbMemberKey(encodedKey) {
+  try {
+    return decodeURIComponent(String(encodedKey || '')).trim().toLowerCase();
+  } catch {
+    return String(encodedKey || '')
+      .replace(/%2E/gi, '.')
+      .replace(/%23/gi, '#')
+      .replace(/%24/gi, '$')
+      .replace(/%2F/gi, '/')
+      .replace(/%5B/gi, '[')
+      .replace(/%5D/gi, ']')
+      .replace(/%25/gi, '%')
+      .trim()
+      .toLowerCase();
   }
 }
 
@@ -204,9 +258,20 @@ function decodeJwtPayloadUniversal(token) {
   }
 }
 
-function createEmulatorFirebaseIdToken({ uid, email, authTimeSec }) {
+export function createEmulatorFirebaseIdToken({
+  uid,
+  email,
+  authTimeSec,
+  googleSub,
+  emailVerified = true,
+  providerId = 'password',
+}) {
   const nowSec = authTimeSec || Math.floor(Date.now() / 1000);
   const header = { alg: 'none', typ: 'JWT' };
+  const identities = { email: [email] };
+  if (googleSub) {
+    identities['google.com'] = [String(googleSub)];
+  }
   const payload = {
     iss: `https://securetoken.google.com/${DEFAULT_FIREBASE_PROJECT_ID}`,
     aud: DEFAULT_FIREBASE_PROJECT_ID,
@@ -216,10 +281,10 @@ function createEmulatorFirebaseIdToken({ uid, email, authTimeSec }) {
     iat: nowSec,
     exp: nowSec + 3600,
     email,
-    email_verified: true,
+    email_verified: Boolean(emailVerified),
     firebase: {
-      identities: { email: [email] },
-      sign_in_provider: 'password',
+      identities,
+      sign_in_provider: providerId || (googleSub ? 'google.com' : 'password'),
     },
   };
   return `${base64UrlEncodeJson(header)}.${base64UrlEncodeJson(payload)}.`;
@@ -294,6 +359,16 @@ export function createFounderSecurityBackend(options = {}) {
   // In-memory Firebase Identity Toolkit Emulator Store (used ONLY when allowEmulatorTokens === true)
   // Never persisted to RTDB, LocalStorage, or Git.
   const firebaseAuthEmulatorByUid = new Map();
+  firebaseAuthEmulatorByUid.set(PRIMARY_FOUNDER_VERIFIED_UID, {
+    localId: PRIMARY_FOUNDER_VERIFIED_UID,
+    email: PRIMARY_FOUNDER_EMAIL,
+    displayName: 'Dê Già Designer',
+    emailVerified: true,
+    disabled: false,
+    googleSub: '107693478569085538206',
+    providerIds: ['google.com'],
+    validSinceSec: 0,
+  });
   const rateLimitBuckets = new Map();
   const dispatchedRecoveryEmails = [];
 
@@ -308,6 +383,10 @@ export function createFounderSecurityBackend(options = {}) {
     },
     managers: {},
     locked_uids: {},
+    identity_links: {},
+    pending_role_assignments: {},
+    members_registry: {},
+    reconciliation_snapshots: [],
     auditLogs: [],
     user_consents: {},
     consent_audit_trail: {},
@@ -603,13 +682,162 @@ export function createFounderSecurityBackend(options = {}) {
     return true;
   }
 
+  /**
+   * Registers or updates a Firebase Auth account in the Emulator store (for testing & reconciliation).
+   */
+  function registerEmulatorAuthAccount({
+    uid,
+    email,
+    displayName = '',
+    googleSub = null,
+    emailVerified = true,
+    providerId = 'google.com',
+    disabled = false,
+    validSinceSec = 0,
+  }) {
+    const cleanUid = String(uid || '').trim();
+    if (!cleanUid) return null;
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const record = {
+      localId: cleanUid,
+      email: cleanEmail,
+      displayName: String(displayName || cleanEmail),
+      googleSub: googleSub ? String(googleSub).trim() : null,
+      emailVerified: Boolean(emailVerified),
+      providerIds: providerId ? [providerId] : ['google.com'],
+      disabled: Boolean(disabled),
+      validSinceSec: Number(validSinceSec || 0),
+    };
+    firebaseAuthEmulatorByUid.set(cleanUid, record);
+    return record;
+  }
+
+  /**
+   * Looks up Firebase Authentication accounts by UIDs, emails, or Google sub IDs.
+   * In Production (`!allowEmulatorTokens`), queries Identity Toolkit `accounts:lookup` via Service Account OAuth2 token.
+   * In Emulator mode (`allowEmulatorTokens`), queries `firebaseAuthEmulatorByUid`.
+   */
+  async function lookupFirebaseAuthUsers({ uids = [], emails = [] } = {}) {
+    const matchedByUid = new Map();
+
+    if (!allowEmulatorTokens) {
+      const adminOAuthToken = await getPrivilegedGoogleAccessToken();
+      if (adminOAuthToken) {
+        const cleanEmails = Array.from(
+          new Set(emails.filter(Boolean).map(e => String(e).trim().toLowerCase()))
+        );
+        for (let i = 0; i < cleanEmails.length; i += 50) {
+          const chunk = cleanEmails.slice(i, i + 50);
+          const resp = await fetch(
+            `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/accounts:lookup`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${adminOAuthToken}`,
+              },
+              body: JSON.stringify({ email: chunk }),
+            }
+          ).catch(() => null);
+          if (resp && resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            for (const u of data.users || []) {
+              if (!u || !u.localId) continue;
+              const gProv = (u.providerUserInfo || []).find(p => p.providerId === 'google.com');
+              matchedByUid.set(u.localId, {
+                localId: u.localId,
+                email: String(u.email || '').trim().toLowerCase(),
+                displayName: u.displayName || '',
+                emailVerified: Boolean(u.emailVerified),
+                disabled: Boolean(u.disabled),
+                googleSub: gProv?.rawId ? String(gProv.rawId).trim() : null,
+                providerIds: (u.providerUserInfo || []).map(p => p.providerId).filter(Boolean),
+              });
+            }
+          }
+        }
+
+        const cleanUids = Array.from(
+          new Set(uids.filter(Boolean).map(u => String(u).trim()).filter(isVerified28CharUid))
+        );
+        for (let i = 0; i < cleanUids.length; i += 50) {
+          const chunk = cleanUids.slice(i, i + 50);
+          const resp = await fetch(
+            `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/accounts:lookup`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${adminOAuthToken}`,
+              },
+              body: JSON.stringify({ localId: chunk }),
+            }
+          ).catch(() => null);
+          if (resp && resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            for (const u of data.users || []) {
+              if (!u || !u.localId) continue;
+              const gProv = (u.providerUserInfo || []).find(p => p.providerId === 'google.com');
+              matchedByUid.set(u.localId, {
+                localId: u.localId,
+                email: String(u.email || '').trim().toLowerCase(),
+                displayName: u.displayName || '',
+                emailVerified: Boolean(u.emailVerified),
+                disabled: Boolean(u.disabled),
+                googleSub: gProv?.rawId ? String(gProv.rawId).trim() : null,
+                providerIds: (u.providerUserInfo || []).map(p => p.providerId).filter(Boolean),
+              });
+            }
+          }
+        }
+      }
+    } else {
+      for (const acc of firebaseAuthEmulatorByUid.values()) {
+        if (!acc || !acc.localId) continue;
+        matchedByUid.set(acc.localId, {
+          localId: acc.localId,
+          email: String(acc.email || '').trim().toLowerCase(),
+          displayName: acc.displayName || '',
+          emailVerified: Boolean(acc.emailVerified ?? true),
+          disabled: Boolean(acc.disabled),
+          googleSub: acc.googleSub ? String(acc.googleSub).trim() : null,
+          providerIds: Array.isArray(acc.providerIds) ? acc.providerIds : ['google.com'],
+        });
+      }
+    }
+
+    const users = Array.from(matchedByUid.values());
+    const byUid = new Map(users.map(u => [u.localId, u]));
+    const byEmail = new Map();
+    const byGoogleSub = new Map();
+    for (const u of users) {
+      if (u.email) {
+        const em = u.email.trim().toLowerCase();
+        if (!byEmail.has(em)) byEmail.set(em, []);
+        byEmail.get(em).push(u);
+      }
+      if (u.googleSub) {
+        const sub = String(u.googleSub).trim();
+        if (!byGoogleSub.has(sub)) byGoogleSub.set(sub, []);
+        byGoogleSub.get(sub).push(u);
+      }
+    }
+    return { users, byUid, byEmail, byGoogleSub };
+  }
+
   // ==========================================================================
   // RTDB READ / WRITE (Supports both Emulator and Production REST API)
   // ==========================================================================
 
   async function buildRtdbRequestUrlAndHeaders(cleanPath, callerOrOwnerToken) {
+    const encodedPath = String(cleanPath || '')
+      .split('/')
+      .filter(Boolean)
+      .map(seg => encodeURIComponent(seg))
+      .join('/');
+
     if (isEmulatorRtdb) {
-      const url = `${rtdbUrl}/${cleanPath}.json?ns=${encodeURIComponent(rtdbNamespace)}`;
+      const url = `${rtdbUrl}/${encodedPath}.json?ns=${encodeURIComponent(rtdbNamespace)}`;
       const headers = callerOrOwnerToken
         ? { Authorization: `Bearer ${callerOrOwnerToken}` }
         : {};
@@ -621,7 +849,7 @@ export function createFounderSecurityBackend(options = {}) {
     const saOAuthToken = await getPrivilegedGoogleAccessToken();
     if (saOAuthToken) {
       return {
-        url: `${rtdbUrl}/${cleanPath}.json`,
+        url: `${rtdbUrl}/${encodedPath}.json`,
         headers: { Authorization: `Bearer ${saOAuthToken}` },
       };
     }
@@ -629,7 +857,7 @@ export function createFounderSecurityBackend(options = {}) {
     // 2. If Database Secret is configured and caller passed defaultOwnerToken
     if (firebaseDatabaseSecret && (!callerOrOwnerToken || callerOrOwnerToken === defaultOwnerToken)) {
       return {
-        url: `${rtdbUrl}/${cleanPath}.json?auth=${encodeURIComponent(firebaseDatabaseSecret)}`,
+        url: `${rtdbUrl}/${encodedPath}.json?auth=${encodeURIComponent(firebaseDatabaseSecret)}`,
         headers: {},
       };
     }
@@ -637,12 +865,12 @@ export function createFounderSecurityBackend(options = {}) {
     // 3. Otherwise pass caller's verified Firebase Auth ID Token via `?auth=<ID_TOKEN>`
     if (callerOrOwnerToken && callerOrOwnerToken !== defaultOwnerToken) {
       return {
-        url: `${rtdbUrl}/${cleanPath}.json?auth=${encodeURIComponent(callerOrOwnerToken)}`,
+        url: `${rtdbUrl}/${encodedPath}.json?auth=${encodeURIComponent(callerOrOwnerToken)}`,
         headers: {},
       };
     }
 
-    return { url: `${rtdbUrl}/${cleanPath}.json`, headers: {} };
+    return { url: `${rtdbUrl}/${encodedPath}.json`, headers: {} };
   }
 
   async function rtdbRead(path, bearerToken = defaultOwnerToken) {
@@ -766,6 +994,7 @@ export function createFounderSecurityBackend(options = {}) {
       };
     }
 
+    let lookupGoogleSub = null;
     // In Production mode, verify token against Firebase Authentication Identity Toolkit accounts:lookup
     if (!allowEmulatorTokens && firebaseApiKey) {
       try {
@@ -802,6 +1031,10 @@ export function createFounderSecurityBackend(options = {}) {
             message: 'Phiên đăng nhập Firebase Auth đã bị thu hồi (validSince).',
           };
         }
+        const gProv = (user.providerUserInfo || []).find(p => p.providerId === 'google.com');
+        if (gProv?.rawId) {
+          lookupGoogleSub = String(gProv.rawId).trim();
+        }
         decoded = {
           ...decoded,
           sub: user.localId,
@@ -819,17 +1052,34 @@ export function createFounderSecurityBackend(options = {}) {
     }
 
     const uid = String(decoded.user_id || decoded.sub || decoded.uid || '').trim();
-    if (!isVerified28CharUid(uid)) {
+    if (!isPlausibleFirebaseAuthUid(uid)) {
       return {
         ok: false,
         status: 403,
-        message: 'UID trong token không phải Firebase Auth UID 28 ký tự đã xác minh.',
+        message: 'UID trong token không phải Firebase Auth UID hợp lệ đã xác minh.',
       };
     }
 
     if (decoded.exp && Number(decoded.exp) < nowSec) {
       return { ok: false, status: 401, message: 'Phiên đăng nhập (ID Token) đã hết hạn.' };
     }
+
+    const emulAcc = firebaseAuthEmulatorByUid.get(uid);
+    if (allowEmulatorTokens && emulAcc?.disabled) {
+      return {
+        ok: false,
+        status: 401,
+        message: 'Tài khoản Firebase Auth đã bị vô hiệu hóa (disabled=true).',
+      };
+    }
+
+    const tokenGoogleSub =
+      lookupGoogleSub ||
+      (Array.isArray(decoded.firebase?.identities?.['google.com'])
+        ? String(decoded.firebase.identities['google.com'][0] || '').trim()
+        : '') ||
+      (emulAcc?.googleSub ? String(emulAcc.googleSub).trim() : '') ||
+      null;
 
     const authTimeSec = Number(decoded.auth_time || decoded.iat || 0);
     const isRecentAuth = authTimeSec > 0 && nowSec - authTimeSec <= MAX_RECENT_AUTH_SECONDS;
@@ -854,7 +1104,6 @@ export function createFounderSecurityBackend(options = {}) {
       (backupEntry === true || (typeof backupEntry === 'object' && backupEntry?.active === true));
 
     // Check session revocation timestamp (tokensValidAfterTime)
-    const emulAcc = firebaseAuthEmulatorByUid.get(uid);
     const validAfterMs = Number(
       (emulAcc?.validSinceSec ? emulAcc.validSinceSec * 1000 : 0) ||
         (typeof backupEntry === 'object' ? backupEntry?.tokensValidAfterTime : 0) ||
@@ -894,16 +1143,27 @@ export function createFounderSecurityBackend(options = {}) {
         !isLocked &&
         (rtdbAdmin === true || stateMirror.admins[uid] === true));
 
+    const rtdbManager = await rtdbRead(`xuanhoa_security/managers/${uid}`, token);
+    const isOperationalManager =
+      !isBackupEntryPresent &&
+      !isLocked &&
+      (rtdbManager === true || stateMirror.managers[uid] === true);
+
     return {
       ok: true,
       uid,
       email: String(decoded.email || '').trim().toLowerCase(),
+      emailVerified: Boolean(decoded.email_verified ?? true),
+      googleSub: tokenGoogleSub,
+      signInProvider: String(decoded.firebase?.sign_in_provider || 'google.com'),
       authTimeSec,
       isRecentAuth,
       isPrimaryFounder,
       isBackupFounder: !isPrimaryFounder && isBackupActive,
       isFounder: isPrimaryFounder || isBackupActive,
       isOperationalAdmin,
+      isOperationalManager,
+      isLocked,
       rawToken: token,
     };
   }
@@ -1680,7 +1940,9 @@ export function createFounderSecurityBackend(options = {}) {
 
     // ------------------------------------------------------------------------
     // 08. POST /api/founder-security/role-update
-    //     Fast Role Management (Founder grants/revokes ADMIN or MANAGER)
+    //     Unified Role Management V6 (Founder grants/revokes ADMIN or MANAGER
+    //     immediately for VERIFIED/AUTO_LINKABLE accounts, or queues
+    //     PENDING_ROLE_ACTIVATION for PENDING_VERIFICATION legacy accounts)
     // ------------------------------------------------------------------------
     if (actionName === 'role-update') {
       const caller = await verifyCallerIdentity(authHeader, nowSec);
@@ -1695,24 +1957,54 @@ export function createFounderSecurityBackend(options = {}) {
         };
       }
 
+      const rawAction = String(body.action || 'set').trim().toLowerCase(); // 'set' | 'cancel'
       const targetUid = String(body.targetUid || '').trim();
-      const targetEmail = String(body.targetEmail || '').trim().toLowerCase();
-      const nextRole = String(body.role || 'user').trim().toLowerCase(); // 'admin' | 'manager' | 'user'
-      const canManageWeb = Boolean(body.canManageWeb);
-      const canManageMaps = Boolean(body.canManageMaps);
+      const targetEmail = decodeRtdbMemberKey(
+        body.targetEmail || body.legacyMemberId || body.legacyKey || ''
+      )
+        .trim()
+        .toLowerCase();
+      const legacyKey = encodeRtdbMemberKey(
+        body.legacyMemberId || body.legacyKey || targetEmail || targetUid
+      );
+      const rawRole = String(body.role || body.requestedRole || '').trim().toLowerCase();
+      const makeAdminFlag = body.makeAdmin === true || rawRole === 'admin';
+      const canManageWeb = makeAdminFlag
+        ? true
+        : Boolean(body.canManageWeb || rawRole === 'manager_web' || rawRole === 'manager_both');
+      const canManageMaps = makeAdminFlag
+        ? true
+        : Boolean(body.canManageMaps || rawRole === 'manager_maps' || rawRole === 'manager_both');
+      const nextRole = makeAdminFlag
+        ? 'admin'
+        : canManageWeb || canManageMaps || rawRole === 'manager'
+        ? 'manager'
+        : 'user'; // 'admin' | 'manager' | 'user'
+      const detailedRequestedRole = makeAdminFlag
+        ? 'admin'
+        : canManageWeb && canManageMaps
+        ? 'manager_both'
+        : canManageWeb
+        ? 'manager_web'
+        : canManageMaps
+        ? 'manager_maps'
+        : 'member';
 
-      if (!isVerified28CharUid(targetUid)) {
+      if (!targetEmail && !targetUid) {
         return {
           ok: false,
           status: 400,
-          message:
-            'Không thể cấp quyền cho tài khoản chưa có Firebase Auth UID 28 ký tự đã xác minh.',
+          message: 'Thiếu thông tin định danh thành viên (targetEmail hoặc targetUid).',
         };
       }
 
+      // Protect Primary Founder from any role modification or downgrade
       if (
         targetUid === PRIMARY_FOUNDER_VERIFIED_UID ||
-        (await rtdbRead(`xuanhoa_security/primary_founder/${targetUid}`, caller.rawToken)) === true
+        targetEmail === PRIMARY_FOUNDER_EMAIL ||
+        (isVerified28CharUid(targetUid) &&
+          (await rtdbRead(`xuanhoa_security/primary_founder/${targetUid}`, caller.rawToken)) ===
+            true)
       ) {
         return {
           ok: false,
@@ -1721,26 +2013,75 @@ export function createFounderSecurityBackend(options = {}) {
         };
       }
 
-      const targetBackup =
-        (await rtdbRead(`xuanhoa_security/backup_founder/${targetUid}`, caller.rawToken)) ??
-        stateMirror.backup_founder[targetUid];
-      if (targetBackup !== undefined && targetBackup !== null) {
-        if (!caller.isPrimaryFounder) {
+      // Handle explicit cancellation of a Pending Role Assignment (`action === 'cancel'`)
+      if (rawAction === 'cancel') {
+        const existingPending =
+          (await rtdbRead(
+            `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+            caller.rawToken
+          )) || stateMirror.pending_role_assignments[legacyKey];
+
+        if (!existingPending || typeof existingPending !== 'object') {
           return {
             ok: false,
-            status: 403,
-            message: 'Chỉ Primary Founder mới được quản lý tài khoản Backup Founder.',
+            status: 404,
+            message: 'Không tìm thấy yêu cầu quyền chờ kích hoạt nào cho thành viên này.',
           };
         }
-        const isTargetActive = targetBackup === true || targetBackup?.active === true;
-        if (!isTargetActive && (nextRole === 'admin' || nextRole === 'manager')) {
-          return {
-            ok: false,
-            status: 403,
-            message:
-              'Không thể cấp quyền Admin/Manager cho Backup Founder đang bị khóa (active=false).',
-          };
-        }
+
+        const cancelledRecord = {
+          ...existingPending,
+          legacyMemberId: legacyKey,
+          legacyKey,
+          targetEmail: targetEmail || existingPending.targetEmail || legacyKey,
+          requestedScope: existingPending.requestedScope || {
+            canManageWeb: Boolean(existingPending.canManageWeb),
+            canManageMaps: Boolean(existingPending.canManageMaps),
+          },
+          requestedByVerifiedFounderUid:
+            existingPending.requestedByVerifiedFounderUid ||
+            existingPending.requestedByUid ||
+            caller.uid,
+          requestedByFounderRole:
+            existingPending.requestedByFounderRole ||
+            existingPending.requestedByRole ||
+            (caller.isPrimaryFounder ? 'primary_founder' : 'backup_founder'),
+          requestedAtServer:
+            existingPending.requestedAtServer || existingPending.requestedAt || now,
+          status: 'CANCELLED',
+          cancelledAtServer: now,
+          cancelledByUid: caller.uid,
+          updatedAtServer: now,
+          updatedAt: now,
+          revision: (Number(existingPending.revision) || 1) + 1,
+        };
+        stateMirror.pending_role_assignments[legacyKey] = cancelledRecord;
+        await rtdbWrite(
+          `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+          'PUT',
+          cancelledRecord,
+          caller.rawToken
+        );
+
+        const audit = await appendBackendAuditLog({
+          actorUid: caller.uid,
+          actorRole: caller.isPrimaryFounder ? 'primary_founder' : 'backup_founder',
+          action: `Hủy quyền chờ kích hoạt (${String(existingPending.requestedRole || 'user').toUpperCase()})`,
+          target: `${targetEmail || legacyKey} (Request: ${existingPending.requestId})`,
+          eventCategory: 'role_management',
+          refId: existingPending.requestId || legacyKey,
+          bearerToken: caller.rawToken,
+        });
+
+        return {
+          ok: true,
+          status: 200,
+          mode: 'CANCELLED_PENDING_ROLE',
+          message: `Đã hủy yêu cầu cấp quyền chờ kích hoạt của ${targetEmail || legacyKey}.`,
+          pendingRoleAssignment: cancelledRecord,
+          pendingAssignment: cancelledRecord,
+          auditLog: audit,
+        };
       }
 
       if (nextRole === 'admin' && !caller.isRecentAuth) {
@@ -1748,47 +2089,609 @@ export function createFounderSecurityBackend(options = {}) {
           ok: false,
           status: 403,
           code: 'RECENT_AUTH_REQUIRED',
+          error: 'RECENT_AUTH_REQUIRED',
           message: 'Nâng quyền lên ADMIN yêu cầu phiên xác thực gần đây (auth_time <= 5 phút).',
+        };
+      }
+
+      // Inspect existing member registry, identity links, and Firebase Auth accounts
+      const existingMember =
+        (legacyKey
+          ? await rtdbRead(`xuanhoa_admin/members_registry/${legacyKey}`, caller.rawToken)
+          : null) ||
+        stateMirror.members_registry[legacyKey] ||
+        null;
+      const allLinks = {
+        ...(stateMirror.identity_links || {}),
+        ...((await rtdbRead('xuanhoa_security/identity_links', caller.rawToken)) || {}),
+      };
+      const existingLink = allLinks[legacyKey] || null;
+
+      const candidateUid =
+        targetUid ||
+        existingLink?.verifiedFirebaseUid ||
+        existingMember?.uid ||
+        '';
+      const authLookup = await lookupFirebaseAuthUsers({
+        uids: isVerified28CharUid(candidateUid) ? [candidateUid] : [],
+        emails: targetEmail ? [targetEmail] : [],
+      });
+
+      // Classify target account identity
+      let identityStatus = 'PENDING_VERIFICATION';
+      let resolvedVerifiedUid = null;
+      let conflictReason = null;
+      let evidenceSource = 'pending_user_login';
+
+      const is28 = isPlausibleFirebaseAuthUid(candidateUid);
+      const is21Sub = isGoogleSub21Digit(candidateUid);
+      const expectedGoogleSub = is21Sub
+        ? candidateUid
+        : existingLink?.googleSub ||
+          (isGoogleSub21Digit(existingMember?.uid) ? String(existingMember.uid).trim() : null) ||
+          (isGoogleSub21Digit(existingMember?.googleSub) ? String(existingMember.googleSub).trim() : null) ||
+          (isGoogleSub21Digit(existingMember?.legacyUid) ? String(existingMember.legacyUid).trim() : null);
+      const byUidUser = is28 ? authLookup.byUid.get(candidateUid) : null;
+      const byEmailUsers = targetEmail ? authLookup.byEmail.get(targetEmail) || [] : [];
+      const bySubUsers = expectedGoogleSub ? authLookup.byGoogleSub.get(expectedGoogleSub) || [] : [];
+
+      const isAuthoritativeRbacUid =
+        is28 &&
+        (stateMirror.primary_founder?.[candidateUid] === true ||
+          Boolean(stateMirror.backup_founder?.[candidateUid]) ||
+          stateMirror.admins?.[candidateUid] === true ||
+          stateMirror.managers?.[candidateUid] === true ||
+          (targetEmail === PRIMARY_FOUNDER_EMAIL && candidateUid === PRIMARY_FOUNDER_VERIFIED_UID));
+
+      if (existingLink?.status === 'CONFLICT') {
+        identityStatus = 'CONFLICT';
+        conflictReason =
+          existingLink.conflictReason ||
+          'Tài khoản đang bị đánh dấu xung đột danh tính (CONFLICT).';
+      } else if (
+        existingLink?.status === 'VERIFIED' &&
+        isPlausibleFirebaseAuthUid(existingLink.verifiedFirebaseUid) &&
+        is28 &&
+        candidateUid !== existingLink.verifiedFirebaseUid
+      ) {
+        identityStatus = 'CONFLICT';
+        conflictReason = `Hồ sơ đã liên kết với UID ${existingLink.verifiedFirebaseUid} nhưng yêu cầu gửi UID khác (${candidateUid}).`;
+      } else if (byEmailUsers.length > 1 || bySubUsers.length > 1) {
+        identityStatus = 'CONFLICT';
+        conflictReason = 'Một hồ sơ cũ khớp với nhiều tài khoản Firebase Authentication khác nhau.';
+      } else if (byUidUser) {
+        if (byUidUser.disabled) {
+          identityStatus = 'CONFLICT';
+          conflictReason = 'Tài khoản Firebase Authentication đang bị vô hiệu hóa (disabled=true).';
+        } else if (
+          targetEmail &&
+          byUidUser.email &&
+          byUidUser.email.trim().toLowerCase() !== targetEmail
+        ) {
+          identityStatus = 'CONFLICT';
+          conflictReason = `UID ${byUidUser.localId} thuộc về email khác (${byUidUser.email} !== ${targetEmail}).`;
+        } else if (
+          expectedGoogleSub &&
+          (!byUidUser.googleSub ||
+            byUidUser.googleSub !== expectedGoogleSub ||
+            !(byUidUser.providerIds || []).includes('google.com'))
+        ) {
+          identityStatus = 'CONFLICT';
+          conflictReason = `Google sub trên Firebase Auth (${byUidUser.googleSub || 'none'}) không khớp với Google sub gốc của hồ sơ (${expectedGoogleSub}).`;
+        } else {
+          // Check if any OTHER legacy profile in allLinks is already linked to byUidUser.localId
+          const otherLinked = Object.values(allLinks).find(
+            l =>
+              l &&
+              l.verifiedFirebaseUid === byUidUser.localId &&
+              (l.legacyMemberId || l.legacyKey) !== legacyKey &&
+              (l.targetEmail || l.email) !== targetEmail
+          );
+          if (otherLinked) {
+            identityStatus = 'CONFLICT';
+            conflictReason = `Firebase UID ${byUidUser.localId} đã được liên kết với hồ sơ khác (${otherLinked.targetEmail || otherLinked.email}).`;
+          } else {
+            identityStatus = 'VERIFIED';
+            resolvedVerifiedUid = byUidUser.localId;
+            evidenceSource = 'firebase_auth_uid_verified';
+          }
+        }
+      } else if (is28 && byEmailUsers.length === 1 && byEmailUsers[0].localId !== candidateUid) {
+        identityStatus = 'CONFLICT';
+        conflictReason = `UID lưu trong hồ sơ (${candidateUid}) mâu thuẫn với UID thực tế trên Firebase Auth (${byEmailUsers[0].localId}) của cùng email.`;
+      } else if (byEmailUsers.length === 1 || bySubUsers.length === 1) {
+        const matchedAuth = bySubUsers[0] || byEmailUsers[0];
+        if (matchedAuth.disabled) {
+          identityStatus = 'CONFLICT';
+          conflictReason = 'Tài khoản Firebase Authentication khớp email/sub đang bị vô hiệu hóa (disabled=true).';
+        } else if (
+          targetEmail &&
+          matchedAuth.email &&
+          matchedAuth.email.trim().toLowerCase() !== targetEmail
+        ) {
+          identityStatus = 'CONFLICT';
+          conflictReason = `Email trong hồ sơ cũ (${targetEmail}) mâu thuẫn với email trên Firebase Auth (${matchedAuth.email}).`;
+        } else if (expectedGoogleSub) {
+          // Strict Google sub verification required for any profile with an expected 21-digit Google sub.
+          // Never fall back to verified_email_match if googleSub is missing or different!
+          if (
+            !matchedAuth.googleSub ||
+            matchedAuth.googleSub !== expectedGoogleSub ||
+            !(matchedAuth.providerIds || []).includes('google.com') ||
+            !matchedAuth.emailVerified
+          ) {
+            identityStatus = 'CONFLICT';
+            conflictReason = `Google sub trong hồ sơ cũ (${expectedGoogleSub}) không khớp với Firebase Auth (${matchedAuth.googleSub || 'missing_google_provider'}) — Chặn liên kết qua verified_email_match để chống chiếm quyền.`;
+          } else {
+            const otherLinked = Object.values(allLinks).find(
+              l =>
+                l &&
+                l.verifiedFirebaseUid === matchedAuth.localId &&
+                (l.legacyMemberId || l.legacyKey) !== legacyKey &&
+                (l.targetEmail || l.email) !== targetEmail
+            );
+            if (otherLinked) {
+              identityStatus = 'CONFLICT';
+              conflictReason = `Firebase UID ${matchedAuth.localId} đã được liên kết với hồ sơ khác (${otherLinked.targetEmail || otherLinked.email}).`;
+            } else {
+              identityStatus = 'AUTO_LINKABLE';
+              resolvedVerifiedUid = matchedAuth.localId;
+              evidenceSource = 'identity_toolkit_google_sub_match';
+            }
+          }
+        } else if (!(matchedAuth.providerIds || []).includes('google.com')) {
+          identityStatus = 'CONFLICT';
+          conflictReason = `Tài khoản Firebase Auth trùng email (${targetEmail}) nhưng không xác thực qua Google OAuth (provider=${(matchedAuth.providerIds || []).join(',') || 'unknown'}) — Chặn chiếm quyền qua verified_email_match.`;
+        } else {
+          // Profile has only synthetic uid_* (no recorded 21-digit Google sub):
+          // Do NOT guess/auto-link solely because email matches! Keep PENDING_VERIFICATION until live user login (reconcile-self).
+          identityStatus = 'PENDING_VERIFICATION';
+          evidenceSource = 'email_only_requires_live_token_login';
+        }
+      } else if (
+        existingLink?.status === 'VERIFIED' &&
+        isPlausibleFirebaseAuthUid(existingLink.verifiedFirebaseUid)
+      ) {
+        identityStatus = 'VERIFIED';
+        resolvedVerifiedUid = existingLink.verifiedFirebaseUid;
+        evidenceSource = existingLink.evidenceSource || 'firebase_auth_uid_verified';
+      } else if (
+        isAuthoritativeRbacUid ||
+        (allowEmulatorTokens && !targetEmail && !existingMember && is28)
+      ) {
+        identityStatus = 'VERIFIED';
+        resolvedVerifiedUid = candidateUid;
+        evidenceSource = 'firebase_auth_uid_verified';
+      }
+
+      // CASE A: CONFLICT -> Block activation and record conflict
+      if (identityStatus === 'CONFLICT') {
+        const conflictLink = {
+          legacyMemberId: legacyKey,
+          legacyKey,
+          targetEmail: targetEmail || legacyKey,
+          email: targetEmail || legacyKey,
+          legacyUid: candidateUid || null,
+          googleSub: is21Sub ? candidateUid : null,
+          verifiedFirebaseUid: null,
+          status: 'CONFLICT',
+          evidenceSource: 'conflict_detected',
+          linkMethod: 'conflict',
+          conflictReason,
+          linkedAtServer: existingLink?.linkedAtServer || existingLink?.linkedAt || now,
+          linkedAt: existingLink?.linkedAt || existingLink?.linkedAtServer || now,
+          updatedAtServer: now,
+          linkedByUid: caller.uid,
+          linkedBy: caller.uid,
+        };
+        stateMirror.identity_links[legacyKey] = conflictLink;
+        await rtdbWrite(
+          `xuanhoa_security/identity_links/${legacyKey}`,
+          'PUT',
+          conflictLink,
+          caller.rawToken
+        );
+
+        return {
+          ok: false,
+          status: 409,
+          code: 'IDENTITY_CONFLICT',
+          error: 'IDENTITY_CONFLICT',
+          identityStatus: 'CONFLICT',
+          conflictReason,
+          message: `Phát hiện xung đột danh tính (CONFLICT) — Đã chặn kích hoạt quyền tự động: ${conflictReason}`,
         };
       }
 
       const isGrantAdmin = nextRole === 'admin';
       const isGrantManager = nextRole === 'manager' && (canManageWeb || canManageMaps);
+      const effectiveRole = isGrantAdmin ? 'admin' : isGrantManager ? 'manager' : 'user';
 
-      stateMirror.admins[targetUid] = isGrantAdmin;
-      stateMirror.managers[targetUid] = isGrantManager;
+      // CASE B: VERIFIED or AUTO_LINKABLE -> Link if needed and apply RBAC immediately!
+      if (
+        (identityStatus === 'VERIFIED' || identityStatus === 'AUTO_LINKABLE') &&
+        isVerified28CharUid(resolvedVerifiedUid)
+      ) {
+        if (
+          resolvedVerifiedUid === PRIMARY_FOUNDER_VERIFIED_UID ||
+          (await rtdbRead(
+            `xuanhoa_security/primary_founder/${resolvedVerifiedUid}`,
+            caller.rawToken
+          )) === true
+        ) {
+          return {
+            ok: false,
+            status: 403,
+            message: 'Tuyệt đối không được hạ quyền hoặc chỉnh sửa tài khoản Primary Founder.',
+          };
+        }
+
+        const targetLocked =
+          (await rtdbRead(
+            `xuanhoa_security/locked_uids/${resolvedVerifiedUid}`,
+            caller.rawToken
+          )) === true || stateMirror.locked_uids[resolvedVerifiedUid] === true;
+        if (targetLocked && (isGrantAdmin || isGrantManager)) {
+          return {
+            ok: false,
+            status: 403,
+            code: 'TARGET_ACCOUNT_LOCKED',
+            error: 'TARGET_ACCOUNT_LOCKED',
+            message: 'Không thể cấp quyền Admin/Manager cho tài khoản đang bị khóa bảo mật (locked_uids).',
+          };
+        }
+
+        const targetBackup =
+          (await rtdbRead(
+            `xuanhoa_security/backup_founder/${resolvedVerifiedUid}`,
+            caller.rawToken
+          )) ?? stateMirror.backup_founder[resolvedVerifiedUid];
+        if (targetBackup !== undefined && targetBackup !== null) {
+          if (!caller.isPrimaryFounder) {
+            return {
+              ok: false,
+              status: 403,
+              message: 'Chỉ Primary Founder mới được quản lý tài khoản Backup Founder.',
+            };
+          }
+          const isTargetActive = targetBackup === true || targetBackup?.active === true;
+          if (!isTargetActive && (isGrantAdmin || isGrantManager)) {
+            return {
+              ok: false,
+              status: 403,
+              message:
+                'Không thể cấp quyền Admin/Manager cho Backup Founder đang bị khóa (active=false).',
+            };
+          }
+        }
+
+        // Save verified identity link
+        if (legacyKey && targetEmail) {
+          const verifiedLink = {
+            legacyMemberId: legacyKey,
+            legacyKey,
+            targetEmail,
+            email: targetEmail,
+            legacyUid:
+              existingLink?.legacyUid ||
+              (candidateUid && candidateUid !== resolvedVerifiedUid ? candidateUid : null),
+            googleSub:
+              existingLink?.googleSub || (is21Sub ? candidateUid : null),
+            verifiedFirebaseUid: resolvedVerifiedUid,
+            status: 'VERIFIED',
+            evidenceSource,
+            linkMethod:
+              identityStatus === 'AUTO_LINKABLE'
+                ? 'firebase_auth_reconcile'
+                : 'already_verified_28char',
+            conflictReason: null,
+            linkedAtServer: existingLink?.linkedAtServer || existingLink?.linkedAt || now,
+            linkedAt: existingLink?.linkedAt || existingLink?.linkedAtServer || now,
+            updatedAtServer: now,
+            linkedByUid: caller.uid,
+            linkedBy: caller.uid,
+          };
+          stateMirror.identity_links[legacyKey] = verifiedLink;
+          await rtdbWrite(
+            `xuanhoa_security/identity_links/${legacyKey}`,
+            'PUT',
+            verifiedLink,
+            caller.rawToken
+          );
+        }
+
+        stateMirror.admins[resolvedVerifiedUid] = isGrantAdmin;
+        stateMirror.managers[resolvedVerifiedUid] = isGrantManager;
+
+        await rtdbWrite(
+          `xuanhoa_security/admins/${resolvedVerifiedUid}`,
+          'PUT',
+          isGrantAdmin,
+          caller.rawToken
+        );
+        await rtdbWrite(
+          `xuanhoa_security/managers/${resolvedVerifiedUid}`,
+          'PUT',
+          isGrantManager,
+          caller.rawToken
+        );
+
+        // Update member registry record if present so UID and role flags stay in sync
+        if (legacyKey && (existingMember || targetEmail)) {
+          const updatedMember = {
+            ...(existingMember || {
+              email: targetEmail,
+              displayName: targetEmail,
+              createdAt: now,
+            }),
+            uid: resolvedVerifiedUid,
+            identityStatus: 'VERIFIED',
+            ...(candidateUid && candidateUid !== resolvedVerifiedUid
+              ? { legacyUid: candidateUid }
+              : {}),
+            email: targetEmail || existingMember?.email,
+            status: isGrantAdmin
+              ? 'admin'
+              : existingMember?.status === 'admin'
+              ? 'active'
+              : existingMember?.status || 'active',
+            canManageWeb: isGrantAdmin ? true : isGrantManager ? canManageWeb : false,
+            canManageMaps: isGrantAdmin ? true : isGrantManager ? canManageMaps : false,
+            lastActiveAt: existingMember?.lastActiveAt || now,
+          };
+          stateMirror.members_registry[legacyKey] = updatedMember;
+          await rtdbWrite(
+            `xuanhoa_admin/members_registry/${legacyKey}`,
+            'PUT',
+            updatedMember,
+            caller.rawToken
+          );
+        }
+
+        // If there was a pending role assignment for this legacyKey, mark it ACTIVATED/CANCELLED so it is never both ACTIVE and PENDING
+        const prevPending =
+          (await rtdbRead(
+            `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+            caller.rawToken
+          )) || stateMirror.pending_role_assignments[legacyKey];
+        if (prevPending && prevPending.status === 'PENDING_ROLE_ACTIVATION') {
+          const resolvedPending = {
+            ...prevPending,
+            legacyMemberId: legacyKey,
+            legacyKey,
+            requestedRole: detailedRequestedRole,
+            requestedScope: {
+              canManageWeb: isGrantAdmin ? true : isGrantManager ? canManageWeb : false,
+              canManageMaps: isGrantAdmin ? true : isGrantManager ? canManageMaps : false,
+            },
+            status: effectiveRole === 'user' ? 'CANCELLED' : 'ACTIVATED',
+            activatedAtServer: effectiveRole === 'user' ? null : now,
+            activatedAt: effectiveRole === 'user' ? null : now,
+            activatedFirebaseUid: effectiveRole === 'user' ? null : resolvedVerifiedUid,
+            activatedUid: effectiveRole === 'user' ? null : resolvedVerifiedUid,
+            cancelledAtServer: effectiveRole === 'user' ? now : null,
+            updatedAtServer: now,
+            updatedAt: now,
+            revision: (Number(prevPending.revision) || 1) + 1,
+          };
+          stateMirror.pending_role_assignments[legacyKey] = resolvedPending;
+          await rtdbWrite(
+            `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+            'PUT',
+            resolvedPending,
+            caller.rawToken
+          );
+        }
+
+        const audit = await appendBackendAuditLog({
+          actorUid: caller.uid,
+          actorRole: caller.isPrimaryFounder ? 'primary_founder' : 'backup_founder',
+          action: isGrantAdmin
+            ? identityStatus === 'AUTO_LINKABLE'
+              ? 'Đối soát tự động Firebase UID & Cấp quyền ADMIN'
+              : 'Cấp quyền ADMIN'
+            : isGrantManager
+            ? `${identityStatus === 'AUTO_LINKABLE' ? 'Đối soát tự động Firebase UID & ' : ''}Cấp quyền MANAGER (${[canManageWeb ? 'Web' : '', canManageMaps ? 'Maps' : ''].filter(Boolean).join('+')})`
+            : 'Thu hồi quyền về USER',
+          target: `${targetEmail || resolvedVerifiedUid} (UID: ${resolvedVerifiedUid.slice(0, 6)}...${resolvedVerifiedUid.slice(-4)})`,
+          eventCategory: 'role_management',
+          refId: resolvedVerifiedUid,
+          bearerToken: caller.rawToken,
+        });
+
+        return {
+          ok: true,
+          status: 200,
+          mode: 'ACTIVE_IMMEDIATELY',
+          identityStatus: 'VERIFIED',
+          wasAutoLinked: identityStatus === 'AUTO_LINKABLE',
+          uid: resolvedVerifiedUid,
+          verifiedUid: resolvedVerifiedUid,
+          verifiedFirebaseUid: resolvedVerifiedUid,
+          role: effectiveRole,
+          canManageWeb: isGrantAdmin ? true : isGrantManager ? canManageWeb : false,
+          canManageMaps: isGrantAdmin ? true : isGrantManager ? canManageMaps : false,
+          message:
+            identityStatus === 'AUTO_LINKABLE'
+              ? `Đã tự động liên kết Firebase Auth UID và cấp quyền (${effectiveRole.toUpperCase()}) có hiệu lực ngay cho ${targetEmail || resolvedVerifiedUid}.`
+              : `Đã cập nhật phân quyền (${effectiveRole.toUpperCase()}) có hiệu lực ngay cho ${targetEmail || resolvedVerifiedUid}.`,
+          auditLog: audit,
+        };
+      }
+
+      // CASE C: PENDING_VERIFICATION (Unverified legacy account — 21-digit Google sub or uid_*)
+      // Strictly DO NOT write to xuanhoa_security/admins or xuanhoa_security/managers!
+      // Strictly DO NOT fabricate a fake 28-char UID!
+      const prevPending =
+        (await rtdbRead(
+          `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+          caller.rawToken
+        )) || stateMirror.pending_role_assignments[legacyKey];
+
+      if (effectiveRole === 'user') {
+        if (prevPending && prevPending.status === 'PENDING_ROLE_ACTIVATION') {
+          const cancelledPending = {
+            ...prevPending,
+            legacyMemberId: legacyKey,
+            legacyKey,
+            status: 'CANCELLED',
+            cancelledAtServer: now,
+            cancelledByUid: caller.uid,
+            updatedAtServer: now,
+            updatedAt: now,
+            revision: (Number(prevPending.revision) || 1) + 1,
+          };
+          stateMirror.pending_role_assignments[legacyKey] = cancelledPending;
+          await rtdbWrite(
+            `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+            'PUT',
+            cancelledPending,
+            caller.rawToken
+          );
+        }
+        if (legacyKey && existingMember) {
+          const cleanedMember = {
+            ...existingMember,
+            status: existingMember.status === 'admin' ? 'active' : existingMember.status || 'active',
+            canManageWeb: false,
+            canManageMaps: false,
+          };
+          stateMirror.members_registry[legacyKey] = cleanedMember;
+          await rtdbWrite(
+            `xuanhoa_admin/members_registry/${legacyKey}`,
+            'PUT',
+            cleanedMember,
+            caller.rawToken
+          );
+        }
+        return {
+          ok: true,
+          status: 200,
+          mode: 'CANCELLED_PENDING_ROLE',
+          identityStatus: 'PENDING_VERIFICATION',
+          role: 'user',
+          message: `Đã đặt lại vai trò Thành viên và hủy mọi quyền chờ kích hoạt của ${targetEmail || legacyKey}.`,
+        };
+      }
+
+      // Save Pending Role Assignment (`PENDING_ROLE_ACTIVATION`)
+      const nextRevision = (Number(prevPending?.revision) || 0) + 1;
+      const pendingRequestId = `pra_${now}_${randomHexBytes(3)}`;
+      const pendingRecord = {
+        requestId: pendingRequestId,
+        legacyMemberId: legacyKey,
+        legacyKey,
+        targetEmail: targetEmail || legacyKey,
+        legacyUid: candidateUid || `uid_${legacyKey}`,
+        expectedGoogleSub: is21Sub
+          ? candidateUid
+          : prevPending?.expectedGoogleSub ||
+            (isGoogleSub21Digit(existingMember?.uid) ? String(existingMember.uid).trim() : null),
+        requestedRole: detailedRequestedRole,
+        effectiveRole,
+        makeAdmin: isGrantAdmin,
+        canManageWeb: isGrantAdmin ? true : Boolean(canManageWeb),
+        canManageMaps: isGrantAdmin ? true : Boolean(canManageMaps),
+        requestedScope: {
+          canManageWeb: isGrantAdmin ? true : Boolean(canManageWeb),
+          canManageMaps: isGrantAdmin ? true : Boolean(canManageMaps),
+        },
+        status: 'PENDING_ROLE_ACTIVATION',
+        requestedByVerifiedFounderUid: caller.uid,
+        requestedByUid: caller.uid,
+        requestedByFounderRole: caller.isPrimaryFounder ? 'primary_founder' : 'backup_founder',
+        requestedByRole: caller.isPrimaryFounder ? 'primary_founder' : 'backup_founder',
+        requestedAtServer: now,
+        requestedAt: now,
+        updatedAtServer: now,
+        updatedAt: now,
+        activatedAtServer: null,
+        activatedAt: null,
+        activatedFirebaseUid: null,
+        activatedUid: null,
+        cancelledAtServer: null,
+        cancelledByUid: null,
+        conflictReason: null,
+        revision: nextRevision,
+        policyVersion:
+          stateMirror.policy_versions.current?.version || DEFAULT_POLICY_VERSION_META.version,
+      };
+
+      const pendingLink = {
+        legacyMemberId: legacyKey,
+        legacyKey,
+        targetEmail: targetEmail || legacyKey,
+        email: targetEmail || legacyKey,
+        legacyUid: candidateUid || `uid_${legacyKey}`,
+        googleSub: pendingRecord.expectedGoogleSub,
+        verifiedFirebaseUid: null,
+        status: 'PENDING_VERIFICATION',
+        evidenceSource: 'pending_user_login',
+        linkMethod: 'pending_verification',
+        conflictReason: null,
+        linkedAtServer: existingLink?.linkedAtServer || existingLink?.linkedAt || now,
+        linkedAt: existingLink?.linkedAt || existingLink?.linkedAtServer || now,
+        updatedAtServer: now,
+        linkedByUid: caller.uid,
+        linkedBy: caller.uid,
+      };
+
+      stateMirror.identity_links[legacyKey] = pendingLink;
+      stateMirror.pending_role_assignments[legacyKey] = pendingRecord;
 
       await rtdbWrite(
-        `xuanhoa_security/admins/${targetUid}`,
+        `xuanhoa_security/identity_links/${legacyKey}`,
         'PUT',
-        isGrantAdmin,
+        pendingLink,
         caller.rawToken
       );
       await rtdbWrite(
-        `xuanhoa_security/managers/${targetUid}`,
+        `xuanhoa_security/pending_role_assignments/${legacyKey}`,
         'PUT',
-        isGrantManager,
+        pendingRecord,
         caller.rawToken
       );
 
+      // Ensure member registry does NOT prematurely show active admin/manager flags while pending verification
+      if (legacyKey && existingMember) {
+        const safePendingMember = {
+          ...existingMember,
+          status: existingMember.status === 'admin' ? 'active' : existingMember.status || 'active',
+          canManageWeb: false,
+          canManageMaps: false,
+        };
+        stateMirror.members_registry[legacyKey] = safePendingMember;
+        await rtdbWrite(
+          `xuanhoa_admin/members_registry/${legacyKey}`,
+          'PUT',
+          safePendingMember,
+          caller.rawToken
+        );
+      }
+
+      const scopeLabel = isGrantAdmin
+        ? 'ADMIN'
+        : `MANAGER (${[canManageWeb ? 'Web' : '', canManageMaps ? 'Maps' : ''].filter(Boolean).join('+')})`;
       const audit = await appendBackendAuditLog({
         actorUid: caller.uid,
         actorRole: caller.isPrimaryFounder ? 'primary_founder' : 'backup_founder',
-        action: isGrantAdmin
-          ? 'Cấp quyền ADMIN'
-          : isGrantManager
-          ? `Cấp quyền MANAGER (${[canManageWeb ? 'Web' : '', canManageMaps ? 'Maps' : ''].filter(Boolean).join('+')})`
-          : 'Thu hồi quyền về USER',
-        target: `${targetEmail || targetUid} (UID: ${targetUid.slice(0, 6)}...${targetUid.slice(-4)})`,
+        action: `Lưu quyền chờ kích hoạt (${scopeLabel}) — Chờ xác minh Firebase Auth UID`,
+        target: `${targetEmail || legacyKey} (Legacy ID: ${String(candidateUid || legacyKey).slice(0, 10)}..., rev=${nextRevision})`,
         eventCategory: 'role_management',
-        refId: targetUid,
+        refId: pendingRequestId,
         bearerToken: caller.rawToken,
       });
 
       return {
         ok: true,
         status: 200,
-        message: `Đã cập nhật phân quyền (${nextRole.toUpperCase()}) cho ${targetEmail || targetUid}.`,
+        mode: 'PENDING_ROLE_ACTIVATION',
+        identityStatus: 'PENDING_VERIFICATION',
+        role: 'user',
+        pendingRoleAssignment: pendingRecord,
+        pendingAssignment: pendingRecord,
+        message:
+          'Đã lưu quyền chờ kích hoạt. Quyền sẽ có hiệu lực sau khi xác minh đúng tài khoản.',
         auditLog: audit,
       };
     }
@@ -2415,6 +3318,1059 @@ export function createFounderSecurityBackend(options = {}) {
       };
     }
 
+    // ------------------------------------------------------------------------
+    // 15. POST /api/founder-security/reconcile-self (alias: activate-pending-role)
+    //     Automatic Firebase Auth UID Reconciliation + Pending Role Activation
+    //     Triggered automatically upon Google login, session restore, or reload.
+    //     Strictly verifies Bearer Firebase ID Token — never trusts client body.
+    // ------------------------------------------------------------------------
+    if (actionName === 'reconcile-self' || actionName === 'activate-pending-role') {
+      const caller = await verifyCallerIdentity(authHeader, nowSec);
+      if (!caller.ok) {
+        if (caller.status === 403 && String(caller.message || '').includes('locked_uids')) {
+          return {
+            ...caller,
+            status: 401,
+            code: 'ACCOUNT_LOCKED',
+            error: 'ACCOUNT_LOCKED',
+          };
+        }
+        return {
+          ...caller,
+          error: caller.code || caller.error || 'UNAUTHORIZED',
+        };
+      }
+
+      // Reject spoofed identity claims in request body if they contradict the verified ID Token
+      if (body.claimedUid && String(body.claimedUid).trim() !== caller.uid) {
+        return {
+          ok: false,
+          status: 403,
+          code: 'SPOOFED_IDENTITY_REJECTED',
+          error: 'SPOOFED_IDENTITY_REJECTED',
+          message: 'Từ chối yêu cầu kích hoạt: UID gửi lên không khớp với Firebase ID Token đã xác minh.',
+        };
+      }
+      if (
+        body.claimedEmail &&
+        decodeRtdbMemberKey(body.claimedEmail).trim().toLowerCase() !== caller.email
+      ) {
+        return {
+          ok: false,
+          status: 403,
+          code: 'SPOOFED_IDENTITY_REJECTED',
+          error: 'SPOOFED_IDENTITY_REJECTED',
+          message: 'Từ chối yêu cầu kích hoạt: Email gửi lên không khớp với Firebase ID Token đã xác minh.',
+        };
+      }
+
+      if (!caller.email || !caller.email.includes('@')) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'INVALID_EMAIL',
+          message: 'Token không chứa email hợp lệ để đối soát hồ sơ.',
+        };
+      }
+
+      if (!caller.emailVerified) {
+        return {
+          ok: false,
+          status: 403,
+          code: 'EMAIL_NOT_VERIFIED',
+          error: 'EMAIL_NOT_VERIFIED',
+          message: 'Email trên Firebase Authentication chưa được xác minh (email_verified=false).',
+        };
+      }
+
+      const legacyKey = encodeRtdbMemberKey(caller.email);
+      const allLinks = {
+        ...(stateMirror.identity_links || {}),
+        ...((await rtdbRead('xuanhoa_security/identity_links')) || {}),
+      };
+      const existingLink = allLinks[legacyKey] || null;
+      const existingMember =
+        (await rtdbRead(`xuanhoa_admin/members_registry/${legacyKey}`)) ||
+        stateMirror.members_registry[legacyKey] ||
+        null;
+      const pendingRole =
+        (await rtdbRead(`xuanhoa_security/pending_role_assignments/${legacyKey}`)) ||
+        stateMirror.pending_role_assignments[legacyKey] ||
+        null;
+
+      // 1. Check for Identity Conflicts (1-to-many or many-to-1 or Google sub mismatch)
+      let conflictReason = null;
+
+      // Check if caller.uid is already linked to a DIFFERENT legacyMemberId / email
+      const otherLinkedToSameUid = Object.values(allLinks).find(
+        l =>
+          l &&
+          l.verifiedFirebaseUid === caller.uid &&
+          (l.legacyMemberId || l.legacyKey) !== legacyKey &&
+          (l.targetEmail || l.email) !== caller.email
+      );
+      if (otherLinkedToSameUid) {
+        conflictReason = `Firebase UID ${caller.uid} đã được liên kết với một hồ sơ thành viên khác (${otherLinkedToSameUid.targetEmail || otherLinkedToSameUid.email}).`;
+      } else if (
+        existingLink?.status === 'VERIFIED' &&
+        isVerified28CharUid(existingLink.verifiedFirebaseUid) &&
+        existingLink.verifiedFirebaseUid !== caller.uid
+      ) {
+        conflictReason = `Hồ sơ ${caller.email} đã được xác minh với một Firebase UID khác (${existingLink.verifiedFirebaseUid} !== ${caller.uid}).`;
+      } else if (existingLink?.status === 'CONFLICT') {
+        conflictReason =
+          existingLink.conflictReason ||
+          'Hồ sơ đang ở trạng thái xung đột danh tính (CONFLICT) cần Founder kiểm tra.';
+      } else if (
+        existingMember?.uid &&
+        isPlausibleFirebaseAuthUid(existingMember.uid) &&
+        existingMember.uid !== caller.uid
+      ) {
+        conflictReason = `Hồ sơ ${caller.email} đang lưu Firebase UID khác (${existingMember.uid} !== ${caller.uid}).`;
+      } else if (!caller.isFounder && caller.signInProvider !== 'google.com') {
+        conflictReason = `Phiên đăng nhập (${caller.email}) không xác thực qua Google OAuth (provider=${caller.signInProvider}) — Chặn liên kết/kích hoạt quyền qua verified_email_match để chống chiếm quyền.`;
+      } else {
+        const expectedSub =
+          pendingRole?.expectedGoogleSub ||
+          existingLink?.googleSub ||
+          (isGoogleSub21Digit(existingMember?.uid) ? String(existingMember.uid).trim() : null) ||
+          (isGoogleSub21Digit(existingMember?.googleSub) ? String(existingMember.googleSub).trim() : null) ||
+          (isGoogleSub21Digit(existingMember?.legacyUid) ? String(existingMember.legacyUid).trim() : null);
+        if (expectedSub && (!caller.googleSub || expectedSub !== caller.googleSub)) {
+          conflictReason = `Google sub trong phiên đăng nhập (${caller.googleSub || 'missing_google_sub'}) mâu thuẫn với Google sub gốc của hồ sơ cũ (${expectedSub}).`;
+        }
+      }
+
+      if (conflictReason) {
+        const conflictLink = {
+          legacyMemberId: legacyKey,
+          legacyKey,
+          targetEmail: caller.email,
+          email: caller.email,
+          legacyUid:
+            existingLink?.legacyUid ||
+            (existingMember?.uid && existingMember.uid !== caller.uid ? existingMember.uid : null),
+          googleSub: caller.googleSub || existingLink?.googleSub || null,
+          verifiedFirebaseUid: null,
+          status: 'CONFLICT',
+          evidenceSource: 'conflict_detected',
+          linkMethod: 'conflict',
+          conflictReason,
+          linkedAtServer: existingLink?.linkedAtServer || existingLink?.linkedAt || now,
+          linkedAt: existingLink?.linkedAt || existingLink?.linkedAtServer || now,
+          updatedAtServer: now,
+          linkedByUid: caller.uid,
+          linkedBy: caller.uid,
+        };
+        stateMirror.identity_links[legacyKey] = conflictLink;
+        await rtdbWrite(`xuanhoa_security/identity_links/${legacyKey}`, 'PUT', conflictLink);
+
+        if (pendingRole && pendingRole.status === 'PENDING_ROLE_ACTIVATION') {
+          const blockedPending = {
+            ...pendingRole,
+            legacyMemberId: legacyKey,
+            legacyKey,
+            targetEmail: pendingRole.targetEmail || caller.email,
+            requestedScope: pendingRole.requestedScope || {
+              canManageWeb: Boolean(pendingRole.canManageWeb),
+              canManageMaps: Boolean(pendingRole.canManageMaps),
+            },
+            requestedByVerifiedFounderUid:
+              pendingRole.requestedByVerifiedFounderUid ||
+              pendingRole.requestedByUid ||
+              PRIMARY_FOUNDER_VERIFIED_UID,
+            requestedByFounderRole:
+              pendingRole.requestedByFounderRole ||
+              pendingRole.requestedByRole ||
+              'primary_founder',
+            requestedAtServer: pendingRole.requestedAtServer || pendingRole.requestedAt || now,
+            status: 'CONFLICT_BLOCKED',
+            conflictReason,
+            updatedAtServer: now,
+            updatedAt: now,
+          };
+          stateMirror.pending_role_assignments[legacyKey] = blockedPending;
+          await rtdbWrite(
+            `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+            'PUT',
+            blockedPending
+          );
+        }
+
+        await appendBackendAuditLog({
+          actorUid: caller.uid,
+          actorRole: 'manager',
+          action: 'Chặn liên kết & kích hoạt quyền chờ do xung đột danh tính (CONFLICT)',
+          target: `${caller.email}: ${conflictReason}`,
+          eventCategory: 'system_security',
+          refId: legacyKey,
+        });
+
+        return {
+          ok: false,
+          status: 409,
+          code: 'IDENTITY_CONFLICT',
+          error: 'IDENTITY_CONFLICT',
+          identityStatus: 'CONFLICT',
+          conflictReason,
+          message: `Phát hiện xung đột danh tính (CONFLICT): ${conflictReason}`,
+        };
+      }
+
+      // 2. Safe Identity Link & Member Registry UID Synchronization (Preserves 100% member history & stats)
+      const preservedLegacyUid =
+        existingLink?.legacyUid ||
+        existingMember?.legacyUid ||
+        (existingMember?.uid && existingMember.uid !== caller.uid ? existingMember.uid : null);
+
+      const verifiedLink = {
+        legacyMemberId: legacyKey,
+        legacyKey,
+        targetEmail: caller.email,
+        email: caller.email,
+        legacyUid: preservedLegacyUid,
+        googleSub:
+          caller.googleSub ||
+          existingLink?.googleSub ||
+          (isGoogleSub21Digit(preservedLegacyUid) ? preservedLegacyUid : null),
+        verifiedFirebaseUid: caller.uid,
+        status: 'VERIFIED',
+        evidenceSource: 'firebase_id_token_login',
+        linkMethod: 'google_login_token',
+        conflictReason: null,
+        linkedAtServer: existingLink?.linkedAtServer || existingLink?.linkedAt || now,
+        linkedAt: existingLink?.linkedAt || existingLink?.linkedAtServer || now,
+        updatedAtServer: now,
+        linkedByUid: caller.uid,
+        linkedBy: caller.uid,
+      };
+      stateMirror.identity_links[legacyKey] = verifiedLink;
+      await rtdbWrite(`xuanhoa_security/identity_links/${legacyKey}`, 'PUT', verifiedLink);
+
+      // Update member registry UID while preserving all existing profile data
+      const syncedMember = {
+        ...(existingMember || {
+          email: caller.email,
+          displayName: body.displayName || caller.email.split('@')[0],
+          nickname: body.nickname || body.displayName || caller.email.split('@')[0],
+          avatar: '🐭',
+          avatarId: 'm_ty',
+          gender: 'male',
+          phone: '',
+          residentType: 'student_sp2',
+          tastePreferences: [],
+          spinsCount: 0,
+          level: 1,
+          reviewsCount: 0,
+          status: 'active',
+          createdAt: now,
+        }),
+        uid: caller.uid,
+        identityStatus: 'VERIFIED',
+        email: caller.email,
+        ...(preservedLegacyUid ? { legacyUid: preservedLegacyUid } : {}),
+        ...(verifiedLink.googleSub ? { googleSub: verifiedLink.googleSub } : {}),
+        lastActiveAt: Math.max(now, Number(existingMember?.lastActiveAt || 0)),
+      };
+
+      // 3. Check & Activate Pending Role Assignment (if present and eligible)
+      if (!pendingRole) {
+        stateMirror.members_registry[legacyKey] = syncedMember;
+        await rtdbWrite(`xuanhoa_admin/members_registry/${legacyKey}`, 'PUT', syncedMember);
+        return {
+          ok: true,
+          status: 200,
+          identityStatus: 'VERIFIED',
+          verifiedUid: caller.uid,
+          verifiedFirebaseUid: caller.uid,
+          email: caller.email,
+          identityLink: verifiedLink,
+          legacyUid: preservedLegacyUid,
+          roleActivated: false,
+          reason: 'NO_PENDING_ROLE',
+          effectiveRole: caller.isPrimaryFounder
+            ? 'primary_founder'
+            : caller.isBackupFounder
+            ? 'backup_founder'
+            : caller.isOperationalAdmin
+            ? 'admin'
+            : caller.isOperationalManager
+            ? 'manager'
+            : 'user',
+          canManageWeb: Boolean(
+            caller.isOperationalAdmin || (caller.isOperationalManager && syncedMember.canManageWeb)
+          ),
+          canManageMaps: Boolean(
+            caller.isOperationalAdmin || (caller.isOperationalManager && syncedMember.canManageMaps)
+          ),
+          message: 'Đã xác minh và đồng bộ Firebase Auth UID cho hồ sơ thành viên.',
+        };
+      }
+
+      if (pendingRole.status === 'CANCELLED') {
+        stateMirror.members_registry[legacyKey] = syncedMember;
+        await rtdbWrite(`xuanhoa_admin/members_registry/${legacyKey}`, 'PUT', syncedMember);
+        return {
+          ok: true,
+          status: 200,
+          identityStatus: 'VERIFIED',
+          verifiedUid: caller.uid,
+          verifiedFirebaseUid: caller.uid,
+          email: caller.email,
+          identityLink: verifiedLink,
+          legacyUid: preservedLegacyUid,
+          roleActivated: false,
+          reason: 'PENDING_ROLE_WAS_CANCELLED',
+          effectiveRole: 'user',
+          canManageWeb: false,
+          canManageMaps: false,
+          message: 'Đã xác minh Firebase Auth UID (Yêu cầu quyền chờ trước đó đã bị Founder hủy).',
+        };
+      }
+
+      if (
+        pendingRole.status === 'ACTIVATED' &&
+        (pendingRole.activatedFirebaseUid === caller.uid || pendingRole.activatedUid === caller.uid)
+      ) {
+        // Idempotent response across page reloads / repeated logins
+        stateMirror.members_registry[legacyKey] = syncedMember;
+        await rtdbWrite(`xuanhoa_admin/members_registry/${legacyKey}`, 'PUT', syncedMember);
+        return {
+          ok: true,
+          status: 200,
+          identityStatus: 'VERIFIED',
+          verifiedUid: caller.uid,
+          verifiedFirebaseUid: caller.uid,
+          email: caller.email,
+          identityLink: verifiedLink,
+          legacyUid: preservedLegacyUid,
+          roleActivated: false,
+          alreadyActivated: true,
+          activatedRole: pendingRole.requestedRole,
+          activatedScope: pendingRole.requestedScope,
+          activatedAssignment: pendingRole,
+          pendingRoleAssignment: pendingRole,
+          effectiveRole: caller.isOperationalAdmin
+            ? 'admin'
+            : caller.isOperationalManager
+            ? 'manager'
+            : 'user',
+          canManageWeb: Boolean(
+            caller.isOperationalAdmin || (caller.isOperationalManager && syncedMember.canManageWeb)
+          ),
+          canManageMaps: Boolean(
+            caller.isOperationalAdmin || (caller.isOperationalManager && syncedMember.canManageMaps)
+          ),
+          message: 'Quyền đã được kích hoạt trước đó (Idempotent).',
+        };
+      }
+
+      if (pendingRole.status !== 'PENDING_ROLE_ACTIVATION') {
+        stateMirror.members_registry[legacyKey] = syncedMember;
+        await rtdbWrite(`xuanhoa_admin/members_registry/${legacyKey}`, 'PUT', syncedMember);
+        return {
+          ok: true,
+          status: 200,
+          identityStatus: 'VERIFIED',
+          verifiedUid: caller.uid,
+          verifiedFirebaseUid: caller.uid,
+          email: caller.email,
+          identityLink: verifiedLink,
+          roleActivated: false,
+          reason: `UNSUPPORTED_PENDING_STATUS_${pendingRole.status}`,
+        };
+      }
+
+      // Verify that the Founder who requested this Pending Role is STILL an active Founder!
+      const reqFounderUid = String(
+        pendingRole.requestedByVerifiedFounderUid || pendingRole.requestedByUid || ''
+      ).trim();
+      const reqFounderIsPrimary =
+        reqFounderUid === PRIMARY_FOUNDER_VERIFIED_UID ||
+        (await rtdbRead(`xuanhoa_security/primary_founder/${reqFounderUid}`)) === true ||
+        stateMirror.primary_founder[reqFounderUid] === true;
+      const reqFounderLocked =
+        (await rtdbRead(`xuanhoa_security/locked_uids/${reqFounderUid}`)) === true ||
+        stateMirror.locked_uids[reqFounderUid] === true;
+      const reqFounderBackupEntry =
+        (await rtdbRead(`xuanhoa_security/backup_founder/${reqFounderUid}`)) ??
+        stateMirror.backup_founder[reqFounderUid];
+      const reqFounderIsActiveBackup =
+        !reqFounderLocked &&
+        (reqFounderBackupEntry === true ||
+          (typeof reqFounderBackupEntry === 'object' && reqFounderBackupEntry?.active === true));
+
+      if (!reqFounderIsPrimary && !reqFounderIsActiveBackup) {
+        const blockedByRevokedFounder = {
+          ...pendingRole,
+          legacyMemberId: legacyKey,
+          legacyKey,
+          targetEmail: pendingRole.targetEmail || caller.email,
+          requestedScope: pendingRole.requestedScope || {
+            canManageWeb: Boolean(pendingRole.canManageWeb),
+            canManageMaps: Boolean(pendingRole.canManageMaps),
+          },
+          requestedByVerifiedFounderUid: reqFounderUid || PRIMARY_FOUNDER_VERIFIED_UID,
+          requestedByFounderRole:
+            pendingRole.requestedByFounderRole ||
+            pendingRole.requestedByRole ||
+            'backup_founder',
+          requestedAtServer: pendingRole.requestedAtServer || pendingRole.requestedAt || now,
+          status: 'CONFLICT_BLOCKED',
+          conflictReason:
+            'Tài khoản Founder khởi tạo yêu cầu quyền chờ không còn hiệu lực tại thời điểm kích hoạt.',
+          updatedAtServer: now,
+          updatedAt: now,
+        };
+        stateMirror.pending_role_assignments[legacyKey] = blockedByRevokedFounder;
+        await rtdbWrite(
+          `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+          'PUT',
+          blockedByRevokedFounder
+        );
+        stateMirror.members_registry[legacyKey] = syncedMember;
+        await rtdbWrite(`xuanhoa_admin/members_registry/${legacyKey}`, 'PUT', syncedMember);
+
+        return {
+          ok: true,
+          status: 200,
+          code: 'REQUESTING_FOUNDER_NO_LONGER_ACTIVE',
+          activationBlockedReason: 'REQUESTING_BACKUP_FOUNDER_INACTIVE',
+          identityStatus: 'VERIFIED',
+          verifiedUid: caller.uid,
+          verifiedFirebaseUid: caller.uid,
+          email: caller.email,
+          identityLink: verifiedLink,
+          roleActivated: false,
+          message:
+            'Không thể tự động kích hoạt quyền chờ vì tài khoản Founder cấp quyền đã bị thu hồi hoặc khóa.',
+        };
+      }
+
+      // Atomically activate the pending role!
+      const rawReqRole = String(pendingRole.requestedRole || '').trim().toLowerCase();
+      const isGrantAdmin = rawReqRole === 'admin' || pendingRole.makeAdmin === true;
+      const canManageWeb = isGrantAdmin
+        ? true
+        : Boolean(
+            pendingRole.requestedScope?.canManageWeb ??
+              pendingRole.canManageWeb ??
+              (rawReqRole === 'manager_web' || rawReqRole === 'manager_both')
+          );
+      const canManageMaps = isGrantAdmin
+        ? true
+        : Boolean(
+            pendingRole.requestedScope?.canManageMaps ??
+              pendingRole.canManageMaps ??
+              (rawReqRole === 'manager_maps' || rawReqRole === 'manager_both')
+          );
+      const isGrantManager = !isGrantAdmin && (canManageWeb || canManageMaps);
+      const detailedActivatedRole = isGrantAdmin
+        ? 'admin'
+        : canManageWeb && canManageMaps
+        ? 'manager_both'
+        : canManageWeb
+        ? 'manager_web'
+        : canManageMaps
+        ? 'manager_maps'
+        : 'user';
+
+      stateMirror.admins[caller.uid] = isGrantAdmin;
+      stateMirror.managers[caller.uid] = isGrantManager;
+      await rtdbWrite(`xuanhoa_security/admins/${caller.uid}`, 'PUT', isGrantAdmin);
+      await rtdbWrite(`xuanhoa_security/managers/${caller.uid}`, 'PUT', isGrantManager);
+
+      const activatedMember = {
+        ...syncedMember,
+        uid: caller.uid,
+        identityStatus: 'VERIFIED',
+        status: isGrantAdmin ? 'admin' : 'active',
+        canManageWeb,
+        canManageMaps,
+        lastActiveAt: now,
+      };
+      stateMirror.members_registry[legacyKey] = activatedMember;
+      await rtdbWrite(`xuanhoa_admin/members_registry/${legacyKey}`, 'PUT', activatedMember);
+
+      const activatedPending = {
+        ...pendingRole,
+        legacyMemberId: legacyKey,
+        legacyKey,
+        targetEmail: pendingRole.targetEmail || caller.email,
+        requestedRole: detailedActivatedRole,
+        requestedScope: { canManageWeb, canManageMaps },
+        requestedByVerifiedFounderUid: reqFounderUid,
+        requestedByUid: reqFounderUid,
+        requestedByFounderRole: reqFounderIsPrimary ? 'primary_founder' : 'backup_founder',
+        requestedByRole: reqFounderIsPrimary ? 'primary_founder' : 'backup_founder',
+        requestedAtServer: pendingRole.requestedAtServer || pendingRole.requestedAt || now,
+        status: 'ACTIVATED',
+        activatedAtServer: now,
+        activatedAt: now,
+        activatedFirebaseUid: caller.uid,
+        activatedUid: caller.uid,
+        updatedAtServer: now,
+        updatedAt: now,
+      };
+      stateMirror.pending_role_assignments[legacyKey] = activatedPending;
+      await rtdbWrite(
+        `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+        'PUT',
+        activatedPending
+      );
+
+      const scopeLabel = isGrantAdmin
+        ? 'ADMIN'
+        : `MANAGER (${[canManageWeb ? 'Web' : '', canManageMaps ? 'Maps' : ''].filter(Boolean).join('+')})`;
+      const audit = await appendBackendAuditLog({
+        actorUid: reqFounderUid,
+        actorRole: reqFounderIsPrimary ? 'primary_founder' : 'backup_founder',
+        action: `Tự động kích hoạt quyền chờ (${scopeLabel}) sau khi xác minh Firebase Auth UID`,
+        target: `${caller.email} (UID: ${caller.uid.slice(0, 6)}...${caller.uid.slice(-4)}, Request: ${pendingRole.requestId})`,
+        eventCategory: 'role_management',
+        refId: caller.uid,
+      });
+
+      return {
+        ok: true,
+        status: 200,
+        identityStatus: 'VERIFIED',
+        verifiedUid: caller.uid,
+        verifiedFirebaseUid: caller.uid,
+        email: caller.email,
+        identityLink: verifiedLink,
+        legacyUid: preservedLegacyUid,
+        roleActivated: true,
+        activatedRole: detailedActivatedRole,
+        activatedScope: { canManageWeb, canManageMaps },
+        effectiveRole: isGrantAdmin ? 'admin' : isGrantManager ? 'manager' : 'user',
+        canManageWeb,
+        canManageMaps,
+        activatedAssignment: activatedPending,
+        pendingRoleAssignment: activatedPending,
+        auditLog: audit,
+        message: `Đã xác minh tài khoản và tự động kích hoạt quyền ${scopeLabel} cho ${caller.email}.`,
+      };
+    }
+
+    // ------------------------------------------------------------------------
+    // 16. POST /api/founder-security/reconcile-accounts
+    //     Automatic Firebase UID Reconciliation + Dry-Run / Controlled Apply / Rollback
+    // ------------------------------------------------------------------------
+    if (actionName === 'reconcile-accounts') {
+      const caller = await verifyCallerIdentity(authHeader, nowSec);
+      if (!caller.ok) return caller;
+
+      const mode = String(body.mode || 'dry_run').trim().toLowerCase(); // 'dry_run' | 'apply' | 'rollback'
+      if (mode !== 'dry_run' && !caller.isFounder) {
+        return {
+          ok: false,
+          status: 403,
+          message:
+            'Chỉ Founder (Primary Founder hoặc Active Backup Founder) mới được thực thi áp dụng đối soát (apply) hoặc hoàn tác (rollback).',
+        };
+      }
+      if (mode === 'dry_run' && !caller.isOperationalAdmin) {
+        return {
+          ok: false,
+          status: 403,
+          message: 'Chỉ Founder hoặc Admin mới có quyền chạy kiểm toán đối soát tài khoản (dry_run).',
+        };
+      }
+
+      // Handle selective or snapshot rollback (`mode === 'rollback'`)
+      if (mode === 'rollback') {
+        const snapshotId = String(body.snapshotId || '').trim();
+        const targetLegacyId = body.legacyMemberId
+          ? encodeRtdbMemberKey(body.legacyMemberId)
+          : null;
+        const snap = snapshotId
+          ? stateMirror.reconciliation_snapshots.find(s => s.snapshotId === snapshotId)
+          : stateMirror.reconciliation_snapshots[0];
+        if (!snap) {
+          return {
+            ok: false,
+            status: 404,
+            message: 'Không tìm thấy bản chụp (snapshot) đối soát để hoàn tác.',
+          };
+        }
+
+        const keysToRestore = targetLegacyId
+          ? [targetLegacyId]
+          : Object.keys(snap.beforeMembersRegistry || {});
+        let restoredCount = 0;
+        for (const k of keysToRestore) {
+          const prevMem = snap.beforeMembersRegistry?.[k];
+          const prevLink = snap.beforeIdentityLinks?.[k];
+          if (prevMem !== undefined) {
+            stateMirror.members_registry[k] = prevMem;
+            await rtdbWrite(
+              `xuanhoa_admin/members_registry/${k}`,
+              prevMem ? 'PUT' : 'DELETE',
+              prevMem || undefined,
+              caller.rawToken
+            );
+            restoredCount++;
+          }
+          if (prevLink !== undefined) {
+            if (prevLink === null) {
+              delete stateMirror.identity_links[k];
+              await rtdbWrite(
+                `xuanhoa_security/identity_links/${k}`,
+                'DELETE',
+                undefined,
+                caller.rawToken
+              );
+            } else {
+              stateMirror.identity_links[k] = prevLink;
+              await rtdbWrite(
+                `xuanhoa_security/identity_links/${k}`,
+                'PUT',
+                prevLink,
+                caller.rawToken
+              );
+            }
+          }
+        }
+
+        const audit = await appendBackendAuditLog({
+          actorUid: caller.uid,
+          actorRole: caller.isPrimaryFounder ? 'primary_founder' : 'backup_founder',
+          action: `Hoàn tác (Rollback) liên kết UID từ snapshot ${snap.snapshotId}`,
+          target: targetLegacyId
+            ? `Hồ sơ: ${targetLegacyId}`
+            : `Toàn bộ ${restoredCount} hồ sơ trong snapshot`,
+          eventCategory: 'founder_security',
+          refId: snap.snapshotId,
+          bearerToken: caller.rawToken,
+        });
+
+        return {
+          ok: true,
+          status: 200,
+          mode: 'rollback',
+          snapshotId: snap.snapshotId,
+          restoredCount,
+          auditLog: audit,
+          message: `Đã hoàn tác thành công ${restoredCount} hồ sơ về trạng thái trước đối soát.`,
+        };
+      }
+
+      // Gather member profiles from RTDB / mirror / optional input snapshot
+      const rtdbReg =
+        (await rtdbRead('xuanhoa_admin/members_registry', caller.rawToken)) || {};
+      const rtdbGsMembers =
+        (await rtdbRead('xuanhoa_admin/global_state/members', caller.rawToken)) || {};
+      const inputMembers =
+        body.membersSnapshot && typeof body.membersSnapshot === 'object'
+          ? body.membersSnapshot
+          : {};
+
+      const combinedRegistry = {};
+      for (const src of [rtdbGsMembers, stateMirror.members_registry, rtdbReg, inputMembers]) {
+        if (!src || typeof src !== 'object') continue;
+        for (const [rawKey, entry] of Object.entries(src)) {
+          if (!entry || typeof entry !== 'object') continue;
+          const cleanEmail = decodeRtdbMemberKey(entry.email || rawKey);
+          if (!cleanEmail || !cleanEmail.includes('@')) continue;
+          const encodedKey = encodeRtdbMemberKey(cleanEmail);
+          const prev = combinedRegistry[encodedKey] || {};
+          const pickUid = () => {
+            if (isVerified28CharUid(entry.uid)) return String(entry.uid).trim();
+            if (isVerified28CharUid(prev.uid)) return String(prev.uid).trim();
+            if (isGoogleSub21Digit(entry.uid)) return String(entry.uid).trim();
+            if (isGoogleSub21Digit(prev.uid)) return String(prev.uid).trim();
+            return String(entry.uid || prev.uid || `uid_${encodedKey}`).trim();
+          };
+          combinedRegistry[encodedKey] = {
+            ...prev,
+            ...entry,
+            email: cleanEmail,
+            uid: pickUid(),
+          };
+        }
+      }
+
+      const existingLinks = {
+        ...(stateMirror.identity_links || {}),
+        ...((await rtdbRead('xuanhoa_security/identity_links', caller.rawToken)) || {}),
+      };
+      const existingPending = {
+        ...(stateMirror.pending_role_assignments || {}),
+        ...((await rtdbRead('xuanhoa_security/pending_role_assignments', caller.rawToken)) || {}),
+      };
+
+      const allEmails = Object.values(combinedRegistry)
+        .map(m => m.email)
+        .filter(Boolean);
+      const all28Uids = Object.values(combinedRegistry)
+        .map(m => m.uid)
+        .filter(isVerified28CharUid);
+
+      const authLookup = await lookupFirebaseAuthUsers({
+        uids: all28Uids,
+        emails: allEmails,
+      });
+
+      // Detect many-to-1 conflicts across the entire registry (multiple legacy profiles matching the same Firebase Auth UID)
+      const profilesByMatchedAuthUid = new Map();
+      for (const [legacyKey, member] of Object.entries(combinedRegistry)) {
+        const email = member.email;
+        const rawUid = String(member.uid || '').trim();
+        const is28 = isVerified28CharUid(rawUid);
+        const is21 = isGoogleSub21Digit(rawUid);
+        const matchedUids = new Set();
+        if (is28 && authLookup.byUid.has(rawUid)) matchedUids.add(rawUid);
+        for (const u of authLookup.byEmail.get(email) || []) matchedUids.add(u.localId);
+        if (is21) {
+          for (const u of authLookup.byGoogleSub.get(rawUid) || []) matchedUids.add(u.localId);
+        }
+        for (const mUid of matchedUids) {
+          if (!profilesByMatchedAuthUid.has(mUid)) profilesByMatchedAuthUid.set(mUid, []);
+          profilesByMatchedAuthUid.get(mUid).push(legacyKey);
+        }
+      }
+
+      const summary = {
+        totalProfiles: Object.keys(combinedRegistry).length,
+        VERIFIED: 0,
+        AUTO_LINKABLE: 0,
+        PENDING_VERIFICATION: 0,
+        CONFLICT: 0,
+        pendingRoleCount: 0,
+        autoActivatedRolesCount: 0,
+      };
+
+      const records = [];
+      const beforeMembersRegistry = {};
+      const beforeIdentityLinks = {};
+
+      for (const [legacyKey, member] of Object.entries(combinedRegistry)) {
+        const email = member.email;
+        const rawUid = String(member.uid || '').trim();
+        const is28 = isVerified28CharUid(rawUid);
+        const is21 = isGoogleSub21Digit(rawUid);
+        const prevLink = existingLinks[legacyKey] || null;
+        const pend = existingPending[legacyKey] || null;
+        if (pend && pend.status === 'PENDING_ROLE_ACTIVATION') {
+          summary.pendingRoleCount++;
+        }
+
+        const byUidUser = is28 ? authLookup.byUid.get(rawUid) : null;
+        const byEmailUsers = authLookup.byEmail.get(email) || [];
+        const bySubUsers = is21 ? authLookup.byGoogleSub.get(rawUid) || [] : [];
+
+        const candidateAuthUsersMap = new Map();
+        if (byUidUser) candidateAuthUsersMap.set(byUidUser.localId, byUidUser);
+        for (const u of byEmailUsers) candidateAuthUsersMap.set(u.localId, u);
+        for (const u of bySubUsers) candidateAuthUsersMap.set(u.localId, u);
+        const candidateAuthUsers = Array.from(candidateAuthUsersMap.values());
+
+        let status = 'PENDING_VERIFICATION';
+        let verifiedFirebaseUid = null;
+        let evidenceSource = 'pending_user_login';
+        let conflictReason = null;
+
+        if (prevLink?.status === 'CONFLICT') {
+          status = 'CONFLICT';
+          conflictReason = prevLink.conflictReason || 'Đánh dấu xung đột trước đó.';
+        } else if (candidateAuthUsers.length > 1) {
+          status = 'CONFLICT';
+          conflictReason = `Một hồ sơ cũ khớp với nhiều Firebase Auth UID (${candidateAuthUsers.map(u => u.localId).join(', ')}).`;
+        } else if (candidateAuthUsers.length === 1) {
+          const authUser = candidateAuthUsers[0];
+          const sharedProfiles = profilesByMatchedAuthUid.get(authUser.localId) || [];
+          if (sharedProfiles.length > 1) {
+            status = 'CONFLICT';
+            conflictReason = `Một Firebase Auth UID (${authUser.localId}) trùng cho nhiều hồ sơ cũ (${sharedProfiles.join(', ')}).`;
+          } else if (authUser.disabled) {
+            status = 'CONFLICT';
+            conflictReason = `Tài khoản Firebase Auth (${authUser.localId}) đang bị vô hiệu hóa (disabled=true).`;
+          } else if (authUser.email && authUser.email.trim().toLowerCase() !== email) {
+            status = 'CONFLICT';
+            conflictReason = `Mâu thuẫn email giữa hồ sơ cũ (${email}) và Firebase Auth (${authUser.email}).`;
+          } else if (is21 && (!authUser.googleSub || authUser.googleSub !== rawUid || !(authUser.providerIds || []).includes('google.com') || !authUser.emailVerified)) {
+            status = 'CONFLICT';
+            conflictReason = `Mâu thuẫn Google sub giữa hồ sơ cũ (${rawUid}) và Firebase Auth (${authUser.googleSub || 'missing_google_provider'}) — Chặn tự động liên kết qua email.`;
+          } else if (is28 && authUser.localId !== rawUid) {
+            status = 'CONFLICT';
+            conflictReason = `Mâu thuẫn UID trong hồ sơ (${rawUid}) với Firebase Auth UID thực tế (${authUser.localId}).`;
+          } else if (is28 && authUser.localId === rawUid) {
+            status = 'VERIFIED';
+            verifiedFirebaseUid = authUser.localId;
+            evidenceSource = 'firebase_auth_uid_verified';
+          } else if (
+            is21 &&
+            authUser.googleSub === rawUid &&
+            authUser.emailVerified &&
+            (authUser.providerIds || []).includes('google.com')
+          ) {
+            status = 'AUTO_LINKABLE';
+            verifiedFirebaseUid = authUser.localId;
+            evidenceSource = 'identity_toolkit_google_sub_match';
+          } else if (!(authUser.providerIds || []).includes('google.com')) {
+            status = 'CONFLICT';
+            conflictReason = `Tài khoản Firebase Auth trùng email (${email}) nhưng không phải Google OAuth (provider=${(authUser.providerIds || []).join(',') || 'unknown'}) — Chặn chiếm quyền qua verified_email_match.`;
+          } else {
+            // Synthetic uid_* profile without prior 21-digit Google sub: do NOT guess AUTO_LINKABLE by email alone!
+            status = 'PENDING_VERIFICATION';
+            evidenceSource = 'email_only_requires_live_token_login';
+          }
+        } else if (
+          prevLink?.status === 'VERIFIED' &&
+          isPlausibleFirebaseAuthUid(prevLink.verifiedFirebaseUid)
+        ) {
+          status = 'VERIFIED';
+          verifiedFirebaseUid = prevLink.verifiedFirebaseUid;
+          evidenceSource = prevLink.evidenceSource || 'firebase_auth_uid_verified';
+        } else if (
+          is28 &&
+          (stateMirror.primary_founder?.[rawUid] === true ||
+            Boolean(stateMirror.backup_founder?.[rawUid]) ||
+            stateMirror.admins?.[rawUid] === true ||
+            stateMirror.managers?.[rawUid] === true ||
+            (email === PRIMARY_FOUNDER_EMAIL && rawUid === PRIMARY_FOUNDER_VERIFIED_UID))
+        ) {
+          status = 'VERIFIED';
+          verifiedFirebaseUid = rawUid;
+          evidenceSource =
+            email === PRIMARY_FOUNDER_EMAIL && rawUid === PRIMARY_FOUNDER_VERIFIED_UID
+              ? 'primary_founder_verified_uid'
+              : 'rbac_security_node_verified';
+        } else {
+          status = 'PENDING_VERIFICATION';
+          evidenceSource = 'pending_user_login';
+        }
+
+        summary[status] = (summary[status] || 0) + 1;
+
+        let roleAutoActivated = false;
+        if (mode === 'apply') {
+          beforeMembersRegistry[legacyKey] = rtdbReg[legacyKey]
+            ? JSON.parse(JSON.stringify(rtdbReg[legacyKey]))
+            : stateMirror.members_registry[legacyKey]
+            ? JSON.parse(JSON.stringify(stateMirror.members_registry[legacyKey]))
+            : null;
+          beforeIdentityLinks[legacyKey] = prevLink
+            ? JSON.parse(JSON.stringify(prevLink))
+            : null;
+
+          const effectiveLinkStatus =
+            status === 'AUTO_LINKABLE' ? 'VERIFIED' : status;
+          const linkRecord = {
+            legacyMemberId: legacyKey,
+            legacyKey,
+            targetEmail: email,
+            email,
+            legacyUid:
+              prevLink?.legacyUid ||
+              (rawUid && rawUid !== verifiedFirebaseUid ? rawUid : null),
+            googleSub:
+              prevLink?.googleSub || (is21 ? rawUid : null),
+            verifiedFirebaseUid:
+              effectiveLinkStatus === 'VERIFIED' ? verifiedFirebaseUid : null,
+            status: effectiveLinkStatus,
+            evidenceSource:
+              status === 'CONFLICT' ? 'conflict_detected' : evidenceSource,
+            linkMethod:
+              status === 'AUTO_LINKABLE'
+                ? 'firebase_auth_reconcile'
+                : effectiveLinkStatus === 'VERIFIED'
+                ? 'already_verified_28char'
+                : status === 'CONFLICT'
+                ? 'conflict'
+                : 'pending_verification',
+            conflictReason: conflictReason || null,
+            linkedAtServer: prevLink?.linkedAtServer || prevLink?.linkedAt || now,
+            linkedAt: prevLink?.linkedAt || prevLink?.linkedAtServer || now,
+            updatedAtServer: now,
+            linkedByUid: caller.uid,
+            linkedBy: caller.uid,
+          };
+          stateMirror.identity_links[legacyKey] = linkRecord;
+          await rtdbWrite(
+            `xuanhoa_security/identity_links/${legacyKey}`,
+            'PUT',
+            linkRecord,
+            caller.rawToken
+          );
+
+          if (
+            (status === 'VERIFIED' || status === 'AUTO_LINKABLE') &&
+            isVerified28CharUid(verifiedFirebaseUid)
+          ) {
+            const updatedMem = {
+              ...member,
+              uid: verifiedFirebaseUid,
+              identityStatus: 'VERIFIED',
+              ...(rawUid && rawUid !== verifiedFirebaseUid ? { legacyUid: rawUid } : {}),
+              ...(is21 ? { googleSub: rawUid } : {}),
+            };
+
+            // If there is a PENDING_ROLE_ACTIVATION for this newly linked account, activate it!
+            if (pend && pend.status === 'PENDING_ROLE_ACTIVATION') {
+              const rawReqRole = String(pend.requestedRole || '').trim().toLowerCase();
+              const isGrantAdmin = rawReqRole === 'admin' || pend.makeAdmin === true;
+              const canManageWeb = isGrantAdmin
+                ? true
+                : Boolean(
+                    pend.requestedScope?.canManageWeb ??
+                      pend.canManageWeb ??
+                      (rawReqRole === 'manager_web' || rawReqRole === 'manager_both')
+                  );
+              const canManageMaps = isGrantAdmin
+                ? true
+                : Boolean(
+                    pend.requestedScope?.canManageMaps ??
+                      pend.canManageMaps ??
+                      (rawReqRole === 'manager_maps' || rawReqRole === 'manager_both')
+                  );
+              const isGrantManager = !isGrantAdmin && (canManageWeb || canManageMaps);
+
+              stateMirror.admins[verifiedFirebaseUid] = isGrantAdmin;
+              stateMirror.managers[verifiedFirebaseUid] = isGrantManager;
+              await rtdbWrite(
+                `xuanhoa_security/admins/${verifiedFirebaseUid}`,
+                'PUT',
+                isGrantAdmin,
+                caller.rawToken
+              );
+              await rtdbWrite(
+                `xuanhoa_security/managers/${verifiedFirebaseUid}`,
+                'PUT',
+                isGrantManager,
+                caller.rawToken
+              );
+
+              updatedMem.status = isGrantAdmin ? 'admin' : 'active';
+              updatedMem.canManageWeb = canManageWeb;
+              updatedMem.canManageMaps = canManageMaps;
+
+              const activatedPend = {
+                ...pend,
+                legacyMemberId: legacyKey,
+                legacyKey,
+                status: 'ACTIVATED',
+                activatedAtServer: now,
+                activatedAt: now,
+                activatedFirebaseUid: verifiedFirebaseUid,
+                activatedUid: verifiedFirebaseUid,
+                updatedAtServer: now,
+                updatedAt: now,
+              };
+              stateMirror.pending_role_assignments[legacyKey] = activatedPend;
+              await rtdbWrite(
+                `xuanhoa_security/pending_role_assignments/${legacyKey}`,
+                'PUT',
+                activatedPend,
+                caller.rawToken
+              );
+              roleAutoActivated = true;
+              summary.autoActivatedRolesCount++;
+            }
+
+            stateMirror.members_registry[legacyKey] = updatedMem;
+            await rtdbWrite(
+              `xuanhoa_admin/members_registry/${legacyKey}`,
+              'PUT',
+              updatedMem,
+              caller.rawToken
+            );
+          }
+        }
+
+        records.push({
+          legacyMemberId: legacyKey,
+          legacyKey,
+          email,
+          legacyUid: rawUid,
+          uidFormat: is28 ? 'FIREBASE_UID_28' : is21 ? 'GOOGLE_SUB_21' : 'SYNTHETIC_UID',
+          status: mode === 'apply' && status === 'AUTO_LINKABLE' ? 'VERIFIED' : status,
+          preApplyClassification: status,
+          verifiedFirebaseUid,
+          evidenceSource,
+          conflictReason,
+          pendingRole: pend ? pend.requestedRole : null,
+          pendingStatus: roleAutoActivated ? 'ACTIVATED' : pend?.status || null,
+          roleAutoActivated,
+        });
+      }
+
+      let snapshotId = null;
+      if (mode === 'apply') {
+        snapshotId = `recon_snap_${now}_${randomHexBytes(3)}`;
+        stateMirror.reconciliation_snapshots.unshift({
+          snapshotId,
+          createdAt: now,
+          createdByUid: caller.uid,
+          beforeMembersRegistry,
+          beforeIdentityLinks,
+        });
+        if (stateMirror.reconciliation_snapshots.length > 20) {
+          stateMirror.reconciliation_snapshots.length = 20;
+        }
+
+        await appendBackendAuditLog({
+          actorUid: caller.uid,
+          actorRole: caller.isPrimaryFounder ? 'primary_founder' : 'backup_founder',
+          action: `Đối soát tự động Firebase UID (Apply: VERIFIED=${summary.VERIFIED}, AUTO_LINKABLE=${summary.AUTO_LINKABLE}, PENDING=${summary.PENDING_VERIFICATION}, CONFLICT=${summary.CONFLICT})`,
+          target: `Snapshot: ${snapshotId} (Total: ${summary.totalProfiles})`,
+          eventCategory: 'founder_security',
+          refId: snapshotId,
+          bearerToken: caller.rawToken,
+        });
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        mode,
+        snapshotId,
+        summary,
+        counts: summary,
+        records,
+        message:
+          mode === 'apply'
+            ? `Đã hoàn tất đối soát và liên kết tự động (${summary.AUTO_LINKABLE} tài khoản được liên kết, ${summary.autoActivatedRolesCount} quyền chờ được kích hoạt).`
+            : `Kết quả kiểm toán đối soát (Dry-Run): ${summary.VERIFIED} đã xác minh, ${summary.AUTO_LINKABLE} có thể tự liên kết, ${summary.PENDING_VERIFICATION} chờ đăng nhập, ${summary.CONFLICT} xung đột.`,
+      };
+    }
+
+    // ------------------------------------------------------------------------
+    // 17. GET | POST /api/founder-security/pending-roles
+    //     Returns identity_links and pending_role_assignments
+    // ------------------------------------------------------------------------
+    if (actionName === 'pending-roles') {
+      const caller = await verifyCallerIdentity(authHeader, nowSec);
+      if (!caller.ok) return caller;
+
+      const allLinks = {
+        ...(stateMirror.identity_links || {}),
+        ...((await rtdbRead('xuanhoa_security/identity_links', caller.rawToken)) || {}),
+      };
+      const allPending = {
+        ...(stateMirror.pending_role_assignments || {}),
+        ...((await rtdbRead('xuanhoa_security/pending_role_assignments', caller.rawToken)) || {}),
+      };
+
+      if (!caller.isOperationalAdmin) {
+        const ownKey = encodeRtdbMemberKey(caller.email);
+        return {
+          ok: true,
+          status: 200,
+          identityLinks: allLinks[ownKey] ? { [ownKey]: allLinks[ownKey] } : {},
+          pendingRoleAssignments: allPending[ownKey] ? { [ownKey]: allPending[ownKey] } : {},
+        };
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        identityLinks: allLinks,
+        pendingRoleAssignments: allPending,
+      };
+    }
+
     return { ok: false, status: 404, message: `Endpoint bảo mật không tồn tại: ${actionName}` };
   }
 
@@ -2452,9 +4408,16 @@ export function createFounderSecurityBackend(options = {}) {
       });
     }
 
-    if (request.method === 'GET' && (actionName === 'status' || actionName === 'security-status')) {
+    if (
+      request.method === 'GET' &&
+      (actionName === 'status' || actionName === 'security-status' || actionName === 'pending-roles')
+    ) {
       const authorization = request.headers.get('authorization') || '';
-      const resData = await handleAction('status', {}, { authorization });
+      const resData = await handleAction(
+        actionName === 'pending-roles' ? 'pending-roles' : 'status',
+        {},
+        { authorization }
+      );
       return new Response(JSON.stringify(resData), {
         status: resData.status || 200,
         headers: {
@@ -2528,14 +4491,19 @@ export function createFounderSecurityBackend(options = {}) {
       return;
     }
 
-    if (req.method === 'GET' && (actionName === 'status' || actionName === 'security-status')) {
-      handleAction('status', {}, { authorization: req.headers['authorization'] || '' }).then(
-        result => {
-          res.statusCode = result.status || 200;
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.end(JSON.stringify(result));
-        }
-      );
+    if (
+      req.method === 'GET' &&
+      (actionName === 'status' || actionName === 'security-status' || actionName === 'pending-roles')
+    ) {
+      handleAction(
+        actionName === 'pending-roles' ? 'pending-roles' : 'status',
+        {},
+        { authorization: req.headers['authorization'] || '' }
+      ).then(result => {
+        res.statusCode = result.status || 200;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify(result));
+      });
       return;
     }
 
@@ -2585,6 +4553,8 @@ export function createFounderSecurityBackend(options = {}) {
     handleFetchRequest,
     middleware,
     verifyCallerIdentity,
+    registerEmulatorAuthAccount,
+    lookupFirebaseAuthUsers,
     getVaultSnapshotForTest: () => firebaseAuthEmulatorByUid,
     getStateMirror: () => stateMirror,
     getDispatchedRecoveryEmails: () => [...dispatchedRecoveryEmails],

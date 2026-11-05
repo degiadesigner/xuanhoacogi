@@ -49,7 +49,7 @@ export type DirectEditSubTool =
   | 'three_point';
 
 export interface LandmarkAdminControlsProps {
-  place: PlaceLocation;
+  place: PlaceLocation | null;
   mapMode: '2d' | '3d';
   activeMode: 'mode_a_place' | 'mode_b_model' | null;
   onChangeActiveMode: (mode: 'mode_a_place' | 'mode_b_model' | null) => void;
@@ -123,8 +123,24 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
 
   const baseBinding = useMemo(
-    () => getOrCreateLandmarkBindingForPlace(place),
-    [place.id, place.name, versionTick]
+    () =>
+      place
+        ? getOrCreateLandmarkBindingForPlace(place)
+        : {
+            landmarkId: '',
+            label: 'Chưa chọn công trình 3D',
+            placeId: '',
+            anchorType: 'place' as const,
+            offsetX: 0,
+            offsetY: 0,
+            offsetZ: 0,
+            rotationY: 0,
+            scale: 1,
+            visible: true,
+            modelVisibilityMode: 'follow_place' as const,
+            updatedAt: 0,
+          },
+    [place?.id, place?.name, versionTick]
   );
 
   const workingBinding: LandmarkBindingRecord = useMemo(
@@ -141,28 +157,28 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   );
 
   const undoSnapshot = useMemo(
-    () => getLandmarkUndoSnapshot(place.id),
-    [place.id, versionTick, activeMode]
+    () => (place ? getLandmarkUndoSnapshot(place.id) : null),
+    [place?.id, versionTick, activeMode]
   );
 
   useEffect(() => {
     setShowFineTune(false);
     setCloudSaveError(null);
-  }, [place.id, activeMode]);
+  }, [place?.id, activeMode]);
 
   const movedDistanceMeters = useMemo(() => {
-    if (!pendingPlaceLatLng || place.lat === null || place.lng === null) return 0;
+    if (!place || !pendingPlaceLatLng || place.lat === null || place.lng === null) return 0;
     return haversineDistanceMeters(
       place.lat,
       place.lng,
       pendingPlaceLatLng.lat,
       pendingPlaceLatLng.lng
     );
-  }, [place.lat, place.lng, pendingPlaceLatLng]);
+  }, [place?.lat, place?.lng, pendingPlaceLatLng]);
 
   const nudgePlaceCoordsByMeters = (dEastMeters: number, dNorthMeters: number) => {
-    const baseLat = pendingPlaceLatLng ? pendingPlaceLatLng.lat : place.lat ?? effectiveOrigin.lat;
-    const baseLng = pendingPlaceLatLng ? pendingPlaceLatLng.lng : place.lng ?? effectiveOrigin.lng;
+    const baseLat = pendingPlaceLatLng ? pendingPlaceLatLng.lat : place?.lat ?? effectiveOrigin.lat;
+    const baseLng = pendingPlaceLatLng ? pendingPlaceLatLng.lng : place?.lng ?? effectiveOrigin.lng;
     const nextLat = Number((baseLat + dNorthMeters / effectiveOrigin.ky).toFixed(6));
     const nextLng = Number((baseLng + dEastMeters / effectiveOrigin.kx).toFixed(6));
     onChangePendingPlaceLatLng({ lat: nextLat, lng: nextLng });
@@ -186,7 +202,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   };
 
   const handleConfirmMovePlace = () => {
-    if (!pendingPlaceLatLng) {
+    if (!place || !pendingPlaceLatLng) {
       onChangeActiveMode(null);
       return;
     }
@@ -211,7 +227,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   };
 
   const handleSaveModelAlignment = async () => {
-    if (isSavingCloud) return;
+    if (!place || isSavingCloud) return;
     setIsSavingCloud(true);
     setCloudSaveError(null);
     try {
@@ -252,6 +268,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   };
 
   const handleSnapEdgeAndRotation = () => {
+    if (!place) return;
     const preview = previewSnapLandmarkToNearestBuilding({
       place,
       masterDataset,
@@ -268,6 +285,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   };
 
   const handleSnapIntoBuildingFootprint = () => {
+    if (!place) return;
     const preview = previewSnapLandmarkToNearestBuilding({
       place,
       masterDataset,
@@ -286,6 +304,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   };
 
   const handleUndo = () => {
+    if (!place) return;
     const res = undoLastLandmarkOrPlaceAction(place.id, place.name, adminIdentifier);
     onChangePendingPlaceLatLng(null);
     onChangePreviewBindingPatch(null);
@@ -304,7 +323,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   };
 
   const handleResetDefault = async () => {
-    if (isSavingCloud) return;
+    if (!place || isSavingCloud) return;
     setCloudSaveError(null);
     const defaultBind = DEFAULT_LANDMARK_BINDINGS[workingBinding.landmarkId];
     const targetPatch: Partial<LandmarkBindingRecord> = defaultBind
@@ -352,6 +371,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   // VARIANT 1: NÚT TRONG THẺ ĐỊA DANH (CARD BUTTONS) — BẤM LÀ ĐÓNG POPUP & VÀO DIRECT EDIT
   // ============================================================================
   if (variant === 'card_buttons') {
+    if (!place) return null;
     return (
       <div
         data-testid="landmark-admin-controls"
@@ -415,6 +435,7 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   // VARIANT 2: FLOATING DIRECT EDIT TOOLBAR (THAY THẾ THANH ADMIN DƯỚI ĐÁY)
   // ============================================================================
   if (activeMode === 'mode_a_place') {
+    if (!place) return null;
     return (
       <div
         data-testid="landmark-mode-a-panel"
@@ -559,6 +580,62 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
   // MODE B: FLOATING DIRECT EDIT 3D TOOLBAR (CHẠM -> KÉO -> XOAY -> SCALE -> OK/HỦY)
   // ============================================================================
   if (activeMode === 'mode_b_model') {
+    if (!place) {
+      return (
+        <div
+          data-testid="landmark-mode-b-panel"
+          className="w-full max-w-xl mx-auto rounded-2xl border border-blue-500/40 bg-[#0F172A]/95 text-white shadow-[0_12px_36px_rgba(15,23,42,0.42)] backdrop-blur-md p-2.5 sm:p-3 space-y-2 pointer-events-auto"
+        >
+          <div
+            data-testid="landmark-mode-b-empty-prompt"
+            className="flex flex-wrap items-center justify-between gap-2"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Box className="w-4 h-4 text-blue-400 shrink-0" />
+              <span className="text-xs font-bold text-blue-200">
+                Chọn công trình 3D để căn chỉnh (hoặc chạm trực tiếp vào mô hình 3D trên bản đồ):
+              </span>
+            </div>
+            <button
+              type="button"
+              data-testid="mode-b-cancel-btn"
+              onClick={handleCancelModelAlignment}
+              className="h-7 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[11px] font-semibold text-slate-200 flex items-center gap-1 shrink-0 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Đóng</span>
+            </button>
+          </div>
+          {onSelectLandmarkOption && (
+            <div className="flex items-center gap-2">
+              <select
+                data-testid="mode-b-landmark-select"
+                value=""
+                onChange={(e) => {
+                  const chosen = TWELVE_3D_LANDMARKS_LIST.find(
+                    (item) => item.landmarkId === e.target.value
+                  );
+                  if (chosen) {
+                    setCloudSaveError(null);
+                    onChangePreviewBindingPatch(null);
+                    onSelectLandmarkOption(chosen);
+                  }
+                }}
+                className="w-full rounded-xl bg-slate-800 border border-blue-500/60 px-2.5 py-2 text-xs font-bold text-blue-200 cursor-pointer"
+              >
+                <option value="">-- Chọn 1 trong 12 công trình 3D để bắt đầu căn chỉnh --</option>
+                {TWELVE_3D_LANDMARKS_LIST.map((item, idx) => (
+                  <option key={item.landmarkId} value={item.landmarkId}>
+                    {idx + 1}. {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     const nextThreePtLabel = !threePointState?.pointA
       ? 'Chạm Điểm A (Góc công trình / Mái vòm)'
       : !threePointState?.pointB
@@ -578,14 +655,25 @@ export const LandmarkAdminControls: React.FC<LandmarkAdminControlsProps> = ({
             data-testid="mode-b-save-error"
             className="rounded-xl bg-rose-500/20 border border-rose-400/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-200 flex items-center justify-between gap-2"
           >
-            <span>⚠️ {cloudSaveError}</span>
-            <button
-              type="button"
-              onClick={() => setCloudSaveError(null)}
-              className="text-[10.5px] underline text-rose-300 shrink-0 cursor-pointer"
-            >
-              Đóng
-            </button>
+            <span className="min-w-0 flex-1">⚠️ {cloudSaveError}</span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                data-testid="mode-b-retry-save-btn"
+                disabled={isSavingCloud}
+                onClick={handleSaveModelAlignment}
+                className="rounded-lg bg-rose-600 hover:bg-rose-500 px-2 py-0.5 text-[10.5px] font-bold text-white cursor-pointer"
+              >
+                Thử lưu lại
+              </button>
+              <button
+                type="button"
+                onClick={() => setCloudSaveError(null)}
+                className="text-[10.5px] underline text-rose-300 shrink-0 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         )}
 

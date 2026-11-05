@@ -2688,9 +2688,10 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
    ========================================================================== */
 .site-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px 32px;
+  gap: 12px 24px;
   width: calc(100% - 80px);
   max-width: 1240px;
   margin: 28px auto 0;
@@ -2704,6 +2705,7 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 
 .site-footer-identity {
   min-width: 0;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2805,13 +2807,20 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 
 @media (max-width: 768px) {
   .site-footer {
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
+    text-align: center;
     gap: 10px;
     width: calc(100% - 20px);
     margin-top: 14px;
-    padding: 12px 2px 16px;
+    padding: 16px 8px calc(84px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .site-footer-identity {
+    align-items: center;
+    text-align: center;
+    width: 100%;
   }
 
   .site-footer-brand {
@@ -2824,7 +2833,15 @@ select option, .budget-select-pill option, .case-tier-select-pill option {
 
   .site-footer-links {
     align-items: center;
+    justify-content: center;
     gap: 8px;
+    width: 100%;
+  }
+
+  .site-footer-legal-nav {
+    justify-content: center !important;
+    gap: 6px 12px !important;
+    width: 100%;
   }
 
   .site-footer-signature {
@@ -13976,12 +13993,28 @@ html, body {
     border: 1px solid rgba(255, 255, 255, 0.2);
   }
 
-  /* Tránh thanh Bottom Dock che khuất nội dung trang & Ẩn link thừa ở Footer trên Mobile (vì đã có Bottom Dock) */
+  /* Tránh thanh Bottom Dock che khuất nội dung trang & xếp dọc Footer gọn gàng trên Mobile/Tablet */
   .main-wrapper {
     padding-bottom: 8px !important;
   }
   .site-footer {
-    padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    gap: 10px !important;
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .site-footer-identity {
+    align-items: center !important;
+    text-align: center !important;
+    width: 100% !important;
+  }
+  .site-footer-links {
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    gap: 6px 10px !important;
   }
   .site-footer nav {
     display: none !important;

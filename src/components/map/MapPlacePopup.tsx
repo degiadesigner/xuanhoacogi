@@ -324,6 +324,7 @@ export const MapPlacePopup: React.FC<MapPlacePopupProps> = ({
         {isAdminUser && onEditCoordinates && (
           <button
             type="button"
+            data-testid="map-popup-edit-place-btn"
             onClick={() => onEditCoordinates(place)}
             className="h-8 px-2.5 rounded-[10px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] text-[11.5px] font-medium inline-flex items-center gap-1 cursor-pointer"
             title="Chỉnh sửa thông tin & định vị địa điểm"

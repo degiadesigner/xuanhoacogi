@@ -191,7 +191,12 @@ export interface City3DViewProps {
   initialCenter: { lat: number; lng: number };
   initialZoom?: number;
   places: PlaceLocation[];
-  onClose: (currentCenter?: { lat: number; lng: number }, currentZoom?: number) => void;
+  onClose: (
+    currentCenter?: { lat: number; lng: number },
+    currentZoom?: number,
+    targetMode?: '2d' | '2.5d',
+    currentSelectedPlace?: PlaceLocation | null
+  ) => void;
   /** Địa điểm đang được chọn đồng bộ từ 2D */
   initialSelectedPlace?: PlaceLocation | null;
   /** Công trình Master Building đang được chọn đồng bộ giữa 2D và 3D */
@@ -916,6 +921,7 @@ export const City3DView: React.FC<City3DViewProps> = ({
   }, [selected?.id]);
 
   // Đồng bộ tức thì vị trí / hướng xoay / tỷ lệ & Gizmo của toàn bộ mô hình Landmark 3D theo Place & Binding (Phần 13, 21, 24, 48)
+  // Tách riêng cập nhật ma trận Mesh 3D tức thì (0ms) với việc tính lại OBB Footprint gửi sang Worker (tránh rebuild 21.436 tòa nhà ở 60Hz khi kéo chuột)
   useEffect(() => {
     if (!iconicLandmarksGroupRef.current || !originState) return;
     const masterDataset = getLoadedMasterDataset();
@@ -947,35 +953,68 @@ export const City3DView: React.FC<City3DViewProps> = ({
       masterDataset,
       adminEditState,
     });
-    const footprints = computeActiveLandmarkFootprints3D({
-      origin: originState,
-      places,
-      masterDataset,
-      adminEditState: adminEditState
-        ? {
-            activePlaceId: adminEditState.activePlaceId,
-            previewPlaceLatLng: adminEditState.previewPlaceLatLng,
-            previewBindingPatch: adminEditState.previewBindingPatch,
-          }
-        : null,
-    });
-    engineRef.current?.worker.postMessage({
-      type: 'updateLandmarkFootprints',
-      footprints,
-    });
-    engineRef.current?.invalidateShadow();
     engineRef.current?.requestRender();
   }, [
     originState,
     places,
     demReadyTick,
     landmarkBindingsTick,
-    hasAdminAccess,
+    isStrictSuperAdmin,
+    selected?.id,
+    adminLandmarkMode3D,
+    directEditSubTool,
+    pendingMoveCoords3D,
+    previewBindingPatch3D,
+    threePointState,
+  ]);
+
+  // Chỉ gửi yêu cầu lọc lại OBB Footprint sang Web Worker khi dữ liệu gốc / đã lưu thay đổi, hoặc debounce 260ms sau khi ngừng kéo preview
+  useEffect(() => {
+    if (!originState) return;
+    const isPreviewing = Boolean(pendingMoveCoords3D || previewBindingPatch3D);
+    const runFootprintSync = () => {
+      const masterDataset = getLoadedMasterDataset();
+      const adminEditState =
+        isStrictSuperAdmin && selected && adminLandmarkMode3D
+          ? {
+              activePlaceId: selected.id,
+              previewPlaceLatLng: pendingMoveCoords3D,
+              previewBindingPatch: previewBindingPatch3D,
+            }
+          : null;
+      const footprints = computeActiveLandmarkFootprints3D({
+        origin: originState,
+        places,
+        masterDataset,
+        adminEditState,
+      });
+      if (typeof window !== 'undefined') {
+        (window as any).__xuhoWorkerFootprintRebuilds =
+          ((window as any).__xuhoWorkerFootprintRebuilds || 0) + 1;
+      }
+      engineRef.current?.worker.postMessage({
+        type: 'updateLandmarkFootprints',
+        footprints,
+      });
+      engineRef.current?.invalidateShadow();
+      engineRef.current?.requestRender();
+    };
+    if (!isPreviewing) {
+      runFootprintSync();
+      return;
+    }
+    const timer = window.setTimeout(runFootprintSync, 260);
+    return () => window.clearTimeout(timer);
+  }, [
+    originState,
+    places,
+    demReadyTick,
+    landmarkBindingsTick,
+    isStrictSuperAdmin,
     selected?.id,
     adminLandmarkMode3D,
     pendingMoveCoords3D,
     previewBindingPatch3D,
-    threePointState,
   ]);
 
   const draftCoordRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -1540,16 +1579,23 @@ export const City3DView: React.FC<City3DViewProps> = ({
       rafPending = false;
       if (disposed) return;
       let moving = false;
+      let changed = false;
       if (anim) {
         const k = Math.min(1, (now - anim.t0) / anim.ms);
         const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
         controls.target.lerpVectors(anim.fromT, anim.toT, e);
         tmpO.lerpVectors(anim.fromO, anim.toO, e);
         camera.position.copy(controls.target).add(tmpO);
+        // Xóa sạch quán tính damping cũ để OrbitControls không giằng co với quỹ đạo bay camera
+        const prevDamp = controls.enableDamping;
+        controls.enableDamping = false;
+        controls.update();
+        controls.enableDamping = prevDamp;
         if (k >= 1) anim = null;
         moving = true;
+      } else {
+        changed = controls.update();
       }
-      const changed = controls.update();
       clampTarget();
 
       const dist = camera.position.distanceTo(controls.target);
@@ -2448,8 +2494,17 @@ export const City3DView: React.FC<City3DViewProps> = ({
               geometries: renderer.info.memory.geometries,
               textures: renderer.info.memory.textures,
               calls: renderer.info.render.calls,
+              triangles: renderer.info.render.triangles,
             },
+            workerFootprintRebuilds: (window as any).__xuhoWorkerFootprintRebuilds || 0,
           };
+        },
+        orbitStep: (deg = 2.5) => {
+          const off = camera.position.clone().sub(controls.target);
+          off.applyAxisAngle(new THREE.Vector3(0, 1, 0), (deg * Math.PI) / 180);
+          camera.position.copy(controls.target).add(off);
+          controls.update();
+          requestRender();
         },
         postFootprints: (footprints: any[]) => {
           worker.postMessage({ type: 'updateLandmarkFootprints', footprints });
@@ -2459,6 +2514,44 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
     const placeInitialCamera = (o: City3DOrigin) => {
       if (focusLandmarkFromUrlIfPresent()) return;
+      const initPlace = selectedPlaceRef.current;
+      if (initPlace) {
+        const matchedLmOpt = TWELVE_3D_LANDMARKS_LIST.find(
+          (item) => item.placeId === initPlace.id || item.landmarkId === initPlace.id
+        );
+        if (matchedLmOpt && iconicLandmarksGroupRef.current) {
+          const node =
+            iconicLandmarksGroupRef.current.getObjectByName(
+              `Landmark_${matchedLmOpt.landmarkId}`
+            ) || iconicLandmarksGroupRef.current.getObjectByName(matchedLmOpt.landmarkId);
+          if (node) {
+            const tx = node.position.x;
+            const ty = node.position.y;
+            const tz = node.position.z;
+            controls.target.set(tx, ty + 2, tz);
+            camera.position.set(tx + 28, ty + 38, tz + 54);
+            controls.update();
+            invalidateShadow();
+            return;
+          }
+        }
+        if (initPlace.lat !== null && initPlace.lng !== null) {
+          const [px, py] = lngLatToLocal(o, initPlace.lng, initPlace.lat);
+          const pty = getElevationAtLocal(px, py);
+          controls.target.set(px, pty, -py);
+          const d = 175;
+          const polar = 0.80;
+          const az = -0.35;
+          camera.position.set(
+            px + d * Math.sin(polar) * Math.sin(az),
+            pty + d * Math.cos(polar),
+            -py + d * Math.sin(polar) * Math.cos(az)
+          );
+          controls.update();
+          invalidateShadow();
+          return;
+        }
+      }
       const [x, y] = lngLatToLocal(o, initialCenter.lng, initialCenter.lat);
       const ty = getElevationAtLocal(x, y);
       controls.target.set(x, ty, -y);
@@ -2836,38 +2929,44 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
   const flyToPlace = useCallback(
     (p: PlaceLocation) => {
-      if (p.lat === null || p.lng === null) return;
       const eng = engineRef.current;
-      if (eng?.origin) {
-        const [x, y] = lngLatToLocal(eng.origin, p.lng, p.lat);
-        const baseY = getElevationAtLngLat(p.lng, p.lat);
-        // Tự động xoay góc nhìn chuẩn trực diện từ mặt đường chính cho các công trình biểu tượng & danh thắng 3D
-        if (p.id === 'osm_landmark_quang_truong_chim_xanh') {
-          // Nhìn từ Đường Nguyễn Văn Linh (Đông Bắc) vào thẳng Quảng trường Con Chim Xanh (Tây Nam)
-          eng.animateTo(new THREE.Vector3(x, baseY, -y), new THREE.Vector3(44, 46, -46), 720);
-          return;
-        }
-        if (p.id === 'osm_way_1079368029') {
-          // Nhìn từ Đường Nguyễn Văn Linh (Tây Nam) vào thẳng cổng Số 34 & Tòa nhà 7 tầng ĐH Kiến trúc
-          eng.animateTo(new THREE.Vector3(x, baseY, -y), new THREE.Vector3(-48, 42, 50), 720);
-          return;
-        }
-        if (p.id === 'osm_landmark_nha_trang_xuan_hoa') {
-          // Nhìn từ ngã giao Vòng tròn 1 vào thẳng mặt tiền Màn hình LED & Mái vòm vàng Nhà Trắng
-          eng.animateTo(new THREE.Vector3(x, baseY, -y), new THREE.Vector3(-14, 42, 68), 720);
-          return;
-        }
-        if (p.id === 'osm_historic_bot_than_lan') {
-          // Nhìn trực diện vào Khu Di tích Lịch sử Bốt Pháp, Bốt tròn cổ, Nhà bia & Kỳ đài trên đỉnh Bắc Đồi Thằn Lằn
-          eng.animateTo(new THREE.Vector3(x, baseY + 4, -y), new THREE.Vector3(56, 48, 68), 780);
-          return;
-        }
-        if (p.id === 'osm_landmark_nui_than_lan') {
-          // Nhìn bao quát Đài Vọng Cảnh Đỉnh Nam, đường leo đồi và toàn bộ sống lưng Đồi Thằn Lằn
-          eng.animateTo(new THREE.Vector3(x, baseY + 3, -y), new THREE.Vector3(82, 68, 95), 780);
+      // Nếu địa điểm là 1 trong 12 công trình 3D Landmark, luôn lấy đúng tọa độ World của khối 3D thực tế trên bản đồ
+      const matchedLmOpt = TWELVE_3D_LANDMARKS_LIST.find(
+        (item) => item.placeId === p.id || item.landmarkId === p.id
+      );
+      if (matchedLmOpt && eng && iconicLandmarksGroupRef.current) {
+        const node =
+          iconicLandmarksGroupRef.current.getObjectByName(`Landmark_${matchedLmOpt.landmarkId}`) ||
+          iconicLandmarksGroupRef.current.getObjectByName(matchedLmOpt.landmarkId);
+        if (node) {
+          const tx = node.position.x;
+          const ty = node.position.y;
+          const tz = node.position.z;
+          if (p.id === 'osm_landmark_quang_truong_chim_xanh') {
+            eng.animateTo(new THREE.Vector3(tx, ty, tz), new THREE.Vector3(44, 46, -46), 720);
+            return;
+          }
+          if (p.id === 'osm_way_1079368029') {
+            eng.animateTo(new THREE.Vector3(tx, ty, tz), new THREE.Vector3(-48, 42, 50), 720);
+            return;
+          }
+          if (p.id === 'osm_landmark_nha_trang_xuan_hoa') {
+            eng.animateTo(new THREE.Vector3(tx, ty, tz), new THREE.Vector3(-14, 42, 68), 720);
+            return;
+          }
+          if (p.id === 'osm_historic_bot_than_lan') {
+            eng.animateTo(new THREE.Vector3(tx, ty + 4, tz), new THREE.Vector3(56, 48, 68), 780);
+            return;
+          }
+          if (p.id === 'osm_landmark_nui_than_lan') {
+            eng.animateTo(new THREE.Vector3(tx, ty + 3, tz), new THREE.Vector3(82, 68, 95), 780);
+            return;
+          }
+          eng.animateTo(new THREE.Vector3(tx, ty + 2, tz), new THREE.Vector3(26, 38, 52), 680);
           return;
         }
       }
+      if (p.lat === null || p.lng === null) return;
       flyToCoordinates3D(p.lat, p.lng, 175);
     },
     [flyToCoordinates3D]
@@ -4096,9 +4195,17 @@ export const City3DView: React.FC<City3DViewProps> = ({
           </div>
         )}
 
-        <div className="flex flex-col rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-sm border border-[#403064]/85 shadow-[0_6px_20px_rgba(64,48,100,0.16)] overflow-hidden">
+        {/* Cụm chọn chế độ cố định 3 nút: [ 2D ] [ 2.5D ] [ 3D ] — luôn hiện đủ 3 lựa chọn */}
+        <div
+          data-testid="map-mode-switcher"
+          role="group"
+          aria-label="Chế độ hiển thị bản đồ 2D, 2.5D, 3D"
+          className="flex flex-col rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-sm border border-[#403064]/85 shadow-[0_6px_20px_rgba(64,48,100,0.16)] overflow-hidden"
+        >
           <button
             type="button"
+            data-testid="map-mode-2d"
+            aria-pressed={false}
             onClick={() => {
               const eng = engineRef.current;
               if (eng?.origin) {
@@ -4109,17 +4216,56 @@ export const City3DView: React.FC<City3DViewProps> = ({
                 );
                 const dist = eng.camera.position.distanceTo(eng.controls.target);
                 const syncedZoom = distance3DToZoom2D(dist);
-                onClose({ lat, lng }, syncedZoom);
+                onClose({ lat, lng }, syncedZoom, '2d', selected);
               } else {
-                onClose();
+                onClose(undefined, undefined, '2d', selected);
               }
             }}
-            aria-label="Chuyển sang Bản đồ 2D"
-            title="Chuyển sang Bản đồ 2D (đồng bộ tâm nhìn, zoom & công trình đang chọn)"
-            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-black text-[11px] transition-all border-b border-[#E5DEC9] cursor-pointer bg-[#059669] hover:bg-[#047857] text-white"
+            aria-label="Chuyển sang Bản đồ 2D phẳng"
+            title="Chế độ 2D phẳng (đồng bộ tâm nhìn, zoom & công trình đang chọn)"
+            className="w-9 h-8 sm:w-10 sm:h-8 flex items-center justify-center font-bold text-[10.5px] transition-all border-b border-[#E5DEC9] cursor-pointer text-[#334155] hover:bg-[#F8FAFC] hover:text-[#0F172A]"
           >
             2D
           </button>
+
+          <button
+            type="button"
+            data-testid="map-mode-25d"
+            aria-pressed={false}
+            onClick={() => {
+              const eng = engineRef.current;
+              if (eng?.origin) {
+                const [lng, lat] = localToLngLat(
+                  eng.origin,
+                  eng.controls.target.x,
+                  -eng.controls.target.z
+                );
+                const dist = eng.camera.position.distanceTo(eng.controls.target);
+                const syncedZoom = distance3DToZoom2D(dist);
+                onClose({ lat, lng }, syncedZoom, '2.5d', selected);
+              } else {
+                onClose(undefined, undefined, '2.5d', selected);
+              }
+            }}
+            aria-label="Chuyển sang Bản đồ 2.5D nghiêng"
+            title="Chế độ 2.5D nghiêng phối cảnh (đồng bộ tâm nhìn, zoom & công trình đang chọn)"
+            className="w-9 h-8 sm:w-10 sm:h-8 flex items-center justify-center font-bold text-[10.5px] transition-all border-b border-[#E5DEC9] cursor-pointer text-[#334155] hover:bg-[#F8FAFC] hover:text-[#0F172A]"
+          >
+            2.5D
+          </button>
+
+          <button
+            type="button"
+            data-testid="map-mode-3d"
+            aria-pressed={true}
+            title="Đang ở Chế độ Sa bàn 3D đầy đủ công trình & Landmark"
+            className="w-9 h-8 sm:w-10 sm:h-8 flex items-center justify-center font-black text-[10.5px] transition-all cursor-pointer bg-[#059669] text-white shadow-inner"
+          >
+            3D
+          </button>
+        </div>
+
+        <div className="flex flex-col rounded-2xl bg-[#FFFDF9]/95 backdrop-blur-sm border border-[#403064]/85 shadow-[0_6px_20px_rgba(64,48,100,0.16)] overflow-hidden">
 
           <button
             type="button"
@@ -4724,7 +4870,9 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
       {/* THANH CÔNG CỤ DIRECT EDIT NỔI HOẶC THANH ADMIN DƯỚI ĐÁY (Phần 7 & 19) */}
       {hasAdminAccess && !isEditingPlace && !isCreatingNew && !isPicking3DGround && (
-        isStrictSuperAdmin && selected && adminLandmarkMode3D ? (
+        isStrictSuperAdmin &&
+        adminLandmarkMode3D &&
+        (selected || adminLandmarkMode3D === 'mode_b_model') ? (
           <div className="absolute bottom-2.5 left-2.5 right-2.5 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[660px] z-35 pointer-events-auto">
             <LandmarkAdminControls
               variant="floating_toolbar"
@@ -4777,12 +4925,18 @@ export const City3DView: React.FC<City3DViewProps> = ({
                   type="button"
                   data-testid="3d-bar-landmark-align-btn"
                   onClick={() => {
-                    const matchedOpt =
-                      (selected &&
-                        TWELVE_3D_LANDMARKS_LIST.find((o) => o.placeId === selected.id)) ||
-                      TWELVE_3D_LANDMARKS_LIST[0];
+                    const matchedOpt = selected
+                      ? TWELVE_3D_LANDMARKS_LIST.find(
+                          (o) => o.placeId === selected.id || o.landmarkId === selected.id
+                        )
+                      : undefined;
                     if (matchedOpt) {
                       selectAndFocus3DLandmarkOption(matchedOpt);
+                    } else {
+                      // Không bao giờ tự động chọn Hiệu bộ (hpu2_a1) hoặc tự nhảy camera khi chưa chọn công trình 3D!
+                      setSelected(null);
+                      handleSelectBuilding3D(null);
+                      setAdminLandmarkMode3D('mode_b_model');
                     }
                   }}
                   className="rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer"
@@ -4815,9 +4969,21 @@ export const City3DView: React.FC<City3DViewProps> = ({
                 onClick={() => {
                   if (selected) {
                     openEditForPlace(selected);
-                  } else if (placesWithCoords.length > 0) {
-                    setSelected(placesWithCoords[0]);
-                    openEditForPlace(placesWithCoords[0]);
+                  } else {
+                    setEditId(undefined);
+                    setEditName('');
+                    setEditCategory('public');
+                    setEditAddress('');
+                    setEditTagline('');
+                    setEditPhone('');
+                    setEditHours('');
+                    setEditMapsInput('');
+                    setEditLat('');
+                    setEditLng('');
+                    setEditNotice(null);
+                    setGeoSuggestions([]);
+                    setIsCreatingNew(false);
+                    setIsEditingPlace(true);
                   }
                 }}
                 className="rounded-full bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] px-2.5 py-1 text-[11px] font-medium transition cursor-pointer"
@@ -4959,6 +5125,33 @@ export const City3DView: React.FC<City3DViewProps> = ({
 
             {/* Body form scroll độc lập */}
             <div className="flex-1 overflow-y-auto px-4 py-2.5 space-y-2">
+              {!isCreatingNew && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#475569] mb-1">
+                    Chọn địa danh / cơ quan / quán để chỉnh sửa hoặc định vị
+                  </label>
+                  <select
+                    data-testid="admin-3d-place-select"
+                    value={editId || ''}
+                    onChange={(e) => {
+                      const chosen = places.find((item) => item.id === e.target.value);
+                      if (chosen) {
+                        setSelected(chosen);
+                        openEditForPlace(chosen);
+                      }
+                    }}
+                    className="w-full h-9 rounded-[9px] border border-[#CBD5E1] bg-white px-2 text-xs font-semibold text-[#0F172A] focus:border-[#059669] focus:outline-none"
+                  >
+                    <option value="">-- Chọn địa điểm trong danh sách ({places.length}) --</option>
+                    {places.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.lat !== null && p.lng !== null ? '✓' : '(Chưa có tọa độ)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[11px] font-semibold text-[#475569] mb-1">
                   Tên địa danh / Cơ quan / Quán *
@@ -5041,13 +5234,57 @@ export const City3DView: React.FC<City3DViewProps> = ({
                 />
               </div>
 
-              {/* Khung Định vị gọn (Phần 16–18: Ưu tiên Chấm trên 3D / Chấm trên 2D) */}
+              {/* Khung Định vị gọn (Phần 16–18: Ưu tiên Định vị trực tiếp / Chấm trên 3D / Chấm trên 2D) */}
               <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-2.5 space-y-2">
                 <div className="flex items-center justify-between gap-1.5 flex-wrap">
                   <label className="text-[11px] font-semibold text-[#334155]">
-                    Định vị vị trí ({editLat && editLng ? `${Number(editLat).toFixed(4)}, ${Number(editLng).toFixed(4)}` : 'Chưa chấm'})
+                    Định vị vị trí (
+                    {editLat && editLng && Number.isFinite(Number(editLat)) && Number.isFinite(Number(editLng))
+                      ? `${Number(editLat).toFixed(4)}, ${Number(editLng).toFixed(4)}`
+                      : 'Chưa có tọa độ'}
+                    )
                   </label>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <button
+                      type="button"
+                      data-testid="admin-locate-place-btn"
+                      onClick={() => {
+                        const latNum = editLat.trim() !== '' ? Number(editLat) : NaN;
+                        const lngNum = editLng.trim() !== '' ? Number(editLng) : NaN;
+                        if (
+                          !Number.isFinite(latNum) ||
+                          !Number.isFinite(lngNum) ||
+                          latNum < 21.15 ||
+                          latNum > 21.40 ||
+                          lngNum < 105.60 ||
+                          lngNum > 105.85
+                        ) {
+                          setEditNotice({
+                            text: '⚠️ Địa điểm chưa có tọa độ xác minh để định vị.',
+                            isError: true,
+                          });
+                          return;
+                        }
+                        const matched = editId ? places.find((item) => item.id === editId) : null;
+                        if (matched) {
+                          setSelected(matched);
+                          flyToPlace(matched);
+                        } else {
+                          flyToCoordinates3D(latNum, lngNum, 175);
+                        }
+                        setIsEditingPlace(false);
+                        setIsCreatingNew(false);
+                        setLiveState({
+                          busy: false,
+                          message: `🎯 Đã định vị tới "${editName || 'địa điểm'}" (${latNum.toFixed(5)}, ${lngNum.toFixed(5)})`,
+                        });
+                      }}
+                      className="h-7 rounded-[8px] bg-[#059669] hover:bg-[#047857] text-white px-2.5 text-[11px] font-bold cursor-pointer transition flex items-center gap-1"
+                      title="Bay camera tới đúng vị trí địa điểm này trên bản đồ 3D"
+                    >
+                      <LocateFixed size={12} />
+                      <span>Định vị</span>
+                    </button>
                     <button
                       type="button"
                       data-testid="btn-pick-on-3d"
@@ -5066,8 +5303,8 @@ export const City3DView: React.FC<City3DViewProps> = ({
                       onClick={() => {
                         setIsEditingPlace(false);
                         setIsCreatingNew(false);
-                        const latNum = parseFloat(editLat);
-                        const lngNum = parseFloat(editLng);
+                        const latNum = editLat.trim() !== '' ? parseFloat(editLat) : NaN;
+                        const lngNum = editLng.trim() !== '' ? parseFloat(editLng) : NaN;
                         onClose(
                           Number.isFinite(latNum) && Number.isFinite(lngNum)
                             ? { lat: latNum, lng: lngNum }

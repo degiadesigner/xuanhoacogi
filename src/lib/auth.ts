@@ -257,12 +257,18 @@ function encodeEmailForRtdbKey(email: string): string {
 export function isVerifiedFirebaseAuthUid(uid?: string | null): boolean {
   if (!uid || typeof uid !== 'string') return false;
   const clean = uid.trim();
-  if (clean.startsWith('uid_') || clean.startsWith('google_') || clean.startsWith('fb_')) {
+  if (
+    clean.startsWith('uid_') ||
+    clean.startsWith('google_') ||
+    clean.startsWith('fb_') ||
+    clean.startsWith('adm_')
+  ) {
     return false;
   }
   // Google OAuth sub là chuỗi 18–25 chữ số thuần — tuyệt đối KHÔNG phải Firebase Auth UID
   if (/^\d+$/.test(clean)) return false;
-  return /^[A-Za-z0-9]{20,36}$/.test(clean);
+  // Chấp nhận định dạng Firebase Auth UID (10–128 ký tự), không dùng regex 28 ký tự làm tiêu chuẩn cứng
+  return /^[A-Za-z0-9_-]{10,128}$/.test(clean);
 }
 
 function getCanonicalUidForEmail(email: string, fallbackUid?: string): string {
@@ -364,9 +370,109 @@ export function saveAuthUser(user: UserAuthProfile): void {
   }
 }
 
+const reconciledSessionKeys = new Set<string>();
+
+export async function reconcileCurrentFirebaseSessionWithBackend(
+  fbUser?: User | null,
+  options?: {
+    force?: boolean;
+    customIdToken?: string;
+    customUid?: string;
+    customEmail?: string;
+    customDisplayName?: string;
+  }
+): Promise<Record<string, any> | null> {
+  if (typeof window === 'undefined' || typeof window.fetch !== 'function') return null;
+  try {
+    let targetUser = fbUser || null;
+    if (!targetUser && !options?.customIdToken && firebaseConfig.apiKey) {
+      try {
+        const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        targetUser = auth.currentUser;
+      } catch {}
+    }
+
+    const resolvedUid = (options?.customUid || targetUser?.uid || '').trim();
+    const resolvedEmail = (
+      options?.customEmail ||
+      targetUser?.email ||
+      getStoredAuthUser()?.email ||
+      ''
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!isVerifiedFirebaseAuthUid(resolvedUid) || !resolvedEmail) {
+      return null;
+    }
+
+    const dedupeKey = `${resolvedUid}:${resolvedEmail}`;
+    if (!options?.force && reconciledSessionKeys.has(dedupeKey)) {
+      return null;
+    }
+
+    const idToken =
+      options?.customIdToken ||
+      (targetUser && typeof targetUser.getIdToken === 'function'
+        ? await targetUser.getIdToken()
+        : null);
+    if (!idToken) return null;
+
+    reconciledSessionKeys.add(dedupeKey);
+
+    const resp = await window.fetch('/api/founder-security/reconcile-self', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        displayName:
+          options?.customDisplayName ||
+          targetUser?.displayName ||
+          getStoredAuthUser()?.displayName ||
+          '',
+      }),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!data || typeof data !== 'object') {
+      reconciledSessionKeys.delete(dedupeKey);
+      return null;
+    }
+
+    if (data.ok === true && isVerifiedFirebaseAuthUid(data.verifiedFirebaseUid)) {
+      const currentStored = getStoredAuthUser();
+      if (
+        currentStored &&
+        currentStored.email?.trim().toLowerCase() === resolvedEmail &&
+        currentStored.uid !== data.verifiedFirebaseUid
+      ) {
+        saveAuthUser({
+          ...currentStored,
+          uid: data.verifiedFirebaseUid,
+        });
+      }
+      window.dispatchEvent(
+        new CustomEvent('xuanhoa_identity_reconciled', {
+          detail: {
+            ...data,
+            email: resolvedEmail,
+            uid: data.verifiedFirebaseUid,
+          },
+        })
+      );
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export function clearAuthUser(): void {
   if (typeof window === 'undefined') return;
   try {
+    reconciledSessionKeys.clear();
     localStorage.setItem(LOGGED_OUT_KEY, '1');
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(JUST_LOGGED_IN_KEY);
@@ -691,6 +797,7 @@ async function parseOAuthHashAndSignIn(rawHash: string): Promise<{
         const credRes = await signInWithCredential(auth, credential);
         if (credRes?.user?.uid && googleUser) {
           googleUser.uid = credRes.user.uid;
+          reconcileCurrentFirebaseSessionWithBackend(credRes.user).catch(() => {});
         }
       } catch (fbErr) {
         console.warn('Firebase credential sync warning:', fbErr);
@@ -774,6 +881,7 @@ export async function checkRedirectAuthResult(): Promise<UserAuthProfile | null>
                 credRes.user.displayName || finalUser.displayName || 'Thực Khách',
               photoURL: credRes.user.photoURL || finalUser.photoURL || undefined,
             });
+            reconcileCurrentFirebaseSessionWithBackend(credRes.user).catch(() => {});
           }
         } catch (fbErr) {
           console.warn('Firebase credential sync warning:', fbErr);
@@ -803,6 +911,7 @@ export async function checkRedirectAuthResult(): Promise<UserAuthProfile | null>
           photoURL: u.photoURL || undefined,
         });
         localStorage.setItem(JUST_LOGGED_IN_KEY, '1');
+        reconcileCurrentFirebaseSessionWithBackend(u).catch(() => {});
         return updated;
       }
     } catch (redirErr) {
@@ -812,6 +921,7 @@ export async function checkRedirectAuthResult(): Promise<UserAuthProfile | null>
     // 3. Nếu người dùng chưa chủ động bấm Đăng xuất:
     // - Nếu localStorage bị trống: tự động khôi phục từ Firebase IndexedDB.
     // - Nếu localStorage đã có user nhưng uid đang là Google sub (21 chữ số) hoặc uid_...: đồng bộ sang Firebase Auth UID thật (28 ký tự).
+    // - Tự động đối soát identity_links & kích hoạt quyền chờ (PENDING_ROLE_ACTIVATION) khi khôi phục phiên hoặc tải lại trang.
     if (localStorage.getItem(LOGGED_OUT_KEY) !== '1') {
       const existingStored = getStoredAuthUser();
       if (!existingStored) {
@@ -827,6 +937,7 @@ export async function checkRedirectAuthResult(): Promise<UserAuthProfile | null>
                   displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Thực Khách',
                   photoURL: fbUser.photoURL || undefined,
                 });
+                reconcileCurrentFirebaseSessionWithBackend(fbUser).catch(() => {});
                 resolve(restored);
               } else {
                 resolve(null);
@@ -843,18 +954,27 @@ export async function checkRedirectAuthResult(): Promise<UserAuthProfile | null>
           auth,
           (fbUser: User | null) => {
             unsubscribe();
-            if (
-              fbUser?.uid &&
-              existingStored.email &&
-              (!fbUser.email ||
-                fbUser.email.trim().toLowerCase() === existingStored.email.trim().toLowerCase()) &&
-              existingStored.uid !== fbUser.uid
-            ) {
+            if (!fbUser?.uid || localStorage.getItem(LOGGED_OUT_KEY) === '1') return;
+
+            const fbEmail = (fbUser.email || '').trim().toLowerCase();
+            const storedEmail = (existingStored.email || '').trim().toLowerCase();
+
+            if (fbEmail && storedEmail && fbEmail !== storedEmail) {
+              // Người dùng chuyển từ tài khoản Google A sang Google B trên cùng trình duyệt
+              createOrUpdateAuthUserFromGoogle({
+                uid: fbUser.uid,
+                email: fbEmail,
+                displayName: fbUser.displayName || fbEmail.split('@')[0] || 'Thực Khách',
+                photoURL: fbUser.photoURL || undefined,
+              });
+            } else if (existingStored.uid !== fbUser.uid) {
               saveAuthUser({
                 ...existingStored,
                 uid: fbUser.uid,
               });
             }
+
+            reconcileCurrentFirebaseSessionWithBackend(fbUser).catch(() => {});
           },
           () => {
             unsubscribe();
@@ -1007,6 +1127,7 @@ export async function signInWithGoogleService(): Promise<{
         photoURL: u.photoURL || undefined,
       };
       createOrUpdateAuthUserFromGoogle(googleUser);
+      reconcileCurrentFirebaseSessionWithBackend(u).catch(() => {});
       return googleUser;
     } catch (err: any) {
       const code = String(err?.code || '');

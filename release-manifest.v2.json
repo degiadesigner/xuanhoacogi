@@ -1,6 +1,6 @@
 {
-  "manifestVersion": "2.0.0",
-  "releaseId": "xuho-city-release-v2-2026-11-04",
+  "manifestVersion": "2.1.0",
+  "releaseId": "xuho-city-release-v4-v5-v6-2026-11-06",
   "projectRoot": "C:/Users/tmide/Downloads/XuanHoaCoGi",
   "gitRepository": "https://github.com/degiadesigner/xuanhoacogi.git",
   "deployBranch": "main",
@@ -8,7 +8,7 @@
   "cloudflareAssetsDirectory": "./dist",
   "firebaseProjectId": "xuanhoacogi",
   "firebaseDatabaseUrl": "https://xuanhoacogi-default-rtdb.firebaseio.com",
-  "baselineCommit": "2df51df",
+  "baselineCommit": "85684eb",
   "approvedFiles": [
     ".firebaserc",
     ".gitignore",
@@ -27,6 +27,7 @@
     "wrangler.json",
     "wrangler.jsonc",
     "wrangler.toml",
+    "src/app/globals.css",
     "src/app/page.tsx",
     "src/components/AdminDashboardView.tsx",
     "src/components/AuthModal.tsx",
@@ -37,6 +38,7 @@
     "src/components/PlacesCatalogView.tsx",
     "src/components/UserProfileModal.tsx",
     "src/components/admin/AdminMembersManagementView.tsx",
+    "src/components/admin/CategoryPicker.tsx",
     "src/components/admin/PlaceFields.tsx",
     "src/components/map/LandmarkAdminControls.tsx",
     "src/components/map/MapControls.tsx",
@@ -69,13 +71,16 @@
     "src/lib/places-xuanhoa.ts",
     "src/lib/verified-rtdb-seeds.ts",
     "tests/firebase-emulator-official.test.mjs",
+    "tests/verify-v6-account-identity-uid.mjs",
     "dist/index.html",
     "dist/assets/city3d.worker-C28EG7Ey.js",
     "dist/assets/index-FhDkVOjm.js",
     "dist/assets/index-S8QGy1uc.css",
     "dist/assets/city3d.worker-e3Cjysg9.js",
     "dist/assets/index-Dt6SnPNO.js",
-    "dist/assets/index-DPs_tT9P.css"
+    "dist/assets/index-DPs_tT9P.css",
+    "dist/assets/index-CbCv_6Tk.js",
+    "dist/assets/index-Co9LA47I.css"
   ],
   "forbiddenPatterns": [
     "^backups/",

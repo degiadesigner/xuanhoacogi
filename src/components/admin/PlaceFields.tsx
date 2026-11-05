@@ -18,6 +18,7 @@ import {
 } from '@/lib/map/map-category-registry';
 import type { MapCategoryKey } from '@/lib/map/map-types';
 import type { CustomMenuEntry } from '@/lib/admin-store';
+import { CategoryTaxonomyPicker } from './CategoryPicker';
 
 export interface PlaceFieldsValue {
   name: string;
@@ -481,60 +482,28 @@ export const PlaceFields: React.FC<PlaceFieldsProps> = ({
           </div>
         )}
 
-        {/* Dropdown Cấp 1 & Cấp 2: Nhóm chính -> Loại chi tiết */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-            gap: 8,
-            minWidth: 0,
+        {/* Category Picker chuyên nghiệp Cấp 1 & Cấp 2: Nhóm chính -> Loại chi tiết */}
+        <CategoryTaxonomyPicker
+          parentCategoryId={value.parentCategoryId || 'food'}
+          subcategoryId={value.subcategoryId || 'local_food'}
+          onChange={(_nextParent, nextSub) => {
+            handleSelectSubcategory(nextSub);
           }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <label htmlFor={`${idPrefix}-parent-cat`} style={{ ...labelStyle, fontSize: 11 }}>
-              Cấp 1 — Nhóm chính (Parent)
-            </label>
-            <select
-              id={`${idPrefix}-parent-cat`}
-              data-testid={`${idPrefix}-parent-cat`}
-              value={value.parentCategoryId || 'food'}
-              onChange={(e) => handleSelectParent(e.target.value as MapParentCategoryId)}
-              style={{ ...inputStyle, height: 36, fontSize: 12.5, cursor: 'pointer' }}
-            >
-              {MAP_PARENT_CATEGORIES.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ minWidth: 0 }}>
-            <label htmlFor={`${idPrefix}-sub-cat`} style={{ ...labelStyle, fontSize: 11 }}>
-              Cấp 2 — Loại chi tiết (Subcategory)
-            </label>
-            <select
-              id={`${idPrefix}-sub-cat`}
-              data-testid={`${idPrefix}-sub-cat`}
-              value={value.subcategoryId || 'local_food'}
-              onChange={(e) => handleSelectSubcategory(e.target.value as MapSubcategoryId)}
-              style={{
-                ...inputStyle,
-                height: 36,
-                fontSize: 12.5,
-                fontWeight: 700,
-                color: '#059669',
-                cursor: 'pointer',
-              }}
-            >
-              {subcategoriesForParent.map((sub) => (
-                <option key={sub.id} value={sub.id}>
-                  {sub.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+          theme={{
+            bgCard: theme.bgCard,
+            bgInput: theme.bgInput,
+            border: theme.border,
+            textPrimary: theme.textPrimary,
+            textSecondary: theme.textSecondary,
+            textMuted: theme.textMuted,
+            accent: theme.accent,
+            accentSoft: '#ECFDF5',
+          }}
+          compact
+          testIdPrefix={`${idPrefix}-cat-picker`}
+          legacyParentSelectTestId={`${idPrefix}-parent-cat`}
+          legacySubSelectTestId={`${idPrefix}-sub-cat`}
+        />
 
         {/* Cấp 3 — Tag bổ sung (Extra Tags) */}
         <div style={{ minWidth: 0, paddingTop: 4, borderTop: `1px dashed ${theme.border}` }}>

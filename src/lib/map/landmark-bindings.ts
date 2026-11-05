@@ -7,7 +7,7 @@ import { getElevationAtLngLat } from './xuanhoa-elevation';
 import { haversineDistanceMeters, saveLandmarkOrPlaceFromMap } from './map-data';
 import { isAdminAuthenticated, resolvePlaceOrPendingProposalCoordinates } from '../admin-store';
 import { City3DOrigin, lngLatToLocal } from '../../components/map/city3d/city3d-shared';
-import { getRealtimeDb, ref, onValue } from '../firebase';
+import { getRealtimeDb, getFirebaseAuth, ref, onValue } from '../firebase';
 import { set } from 'firebase/database';
 
 /**
@@ -49,6 +49,7 @@ export interface LandmarkBindingRecord {
   modelVisibilityMode: LandmarkModelVisibilityMode;
   updatedAt: number;
   updatedBy?: string;
+  notes?: string;
   editAnchors?: LandmarkEditAnchors;
 }
 
@@ -478,29 +479,68 @@ const undoSnapshotsByPlaceId = new Map<string, LandmarkUndoSnapshot>();
 
 export const LANDMARK_BINDINGS_RTDB_PATH = 'xuanhoa_admin/global_state/landmarkBindings';
 
-function sanitizeBindingForCloud(record: LandmarkBindingRecord): Record<string, unknown> {
+export function sanitizeBindingForCloud(record: LandmarkBindingRecord): Record<string, unknown> {
+  const cloudAnchorType = record.anchorType === 'building' ? 'world' : 'place';
+  const cloudVisibilityMode =
+    record.modelVisibilityMode === 'always'
+      ? 'always'
+      : record.modelVisibilityMode === 'manual'
+      ? record.visible
+        ? 'always'
+        : 'hidden'
+      : 'follow_place';
+
   const payload: Record<string, unknown> = {
-    landmarkId: String(record.landmarkId),
-    label: String(record.label || record.landmarkId),
-    placeId: String(record.placeId || record.landmarkId),
-    anchorType: record.anchorType === 'building' ? 'building' : 'place',
-    offsetX: Number(Number(record.offsetX || 0).toFixed(2)),
-    offsetY: Number(Number(record.offsetY || 0).toFixed(2)),
-    offsetZ: Number(Number(record.offsetZ || 0).toFixed(2)),
-    rotationY: Number(Number(record.rotationY || 0).toFixed(4)),
+    landmarkId: String(record.landmarkId).slice(0, 128),
+    label: String(record.label || record.landmarkId).slice(0, 200),
+    placeId: String(record.placeId || record.landmarkId).slice(0, 128),
+    anchorType: cloudAnchorType,
+    offsetX: Math.max(-2000, Math.min(2000, Number(Number(record.offsetX || 0).toFixed(2)))),
+    offsetY: Math.max(-200, Math.min(200, Number(Number(record.offsetY || 0).toFixed(2)))),
+    offsetZ: Math.max(-2000, Math.min(2000, Number(Number(record.offsetZ || 0).toFixed(2)))),
+    rotationY: Math.max(-6.5, Math.min(6.5, Number(Number(record.rotationY || 0).toFixed(4)))),
     scale: Number(Math.max(0.25, Math.min(3.5, Number(record.scale || 1))).toFixed(2)),
     visible: Boolean(record.visible),
-    modelVisibilityMode:
-      record.modelVisibilityMode === 'always' || record.modelVisibilityMode === 'manual'
-        ? record.modelVisibilityMode
-        : 'follow_place',
+    modelVisibilityMode: cloudVisibilityMode,
     updatedAt: Number(record.updatedAt || Date.now()),
   };
-  if (record.buildingId) {
-    payload.buildingId = String(record.buildingId);
-  }
   if (record.updatedBy) {
-    payload.updatedBy = String(record.updatedBy);
+    payload.updatedBy = String(record.updatedBy).slice(0, 180);
+  }
+  const existingRawNotes = typeof record.notes === 'string' ? record.notes.trim() : '';
+  let existingUserNotes = existingRawNotes;
+  if (existingRawNotes.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(existingRawNotes) as Record<string, unknown>;
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        ('buildingId' in parsed || 'anchorType' in parsed || 'modelVisibilityMode' in parsed || 'userNotes' in parsed)
+      ) {
+        existingUserNotes = typeof parsed.userNotes === 'string' ? parsed.userNotes : '';
+      }
+    } catch {
+      // plain text notes starting with {
+    }
+  }
+
+  const metaNotes: Record<string, string> = {};
+  if (record.buildingId) {
+    metaNotes.buildingId = String(record.buildingId).slice(0, 160);
+  }
+  if (record.anchorType === 'building') {
+    metaNotes.anchorType = 'building';
+  }
+  if (record.modelVisibilityMode === 'manual') {
+    metaNotes.modelVisibilityMode = 'manual';
+  }
+  if (Object.keys(metaNotes).length > 0) {
+    if (existingUserNotes) {
+      metaNotes.userNotes = existingUserNotes.slice(0, 650);
+    }
+    payload.notes = JSON.stringify(metaNotes).slice(0, 1000);
+  } else if (existingUserNotes) {
+    payload.notes = existingUserNotes.slice(0, 1000);
   }
   return payload;
 }
@@ -520,8 +560,22 @@ export async function syncLandmarkBindingRecordToCloudAsync(
     await set(ref(rtdb, `${LANDMARK_BINDINGS_RTDB_PATH}/${record.landmarkId}`), payload);
     return { cloudSaved: true };
   } catch (err: any) {
-    const errMsg = String(err?.code || err?.message || 'PERMISSION_DENIED');
-    return { cloudSaved: false, error: errMsg };
+    const rawCode = String(err?.code || err?.message || 'PERMISSION_DENIED');
+    const authUser = getFirebaseAuth()?.currentUser;
+    if (rawCode.toUpperCase().includes('PERMISSION_DENIED')) {
+      if (!authUser) {
+        return {
+          cloudSaved: false,
+          error:
+            'PERMISSION_DENIED (Chưa có phiên Firebase Auth — vui lòng đăng nhập Google bằng tài khoản Founder/Admin để lưu đám mây)',
+        };
+      }
+      return {
+        cloudSaved: false,
+        error: `PERMISSION_DENIED (Tài khoản ${authUser.email || authUser.uid} không có quyền ghi nhánh landmarkBindings/${record.landmarkId})`,
+      };
+    }
+    return { cloudSaved: false, error: rawCode };
   }
 }
 
@@ -568,7 +622,7 @@ function ensureLandmarkBindingsCloudListener(): void {
   }
 }
 
-function cloneDefaultBindings(): Record<string, LandmarkBindingRecord> {
+export function cloneDefaultBindings(): Record<string, LandmarkBindingRecord> {
   const out: Record<string, LandmarkBindingRecord> = {};
   for (const [k, v] of Object.entries(DEFAULT_LANDMARK_BINDINGS)) {
     out[k] = { ...v };
@@ -576,7 +630,7 @@ function cloneDefaultBindings(): Record<string, LandmarkBindingRecord> {
   return out;
 }
 
-function applyBindingOverrideMap(
+export function applyBindingOverrideMap(
   merged: Record<string, LandmarkBindingRecord>,
   sourceMap: Record<string, Partial<LandmarkBindingRecord>>,
   onlyIfNewer = false
@@ -611,11 +665,61 @@ function applyBindingOverrideMap(
     }
     const rawPlaceId = ov.placeId || base.placeId;
     const canonicalPlaceId = LEGACY_PENDING_PLACE_ID_MIGRATION[rawPlaceId] || rawPlaceId;
-    merged[id] = {
+    const rawOv = ov as Record<string, unknown>;
+    let parsedNotes: Record<string, string> = {};
+    let isMetaNotesEnvelope = false;
+    if (typeof rawOv.notes === 'string' && rawOv.notes.startsWith('{')) {
+      try {
+        const candidate = JSON.parse(rawOv.notes);
+        if (
+          candidate &&
+          typeof candidate === 'object' &&
+          ('buildingId' in candidate ||
+            'anchorType' in candidate ||
+            'modelVisibilityMode' in candidate ||
+            'userNotes' in candidate)
+        ) {
+          parsedNotes = candidate as Record<string, string>;
+          isMetaNotesEnvelope = true;
+        }
+      } catch {
+        // ignore invalid notes json
+      }
+    }
+    const resolvedBuildingId =
+      (typeof ov.buildingId === 'string' && ov.buildingId) ||
+      parsedNotes.buildingId ||
+      base.buildingId;
+    const rawAnchor = String(
+      parsedNotes.anchorType || ov.anchorType || base.anchorType
+    );
+    const resolvedAnchorType: 'place' | 'building' =
+      rawAnchor === 'building' || (rawAnchor === 'world' && Boolean(resolvedBuildingId))
+        ? 'building'
+        : 'place';
+    const rawVisMode = String(
+      parsedNotes.modelVisibilityMode || ov.modelVisibilityMode || base.modelVisibilityMode
+    );
+    const resolvedVisMode: LandmarkModelVisibilityMode =
+      rawVisMode === 'manual' || rawVisMode === 'hidden'
+        ? 'manual'
+        : rawVisMode === 'always'
+        ? 'always'
+        : 'follow_place';
+    const resolvedUserNotes = isMetaNotesEnvelope
+      ? parsedNotes.userNotes || base.notes
+      : typeof rawOv.notes === 'string'
+      ? rawOv.notes
+      : base.notes;
+
+    const nextRecord: LandmarkBindingRecord = {
       ...base,
       ...ov,
       landmarkId: id,
       placeId: canonicalPlaceId,
+      buildingId: resolvedBuildingId,
+      anchorType: resolvedAnchorType,
+      modelVisibilityMode: resolvedVisMode,
       offsetX: Number.isFinite(Number(ov.offsetX)) ? Number(ov.offsetX) : base.offsetX,
       offsetY: Number.isFinite(Number(ov.offsetY)) ? Number(ov.offsetY) : base.offsetY,
       offsetZ: Number.isFinite(Number(ov.offsetZ)) ? Number(ov.offsetZ) : base.offsetZ,
@@ -623,6 +727,12 @@ function applyBindingOverrideMap(
       scale: Number.isFinite(Number(ov.scale)) ? Math.max(0.25, Math.min(3.5, Number(ov.scale))) : base.scale,
       updatedAt: Number.isFinite(Number(ov.updatedAt)) ? Number(ov.updatedAt) : base.updatedAt,
     };
+    if (resolvedUserNotes !== undefined) {
+      nextRecord.notes = resolvedUserNotes;
+    } else {
+      delete nextRecord.notes;
+    }
+    merged[id] = nextRecord;
   }
 }
 

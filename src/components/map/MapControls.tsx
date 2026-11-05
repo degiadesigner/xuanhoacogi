@@ -20,7 +20,9 @@ interface MapControlsProps {
   activePresetId: string;
   onOpenDataQualityModal: () => void;
   is3DMode?: boolean;
+  isCity3DOpen?: boolean;
   onToggle3DMode?: () => void;
+  onSelectMapMode?: (mode: '2d' | '2.5d' | '3d') => void;
   onOpenCity3D?: () => void;
   onClickHomeButton?: () => void;
   hasSavedHome?: boolean;
@@ -34,8 +36,10 @@ export const MapControls: React.FC<MapControlsProps> = ({
   isLocatingUser,
   layerVisibility,
   onToggleLayer,
-  is3DMode = true,
+  is3DMode = false,
+  isCity3DOpen = false,
   onToggle3DMode,
+  onSelectMapMode,
   onOpenCity3D,
   onClickHomeButton,
   hasSavedHome = false,
@@ -133,35 +137,79 @@ export const MapControls: React.FC<MapControlsProps> = ({
         </div>
       )}
 
+      {/* Cụm chọn chế độ cố định 3 nút: [ 2D ] [ 2.5D ] [ 3D ] — luôn hiện đủ 3 lựa chọn */}
+      <div
+        data-testid="map-mode-switcher"
+        role="group"
+        aria-label="Chế độ hiển thị bản đồ 2D, 2.5D, 3D"
+        className="flex flex-col rounded-[14px] bg-white/95 backdrop-blur-md border border-[#E2E8F0] shadow-[0_4px_16px_rgba(15,23,42,0.08)] overflow-hidden"
+      >
+        <button
+          type="button"
+          data-testid="map-mode-2d"
+          aria-pressed={!isCity3DOpen && !is3DMode}
+          onClick={() => {
+            if (onSelectMapMode) {
+              onSelectMapMode('2d');
+            } else if (is3DMode && onToggle3DMode) {
+              onToggle3DMode();
+            }
+          }}
+          title="Chế độ 2D phẳng (pitch = 0°)"
+          className={`w-9 h-8 sm:w-10 sm:h-8 flex items-center justify-center font-bold text-[10.5px] transition-colors border-b border-[#F1F5F9] cursor-pointer ${
+            !isCity3DOpen && !is3DMode
+              ? 'bg-[#059669] text-white shadow-inner'
+              : 'text-[#334155] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
+          }`}
+        >
+          2D
+        </button>
+
+        <button
+          type="button"
+          data-testid="map-mode-25d"
+          aria-pressed={!isCity3DOpen && Boolean(is3DMode)}
+          onClick={() => {
+            if (onSelectMapMode) {
+              onSelectMapMode('2.5d');
+            } else if (!is3DMode && onToggle3DMode) {
+              onToggle3DMode();
+            }
+          }}
+          title="Chế độ 2.5D nghiêng phối cảnh"
+          className={`w-9 h-8 sm:w-10 sm:h-8 flex items-center justify-center font-bold text-[10.5px] transition-colors border-b border-[#F1F5F9] cursor-pointer ${
+            !isCity3DOpen && is3DMode
+              ? 'bg-[#059669] text-white shadow-inner'
+              : 'text-[#334155] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
+          }`}
+        >
+          2.5D
+        </button>
+
+        <button
+          type="button"
+          data-testid="map-mode-3d"
+          aria-pressed={Boolean(isCity3DOpen)}
+          onClick={() => {
+            if (onSelectMapMode) {
+              onSelectMapMode('3d');
+            } else if (onOpenCity3D) {
+              onOpenCity3D();
+            }
+          }}
+          title="Chế độ Sa bàn 3D đầy đủ công trình & Landmark"
+          className={`w-9 h-8 sm:w-10 sm:h-8 flex items-center justify-center font-bold text-[10.5px] transition-colors cursor-pointer ${
+            isCity3DOpen
+              ? 'bg-[#059669] text-white shadow-inner'
+              : 'text-[#0F172A] hover:bg-[#0F172A] hover:text-white'
+          }`}
+        >
+          3D
+        </button>
+      </div>
+
       {/* Floating Right Control Pill */}
       <div className="flex flex-col rounded-[14px] bg-white/95 backdrop-blur-md border border-[#E2E8F0] shadow-[0_4px_16px_rgba(15,23,42,0.08)] overflow-hidden">
-        {onOpenCity3D && (
-          <button
-            type="button"
-            data-testid="map-ctrl-open-3d"
-            onClick={onOpenCity3D}
-            aria-label="Mở Bản đồ 3D Phường Xuân Hòa"
-            title="Chuyển sang Sa bàn 3D"
-            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-bold text-[11px] transition-colors border-b border-[#F1F5F9] cursor-pointer bg-[#0F172A] hover:bg-[#1E293B] text-white"
-          >
-            3D
-          </button>
-        )}
-
-        {onToggle3DMode && (
-          <button
-            type="button"
-            data-testid="map-ctrl-toggle-2d3d"
-            onClick={onToggle3DMode}
-            aria-label="Chuyển đổi góc nhìn 3D / 2D"
-            title="Chuyển đổi góc nhìn Nghiêng / Phẳng 2D"
-            className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center font-semibold text-[10.5px] transition-colors border-b border-[#F1F5F9] cursor-pointer ${
-              is3DMode ? 'bg-[#059669] text-white' : 'text-[#0F172A] hover:bg-[#F8FAFC]'
-            }`}
-          >
-            {is3DMode ? '2.5D' : '2D'}
-          </button>
-        )}
 
         <button
           type="button"
